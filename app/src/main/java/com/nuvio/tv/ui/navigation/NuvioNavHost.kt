@@ -32,6 +32,11 @@ import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import com.nuvio.tv.ui.screens.library.LibraryScreen
+import com.nuvio.tv.ui.screens.livetv.IptvSourcesScreen
+import com.nuvio.tv.ui.screens.livetv.LiveTvScreen
+import com.nuvio.tv.ui.screens.sports.SportsFavoritesScreen
+import com.nuvio.tv.ui.screens.sports.SportsScreen
+import com.nuvio.tv.ui.screens.sports.TeamsBrowseScreen
 import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PostPlayRecommendation
@@ -1188,6 +1193,61 @@ private fun PlaybackNavHost(
                         )
                     )
                 }
+            )
+        }
+
+        composable(Screen.LiveTv.route) {
+            LiveTvScreen(
+                showBuiltInHeader = !hideBuiltInHeaders,
+                onPlayChannel = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    )
+                },
+                onManageSources = { navController.navigate(Screen.IptvSources.route) }
+            )
+        }
+
+        composable(Screen.IptvSources.route) {
+            IptvSourcesScreen(
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Sports.route) {
+            SportsScreen(
+                onPlayEvent = { /* ESPN scoreboard data is metadata-only; there's no stream URL to play from a schedule/score row. */ },
+                onPlayStream = { stream ->
+                    val url = stream.getStreamUrl()
+                    if (!url.isNullOrBlank()) {
+                        navController.navigate(
+                            Screen.Player.createRoute(
+                                streamUrl = url,
+                                title = stream.getDisplayName(),
+                                streamName = stream.getDisplayName(),
+                                contentType = "live"
+                            )
+                        )
+                    }
+                },
+                onOpenTeamsSeeAll = { navController.navigate(Screen.SportsTeams.route) },
+                onOpenFavoritesPicker = { navController.navigate(Screen.SportsFavorites.route) }
+            )
+        }
+
+        composable(Screen.SportsFavorites.route) {
+            SportsFavoritesScreen()
+        }
+
+        composable(Screen.SportsTeams.route) {
+            TeamsBrowseScreen(
+                onTeamClick = { /* No stream source yet; tapping a team currently just toggles nothing extra. */ }
             )
         }
 

@@ -51,7 +51,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -1012,6 +1014,8 @@ open class MainActivity : ComponentActivity() {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
                             add(Screen.Library.route)
+                            add(Screen.LiveTv.route)
+                            add(Screen.Sports.route)
                             add(Screen.Settings.route)
                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
                                 add(Screen.Discover.route)
@@ -1023,12 +1027,16 @@ open class MainActivity : ComponentActivity() {
                     val strNavDiscover = stringResource(R.string.nav_discover)
                     val strNavSearch = stringResource(R.string.nav_search)
                     val strNavLibrary = stringResource(R.string.nav_library)
+                    val strNavLiveTv = stringResource(R.string.nav_live_tv)
+                    val strNavSports = stringResource(R.string.nav_sports)
                     val strNavSettings = stringResource(R.string.nav_settings)
                     val drawerItems = remember(
                         strNavHome,
                         strNavDiscover,
                         strNavSearch,
                         strNavLibrary,
+                        strNavLiveTv,
+                        strNavSports,
                         strNavSettings,
                         discoverLocation
                     ) {
@@ -1061,6 +1069,20 @@ open class MainActivity : ComponentActivity() {
                                     route = Screen.Library.route,
                                     label = strNavLibrary,
                                     iconRes = R.raw.sidebar_library
+                                )
+                            )
+                            add(
+                                DrawerItem(
+                                    route = Screen.LiveTv.route,
+                                    label = strNavLiveTv,
+                                    icon = Icons.Default.LiveTv
+                                )
+                            )
+                            add(
+                                DrawerItem(
+                                    route = Screen.Sports.route,
+                                    label = strNavSports,
+                                    icon = Icons.Default.SportsSoccer
                                 )
                             )
                             add(
