@@ -31,9 +31,9 @@ data class TeamsBrowseUiState(
 
 /**
  * Backs the "Teams" See All screen: a filterable, section-per-league browse of teams. Each section's
- * teams come straight out of that league's ESPN scoreboard window (the same feed the Sports tab
- * itself uses), cached in-memory for the lifetime of this ViewModel so switching filters back and
- * forth doesn't re-fetch.
+ * teams are the league's full roster (every team in the league, not just whoever happens to be
+ * playing this week), cached in-memory for the lifetime of this ViewModel so switching filters back
+ * and forth doesn't re-fetch.
  */
 @HiltViewModel
 class TeamsBrowseViewModel @Inject constructor(
@@ -80,10 +80,14 @@ class TeamsBrowseViewModel @Inject constructor(
             async {
                 val cacheKey = "${feed.sportPath}:${feed.leaguePath}"
                 sectionCache.getOrPut(cacheKey) {
-                    val result = runCatching { client.fetchFeed(feed) }.getOrNull()
+                    // The scoreboard feed still supplies the league's real display name/badge; the
+                    // team list itself comes from the dedicated teams endpoint so every team in the
+                    // league shows up, not just whoever's playing within the scoreboard's date window.
+                    val feedResult = runCatching { client.fetchFeed(feed) }.getOrNull()
+                    val fullRoster = runCatching { client.fetchTeams(feed) }.getOrNull()?.takeIf { it.isNotEmpty() }
                     TeamsLeagueSection(
-                        league = result?.league ?: SportsLeague(id = cacheKey, name = feed.leaguePath, sportName = feed.sportLabel),
-                        teams = result?.teams.orEmpty()
+                        league = feedResult?.league ?: SportsLeague(id = cacheKey, name = feed.leaguePath, sportName = feed.sportLabel),
+                        teams = fullRoster ?: feedResult?.teams.orEmpty()
                     )
                 }
             }
