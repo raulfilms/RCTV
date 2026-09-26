@@ -104,9 +104,20 @@ class EspnSportsClient @Inject constructor(
             )
         }
 
-        /** Resolves the curated [Feed] behind a `"sportPath:leaguePath"` id, e.g. [SportsLeague.id]. */
-        fun feedForLeagueId(leagueId: String): Feed? =
-            FEEDS.firstOrNull { "${it.sportPath}:${it.leaguePath}" == leagueId }
+        /**
+         * Resolves the curated [Feed] behind a `"sportPath:leaguePath"` id, e.g. [SportsLeague.id].
+         * Tolerates a still-percent-encoded id (`"football%3Anfl"`) reaching here, since navigation
+         * libraries have historically been inconsistent about auto-decoding a colon in a route's path
+         * segment - a straightforward `":"` match is tried first, decoding is only a fallback.
+         */
+        fun feedForLeagueId(leagueId: String): Feed? {
+            FEEDS.firstOrNull { "${it.sportPath}:${it.leaguePath}" == leagueId }?.let { return it }
+            val decoded = runCatching { java.net.URLDecoder.decode(leagueId, "UTF-8") }.getOrNull()
+            if (decoded != null && decoded != leagueId) {
+                FEEDS.firstOrNull { "${it.sportPath}:${it.leaguePath}" == decoded }?.let { return it }
+            }
+            return null
+        }
 
         private const val BASE_URL = "https://site.api.espn.com/apis/site/v2/sports"
 

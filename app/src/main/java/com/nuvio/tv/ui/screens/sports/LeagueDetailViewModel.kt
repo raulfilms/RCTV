@@ -74,7 +74,10 @@ class LeagueDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val leagueId: String = savedStateHandle.get<String>("leagueId").orEmpty()
+    // Navigation-Compose's own decoding of a path segment containing ":" (as in "football:nfl") is
+    // inconsistent across versions, so this is decoded defensively rather than assumed - a no-op if
+    // the platform already decoded it, and the fix if it didn't (leaving us with "football%3Anfl").
+    private val leagueId: String = decodeArg(savedStateHandle.get<String>("leagueId"))
     private val leagueNameArg: String = decodeArg(savedStateHandle.get<String>("leagueName"))
     private val sportNameArg: String = decodeArg(savedStateHandle.get<String>("sportName"))
     private val badgeUrlArg: String? = decodeArg(savedStateHandle.get<String>("badgeUrl")).takeIf { it.isNotBlank() }
