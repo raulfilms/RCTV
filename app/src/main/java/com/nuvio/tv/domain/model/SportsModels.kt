@@ -102,3 +102,10 @@ data class SportsNewsArticle(
     val publishedMs: Long?,
     val link: String?
 )
+
+/** One row of a game's team-vs-team stat comparison (e.g. label "Total Yards", homeValue "412", awayValue "356"). */
+data class SportsGameStat(
+    val label: String,
+    val homeValue: String,
+    val awayValue: String
+)

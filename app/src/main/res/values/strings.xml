@@ -3354,5 +3354,8 @@
         <string name="league_coming_soon_title">Coming soon</string>
         <string name="league_highlights_coming_soon">ESPN doesn\'t offer a free highlights feed we can pull from yet, so this tab is a placeholder for now.</string>
         <string name="league_videos_coming_soon">ESPN doesn\'t offer a free video feed we can pull from yet, so this tab is a placeholder for now.</string>
+        <string name="game_detail_stats_title">Team Comparison</string>
+        <string name="game_detail_no_stats">Stats aren\'t available for this game yet.</string>
+        <string name="game_detail_loading_stats">Loading stats…</string>
 
 </resources>

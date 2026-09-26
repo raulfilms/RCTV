@@ -2,6 +2,7 @@ package com.nuvio.tv.data.remote.espn
 
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsEventStatus
+import com.nuvio.tv.domain.model.SportsGameStat
 import com.nuvio.tv.domain.model.SportsLeague
 import com.nuvio.tv.domain.model.SportsNewsArticle
 import com.nuvio.tv.domain.model.SportsStandingEntry
@@ -132,6 +133,23 @@ class EspnSportsClient @Inject constructor(
             if (decoded != null && decoded != leagueId) {
                 FEEDS.firstOrNull { "${it.sportPath}:${it.leaguePath}" == decoded }?.let { return it }
             }
+            return null
+        }
+
+        /** A [SportsEvent.id]'s parts, e.g. `"espn:football:nfl:401671808"` -> ("football", "nfl", "401671808"). */
+        data class ParsedEventId(val sportPath: String, val leaguePath: String, val rawEventId: String)
+
+        /** Parses a [SportsEvent.id] built by [fetchFeed] back into its feed + raw ESPN event id. Tolerates a still-percent-encoded id, same as [feedForLeagueId]. */
+        fun parseEventId(eventId: String): ParsedEventId? {
+            fun parse(id: String): ParsedEventId? {
+                if (!id.startsWith("espn:")) return null
+                val parts = id.removePrefix("espn:").split(":")
+                if (parts.size != 3) return null
+                return ParsedEventId(sportPath = parts[0], leaguePath = parts[1], rawEventId = parts[2])
+            }
+            parse(eventId)?.let { return it }
+            val decoded = runCatching { java.net.URLDecoder.decode(eventId, "UTF-8") }.getOrNull()
+            if (decoded != null && decoded != eventId) parse(decoded)?.let { return it }
             return null
         }
 
@@ -450,6 +468,50 @@ class EspnSportsClient @Inject constructor(
                 runCatching { fetchTeams(pick.feed) }.getOrDefault(emptyList())
             }
             roster.firstOrNull { it.name.contains(pick.teamNameContains, ignoreCase = true) }
+        }
+    }
+
+    /**
+     * Fetches a single game's team-vs-team stat comparison from ESPN's game summary endpoint
+     * (`.../summary?event={id}`). Individual (non team-based) sports like tennis/MMA/racing have no
+     * `boxscore.teams` in their summary at all, so this simply returns an empty list for those rather
+     * than failing - the game detail screen treats an empty list as "stats aren't available".
+     */
+    fun fetchGameStats(sportPath: String, leaguePath: String, eventId: String): List<SportsGameStat> {
+        val url = "$BASE_URL/$sportPath/$leaguePath/summary?event=$eventId"
+        val json = JSONObject(get(url))
+        val teamsJson = json.optJSONObject("boxscore")?.optJSONArray("teams") ?: JSONArray()
+        if (teamsJson.length() < 2) return emptyList()
+
+        fun statsOf(teamJson: JSONObject?): LinkedHashMap<String, Pair<String, String>> {
+            val statsArray = teamJson?.optJSONArray("statistics") ?: JSONArray()
+            val map = LinkedHashMap<String, Pair<String, String>>()
+            for (i in 0 until statsArray.length()) {
+                val statJson = statsArray.optJSONObject(i) ?: continue
+                val name = statJson.optString("name")?.takeIf { it.isNotBlank() } ?: continue
+                val value = statJson.optString("displayValue")?.takeIf { it.isNotBlank() } ?: continue
+                val label = statJson.optString("label")?.takeIf { it.isNotBlank() } ?: name
+                map[name] = label to value
+            }
+            return map
+        }
+
+        var homeStats = LinkedHashMap<String, Pair<String, String>>()
+        var awayStats = LinkedHashMap<String, Pair<String, String>>()
+        for (i in 0 until teamsJson.length()) {
+            val teamJson = teamsJson.optJSONObject(i) ?: continue
+            when (teamJson.optString("homeAway")) {
+                "home" -> homeStats = statsOf(teamJson)
+                "away" -> awayStats = statsOf(teamJson)
+            }
+        }
+        val orderedKeys = homeStats.keys.ifEmpty { awayStats.keys }
+
+        return orderedKeys.mapNotNull { key ->
+            val home = homeStats[key]
+            val away = awayStats[key]
+            val label = home?.first ?: away?.first ?: return@mapNotNull null
+            SportsGameStat(label = label, homeValue = home?.second ?: "-", awayValue = away?.second ?: "-")
         }
     }
 }

@@ -151,6 +151,53 @@ sealed class Screen(val route: String) {
             return "sports_league/${encode(leagueId)}?leagueName=${encode(leagueName)}&sportName=${encode(sportName)}&badgeUrl=$encodedBadge"
         }
     }
+    data object SportsGameDetail : Screen(
+        "sports_game/{eventId}?name={name}&sportName={sportName}&leagueId={leagueId}&leagueName={leagueName}" +
+            "&homeTeamId={homeTeamId}&homeTeamName={homeTeamName}&homeTeamBadgeUrl={homeTeamBadgeUrl}&homeScore={homeScore}" +
+            "&awayTeamId={awayTeamId}&awayTeamName={awayTeamName}&awayTeamBadgeUrl={awayTeamBadgeUrl}&awayScore={awayScore}" +
+            "&startTimeMs={startTimeMs}&venue={venue}&status={status}&statusDetail={statusDetail}"
+    ) {
+        private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+        private fun encodeOrEmpty(value: String?): String = value?.let { encode(it) } ?: ""
+
+        fun createRoute(
+            eventId: String,
+            name: String,
+            sportName: String?,
+            leagueId: String?,
+            leagueName: String?,
+            homeTeamId: String?,
+            homeTeamName: String,
+            homeTeamBadgeUrl: String?,
+            homeScore: Int?,
+            awayTeamId: String?,
+            awayTeamName: String,
+            awayTeamBadgeUrl: String?,
+            awayScore: Int?,
+            startTimeMs: Long?,
+            venue: String?,
+            status: String,
+            statusDetail: String?
+        ): String {
+            return "sports_game/${encode(eventId)}" +
+                "?name=${encode(name)}" +
+                "&sportName=${encodeOrEmpty(sportName)}" +
+                "&leagueId=${encodeOrEmpty(leagueId)}" +
+                "&leagueName=${encodeOrEmpty(leagueName)}" +
+                "&homeTeamId=${encodeOrEmpty(homeTeamId)}" +
+                "&homeTeamName=${encode(homeTeamName)}" +
+                "&homeTeamBadgeUrl=${encodeOrEmpty(homeTeamBadgeUrl)}" +
+                "&homeScore=${homeScore ?: ""}" +
+                "&awayTeamId=${encodeOrEmpty(awayTeamId)}" +
+                "&awayTeamName=${encode(awayTeamName)}" +
+                "&awayTeamBadgeUrl=${encodeOrEmpty(awayTeamBadgeUrl)}" +
+                "&awayScore=${awayScore ?: ""}" +
+                "&startTimeMs=${startTimeMs ?: ""}" +
+                "&venue=${encodeOrEmpty(venue)}" +
+                "&status=${encode(status)}" +
+                "&statusDetail=${encodeOrEmpty(statusDetail)}"
+        }
+    }
     data object Settings : Screen("settings")
     data object Tracking : Screen("trakt")
     data object TmdbSettings : Screen("tmdb_settings")

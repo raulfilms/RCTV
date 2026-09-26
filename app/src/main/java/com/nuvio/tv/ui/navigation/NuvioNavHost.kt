@@ -34,6 +34,8 @@ import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import com.nuvio.tv.ui.screens.library.LibraryScreen
 import com.nuvio.tv.ui.screens.livetv.IptvSourcesScreen
 import com.nuvio.tv.ui.screens.livetv.LiveTvScreen
+import com.nuvio.tv.domain.model.SportsEvent
+import com.nuvio.tv.ui.screens.sports.GameDetailScreen
 import com.nuvio.tv.ui.screens.sports.LeagueDetailScreen
 import com.nuvio.tv.ui.screens.sports.SportsFavoritesScreen
 import com.nuvio.tv.ui.screens.sports.SportsScreen
@@ -61,6 +63,27 @@ import com.nuvio.tv.ui.screens.profile.ProfileSelectionMode
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.screens.tmdb.TmdbEntityBrowseScreen
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
+
+/** Builds the game detail route for any [SportsEvent] tapped from a scoreboard card, anywhere in Sports. */
+private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetail.createRoute(
+    eventId = event.id,
+    name = event.name,
+    sportName = event.sportName,
+    leagueId = event.leagueId,
+    leagueName = event.leagueName,
+    homeTeamId = event.homeTeamId,
+    homeTeamName = event.homeTeamName,
+    homeTeamBadgeUrl = event.homeTeamBadgeUrl,
+    homeScore = event.homeScore,
+    awayTeamId = event.awayTeamId,
+    awayTeamName = event.awayTeamName,
+    awayTeamBadgeUrl = event.awayTeamBadgeUrl,
+    awayScore = event.awayScore,
+    startTimeMs = event.startTimeMs,
+    venue = event.venue,
+    status = event.status.name,
+    statusDetail = event.statusDetail
+)
 
 @Composable
 fun NuvioNavHost(
@@ -1223,7 +1246,7 @@ private fun PlaybackNavHost(
 
         composable(Screen.Sports.route) {
             SportsScreen(
-                onPlayEvent = { /* ESPN scoreboard data is metadata-only; there's no stream URL to play from a schedule/score row. */ },
+                onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) },
                 onPlayStream = { stream ->
                     val url = stream.getStreamUrl()
                     if (!url.isNullOrBlank()) {
@@ -1272,8 +1295,33 @@ private fun PlaybackNavHost(
             )
         ) {
             LeagueDetailScreen(
-                onPlayEvent = { /* ESPN scoreboard data is metadata-only; there's no stream URL to play from a schedule/score row. */ }
+                onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) }
             )
+        }
+
+        composable(
+            route = Screen.SportsGameDetail.route,
+            arguments = listOf(
+                navArgument("eventId") { type = NavType.StringType },
+                navArgument("name") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("sportName") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("leagueId") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("leagueName") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("homeTeamId") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("homeTeamName") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("homeTeamBadgeUrl") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("homeScore") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("awayTeamId") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("awayTeamName") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("awayTeamBadgeUrl") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("awayScore") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("startTimeMs") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("venue") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("status") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("statusDetail") { type = NavType.StringType; nullable = true; defaultValue = "" }
+            )
+        ) {
+            GameDetailScreen()
         }
 
         composable(Screen.Settings.route) {
