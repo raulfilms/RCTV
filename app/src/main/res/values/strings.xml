@@ -3332,5 +3332,27 @@
         <string name="sports_teams_subtitle">Explore your favorite teams across every sport.</string>
         <string name="sports_view_details">View Details</string>
         <string name="sports_watch_live">Watch Live</string>
+        <string name="league_tab_home">Home</string>
+        <string name="league_tab_games">Games</string>
+        <string name="league_tab_teams">Teams</string>
+        <string name="league_tab_standings">Standings</string>
+        <string name="league_tab_schedule">Schedule</string>
+        <string name="league_tab_news">News</string>
+        <string name="league_tab_highlights">Highlights</string>
+        <string name="league_tab_videos">Videos</string>
+        <string name="league_row_live">Live %1$s</string>
+        <string name="league_row_schedule">%1$s Schedule</string>
+        <string name="league_schedule_week_label">Week %1$d</string>
+        <string name="league_schedule_this_week">This Week</string>
+        <string name="league_no_live_games">No live games right now.</string>
+        <string name="league_no_games_scheduled">No games scheduled for this window.</string>
+        <string name="league_no_teams">No teams found.</string>
+        <string name="league_no_standings">Standings aren\'t available for this league yet.</string>
+        <string name="league_no_news">No recent news for this league.</string>
+        <string name="league_loading">Loading…</string>
+        <string name="league_load_error">Couldn\'t load this league right now.</string>
+        <string name="league_coming_soon_title">Coming soon</string>
+        <string name="league_highlights_coming_soon">ESPN doesn\'t offer a free highlights feed we can pull from yet, so this tab is a placeholder for now.</string>
+        <string name="league_videos_coming_soon">ESPN doesn\'t offer a free video feed we can pull from yet, so this tab is a placeholder for now.</string>
 
 </resources>

@@ -143,6 +143,14 @@ sealed class Screen(val route: String) {
     data object Sports : Screen("sports")
     data object SportsFavorites : Screen("sports_favorites")
     data object SportsTeams : Screen("sports_teams")
+    data object SportsLeagueDetail : Screen("sports_league/{leagueId}?leagueName={leagueName}&sportName={sportName}&badgeUrl={badgeUrl}") {
+        private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+        fun createRoute(leagueId: String, leagueName: String, sportName: String, badgeUrl: String? = null): String {
+            val encodedBadge = badgeUrl?.let { encode(it) } ?: ""
+            return "sports_league/${encode(leagueId)}?leagueName=${encode(leagueName)}&sportName=${encode(sportName)}&badgeUrl=$encodedBadge"
+        }
+    }
     data object Settings : Screen("settings")
     data object Tracking : Screen("trakt")
     data object TmdbSettings : Screen("tmdb_settings")

@@ -31,6 +31,7 @@ fun SportsScreen(
     onPlayStream: (Stream) -> Unit = {},
     onOpenTeamsSeeAll: () -> Unit = {},
     onOpenFavoritesPicker: () -> Unit = {},
+    onOpenLeagueDetail: (SportsLeague) -> Unit = {},
     viewModel: SportsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -68,6 +69,7 @@ fun SportsScreen(
                     onPlayEvent = onPlayEvent,
                     onOpenTeamsSeeAll = onOpenTeamsSeeAll,
                     onOpenFavoritesPicker = onOpenFavoritesPicker,
+                    onOpenLeagueDetail = onOpenLeagueDetail,
                     onToggleFavoriteTeam = viewModel::toggleFavoriteTeam,
                     onSelectAddonEvent = viewModel::selectAddonEvent,
                     onShowFavoriteOptions = viewModel::showFavoriteOptions,
@@ -112,6 +114,7 @@ private fun SportsContent(
     onPlayEvent: (SportsEvent) -> Unit,
     onOpenTeamsSeeAll: () -> Unit,
     onOpenFavoritesPicker: () -> Unit,
+    onOpenLeagueDetail: (SportsLeague) -> Unit,
     onToggleFavoriteTeam: (String) -> Unit,
     onSelectAddonEvent: (com.nuvio.tv.domain.model.SportsAddonEvent) -> Unit,
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
@@ -207,7 +210,7 @@ private fun SportsContent(
                     items(uiState.leagues, key = { it.id }) { league ->
                         LeagueCard(
                             league = league,
-                            onClick = { },
+                            onClick = { onOpenLeagueDetail(league) },
                             onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
                         )
                     }

@@ -3,6 +3,10 @@ package com.nuvio.tv.data.remote.espn
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsLeague
+import com.nuvio.tv.domain.model.SportsNewsArticle
+import com.nuvio.tv.domain.model.SportsStandingEntry
+import com.nuvio.tv.domain.model.SportsStandingStat
+import com.nuvio.tv.domain.model.SportsStandingsGroup
 import com.nuvio.tv.domain.model.SportsTeam
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -100,8 +104,19 @@ class EspnSportsClient @Inject constructor(
             )
         }
 
+        /** Resolves the curated [Feed] behind a `"sportPath:leaguePath"` id, e.g. [SportsLeague.id]. */
+        fun feedForLeagueId(leagueId: String): Feed? =
+            FEEDS.firstOrNull { "${it.sportPath}:${it.leaguePath}" == leagueId }
+
         private const val BASE_URL = "https://site.api.espn.com/apis/site/v2/sports"
+
+        /** Standings live under a different, older ESPN API shape than scoreboard/teams/news. */
+        private const val STANDINGS_BASE_URL = "https://site.api.espn.com/apis/v2/sports"
+
         private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        private val isoFormatWithSeconds = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
         private val dayFormat = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
@@ -120,6 +135,23 @@ class EspnSportsClient @Inject constructor(
     private fun parseStartTimeMs(dateText: String?): Long? {
         if (dateText.isNullOrBlank()) return null
         return runCatching { isoFormat.parse(dateText)?.time }.getOrNull()
+    }
+
+    /** News articles' `published`/`lastModified` fields include seconds, unlike scoreboard event dates. */
+    private fun parseNewsDate(dateText: String?): Long? {
+        if (dateText.isNullOrBlank()) return null
+        return runCatching { isoFormatWithSeconds.parse(dateText)?.time }.getOrNull()
+            ?: parseStartTimeMs(dateText)
+    }
+
+    /** Builds an ESPN `yyyyMMdd-yyyyMMdd` dates query spanning [startOffsetDays]..[endOffsetDays] from today (UTC), inclusive. */
+    fun dateRange(startOffsetDays: Int, endOffsetDays: Int): String {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        calendar.add(Calendar.DAY_OF_YEAR, startOffsetDays)
+        val start = dayFormat.format(calendar.time)
+        calendar.add(Calendar.DAY_OF_YEAR, endOffsetDays - startOffsetDays)
+        val end = dayFormat.format(calendar.time)
+        return "$start-$end"
     }
 
     private fun statusFrom(type: JSONObject?): Pair<SportsEventStatus, String?> {
@@ -247,5 +279,133 @@ class EspnSportsClient @Inject constructor(
                 .recoverCatching { fetchFeed(feed) }
                 .getOrNull()
         }
+    }
+
+    /**
+     * Fetches a league's full standings from ESPN's `apis/v2` standings endpoint (a different, older
+     * API shape than scoreboard/teams/news). Response nesting varies by sport - a single flat table
+     * for most soccer leagues, one group per conference for others - but is always at most two levels
+     * deep: a `children` array whose entries each carry a `standings.entries` list. Parsing generically
+     * against that shape (rather than special-casing every curated sport) keeps this working across
+     * all of them, at the cost of not knowing in advance how many groups a given league will return.
+     */
+    fun fetchStandings(feed: Feed): List<SportsStandingsGroup> {
+        val url = "$STANDINGS_BASE_URL/${feed.sportPath}/${feed.leaguePath}/standings"
+        val json = JSONObject(get(url))
+        val leagueId = "${feed.sportPath}:${feed.leaguePath}"
+
+        fun parseGroup(groupJson: JSONObject, fallbackName: String): SportsStandingsGroup? {
+            val entriesJson = groupJson.optJSONObject("standings")?.optJSONArray("entries") ?: return null
+            val entries = ArrayList<SportsStandingEntry>(entriesJson.length())
+            for (i in 0 until entriesJson.length()) {
+                val entryJson = entriesJson.optJSONObject(i) ?: continue
+                val teamJson = entryJson.optJSONObject("team") ?: continue
+                val teamId = teamJson.optString("id")?.takeIf { it.isNotBlank() } ?: continue
+                val teamName = teamJson.optString("shortDisplayName")?.takeIf { it.isNotBlank() }
+                    ?: teamJson.optString("displayName")?.takeIf { it.isNotBlank() }
+                    ?: teamJson.optString("name").orEmpty()
+                val team = SportsTeam(
+                    id = teamId,
+                    name = teamName,
+                    shortName = teamJson.optString("abbreviation")?.takeIf { it.isNotBlank() },
+                    sportName = feed.sportLabel,
+                    leagueId = leagueId,
+                    leagueName = fallbackName,
+                    badgeUrl = teamJson.optJSONArray("logos")?.optJSONObject(0)?.optString("href")?.takeIf { it.isNotBlank() }
+                )
+
+                val statsJson = entryJson.optJSONArray("stats") ?: JSONArray()
+                val stats = ArrayList<SportsStandingStat>(statsJson.length())
+                for (j in 0 until statsJson.length()) {
+                    val statJson = statsJson.optJSONObject(j) ?: continue
+                    val value = statJson.optString("displayValue")?.takeIf { it.isNotBlank() } ?: continue
+                    val label = statJson.optString("shortDisplayName")?.takeIf { it.isNotBlank() }
+                        ?: statJson.optString("abbreviation")?.takeIf { it.isNotBlank() }
+                        ?: statJson.optString("name")?.takeIf { it.isNotBlank() }
+                        ?: continue
+                    stats += SportsStandingStat(label = label, value = value)
+                }
+
+                entries += SportsStandingEntry(rank = i + 1, team = team, stats = stats.take(5))
+            }
+            if (entries.isEmpty()) return null
+            val groupName = groupJson.optString("name")?.takeIf { it.isNotBlank() }
+                ?: groupJson.optString("abbreviation")?.takeIf { it.isNotBlank() }
+                ?: fallbackName
+            return SportsStandingsGroup(name = groupName, entries = entries)
+        }
+
+        val groups = ArrayList<SportsStandingsGroup>()
+        val childrenJson = json.optJSONArray("children") ?: JSONArray()
+        for (i in 0 until childrenJson.length()) {
+            val childJson = childrenJson.optJSONObject(i) ?: continue
+            parseGroup(childJson, feed.sportLabel)?.let { groups += it }
+        }
+        // A handful of leagues expose "standings" directly at the top level instead of via "children".
+        if (groups.isEmpty()) {
+            parseGroup(json, feed.sportLabel)?.let { groups += it }
+        }
+        return groups
+    }
+
+    /** Fetches recent ESPN news headlines for a league. */
+    fun fetchNews(feed: Feed, limit: Int = 20): List<SportsNewsArticle> {
+        val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/news?limit=$limit"
+        val json = JSONObject(get(url))
+        val articlesJson = json.optJSONArray("articles") ?: JSONArray()
+        val articles = ArrayList<SportsNewsArticle>(articlesJson.length())
+
+        for (i in 0 until articlesJson.length()) {
+            val articleJson = articlesJson.optJSONObject(i) ?: continue
+            val headline = articleJson.optString("headline")?.takeIf { it.isNotBlank() } ?: continue
+            val imageUrl = articleJson.optJSONArray("images")?.optJSONObject(0)?.optString("url")?.takeIf { it.isNotBlank() }
+            val link = articleJson.optJSONObject("links")?.optJSONObject("web")?.optString("href")?.takeIf { it.isNotBlank() }
+
+            articles += SportsNewsArticle(
+                id = articleJson.optString("id")?.takeIf { it.isNotBlank() } ?: "news:${feed.leaguePath}:$i",
+                headline = headline,
+                description = articleJson.optString("description")?.takeIf { it.isNotBlank() },
+                imageUrl = imageUrl,
+                publishedMs = parseNewsDate(articleJson.optString("published")),
+                link = link
+            )
+        }
+        return articles
+    }
+
+    /**
+     * Fetches a league's full team roster (unlike [fetchFeed]'s [FeedResult.teams], not limited to
+     * whichever teams happen to be playing within the requested date window).
+     */
+    fun fetchTeams(feed: Feed): List<SportsTeam> {
+        val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=200"
+        val json = JSONObject(get(url))
+        val leagueId = "${feed.sportPath}:${feed.leaguePath}"
+
+        val teamsJson = json.optJSONArray("sports")
+            ?.optJSONObject(0)
+            ?.optJSONArray("leagues")
+            ?.optJSONObject(0)
+            ?.optJSONArray("teams") ?: JSONArray()
+
+        val teams = ArrayList<SportsTeam>(teamsJson.length())
+        for (i in 0 until teamsJson.length()) {
+            val teamJson = teamsJson.optJSONObject(i)?.optJSONObject("team") ?: continue
+            val id = teamJson.optString("id")?.takeIf { it.isNotBlank() } ?: continue
+            val name = teamJson.optString("displayName")?.takeIf { it.isNotBlank() }
+                ?: teamJson.optString("name").orEmpty()
+            val badge = teamJson.optJSONArray("logos")?.optJSONObject(0)?.optString("href")?.takeIf { it.isNotBlank() }
+
+            teams += SportsTeam(
+                id = id,
+                name = name,
+                shortName = teamJson.optString("abbreviation")?.takeIf { it.isNotBlank() },
+                sportName = feed.sportLabel,
+                leagueId = leagueId,
+                leagueName = feed.sportLabel,
+                badgeUrl = badge
+            )
+        }
+        return teams
     }
 }

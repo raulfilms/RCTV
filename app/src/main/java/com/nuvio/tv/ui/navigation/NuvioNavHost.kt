@@ -34,6 +34,7 @@ import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import com.nuvio.tv.ui.screens.library.LibraryScreen
 import com.nuvio.tv.ui.screens.livetv.IptvSourcesScreen
 import com.nuvio.tv.ui.screens.livetv.LiveTvScreen
+import com.nuvio.tv.ui.screens.sports.LeagueDetailScreen
 import com.nuvio.tv.ui.screens.sports.SportsFavoritesScreen
 import com.nuvio.tv.ui.screens.sports.SportsScreen
 import com.nuvio.tv.ui.screens.sports.TeamsBrowseScreen
@@ -1237,7 +1238,17 @@ private fun PlaybackNavHost(
                     }
                 },
                 onOpenTeamsSeeAll = { navController.navigate(Screen.SportsTeams.route) },
-                onOpenFavoritesPicker = { navController.navigate(Screen.SportsFavorites.route) }
+                onOpenFavoritesPicker = { navController.navigate(Screen.SportsFavorites.route) },
+                onOpenLeagueDetail = { league ->
+                    navController.navigate(
+                        Screen.SportsLeagueDetail.createRoute(
+                            leagueId = league.id,
+                            leagueName = league.name,
+                            sportName = league.sportName,
+                            badgeUrl = league.badgeUrl
+                        )
+                    )
+                }
             )
         }
 
@@ -1248,6 +1259,20 @@ private fun PlaybackNavHost(
         composable(Screen.SportsTeams.route) {
             TeamsBrowseScreen(
                 onTeamClick = { /* No stream source yet; tapping a team currently just toggles nothing extra. */ }
+            )
+        }
+
+        composable(
+            route = Screen.SportsLeagueDetail.route,
+            arguments = listOf(
+                navArgument("leagueId") { type = NavType.StringType },
+                navArgument("leagueName") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("sportName") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("badgeUrl") { type = NavType.StringType; nullable = true; defaultValue = "" }
+            )
+        ) {
+            LeagueDetailScreen(
+                onPlayEvent = { /* ESPN scoreboard data is metadata-only; there's no stream URL to play from a schedule/score row. */ }
             )
         }
 

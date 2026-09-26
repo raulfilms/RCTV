@@ -73,3 +73,32 @@ data class SportsContinueWatchingItem(
     val progress: Float,
     val event: SportsEvent? = null
 )
+
+/** One display-ready stat column in a standings row, e.g. label "W" value "12". */
+data class SportsStandingStat(val label: String, val value: String)
+
+/** One team's row in a league standings table. [rank] is the team's position within its [SportsStandingsGroup]. */
+data class SportsStandingEntry(
+    val rank: Int,
+    val team: SportsTeam,
+    val stats: List<SportsStandingStat>
+)
+
+/**
+ * One standings group - a conference/division for leagues that split their table (e.g. NFL's AFC/NFC),
+ * or the whole league for single-table sports (most soccer leagues).
+ */
+data class SportsStandingsGroup(
+    val name: String,
+    val entries: List<SportsStandingEntry>
+)
+
+/** A single ESPN news headline for a league's News tab. */
+data class SportsNewsArticle(
+    val id: String,
+    val headline: String,
+    val description: String?,
+    val imageUrl: String?,
+    val publishedMs: Long?,
+    val link: String?
+)
