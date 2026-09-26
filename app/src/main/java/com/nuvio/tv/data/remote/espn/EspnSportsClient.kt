@@ -104,6 +104,22 @@ class EspnSportsClient @Inject constructor(
             )
         }
 
+        /** One marquee team the Sports home page's "Teams" row should feature, resolved by name against [feed]'s full roster. */
+        private data class HomeTeamPick(val feed: Feed, val teamNameContains: String)
+
+        /**
+         * Fixed picks for the Sports home page's "Teams" row - chosen marquee teams rather than
+         * "whoever happens to be playing this week" (which is what the scoreboard-derived team list
+         * would otherwise surface, and would churn week to week).
+         */
+        private val HOME_TEAM_ROW_PICKS = listOf(
+            HomeTeamPick(FEEDS.first { it.sportPath == "soccer" && it.leaguePath == "esp.1" }, "Real Madrid"),
+            HomeTeamPick(FEEDS.first { it.sportPath == "soccer" && it.leaguePath == "esp.1" }, "Barcelona"),
+            HomeTeamPick(FEEDS.first { it.sportPath == "basketball" && it.leaguePath == "nba" }, "Lakers"),
+            HomeTeamPick(FEEDS.first { it.sportPath == "football" && it.leaguePath == "nfl" }, "Cowboys"),
+            HomeTeamPick(FEEDS.first { it.sportPath == "baseball" && it.leaguePath == "mlb" }, "Yankees")
+        )
+
         /**
          * Resolves the curated [Feed] behind a `"sportPath:leaguePath"` id, e.g. [SportsLeague.id].
          * Tolerates a still-percent-encoded id (`"football%3Anfl"`) reaching here, since navigation
@@ -418,5 +434,22 @@ class EspnSportsClient @Inject constructor(
             )
         }
         return teams
+    }
+
+    /**
+     * Resolves the Sports home page's fixed "Teams" row picks (see [HOME_TEAM_ROW_PICKS]) against
+     * each pick's league roster, in the same order the picks are declared. A pick whose team can't be
+     * found (a league roster fetch failed, or ESPN renamed the team) is simply skipped rather than
+     * breaking the whole row.
+     */
+    fun fetchHomeTeamRowPicks(): List<SportsTeam> {
+        val rosterCache = mutableMapOf<String, List<SportsTeam>>()
+        return HOME_TEAM_ROW_PICKS.mapNotNull { pick ->
+            val cacheKey = "${pick.feed.sportPath}:${pick.feed.leaguePath}"
+            val roster = rosterCache.getOrPut(cacheKey) {
+                runCatching { fetchTeams(pick.feed) }.getOrDefault(emptyList())
+            }
+            roster.firstOrNull { it.name.contains(pick.teamNameContains, ignoreCase = true) }
+        }
     }
 }

@@ -64,8 +64,9 @@ data class SportsUiState(
     val upcomingGames: List<SportsEvent> = emptyList(),
     val pickedForYou: List<SportsEvent> = emptyList(),
     val leagues: List<SportsLeague> = emptyList(),
+    /** Fixed marquee picks for the home page's "Teams" row (Real Madrid, Barcelona, Lakers, Cowboys, Yankees) - not "whoever's playing this week". */
     val teams: List<SportsTeam> = emptyList(),
-    /** Full pool of teams gathered from the curated leagues, used by the favorites picker (unlike [teams], not capped to 5). */
+    /** Full pool of teams gathered from the curated leagues, used by the favorites picker (unlike [teams], not the fixed home-row picks). */
     val browsableTeams: List<SportsTeam> = emptyList(),
     val sportsTalk: List<SportsTalkItem> = emptyList(),
     val favoriteSportNames: Set<String> = emptySet(),
@@ -203,7 +204,7 @@ class SportsViewModel @Inject constructor(
                     upcomingGames = loaded.upcomingGames,
                     pickedForYou = loaded.pickedForYou,
                     leagues = loaded.leagues,
-                    teams = loaded.teams.take(5),
+                    teams = loaded.homeTeamRowPicks,
                     browsableTeams = loaded.teams,
                     sportsTalk = mockSportsTalk(),
                     continueWatching = emptyList(),
@@ -221,12 +222,14 @@ class SportsViewModel @Inject constructor(
         val pickedForYou: List<SportsEvent>,
         val leagues: List<SportsLeague>,
         val teams: List<SportsTeam>,
+        val homeTeamRowPicks: List<SportsTeam>,
         val favoriteTeams: List<SportsTeam>
     )
 
     /** Fetches every curated ESPN feed and aggregates events/teams/leagues across all of them (each feed already carries its own league + team metadata, so no separate lookups are needed). */
     private fun loadAll(favoriteTeamIds: Set<String>): LoadedData {
         val results = client.fetchAllFixtures()
+        val homeTeamRowPicks = runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList())
 
         val leagues = results.map { it.league }
         val allEvents = results.flatMap { it.events }
@@ -254,6 +257,7 @@ class SportsViewModel @Inject constructor(
             pickedForYou = pickedForYou.ifEmpty { upcomingGames.take(10) },
             leagues = leagues,
             teams = allTeams,
+            homeTeamRowPicks = homeTeamRowPicks,
             favoriteTeams = favoriteTeams
         )
     }
