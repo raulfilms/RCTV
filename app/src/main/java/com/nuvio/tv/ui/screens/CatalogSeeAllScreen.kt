@@ -49,7 +49,9 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
+import com.nuvio.tv.ui.components.CombinedFilterMenuButton
 import com.nuvio.tv.ui.components.EmptyScreenState
+import com.nuvio.tv.ui.components.FilterDropdownOption
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
@@ -62,8 +64,11 @@ import com.nuvio.tv.ui.screens.search.SearchEvent
 import com.nuvio.tv.ui.screens.search.SearchViewModel
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.legacyKey
-import com.nuvio.tv.domain.model.stableItemKeys
+import com.nuvio.tv.domain.model.stableItemKey
 import com.nuvio.tv.domain.model.stableKey
+import com.nuvio.tv.ui.util.buildMetaGenreYearFilter
+import com.nuvio.tv.ui.util.localizedContentType
+import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
 
@@ -117,6 +122,39 @@ fun CatalogSeeAllScreen(
         }
     }
 
+    // Type/genre/year filtering over whatever items are currently loaded for this catalog.
+    var selectedType by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
+    var selectedGenre by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
+    var selectedYear by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
+    var filterMenuExpanded by remember(catalogKey) { mutableStateOf(false) }
+    val genreYearFilter = remember(catalogRow?.items, selectedType, selectedGenre, selectedYear) {
+        buildMetaGenreYearFilter(
+            items = catalogRow?.items.orEmpty(),
+            selectedType = selectedType,
+            selectedGenre = selectedGenre,
+            selectedYear = selectedYear
+        )
+    }
+    val typeFilterOptions = genreYearFilter.typeOptions
+    val filteredItems = genreYearFilter.filteredItems
+    val filteredItemKeys = remember(catalogRow, filteredItems) {
+        val row = catalogRow
+        if (row == null) {
+            emptyList()
+        } else {
+            val seen = HashMap<String, Int>()
+            filteredItems.map { item ->
+                val identity = "${item.apiType}:${item.id}"
+                val occurrence = seen.getOrDefault(identity, 0)
+                seen[identity] = occurrence + 1
+                row.stableItemKey(item, occurrence)
+            }
+        }
+    }
+    val hasAnyFilterOptions = typeFilterOptions.isNotEmpty() ||
+        genreYearFilter.genreOptions.isNotEmpty() ||
+        genreYearFilter.yearOptions.isNotEmpty()
+
     val gridState = rememberLazyGridState()
     val restoreFocusRequester = remember { FocusRequester() }
     // Persist the focused catalog item by stable id (not grid index) so return-from-Details
@@ -125,12 +163,11 @@ fun CatalogSeeAllScreen(
     var shouldRestoreFocus by rememberSaveable(catalogKey) { mutableStateOf(true) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    val focusedItemIndex = remember(catalogRow?.items, focusedItemKey) {
-        val items = catalogRow?.items.orEmpty()
-        if (items.isEmpty()) return@remember 0
+    val focusedItemIndex = remember(filteredItems, focusedItemKey) {
+        if (filteredItems.isEmpty()) return@remember 0
         val key = focusedItemKey
         if (key.isNullOrBlank()) return@remember 0
-        items.indexOfFirst { catalogItemFocusKey(it) == key }.takeIf { it >= 0 } ?: 0
+        filteredItems.indexOfFirst { catalogItemFocusKey(it) == key }.takeIf { it >= 0 } ?: 0
     }
 
     // Load more when scrolling near the bottom
@@ -171,9 +208,9 @@ fun CatalogSeeAllScreen(
         }
     }
 
-    LaunchedEffect(shouldRestoreFocus, catalogRow?.items?.size, focusedItemKey) {
+    LaunchedEffect(shouldRestoreFocus, filteredItems.size, focusedItemKey) {
         if (!shouldRestoreFocus) return@LaunchedEffect
-        val items = catalogRow?.items.orEmpty()
+        val items = filteredItems
         if (items.isEmpty()) return@LaunchedEffect
 
         val targetIndex = focusedItemIndex.coerceIn(0, items.lastIndex)
@@ -194,6 +231,8 @@ fun CatalogSeeAllScreen(
             .fillMaxSize()
             .padding(vertical = NuvioTheme.spacing.xl)
     ) {
+        val hasRawItems = catalogRow?.items?.isNotEmpty() == true
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = NuvioTheme.spacing.xxxl),
             verticalAlignment = Alignment.CenterVertically
@@ -201,8 +240,50 @@ fun CatalogSeeAllScreen(
             Text(
                 text = catalogRow?.catalogName ?: stringResource(R.string.catalog_see_all_title_fallback),
                 style = MaterialTheme.typography.headlineLarge,
-                color = NuvioTheme.colors.TextPrimary
+                color = NuvioTheme.colors.TextPrimary,
+                modifier = Modifier.weight(1f)
             )
+
+            if (hasRawItems && hasAnyFilterOptions) {
+                val allLabel = stringResource(R.string.library_type_all)
+                CombinedFilterMenuButton(
+                    contentDescription = stringResource(R.string.catalog_filter_button_cd),
+                    typeLabel = stringResource(R.string.library_filter_type),
+                    genreLabel = stringResource(R.string.library_filter_genre),
+                    yearLabel = stringResource(R.string.library_filter_year),
+                    allLabel = allLabel,
+                    clearLabel = stringResource(R.string.catalog_filter_clear),
+                    typeOptions = typeFilterOptions.map {
+                        FilterDropdownOption("${localizedContentType(it.label)} (${it.count})", it.key)
+                    },
+                    genreOptions = genreYearFilter.genreOptions.map {
+                        FilterDropdownOption("${localizedGenreLabel(it.label)} (${it.count})", it.key)
+                    },
+                    yearOptions = genreYearFilter.yearOptions.map {
+                        FilterDropdownOption("${it.label} (${it.count})", it.key)
+                    },
+                    selectedTypeValue = selectedType ?: "__all__",
+                    selectedGenreValue = selectedGenre ?: "__all__",
+                    selectedYearValue = selectedYear ?: "__all__",
+                    hasActiveFilter = selectedType != null || selectedGenre != null || selectedYear != null,
+                    expanded = filterMenuExpanded,
+                    onExpandedChange = { filterMenuExpanded = it },
+                    onSelectType = { option ->
+                        selectedType = if (option.value == "__all__") null else option.value
+                    },
+                    onSelectGenre = { option ->
+                        selectedGenre = if (option.value == "__all__") null else option.value
+                    },
+                    onSelectYear = { option ->
+                        selectedYear = if (option.value == "__all__") null else option.value
+                    },
+                    onClearAll = {
+                        selectedType = null
+                        selectedGenre = null
+                        selectedYear = null
+                    }
+                )
+            }
         }
 
         if (uiState.catalogAddonNameEnabled) {
@@ -218,13 +299,13 @@ fun CatalogSeeAllScreen(
 
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
 
-        val hasItems = catalogRow?.items?.isNotEmpty() == true
+        val hasItems = filteredItems.isNotEmpty()
         val isCatalogLoading = catalogRow == null || catalogRow.isLoading
+        val isFilteredEmpty = hasRawItems && !isCatalogLoading && filteredItems.isEmpty()
 
         if (hasItems) {
-            val seeAllItemKeys = remember(catalogRow?.items) {
-                catalogRow?.stableItemKeys().orEmpty()
-            }
+            // filteredItems is only non-empty when catalogRow is non-null (see genreYearFilter above).
+            val row = checkNotNull(catalogRow)
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyVerticalGrid(
                     state = gridState,
@@ -240,8 +321,8 @@ fun CatalogSeeAllScreen(
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
                 ) {
                     itemsIndexed(
-                        items = catalogRow.items,
-                        key = { index, _ -> seeAllItemKeys.getOrElse(index) { "${catalogRow.stableKey()}_$index" } }
+                        items = filteredItems,
+                        key = { index, _ -> filteredItemKeys.getOrElse(index) { "${row.stableKey()}_$index" } }
                     ) { index, item ->
                         val isWatched = if (isSearchMode) {
                             val isSeries = item.apiType.equals("series", ignoreCase = true) || item.apiType.equals("tv", ignoreCase = true)
@@ -275,17 +356,17 @@ fun CatalogSeeAllScreen(
                                 onNavigateToDetail(
                                     item.id,
                                     item.apiType,
-                                    catalogRow.addonBaseUrl
+                                    row.addonBaseUrl
                                 )
                             },
                             onLongPress = {
                                 focusedItemKey = itemFocusKey
-                                posterOptionsController.show(item, catalogRow.addonBaseUrl)
+                                posterOptionsController.show(item, row.addonBaseUrl)
                             }
                         )
                     }
 
-                    if (catalogRow.isLoading) {
+                    if (row.isLoading) {
                         item(key = "loading_more") {
                             val cardShape = remember(posterCardStyle.cornerRadius) {
                                 androidx.compose.foundation.shape.RoundedCornerShape(posterCardStyle.cornerRadius)
@@ -341,6 +422,12 @@ fun CatalogSeeAllScreen(
             ) {
                 LoadingIndicator()
             }
+        } else if (isFilteredEmpty) {
+            EmptyScreenState(
+                title = stringResource(R.string.catalog_filter_empty_title),
+                subtitle = stringResource(R.string.catalog_filter_empty_subtitle),
+                icon = Icons.Default.GridView
+            )
         } else {
             EmptyScreenState(
                 title = stringResource(R.string.catalog_see_all_empty_title),

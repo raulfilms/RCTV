@@ -2270,6 +2270,10 @@
     <string name="catalog_see_all_from">from %1$s</string>
     <string name="catalog_see_all_empty_title">No items available</string>
     <string name="catalog_see_all_empty_subtitle">Try a different catalog or check back later</string>
+    <string name="catalog_filter_button_cd">Filter by genre or year</string>
+    <string name="catalog_filter_clear">Clear filters</string>
+    <string name="catalog_filter_empty_title">No matches</string>
+    <string name="catalog_filter_empty_subtitle">Try a different genre or year filter</string>
 
     <string name="layout_selection_welcome">Welcome to Nuvio</string>
     <string name="layout_selection_subtitle">Choose your home screen layout</string>
