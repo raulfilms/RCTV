@@ -24,11 +24,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SportsBasketball
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.runtime.Composable
@@ -507,6 +509,8 @@ fun AddFavoritesCard(label: String, onClick: () -> Unit, modifier: Modifier = Mo
 fun SportsHeroBanner(
     event: SportsEvent,
     onWatchLive: () -> Unit,
+    isInLibrary: Boolean = false,
+    onToggleLibrary: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -567,6 +571,30 @@ fun SportsHeroBanner(
                     else
                         stringResourceCompat(R.string.sports_view_details)
                 )
+            }
+            if (onToggleLibrary != null) {
+                Button(
+                    onClick = onToggleLibrary,
+                    colors = ButtonDefaults.colors(
+                        containerColor = NuvioTheme.colors.BackgroundCard,
+                        contentColor = NuvioTheme.colors.TextPrimary,
+                        focusedContainerColor = NuvioTheme.colors.FocusBackground,
+                        focusedContentColor = NuvioTheme.colors.TextPrimary
+                    ),
+                    shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
+                ) {
+                    Icon(
+                        imageVector = if (isInLibrary) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(NuvioTheme.spacing.xs))
+                    Text(
+                        text = stringResourceCompat(
+                            if (isInLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
+                        )
+                    )
+                }
             }
         }
     }
@@ -962,7 +990,9 @@ fun SportsFavoriteOptionsDialog(
     favoriteSportNames: Set<String>,
     onToggleTeam: (String) -> Unit,
     onToggleSport: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isEventInLibrary: Boolean = false,
+    onToggleLibrary: (() -> Unit)? = null
 ) {
     val title = when (target) {
         is SportsFavoriteTarget.TeamTarget -> target.team.name
@@ -1043,6 +1073,17 @@ fun SportsFavoriteOptionsDialog(
                         ),
                         onClick = {
                             onToggleSport(sportName)
+                            onDismiss()
+                        }
+                    )
+                }
+                if (onToggleLibrary != null) {
+                    FavoriteOptionButton(
+                        label = stringResourceCompat(
+                            if (isEventInLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
+                        ),
+                        onClick = {
+                            onToggleLibrary()
                             onDismiss()
                         }
                     )

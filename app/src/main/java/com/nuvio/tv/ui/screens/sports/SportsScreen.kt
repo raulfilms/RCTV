@@ -70,7 +70,8 @@ fun SportsScreen(
                     onOpenFavoritesPicker = onOpenFavoritesPicker,
                     onToggleFavoriteTeam = viewModel::toggleFavoriteTeam,
                     onSelectAddonEvent = viewModel::selectAddonEvent,
-                    onShowFavoriteOptions = viewModel::showFavoriteOptions
+                    onShowFavoriteOptions = viewModel::showFavoriteOptions,
+                    onToggleLibraryEvent = viewModel::toggleLibraryEvent
                 )
             }
         }
@@ -90,13 +91,16 @@ fun SportsScreen(
         }
 
         uiState.favoriteOptionsTarget?.let { target ->
+            val eventTarget = target as? SportsFavoriteTarget.EventTarget
             SportsFavoriteOptionsDialog(
                 target = target,
                 favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet(),
                 favoriteSportNames = uiState.favoriteSportNames,
                 onToggleTeam = viewModel::toggleFavoriteTeam,
                 onToggleSport = viewModel::toggleFavoriteSport,
-                onDismiss = viewModel::dismissFavoriteOptions
+                onDismiss = viewModel::dismissFavoriteOptions,
+                isEventInLibrary = eventTarget?.event?.id?.let { it in uiState.libraryEventIds } ?: false,
+                onToggleLibrary = eventTarget?.let { { viewModel.toggleLibraryEvent(it.event) } }
             )
         }
     }
@@ -110,7 +114,8 @@ private fun SportsContent(
     onOpenFavoritesPicker: () -> Unit,
     onToggleFavoriteTeam: (String) -> Unit,
     onSelectAddonEvent: (com.nuvio.tv.domain.model.SportsAddonEvent) -> Unit,
-    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    onToggleLibraryEvent: (SportsEvent) -> Unit
 ) {
     val favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet()
 
@@ -124,6 +129,8 @@ private fun SportsContent(
                 SportsHeroBanner(
                     event = featured,
                     onWatchLive = { onPlayEvent(featured) },
+                    isInLibrary = featured.id in uiState.libraryEventIds,
+                    onToggleLibrary = { onToggleLibraryEvent(featured) },
                     modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
                 )
             }

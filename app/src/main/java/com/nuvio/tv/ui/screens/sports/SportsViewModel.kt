@@ -2,9 +2,12 @@ package com.nuvio.tv.ui.screens.sports
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.data.local.LibraryPreferences
 import com.nuvio.tv.data.local.SportsPreferencesDataStore
 import com.nuvio.tv.data.remote.espn.EspnSportsClient
 import com.nuvio.tv.data.repository.SportsAddonRepository
+import com.nuvio.tv.domain.model.PosterShape
+import com.nuvio.tv.domain.model.SavedLibraryItem
 import com.nuvio.tv.domain.model.SportsAddonEvent
 import com.nuvio.tv.domain.model.SportsContinueWatchingItem
 import com.nuvio.tv.domain.model.SportsEvent
@@ -23,6 +26,27 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+
+/** Local-only content type used to bookmark a schedule fixture in the Library, alongside movies/series. Never synced to Trakt/Simkl - a match has no tmdb/imdb id for those providers to key off of. */
+const val SPORTS_EVENT_LIBRARY_TYPE = "sports_event"
+
+/** Builds the Library entry for a bookmarked match: a schedule/score bookmark, not a playable addon item (so it has no addonBaseUrl). */
+fun SportsEvent.toSavedLibraryItem(): SavedLibraryItem {
+    val matchup = "$homeTeamName vs $awayTeamName"
+    return SavedLibraryItem(
+        id = id,
+        type = SPORTS_EVENT_LIBRARY_TYPE,
+        name = name.takeIf { it.isNotBlank() } ?: matchup,
+        poster = null,
+        posterShape = PosterShape.LANDSCAPE,
+        background = homeTeamBadgeUrl ?: awayTeamBadgeUrl,
+        description = listOfNotNull(matchup, leagueName ?: sportName).joinToString(" • "),
+        releaseInfo = null,
+        imdbRating = null,
+        genres = listOfNotNull(sportName),
+        addonBaseUrl = null
+    )
+}
 
 /** What a "hold to favorite" long-press was performed on, backing [SportsFavoriteOptionsDialog]. */
 sealed class SportsFavoriteTarget {
@@ -54,14 +78,17 @@ data class SportsUiState(
     val isLoadingAddonStreams: Boolean = false,
     val addonStreamsError: String? = null,
     /** Non-null while the "hold to favorite" options dialog is showing for a long-pressed team/match/league. */
-    val favoriteOptionsTarget: SportsFavoriteTarget? = null
+    val favoriteOptionsTarget: SportsFavoriteTarget? = null,
+    /** IDs of matches bookmarked to the Library (see [SPORTS_EVENT_LIBRARY_TYPE]). */
+    val libraryEventIds: Set<String> = emptySet()
 )
 
 @HiltViewModel
 class SportsViewModel @Inject constructor(
     private val client: EspnSportsClient,
     private val preferences: SportsPreferencesDataStore,
-    private val sportsAddonRepository: SportsAddonRepository
+    private val sportsAddonRepository: SportsAddonRepository,
+    private val libraryPreferences: LibraryPreferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SportsUiState())
@@ -75,7 +102,27 @@ class SportsViewModel @Inject constructor(
                     refresh(favoriteTeamIds = teamIds)
                 }
         }
+        viewModelScope.launch {
+            libraryPreferences.libraryItems.collect { items ->
+                val ids = items
+                    .filter { it.type.equals(SPORTS_EVENT_LIBRARY_TYPE, ignoreCase = true) }
+                    .map { it.id }
+                    .toSet()
+                _uiState.update { it.copy(libraryEventIds = ids) }
+            }
+        }
         loadAddonEvents()
+    }
+
+    /** Bookmarks or un-bookmarks a match to the Library. Local-only (see [SPORTS_EVENT_LIBRARY_TYPE]) - never touches Trakt/Simkl. */
+    fun toggleLibraryEvent(event: SportsEvent) {
+        viewModelScope.launch {
+            if (event.id in uiState.value.libraryEventIds) {
+                libraryPreferences.removeItem(itemId = event.id, itemType = SPORTS_EVENT_LIBRARY_TYPE)
+            } else {
+                libraryPreferences.addItem(item = event.toSavedLibraryItem())
+            }
+        }
     }
 
     /** Loads playable events from the user's installed sports addons. Runs independently of [refresh]/ESPN - a missing or misbehaving addon never blocks the schedule/scores rows. */
