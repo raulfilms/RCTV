@@ -15,6 +15,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,6 +40,7 @@ fun TeamsBrowseScreen(
     viewModel: TeamsBrowseViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var longPressedTeam by remember { mutableStateOf<SportsTeam?>(null) }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -82,6 +86,7 @@ fun TeamsBrowseScreen(
                             isFavorite = true,
                             onClick = { onTeamClick(team) },
                             onToggleFavorite = { viewModel.toggleFavoriteTeam(team.id) },
+                            onLongPress = { longPressedTeam = team },
                             modifier = Modifier.width(180.dp)
                         )
                     }
@@ -112,11 +117,23 @@ fun TeamsBrowseScreen(
                         isFavorite = team.id in uiState.favoriteTeamIds,
                         onClick = { onTeamClick(team) },
                         onToggleFavorite = { viewModel.toggleFavoriteTeam(team.id) },
+                        onLongPress = { longPressedTeam = team },
                         modifier = Modifier.width(180.dp)
                     )
                 }
             }
         }
+    }
+
+    longPressedTeam?.let { team ->
+        SportsFavoriteOptionsDialog(
+            target = SportsFavoriteTarget.TeamTarget(team),
+            favoriteTeamIds = uiState.favoriteTeamIds,
+            favoriteSportNames = emptySet(),
+            onToggleTeam = viewModel::toggleFavoriteTeam,
+            onToggleSport = { },
+            onDismiss = { longPressedTeam = null }
+        )
     }
 }
 

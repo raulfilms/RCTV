@@ -69,7 +69,8 @@ fun SportsScreen(
                     onOpenTeamsSeeAll = onOpenTeamsSeeAll,
                     onOpenFavoritesPicker = onOpenFavoritesPicker,
                     onToggleFavoriteTeam = viewModel::toggleFavoriteTeam,
-                    onSelectAddonEvent = viewModel::selectAddonEvent
+                    onSelectAddonEvent = viewModel::selectAddonEvent,
+                    onShowFavoriteOptions = viewModel::showFavoriteOptions
                 )
             }
         }
@@ -87,6 +88,17 @@ fun SportsScreen(
                 onDismiss = viewModel::dismissAddonEventPicker
             )
         }
+
+        uiState.favoriteOptionsTarget?.let { target ->
+            SportsFavoriteOptionsDialog(
+                target = target,
+                favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet(),
+                favoriteSportNames = uiState.favoriteSportNames,
+                onToggleTeam = viewModel::toggleFavoriteTeam,
+                onToggleSport = viewModel::toggleFavoriteSport,
+                onDismiss = viewModel::dismissFavoriteOptions
+            )
+        }
     }
 }
 
@@ -97,7 +109,8 @@ private fun SportsContent(
     onOpenTeamsSeeAll: () -> Unit,
     onOpenFavoritesPicker: () -> Unit,
     onToggleFavoriteTeam: (String) -> Unit,
-    onSelectAddonEvent: (com.nuvio.tv.domain.model.SportsAddonEvent) -> Unit
+    onSelectAddonEvent: (com.nuvio.tv.domain.model.SportsAddonEvent) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit
 ) {
     val favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet()
 
@@ -143,7 +156,11 @@ private fun SportsContent(
             item(key = "live_now") {
                 SportsRowSection(title = stringResource(R.string.sports_row_live_now)) {
                     items(uiState.liveNow, key = { it.id }) { event ->
-                        ScoreboardCard(event = event, onClick = { onPlayEvent(event) })
+                        ScoreboardCard(
+                            event = event,
+                            onClick = { onPlayEvent(event) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
+                        )
                     }
                 }
             }
@@ -153,7 +170,11 @@ private fun SportsContent(
             item(key = "upcoming_games") {
                 SportsRowSection(title = stringResource(R.string.sports_row_upcoming_games)) {
                     items(uiState.upcomingGames, key = { it.id }) { event ->
-                        ScoreboardCard(event = event, onClick = { onPlayEvent(event) })
+                        ScoreboardCard(
+                            event = event,
+                            onClick = { onPlayEvent(event) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
+                        )
                     }
                 }
             }
@@ -163,7 +184,11 @@ private fun SportsContent(
             item(key = "picked_for_you") {
                 SportsRowSection(title = stringResource(R.string.sports_row_picked_for_you)) {
                     items(uiState.pickedForYou, key = { "picked_${it.id}" }) { event ->
-                        ScoreboardCard(event = event, onClick = { onPlayEvent(event) })
+                        ScoreboardCard(
+                            event = event,
+                            onClick = { onPlayEvent(event) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
+                        )
                     }
                 }
             }
@@ -173,7 +198,11 @@ private fun SportsContent(
             item(key = "leagues") {
                 SportsRowSection(title = stringResource(R.string.sports_row_leagues)) {
                     items(uiState.leagues, key = { it.id }) { league ->
-                        LeagueCard(league = league, onClick = { })
+                        LeagueCard(
+                            league = league,
+                            onClick = { },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
+                        )
                     }
                 }
             }
@@ -189,7 +218,8 @@ private fun SportsContent(
                         TeamCard(
                             team = team,
                             isFavorite = team.id in favoriteTeamIds,
-                            onClick = { onToggleFavoriteTeam(team.id) }
+                            onClick = { onToggleFavoriteTeam(team.id) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
                         )
                     }
                 }
@@ -217,9 +247,11 @@ private fun SportsContent(
                     }
                 } else {
                     items(uiState.favoriteSportNames.toList(), key = { "sport_$it" }) { sportName ->
+                        val league = SportsLeague(id = sportName, name = sportName, sportName = sportName)
                         LeagueCard(
-                            league = SportsLeague(id = sportName, name = sportName, sportName = sportName),
-                            onClick = { }
+                            league = league,
+                            onClick = { },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
                         )
                     }
                 }
@@ -237,7 +269,12 @@ private fun SportsContent(
                     }
                 } else {
                     items(uiState.favoriteTeams, key = { "fav_team_${it.id}" }) { team ->
-                        TeamCard(team = team, isFavorite = true, onClick = { onToggleFavoriteTeam(team.id) })
+                        TeamCard(
+                            team = team,
+                            isFavorite = true,
+                            onClick = { onToggleFavoriteTeam(team.id) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
+                        )
                     }
                     item(key = "my_teams_add") {
                         AddFavoritesCard(

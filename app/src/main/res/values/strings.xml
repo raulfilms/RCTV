@@ -3304,6 +3304,15 @@
         <string name="livetv_xtream_username_placeholder">Username</string>
         <string name="sports_add_favorite_sports">Add Sports</string>
         <string name="sports_add_favorite_teams">Add Teams</string>
+        <string name="sports_favorite_dialog_subtitle">Hold OK on any team, match or league to get here.</string>
+        <string name="sports_add_to_my_teams">Add to My Teams</string>
+        <string name="sports_remove_from_my_teams">Remove from My Teams</string>
+        <string name="sports_add_to_my_sports">Add to My Sports</string>
+        <string name="sports_remove_from_my_sports">Remove from My Sports</string>
+        <string name="sports_add_team_to_my_teams">Add %1$s to My Teams</string>
+        <string name="sports_remove_team_from_my_teams">Remove %1$s from My Teams</string>
+        <string name="sports_add_sport_to_my_sports">Add %1$s to My Sports</string>
+        <string name="sports_remove_sport_from_my_sports">Remove %1$s from My Sports</string>
         <string name="sports_addon_streams_loading">Looking for streams…</string>
         <string name="sports_favorites_title">My Sports &amp; Teams</string>
         <string name="sports_filter_all">All</string>

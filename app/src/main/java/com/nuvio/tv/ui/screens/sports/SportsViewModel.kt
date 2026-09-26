@@ -24,6 +24,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+/** What a "hold to favorite" long-press was performed on, backing [SportsFavoriteOptionsDialog]. */
+sealed class SportsFavoriteTarget {
+    data class TeamTarget(val team: SportsTeam) : SportsFavoriteTarget()
+    data class LeagueTarget(val league: SportsLeague) : SportsFavoriteTarget()
+    data class EventTarget(val event: SportsEvent) : SportsFavoriteTarget()
+}
+
 data class SportsUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
@@ -45,7 +52,9 @@ data class SportsUiState(
     val selectedAddonEvent: SportsAddonEvent? = null,
     val addonEventStreams: List<Stream> = emptyList(),
     val isLoadingAddonStreams: Boolean = false,
-    val addonStreamsError: String? = null
+    val addonStreamsError: String? = null,
+    /** Non-null while the "hold to favorite" options dialog is showing for a long-pressed team/match/league. */
+    val favoriteOptionsTarget: SportsFavoriteTarget? = null
 )
 
 @HiltViewModel
@@ -117,6 +126,15 @@ class SportsViewModel @Inject constructor(
 
     fun toggleFavoriteTeam(teamId: String) {
         viewModelScope.launch { preferences.toggleFavoriteTeam(teamId) }
+    }
+
+    /** Opens the "hold to favorite" options dialog for a long-pressed team/match/league card. */
+    fun showFavoriteOptions(target: SportsFavoriteTarget) {
+        _uiState.update { it.copy(favoriteOptionsTarget = target) }
+    }
+
+    fun dismissFavoriteOptions() {
+        _uiState.update { it.copy(favoriteOptionsTarget = null) }
     }
 
     fun retry() {

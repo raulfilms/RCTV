@@ -60,6 +60,7 @@ import com.nuvio.tv.domain.model.SportsTalkItem
 import com.nuvio.tv.domain.model.SportsTeam
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.longPressable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -123,6 +124,7 @@ private fun stringResourceCompat(id: Int): String = androidx.compose.ui.res.stri
 fun ScoreboardCard(
     event: SportsEvent,
     onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -143,7 +145,7 @@ fun ScoreboardCard(
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-        modifier = modifier.width(260.dp)
+        modifier = modifier.width(260.dp).longPressable(onLongPress)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(NuvioTheme.spacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -282,7 +284,12 @@ private fun LiveBadge() {
 }
 
 @Composable
-fun LeagueCard(league: SportsLeague, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun LeagueCard(
+    league: SportsLeague,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
     Surface(
         onClick = onClick,
         colors = ClickableSurfaceDefaults.colors(
@@ -301,7 +308,7 @@ fun LeagueCard(league: SportsLeague, onClick: () -> Unit, modifier: Modifier = M
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-        modifier = modifier.size(width = 140.dp, height = 96.dp)
+        modifier = modifier.size(width = 140.dp, height = 96.dp).longPressable(onLongPress)
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(NuvioTheme.spacing.sm),
@@ -341,6 +348,7 @@ fun TeamCard(
     team: SportsTeam,
     isFavorite: Boolean,
     onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -361,7 +369,7 @@ fun TeamCard(
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-        modifier = modifier.size(width = 140.dp, height = 120.dp)
+        modifier = modifier.size(width = 140.dp, height = 120.dp).longPressable(onLongPress)
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(NuvioTheme.spacing.sm),
@@ -633,6 +641,7 @@ fun TeamGridCard(
     isFavorite: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val (colorTop, colorBottom) = remember(team.id) { gradientFor(team.id) }
@@ -654,7 +663,7 @@ fun TeamGridCard(
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-        modifier = modifier.aspectRatio(1.45f)
+        modifier = modifier.aspectRatio(1.45f).longPressable(onLongPress)
     ) {
         Box(
             modifier = Modifier
@@ -938,5 +947,121 @@ private fun SportsAddonStreamRow(stream: Stream, onClick: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * Shown when the user holds OK on a team, match, or league card anywhere in Sports. Offers the
+ * one/two relevant "add to My Teams" / "add to My Sports" toggles for whatever was held, so
+ * favoriting works uniformly across every card type instead of only the dedicated pickers.
+ */
+@Composable
+fun SportsFavoriteOptionsDialog(
+    target: SportsFavoriteTarget,
+    favoriteTeamIds: Set<String>,
+    favoriteSportNames: Set<String>,
+    onToggleTeam: (String) -> Unit,
+    onToggleSport: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val title = when (target) {
+        is SportsFavoriteTarget.TeamTarget -> target.team.name
+        is SportsFavoriteTarget.LeagueTarget -> target.league.name
+        is SportsFavoriteTarget.EventTarget -> target.event.name
+    }
+
+    com.nuvio.tv.ui.components.NuvioDialog(
+        onDismiss = onDismiss,
+        title = title,
+        subtitle = stringResourceCompat(R.string.sports_favorite_dialog_subtitle)
+    ) {
+        when (target) {
+            is SportsFavoriteTarget.TeamTarget -> {
+                val isFavorite = target.team.id in favoriteTeamIds
+                FavoriteOptionButton(
+                    label = stringResourceCompat(
+                        if (isFavorite) R.string.sports_remove_from_my_teams else R.string.sports_add_to_my_teams
+                    ),
+                    onClick = {
+                        onToggleTeam(target.team.id)
+                        onDismiss()
+                    }
+                )
+            }
+            is SportsFavoriteTarget.LeagueTarget -> {
+                val sportName = target.league.sportName
+                if (sportName.isNotBlank()) {
+                    val isFavorite = sportName in favoriteSportNames
+                    FavoriteOptionButton(
+                        label = stringResourceCompat(
+                            if (isFavorite) R.string.sports_remove_from_my_sports else R.string.sports_add_to_my_sports
+                        ),
+                        onClick = {
+                            onToggleSport(sportName)
+                            onDismiss()
+                        }
+                    )
+                }
+            }
+            is SportsFavoriteTarget.EventTarget -> {
+                val event = target.event
+                val homeTeamId = event.homeTeamId
+                if (homeTeamId != null && homeTeamId.isNotBlank()) {
+                    val isFavorite = homeTeamId in favoriteTeamIds
+                    FavoriteOptionButton(
+                        label = androidx.compose.ui.res.stringResource(
+                            if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
+                            event.homeTeamName
+                        ),
+                        onClick = {
+                            onToggleTeam(homeTeamId)
+                            onDismiss()
+                        }
+                    )
+                }
+                val awayTeamId = event.awayTeamId
+                if (awayTeamId != null && awayTeamId.isNotBlank()) {
+                    val isFavorite = awayTeamId in favoriteTeamIds
+                    FavoriteOptionButton(
+                        label = androidx.compose.ui.res.stringResource(
+                            if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
+                            event.awayTeamName
+                        ),
+                        onClick = {
+                            onToggleTeam(awayTeamId)
+                            onDismiss()
+                        }
+                    )
+                }
+                val sportName = event.sportName
+                if (sportName != null && sportName.isNotBlank()) {
+                    val isFavorite = sportName in favoriteSportNames
+                    FavoriteOptionButton(
+                        label = androidx.compose.ui.res.stringResource(
+                            if (isFavorite) R.string.sports_remove_sport_from_my_sports else R.string.sports_add_sport_to_my_sports,
+                            sportName
+                        ),
+                        onClick = {
+                            onToggleSport(sportName)
+                            onDismiss()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteOptionButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            contentColor = NuvioTheme.colors.TextPrimary
+        )
+    ) {
+        Text(label)
     }
 }
