@@ -2400,6 +2400,27 @@
     <string name="disney_row_freeform">Freeform</string>
     <string name="disney_empty_title">Couldn\'t load Disney+</string>
     <string name="disney_retry">Try again</string>
+    <!-- Disney brand page rows (same order and names as Disney+'s own Disney page) -->
+    <string name="disney_row_new_short">New</string>
+    <string name="disney_row_collections">Collections</string>
+    <string name="disney_row_throwbacks">Throwbacks</string>
+    <string name="disney_row_disneynature">Disney nature</string>
+    <string name="disney_row_playlist_halloween">Playlists: Halloween</string>
+    <string name="disney_row_playlist_holiday">Playlists: Holiday Magic</string>
+    <string name="disney_row_playlist_feel_good">Playlists: Feel-Good Favorites</string>
+    <string name="disney_row_princesses">Disney Princesses</string>
+    <string name="disney_row_wdas">Walt Disney Animation Studios</string>
+    <string name="disney_row_live_action_movies">Live Action Movies</string>
+    <string name="disney_row_lilo_stitch">Lilo &amp; Stitch</string>
+    <string name="disney_row_sing_alongs">Sing-Alongs</string>
+    <string name="disney_row_frozen">Frozen</string>
+    <string name="disney_row_characters">Characters</string>
+    <string name="disney_row_vintage">Vintage Disney</string>
+    <string name="disney_row_originals_short">Originals</string>
+    <string name="disney_row_music_to_our_ears">Music to Our Ears</string>
+    <string name="disney_row_disney_channel_series">Disney Channel Series and Specials</string>
+    <string name="disney_row_made_in_90s">Made in the 90\'s</string>
+    <string name="disney_row_mickey_and_friends">Mickey and Friends</string>
     <string name="disney_empty_subtitle">Check your connection and TMDB settings, then try again</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Movies</string>

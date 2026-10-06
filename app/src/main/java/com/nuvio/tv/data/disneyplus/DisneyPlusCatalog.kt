@@ -294,6 +294,210 @@ object DisneyPlusCatalog {
         series("Mickey Mouse", 2013)
     )
 
+    // ---- Disney brand page (mirrors the row layout of Disney+'s own "Disney" page) ----
+
+    private val DISNEY_FEATURED = listOf(
+        movie("Zootopia 2", 2025),
+        movie("Lilo & Stitch", 2025),
+        movie("Moana 2", 2024),
+        movie("Mufasa: The Lion King", 2024),
+        movie("Freakier Friday", 2025),
+        movie("Snow White", 2025),
+        movie("Wish", 2023),
+        movie("Encanto", 2021),
+        movie("Frozen II", 2019),
+        movie("Moana", 2016)
+    )
+
+    private val DISNEY_COLLECTIONS = listOf(
+        movie("The Lion King", 1994),
+        movie("Frozen", 2013),
+        movie("Moana", 2016),
+        movie("Pirates of the Caribbean: The Curse of the Black Pearl", 2003),
+        movie("High School Musical", 2006),
+        movie("Descendants", 2015),
+        movie("Zootopia", 2016),
+        movie("Wreck-It Ralph", 2012),
+        movie("Big Hero 6", 2014),
+        movie("Mary Poppins", 1964),
+        movie("Enchanted", 2007),
+        movie("Tron", 1982),
+        movie("Honey, I Shrunk the Kids", 1989),
+        movie("The Muppets", 2011)
+    )
+
+    private val DISNEYNATURE = listOf(
+        movie("Earth", 2007),
+        movie("Oceans", 2009),
+        movie("African Cats", 2011),
+        movie("Chimpanzee", 2012),
+        movie("Bears", 2014),
+        movie("Monkey Kingdom", 2015),
+        movie("Born in China", 2016),
+        movie("Penguins", 2019),
+        movie("Dolphin Reef", 2018),
+        movie("Elephant", 2020),
+        movie("Polar Bear", 2022),
+        movie("Tiger", 2024),
+        movie("Wings of Life", 2011),
+        movie("The Crimson Wing: Mystery of the Flamingos", 2008)
+    )
+
+    private val PLAYLIST_HALLOWEEN = listOf(
+        movie("Hocus Pocus", 1993),
+        movie("Hocus Pocus 2", 2022),
+        movie("Halloweentown", 1998),
+        movie("The Nightmare Before Christmas", 1993),
+        movie("Twitches", 2005),
+        movie("Haunted Mansion", 2023),
+        movie("The Haunted Mansion", 2003),
+        movie("Frankenweenie", 2012),
+        movie("Under Wraps", 2021),
+        movie("Return to Halloweentown", 2006),
+        movie("The Legend of Sleepy Hollow", 1949)
+    )
+
+    private val PLAYLIST_HOLIDAY = listOf(
+        movie("The Santa Clause", 1994),
+        series("The Santa Clauses", 2022),
+        movie("Noelle", 2019),
+        movie("Home Alone", 1990),
+        movie("The Muppet Christmas Carol", 1992),
+        movie("A Christmas Carol", 2009),
+        movie("Mickey's Once Upon a Christmas", 1999),
+        movie("Olaf's Frozen Adventure", 2017),
+        movie("Prep & Landing", 2009),
+        movie("Miracle on 34th Street", 1947),
+        movie("The Nightmare Before Christmas", 1993)
+    )
+
+    private val PLAYLIST_FEEL_GOOD = listOf(
+        movie("Encanto", 2021),
+        movie("Zootopia", 2016),
+        movie("Big Hero 6", 2014),
+        movie("Enchanted", 2007),
+        movie("Freaky Friday", 2003),
+        movie("The Princess Diaries", 2001),
+        movie("Cool Runnings", 1993),
+        movie("Remember the Titans", 2000),
+        movie("The Parent Trap", 1998),
+        movie("High School Musical", 2006),
+        movie("Mary Poppins", 1964)
+    )
+
+    /** The Disney page's "Playlists" row follows the season: Halloween in Sep–Oct, holidays in Nov–Dec. */
+    private val seasonalPlaylist: Pair<Int, List<CuratedTitle>> = when (java.time.LocalDate.now().monthValue) {
+        9, 10 -> R.string.disney_row_playlist_halloween to PLAYLIST_HALLOWEEN
+        11, 12 -> R.string.disney_row_playlist_holiday to PLAYLIST_HOLIDAY
+        else -> R.string.disney_row_playlist_feel_good to PLAYLIST_FEEL_GOOD
+    }
+
+    private val LILO_AND_STITCH = listOf(
+        movie("Lilo & Stitch", 2025),
+        movie("Lilo & Stitch", 2002),
+        movie("Stitch! The Movie", 2003),
+        movie("Lilo & Stitch 2: Stitch Has a Glitch", 2005),
+        movie("Leroy & Stitch", 2006),
+        series("Lilo & Stitch: The Series", 2003)
+    )
+
+    private val DISNEY_VILLAINS = listOf(
+        movie("Maleficent", 2014),
+        movie("Cruella", 2021),
+        movie("The Lion King", 1994),
+        movie("Sleeping Beauty", 1959),
+        movie("The Little Mermaid", 1989),
+        movie("Aladdin", 1992),
+        movie("Hercules", 1997),
+        movie("One Hundred and One Dalmatians", 1961),
+        movie("Snow White and the Seven Dwarfs", 1937),
+        movie("Tangled", 2010),
+        movie("Descendants", 2015),
+        movie("Maleficent: Mistress of Evil", 2019),
+        movie("Mufasa: The Lion King", 2024)
+    )
+
+    private val SING_ALONGS = listOf(
+        movie("Frozen", 2013),
+        movie("Moana", 2016),
+        movie("Encanto", 2021),
+        movie("Frozen II", 2019),
+        movie("The Little Mermaid", 1989),
+        movie("Beauty and the Beast", 1991),
+        movie("Aladdin", 1992),
+        movie("The Lion King", 1994),
+        movie("Tangled", 2010),
+        movie("Wish", 2023),
+        movie("Mary Poppins", 1964),
+        movie("High School Musical", 2006),
+        movie("Descendants", 2015)
+    )
+
+    private val FROZEN = listOf(
+        movie("Frozen", 2013),
+        movie("Frozen II", 2019),
+        movie("Frozen Fever", 2015),
+        movie("Olaf's Frozen Adventure", 2017),
+        movie("Once Upon a Snowman", 2020),
+        series("Olaf Presents", 2021),
+        series("Into the Unknown: Making Frozen II", 2020)
+    )
+
+    private val CHARACTERS = listOf(
+        series("Mickey Mouse Clubhouse", 2006),
+        movie("The Many Adventures of Winnie the Pooh", 1977),
+        movie("Lilo & Stitch", 2002),
+        movie("A Goofy Movie", 1995),
+        series("DuckTales", 2017),
+        movie("Big Hero 6", 2014),
+        movie("Wreck-It Ralph", 2012),
+        movie("Zootopia", 2016),
+        movie("Moana", 2016),
+        movie("Frozen", 2013),
+        movie("The Lion King", 1994),
+        movie("Encanto", 2021)
+    )
+
+    private val DISNEY_PLUS_ORIGINAL_MOVIES = listOf(
+        movie("Hocus Pocus 2", 2022),
+        movie("Pinocchio", 2022),
+        movie("Disenchanted", 2022),
+        movie("Peter Pan & Wendy", 2023),
+        movie("Lady and the Tramp", 2019),
+        movie("Noelle", 2019),
+        movie("Togo", 2019),
+        movie("Descendants: The Rise of Red", 2024),
+        movie("Zombies", 2018),
+        movie("Once Upon a Studio", 2023)
+    )
+
+    private val MUSIC_TO_OUR_EARS = listOf(
+        movie("Hamilton", 2020),
+        movie("Taylor Swift: The Eras Tour", 2023),
+        series("The Beatles: Get Back", 2021),
+        movie("Elton John: Never Too Late", 2024),
+        movie("Black Is King", 2020),
+        movie("Billie Eilish: Happier Than Ever, A Love Letter to Los Angeles", 2021),
+        movie("Encanto at the Hollywood Bowl", 2022),
+        movie("Fantasia", 1940),
+        movie("Fantasia 2000", 1999),
+        movie("Hannah Montana: The Movie", 2009)
+    )
+
+    private val MICKEY_AND_FRIENDS = listOf(
+        series("Mickey Mouse Clubhouse", 2006),
+        series("Mickey Mouse Funhouse", 2021),
+        series("Mickey Mouse", 2013),
+        series("The Wonderful World of Mickey Mouse", 2020),
+        series("Mickey and the Roadster Racers", 2017),
+        series("DuckTales", 2017),
+        movie("A Goofy Movie", 1995),
+        movie("Mickey's Christmas Carol", 1983),
+        movie("Mickey, Donald, Goofy: The Three Musketeers", 2004),
+        movie("Mickey: The Story of a Mouse", 2022),
+        movie("Chip 'n Dale: Rescue Rangers", 2022)
+    )
+
     // ---- Shared row building blocks ----
 
     private fun onDisneyPlus(
@@ -325,7 +529,8 @@ object DisneyPlusCatalog {
         runtimeLte: Int? = null,
         genres: String? = null,
         withoutGenres: String? = null,
-        releaseDateLte: String? = null
+        releaseDateLte: String? = null,
+        releaseDateGte: String? = null
     ) = DisneyRowSource.Discover(
         mediaType = mediaType,
         sortBy = sortBy,
@@ -335,7 +540,8 @@ object DisneyPlusCatalog {
         runtimeLte = runtimeLte,
         genres = genres,
         withoutGenres = withoutGenres,
-        releaseDateLte = releaseDateLte
+        releaseDateLte = releaseDateLte,
+        releaseDateGte = releaseDateGte
     )
 
     private fun curated(titles: List<CuratedTitle>) = DisneyRowSource.Curated(titles)
@@ -467,28 +673,104 @@ object DisneyPlusCatalog {
 
     private val disney = DisneyHubSpec(
         hub = DisneyPlusHub.DISNEY,
-        heroRowId = "disney_popular",
+        heroRowId = "d_featured",
         rows = listOf(
             DisneyRowSpec(
-                "disney_popular", R.string.disney_row_popular,
-                listOf(company(MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}", voteCountGte = 200))
+                "d_featured", R.string.disney_row_featured,
+                listOf(
+                    curated(DISNEY_FEATURED),
+                    company(MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}", voteCountGte = 300)
+                )
             ),
-            rowClassics,
-            rowDisneyAnimation,
             DisneyRowSpec(
-                "modern_animation", R.string.disney_row_modern_animation,
+                "d_new_movies", R.string.disney_row_new_short,
+                listOf(
+                    company(
+                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY
+                    )
+                )
+            ),
+            DisneyRowSpec("d_collections", R.string.disney_row_collections, listOf(curated(DISNEY_COLLECTIONS))),
+            DisneyRowSpec(
+                "d_throwbacks", R.string.disney_row_throwbacks,
+                listOf(
+                    company(
+                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        sortBy = MOST_VOTED, releaseDateGte = "1985-01-01", releaseDateLte = "2009-12-31"
+                    ),
+                    DisneyRowSource.Discover(
+                        TV, sortBy = MOST_VOTED, networks = DisneyPlusIds.NET_DISNEY_CHANNEL,
+                        releaseDateGte = "1997-01-01", releaseDateLte = "2012-12-31"
+                    )
+                )
+            ),
+            DisneyRowSpec("d_nature", R.string.disney_row_disneynature, listOf(curated(DISNEYNATURE))),
+            DisneyRowSpec("d_playlists", seasonalPlaylist.first, listOf(curated(seasonalPlaylist.second))),
+            DisneyRowSpec("d_princesses", R.string.disney_row_princesses, listOf(curated(PRINCESSES))),
+            DisneyRowSpec(
+                "d_wdas", R.string.disney_row_wdas,
                 listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = RECENT, runtimeGte = 60, releaseDateLte = TODAY))
             ),
-            rowPrincess,
-            rowVillains,
             DisneyRowSpec(
-                "live_action", R.string.disney_row_live_action,
+                "d_live_action", R.string.disney_row_live_action_movies,
                 listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_PICTURES, withoutGenres = DisneyPlusIds.G_ANIMATION, voteCountGte = 200))
             ),
-            DisneyRowSpec("disney_channel", R.string.disney_row_disney_channel, listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_CHANNEL))),
-            DisneyRowSpec("disney_junior", R.string.disney_row_disney_junior, listOf(curated(KIDS_FEATURED), tvNetwork(DisneyPlusIds.NET_DISNEY_JUNIOR))),
-            rowOriginals,
-            rowShorts
+            DisneyRowSpec("d_lilo_stitch", R.string.disney_row_lilo_stitch, listOf(curated(LILO_AND_STITCH))),
+            DisneyRowSpec("d_villains", R.string.disney_row_villains, listOf(curated(DISNEY_VILLAINS))),
+            DisneyRowSpec("d_sing_alongs", R.string.disney_row_sing_alongs, listOf(curated(SING_ALONGS))),
+            DisneyRowSpec("d_frozen", R.string.disney_row_frozen, listOf(curated(FROZEN))),
+            DisneyRowSpec("d_characters", R.string.disney_row_characters, listOf(curated(CHARACTERS))),
+            DisneyRowSpec(
+                "d_vintage", R.string.disney_row_vintage,
+                listOf(
+                    company(
+                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        sortBy = MOST_VOTED, releaseDateLte = "1979-12-31"
+                    )
+                )
+            ),
+            DisneyRowSpec(
+                "d_originals", R.string.disney_row_originals_short,
+                listOf(
+                    curated(DISNEY_PLUS_ORIGINAL_MOVIES),
+                    DisneyRowSource.Discover(
+                        TV, networks = DisneyPlusIds.NET_DISNEY_PLUS,
+                        companies = "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|3475|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}"
+                    )
+                )
+            ),
+            DisneyRowSpec("d_music", R.string.disney_row_music_to_our_ears, listOf(curated(MUSIC_TO_OUR_EARS))),
+            DisneyRowSpec("d_disney_channel", R.string.disney_row_disney_channel_series, listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_CHANNEL))),
+            DisneyRowSpec(
+                "d_new_series", R.string.disney_row_new_short,
+                listOf(
+                    DisneyRowSource.Discover(
+                        TV, sortBy = RECENT_TV,
+                        networks = "${DisneyPlusIds.NET_DISNEY_CHANNEL}|${DisneyPlusIds.NET_DISNEY_JUNIOR}",
+                        releaseDateLte = TODAY, voteCountGte = 1
+                    ),
+                    DisneyRowSource.Discover(
+                        TV, sortBy = RECENT_TV, networks = DisneyPlusIds.NET_DISNEY_PLUS,
+                        companies = "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|3475",
+                        releaseDateLte = TODAY
+                    )
+                )
+            ),
+            DisneyRowSpec(
+                "d_90s", R.string.disney_row_made_in_90s,
+                listOf(
+                    company(
+                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        sortBy = MOST_VOTED, releaseDateGte = "1990-01-01", releaseDateLte = "1999-12-31"
+                    ),
+                    DisneyRowSource.Discover(
+                        TV, sortBy = MOST_VOTED, companies = "3475",
+                        releaseDateGte = "1990-01-01", releaseDateLte = "1999-12-31"
+                    )
+                )
+            ),
+            DisneyRowSpec("d_mickey", R.string.disney_row_mickey_and_friends, listOf(curated(MICKEY_AND_FRIENDS)))
         )
     )
 
