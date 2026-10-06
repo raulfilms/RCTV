@@ -20,7 +20,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -67,6 +71,7 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
 import com.nuvio.tv.data.disneyplus.DisneyPlusHub
+import com.nuvio.tv.data.disneyplus.DisneyRowKind
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.CatalogRowSection
 import com.nuvio.tv.ui.components.ContinueWatchingSection
@@ -200,6 +205,18 @@ fun DisneyPlusScreen(
                     }
 
                     uiState.rows.forEach { rowState ->
+                        if (rowState.spec.kind == DisneyRowKind.COLLECTIONS) {
+                            if (rowState.collectionTiles.isNotEmpty()) {
+                                item(key = "row_${rowState.spec.id}") {
+                                    DisneyCollectionsRow(
+                                        title = rowState.title,
+                                        tiles = rowState.collectionTiles,
+                                        onOpenHub = onOpenHub
+                                    )
+                                }
+                            }
+                            return@forEach
+                        }
                         val row = rowState.row ?: return@forEach
                         item(key = "row_${rowState.spec.id}") {
                             CatalogRowSection(
@@ -484,5 +501,126 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.STAR_WARS -> Color(0xFFFFE81F)
     DisneyPlusHub.NAT_GEO -> Color(0xFFFFCE00)
     DisneyPlusHub.HULU -> Color(0xFF1CE783)
+    DisneyPlusHub.COL_WDAS -> Color(0xFF1E3A8A)
+    DisneyPlusHub.COL_DISNEY_JR -> Color(0xFF0E7C86)
+    DisneyPlusHub.COL_DISNEY_CHANNEL -> Color(0xFF4C1D95)
+    DisneyPlusHub.COL_DISNEY_XD -> Color(0xFF3B0764)
+    DisneyPlusHub.COL_DISNEYNATURE -> Color(0xFF0F2A33)
+    DisneyPlusHub.COL_DCOM -> Color(0xFF1E1B6B)
     DisneyPlusHub.MAIN -> Color(0xFF4FA3FF)
+}
+
+/**
+ * The Disney page's "Collections" row: wide cards (Walt Disney Animation Studios, Disney Jr., Disney Channel,
+ * Disney XD, Disneynature, Disney Channel Original Movie). Each card shows a strip of backdrops from that
+ * collection's titles under a tinted gradient, with the collection name and "COLLECTION" on top.
+ */
+@Composable
+private fun DisneyCollectionsRow(
+    title: String,
+    tiles: List<DisneyCollectionTile>,
+    onOpenHub: (DisneyPlusHub) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = NuvioTheme.colors.TextPrimary,
+            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl)
+        )
+        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+        // Three cards across the screen, like Disney+.
+        val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+        val cardWidth = ((screenWidth - NuvioTheme.spacing.xxxl * 2 - NuvioTheme.spacing.lg * 2) / 3).coerceIn(200.dp, 420.dp)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = NuvioTheme.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+        ) {
+            items(tiles, key = { it.hub.key }) { tile ->
+                DisneyCollectionCard(
+                    tile = tile,
+                    onClick = { onOpenHub(tile.hub) },
+                    modifier = Modifier.width(cardWidth).aspectRatio(16f / 9f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DisneyCollectionCard(
+    tile: DisneyCollectionTile,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(NuvioTheme.radii.lg)
+    val tint = tile.hub.accentColor()
+    Surface(
+        onClick = onClick,
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = tint,
+            focusedContainerColor = tint
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), shape = shape),
+            focusedBorder = Border(border = BorderStroke(4.dp, Color.White), shape = shape)
+        ),
+        shape = ClickableSurfaceDefaults.shape(shape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+        modifier = modifier
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (tile.backdrops.isNotEmpty()) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    tile.backdrops.take(4).forEach { url ->
+                        AsyncImage(
+                            model = url,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxSize()
+                        )
+                    }
+                }
+            }
+            // Brand-tinted wash so the strip reads as one card and the text stays legible.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to tint.copy(alpha = 0.25f),
+                            0.55f to tint.copy(alpha = 0.65f),
+                            1f to tint.copy(alpha = 0.95f)
+                        )
+                    )
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.md),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+            ) {
+                Text(
+                    text = stringResource(tile.hub.titleRes),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(R.string.disney_collection_label),
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    letterSpacing = 4.sp,
+                    maxLines = 1
+                )
+            }
+        }
+    }
 }

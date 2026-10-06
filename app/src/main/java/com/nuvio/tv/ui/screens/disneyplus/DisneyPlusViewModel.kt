@@ -32,12 +32,19 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
+/** A wide collection card (e.g. "Disney Jr. — Collection"). [backdrops] fill in once loaded. */
+data class DisneyCollectionTile(
+    val hub: DisneyPlusHub,
+    val backdrops: List<String> = emptyList()
+)
+
 /** One row slot on the page, in definition order. [row] is null while loading or when the row came back empty. */
 data class DisneyPlusRowState(
     val spec: DisneyRowSpec,
     val title: String,
     val row: CatalogRow? = null,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val collectionTiles: List<DisneyCollectionTile> = emptyList()
 )
 
 data class DisneyPlusUiState(
@@ -51,7 +58,8 @@ data class DisneyPlusUiState(
         get() = isHeroLoading && rows.none { it.row != null }
 
     val hasAnyContent: Boolean
-        get() = heroItems.isNotEmpty() || continueWatching.isNotEmpty() || rows.any { it.row != null }
+        get() = heroItems.isNotEmpty() || continueWatching.isNotEmpty() ||
+            rows.any { it.row != null || it.collectionTiles.isNotEmpty() }
 
     val isFinishedLoading: Boolean
         get() = !isHeroLoading && rows.none { it.isLoading }
@@ -80,7 +88,16 @@ class DisneyPlusViewModel @Inject constructor(
             hub = hub,
             rows = hubSpec.rows
                 .filter { it.kind != DisneyRowKind.CONTINUE_WATCHING }
-                .map { DisneyPlusRowState(spec = it, title = context.getString(it.titleRes)) }
+                .map { spec ->
+                    val isCollections = spec.kind == DisneyRowKind.COLLECTIONS
+                    DisneyPlusRowState(
+                        spec = spec,
+                        title = context.getString(spec.titleRes),
+                        // Collection tiles show right away with their names; artwork fills in afterwards.
+                        isLoading = !isCollections,
+                        collectionTiles = if (isCollections) spec.collections.map { DisneyCollectionTile(it) } else emptyList()
+                    )
+                }
         )
     )
     val uiState: StateFlow<DisneyPlusUiState> = _uiState.asStateFlow()
@@ -102,10 +119,16 @@ class DisneyPlusViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 isHeroLoading = true,
-                rows = state.rows.map { it.copy(isLoading = true, row = if (forceRefresh) null else it.row) }
+                rows = state.rows.map {
+                    it.copy(
+                        isLoading = it.spec.kind != DisneyRowKind.COLLECTIONS,
+                        row = if (forceRefresh) null else it.row
+                    )
+                }
             )
         }
         loadJob = viewModelScope.launch {
+            launch { loadCollectionArt() }
             val heroSpec = hubSpec.rows.firstOrNull { it.id == hubSpec.heroRowId }
             val heroRow = heroSpec?.let { spec -> safeResolve(spec, forceRefresh) }
             heroSpec?.let { setRow(it.id, heroRow) }
@@ -129,6 +152,34 @@ class DisneyPlusViewModel @Inject constructor(
                     )
                     .awaitAll()
             }
+        }
+    }
+
+    private suspend fun loadCollectionArt() {
+        val hubs = hubSpec.rows.filter { it.kind == DisneyRowKind.COLLECTIONS }.flatMap { it.collections }.distinct()
+        if (hubs.isEmpty()) return
+        coroutineScope {
+            hubs.map { collectionHub ->
+                async {
+                    val art = try {
+                        repository.collectionArt(collectionHub)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    if (art.isNotEmpty()) {
+                        _uiState.update { state ->
+                            state.copy(rows = state.rows.map { rowState ->
+                                if (rowState.collectionTiles.none { it.hub == collectionHub }) rowState
+                                else rowState.copy(collectionTiles = rowState.collectionTiles.map { tile ->
+                                    if (tile.hub == collectionHub) tile.copy(backdrops = art) else tile
+                                })
+                            })
+                        }
+                    }
+                }
+            }.awaitAll()
         }
     }
 

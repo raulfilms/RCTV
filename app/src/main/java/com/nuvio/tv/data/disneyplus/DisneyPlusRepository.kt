@@ -56,6 +56,7 @@ class DisneyPlusRepository @Inject constructor(
 
     private val curatedCache = ConcurrentHashMap<String, Optional<MetaPreview>>()
     private val keywordCache = ConcurrentHashMap<String, Optional<Int>>()
+    private val companyCache = ConcurrentHashMap<String, Optional<Int>>()
     private val titleInfoCache = ConcurrentHashMap<String, Optional<DisneyTitleInfo>>()
     private val logoCache = ConcurrentHashMap<String, Optional<String>>()
     private val rowCache = ConcurrentHashMap<String, List<MetaPreview>>()
@@ -237,6 +238,10 @@ class DisneyPlusRepository @Inject constructor(
         val resolvedKeywordId = source.keywordQuery?.let { query ->
             keywordId(query) ?: return emptyList()
         }
+        val companies = source.companyQuery?.let { query ->
+            val resolved = companyId(query) ?: return emptyList()
+            listOfNotNull(source.companies, resolved.toString()).joinToString("|")
+        } ?: source.companies
         val today = LocalDate.now().toString()
         val releaseLte = source.releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
         val releaseGte = source.releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
@@ -247,7 +252,7 @@ class DisneyPlusRepository @Inject constructor(
                 language = language,
                 page = 1,
                 sortBy = source.sortBy,
-                withCompanies = source.companies,
+                withCompanies = companies,
                 releaseDateLte = releaseLte,
                 voteCountGte = source.voteCountGte,
                 withGenres = source.genres,
@@ -265,7 +270,7 @@ class DisneyPlusRepository @Inject constructor(
                 language = language,
                 page = 1,
                 sortBy = source.sortBy.replace("primary_release_date", "first_air_date"),
-                withCompanies = source.companies,
+                withCompanies = companies,
                 withNetworks = source.networks,
                 firstAirDateLte = releaseLte,
                 voteCountGte = source.voteCountGte,
@@ -290,6 +295,28 @@ class DisneyPlusRepository @Inject constructor(
         }.onFailure { if (it is CancellationException) throw it }.getOrNull()
         if (id != null) keywordCache[key] = Optional(id)
         return id
+    }
+
+    /** Resolves a company name (e.g. "Disney Channel") to its TMDB id, preferring an exact name match. */
+    private suspend fun companyId(query: String): Int? {
+        val key = query.lowercase(Locale.US)
+        companyCache[key]?.let { return it.value }
+        val id = runCatching {
+            val results = tmdbApi.searchCompanies(apiKey, query).body()?.results.orEmpty()
+            (results.firstOrNull { it.name.equals(query, ignoreCase = true) && it.originCountry.equals("US", ignoreCase = true) }
+                ?: results.firstOrNull { it.name.equals(query, ignoreCase = true) }
+                ?: results.firstOrNull())?.id
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+        if (id != null) companyCache[key] = Optional(id)
+        return id
+    }
+
+    /** Backdrop images for a collection tile, taken from the collection's art titles. */
+    suspend fun collectionArt(hub: DisneyPlusHub): List<String> = withContext(Dispatchers.IO) {
+        val language = language()
+        coroutineScope {
+            DisneyPlusCatalog.collectionArt(hub).map { title -> async { resolveCurated(title, language) } }.awaitAll()
+        }.mapNotNull { it?.background }
     }
 
     private suspend fun curated(source: DisneyRowSource.Curated, language: String): List<MetaPreview> = coroutineScope {

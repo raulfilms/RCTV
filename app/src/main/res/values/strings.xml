@@ -2421,6 +2421,23 @@
     <string name="disney_row_disney_channel_series">Disney Channel Series and Specials</string>
     <string name="disney_row_made_in_90s">Made in the 90\'s</string>
     <string name="disney_row_mickey_and_friends">Mickey and Friends</string>
+    <!-- Disney page collections -->
+    <string name="disney_collection_label">COLLECTION</string>
+    <string name="disney_col_wdas">Walt Disney Animation Studios</string>
+    <string name="disney_col_disney_jr">Disney Jr.</string>
+    <string name="disney_col_disney_channel">Disney Channel</string>
+    <string name="disney_col_disney_xd">Disney XD</string>
+    <string name="disney_col_disneynature">Disneynature</string>
+    <string name="disney_col_dcom">Disney Channel Original Movie</string>
+    <string name="disney_row_all_films_release_order">All Films (Release Order)</string>
+    <string name="disney_row_popular_shows">Popular Shows</string>
+    <string name="disney_row_classic_series">Classic Series</string>
+    <string name="disney_row_animated_series">Animated Series</string>
+    <string name="disney_row_disneynature_films">Disneynature Films</string>
+    <string name="disney_row_more_nature">More Nature</string>
+    <string name="disney_row_musicals">Musicals</string>
+    <string name="disney_row_all_time_favorites">All-Time Favorites</string>
+    <string name="disney_row_more_dcoms">More DCOMs</string>
     <string name="disney_empty_subtitle">Check your connection and TMDB settings, then try again</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Movies</string>

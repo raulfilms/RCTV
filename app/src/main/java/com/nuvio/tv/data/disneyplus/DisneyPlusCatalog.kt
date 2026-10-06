@@ -35,6 +35,7 @@ object DisneyPlusIds {
     const val NET_NAT_GEO = "43"
     const val NET_DISNEY_CHANNEL = "54"
     const val NET_DISNEY_JUNIOR = "281"
+    const val NET_DISNEY_XD = "44"
 
     // TMDB genre ids
     const val G_ACTION = "28"
@@ -78,7 +79,15 @@ enum class DisneyPlusHub(val key: String, @StringRes val titleRes: Int) {
     MARVEL("marvel", R.string.disney_brand_marvel),
     STAR_WARS("star_wars", R.string.disney_brand_star_wars),
     NAT_GEO("national_geographic", R.string.disney_brand_nat_geo),
-    HULU("hulu", R.string.disney_brand_hulu);
+    HULU("hulu", R.string.disney_brand_hulu),
+
+    // Collection pages, opened from the "Collections" row on the Disney page.
+    COL_WDAS("collection_wdas", R.string.disney_col_wdas),
+    COL_DISNEY_JR("collection_disney_jr", R.string.disney_col_disney_jr),
+    COL_DISNEY_CHANNEL("collection_disney_channel", R.string.disney_col_disney_channel),
+    COL_DISNEY_XD("collection_disney_xd", R.string.disney_col_disney_xd),
+    COL_DISNEYNATURE("collection_disneynature", R.string.disney_col_disneynature),
+    COL_DCOM("collection_dcom", R.string.disney_col_dcom);
 
     companion object {
         fun fromKey(key: String?): DisneyPlusHub =
@@ -107,6 +116,8 @@ sealed interface DisneyRowSource {
         val withoutGenres: String? = null,
         val providers: String? = null,
         val keywordQuery: String? = null,
+        /** TMDB company name, looked up through company search at runtime (combined with [companies] as OR). */
+        val companyQuery: String? = null,
         val releaseDateGte: String? = null,
         val releaseDateLte: String? = null,
         val voteCountGte: Int? = null,
@@ -125,14 +136,18 @@ enum class DisneyRowKind {
     CONTINUE_WATCHING,
 
     /** Titles on Disney+ matching the genres the person watches most. */
-    RECOMMENDED
+    RECOMMENDED,
+
+    /** A row of wide collection tiles ([DisneyRowSpec.collections]); each opens its own collection page. */
+    COLLECTIONS
 }
 
 data class DisneyRowSpec(
     val id: String,
     @StringRes val titleRes: Int,
     val sources: List<DisneyRowSource> = emptyList(),
-    val kind: DisneyRowKind = DisneyRowKind.CATALOG
+    val kind: DisneyRowKind = DisneyRowKind.CATALOG,
+    val collections: List<DisneyPlusHub> = emptyList()
 )
 
 /** A page definition: its rows, and which row feeds the hero banner. */
@@ -309,23 +324,6 @@ object DisneyPlusCatalog {
         movie("Moana", 2016)
     )
 
-    private val DISNEY_COLLECTIONS = listOf(
-        movie("The Lion King", 1994),
-        movie("Frozen", 2013),
-        movie("Moana", 2016),
-        movie("Pirates of the Caribbean: The Curse of the Black Pearl", 2003),
-        movie("High School Musical", 2006),
-        movie("Descendants", 2015),
-        movie("Zootopia", 2016),
-        movie("Wreck-It Ralph", 2012),
-        movie("Big Hero 6", 2014),
-        movie("Mary Poppins", 1964),
-        movie("Enchanted", 2007),
-        movie("Tron", 1982),
-        movie("Honey, I Shrunk the Kids", 1989),
-        movie("The Muppets", 2011)
-    )
-
     private val DISNEYNATURE = listOf(
         movie("Earth", 2007),
         movie("Oceans", 2009),
@@ -497,6 +495,124 @@ object DisneyPlusCatalog {
         movie("Mickey: The Story of a Mouse", 2022),
         movie("Chip 'n Dale: Rescue Rangers", 2022)
     )
+
+    // ---- Collection pages (Disney page -> Collections row) ----
+
+    private val WDAS_FEATURED = listOf(
+        movie("Zootopia 2", 2025),
+        movie("Moana 2", 2024),
+        movie("Wish", 2023),
+        movie("Encanto", 2021),
+        movie("Raya and the Last Dragon", 2021),
+        movie("Frozen II", 2019),
+        movie("Ralph Breaks the Internet", 2018),
+        movie("Zootopia", 2016),
+        movie("Moana", 2016),
+        movie("Big Hero 6", 2014)
+    )
+
+    private val DISNEY_JR_FEATURED = listOf(
+        series("Bluey", 2018),
+        series("Spidey and His Amazing Friends", 2021),
+        series("Mickey Mouse Clubhouse", 2006),
+        series("Sofia the First", 2013),
+        series("Doc McStuffins", 2012),
+        series("Puppy Dog Pals", 2017),
+        series("Vampirina", 2017),
+        series("SuperKitties", 2023),
+        series("Pupstruction", 2023),
+        series("Mickey Mouse Funhouse", 2021),
+        series("Firebuds", 2022)
+    )
+
+    private val DISNEY_CHANNEL_FEATURED = listOf(
+        series("Hannah Montana", 2006),
+        series("Wizards of Waverly Place", 2007),
+        series("Phineas and Ferb", 2007),
+        series("Gravity Falls", 2012),
+        series("That's So Raven", 2003),
+        series("The Suite Life of Zack & Cody", 2005),
+        series("Good Luck Charlie", 2010),
+        series("Austin & Ally", 2011),
+        series("Lizzie McGuire", 2001),
+        series("Amphibia", 2019),
+        series("The Owl House", 2020),
+        series("Kim Possible", 2002)
+    )
+
+    private val DISNEY_XD_FEATURED = listOf(
+        series("Star vs. the Forces of Evil", 2015),
+        series("DuckTales", 2017),
+        series("Kickin' It", 2011),
+        series("Lab Rats", 2012),
+        series("Kick Buttowski: Suburban Daredevil", 2010),
+        series("Pair of Kings", 2010),
+        series("Motorcity", 2012),
+        series("Tron: Uprising", 2012),
+        series("Big City Greens", 2018),
+        series("Milo Murphy's Law", 2016)
+    )
+
+    private val DCOM_FEATURED = listOf(
+        movie("High School Musical", 2006),
+        movie("Descendants", 2015),
+        movie("Camp Rock", 2008),
+        movie("Zombies", 2018),
+        movie("Descendants: The Rise of Red", 2024),
+        movie("High School Musical 2", 2007),
+        movie("Halloweentown", 1998),
+        movie("The Cheetah Girls", 2003),
+        movie("Teen Beach Movie", 2013),
+        movie("Lemonade Mouth", 2011),
+        movie("Descendants 2", 2017),
+        movie("Descendants 3", 2019)
+    )
+
+    private val DCOM_CLASSICS = listOf(
+        movie("Smart House", 1999),
+        movie("Zenon: Girl of the 21st Century", 1999),
+        movie("Halloweentown", 1998),
+        movie("Twitches", 2005),
+        movie("Cadet Kelly", 2002),
+        movie("Jump In!", 2007),
+        movie("Read It and Weep", 2006),
+        movie("Life-Size", 2000),
+        movie("Motocrossed", 2001),
+        movie("Johnny Tsunami", 1999),
+        movie("Brink!", 1998),
+        movie("Princess Protection Program", 2009),
+        movie("Starstruck", 2010),
+        movie("Den Brother", 2010)
+    )
+
+    private val DCOM_MUSICALS = listOf(
+        movie("High School Musical", 2006),
+        movie("High School Musical 2", 2007),
+        movie("Camp Rock", 2008),
+        movie("Camp Rock 2: The Final Jam", 2010),
+        movie("Descendants", 2015),
+        movie("Zombies", 2018),
+        movie("Zombies 2", 2020),
+        movie("Teen Beach Movie", 2013),
+        movie("Teen Beach 2", 2015),
+        movie("Lemonade Mouth", 2011),
+        movie("The Cheetah Girls 2", 2006),
+        movie("Descendants: The Rise of Red", 2024)
+    )
+
+    /**
+     * Titles whose backdrops make up each collection tile's artwork (a strip of 3-4 images, like the
+     * Disney+ collection cards). Only the TMDB backdrops of these titles are used.
+     */
+    fun collectionArt(hub: DisneyPlusHub): List<CuratedTitle> = when (hub) {
+        DisneyPlusHub.COL_WDAS -> listOf(movie("Fantasia", 1940), movie("Moana", 2016), movie("Lilo & Stitch", 2002), movie("The Little Mermaid", 1989))
+        DisneyPlusHub.COL_DISNEY_JR -> listOf(series("Spidey and His Amazing Friends", 2021), series("Sofia the First", 2013), series("Mickey Mouse Clubhouse", 2006))
+        DisneyPlusHub.COL_DISNEY_CHANNEL -> listOf(series("Hannah Montana", 2006), series("Wizards of Waverly Place", 2007), series("Gravity Falls", 2012))
+        DisneyPlusHub.COL_DISNEY_XD -> listOf(series("Star vs. the Forces of Evil", 2015), series("DuckTales", 2017), series("Kickin' It", 2011))
+        DisneyPlusHub.COL_DISNEYNATURE -> listOf(movie("Polar Bear", 2022), movie("Tiger", 2024), movie("Dolphin Reef", 2018))
+        DisneyPlusHub.COL_DCOM -> listOf(movie("High School Musical", 2006), movie("Descendants", 2015), movie("Zombies", 2018))
+        else -> emptyList()
+    }
 
     // ---- Shared row building blocks ----
 
@@ -691,7 +807,18 @@ object DisneyPlusCatalog {
                     )
                 )
             ),
-            DisneyRowSpec("d_collections", R.string.disney_row_collections, listOf(curated(DISNEY_COLLECTIONS))),
+            DisneyRowSpec(
+                "d_collections", R.string.disney_row_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(
+                    DisneyPlusHub.COL_WDAS,
+                    DisneyPlusHub.COL_DISNEY_JR,
+                    DisneyPlusHub.COL_DISNEY_CHANNEL,
+                    DisneyPlusHub.COL_DISNEY_XD,
+                    DisneyPlusHub.COL_DISNEYNATURE,
+                    DisneyPlusHub.COL_DCOM
+                )
+            ),
             DisneyRowSpec(
                 "d_throwbacks", R.string.disney_row_throwbacks,
                 listOf(
@@ -906,6 +1033,110 @@ object DisneyPlusCatalog {
         )
     )
 
+    private val wdas = "${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}"
+
+    private val colWdas = DisneyHubSpec(
+        hub = DisneyPlusHub.COL_WDAS,
+        heroRowId = "wdas_featured",
+        rows = listOf(
+            DisneyRowSpec("wdas_featured", R.string.disney_row_featured, listOf(curated(WDAS_FEATURED))),
+            DisneyRowSpec(
+                "wdas_all", R.string.disney_row_all_films_release_order,
+                listOf(company(MOVIE, wdas, sortBy = RELEASE_ORDER, runtimeGte = 60, voteCountGte = 50, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec("wdas_popular", R.string.disney_row_popular, listOf(company(MOVIE, wdas, runtimeGte = 60, voteCountGte = 200))),
+            DisneyRowSpec("wdas_classics", R.string.disney_row_classics, listOf(curated(CLASSICS))),
+            DisneyRowSpec("wdas_princesses", R.string.disney_row_princesses, listOf(curated(PRINCESSES))),
+            DisneyRowSpec("wdas_shorts", R.string.disney_row_shorts, listOf(company(MOVIE, wdas, runtimeLte = 30, voteCountGte = 10)))
+        )
+    )
+
+    private val colDisneyJr = DisneyHubSpec(
+        hub = DisneyPlusHub.COL_DISNEY_JR,
+        heroRowId = "jr_featured",
+        rows = listOf(
+            DisneyRowSpec("jr_featured", R.string.disney_row_featured, listOf(curated(DISNEY_JR_FEATURED))),
+            DisneyRowSpec("jr_popular", R.string.disney_row_popular_shows, listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_JUNIOR))),
+            DisneyRowSpec(
+                "jr_new", R.string.disney_row_new_short,
+                listOf(DisneyRowSource.Discover(TV, sortBy = RECENT_TV, networks = DisneyPlusIds.NET_DISNEY_JUNIOR, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec(
+                "jr_movies", R.string.disney_row_movies,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companyQuery = "Disney Junior"))
+            ),
+            DisneyRowSpec("jr_mickey", R.string.disney_row_mickey_and_friends, listOf(curated(MICKEY_AND_FRIENDS)))
+        )
+    )
+
+    private val colDisneyChannel = DisneyHubSpec(
+        hub = DisneyPlusHub.COL_DISNEY_CHANNEL,
+        heroRowId = "dc_featured",
+        rows = listOf(
+            DisneyRowSpec("dc_featured", R.string.disney_row_featured, listOf(curated(DISNEY_CHANNEL_FEATURED))),
+            DisneyRowSpec("dc_popular", R.string.disney_row_popular_shows, listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_CHANNEL))),
+            DisneyRowSpec(
+                "dc_new", R.string.disney_row_new_short,
+                listOf(DisneyRowSource.Discover(TV, sortBy = RECENT_TV, networks = DisneyPlusIds.NET_DISNEY_CHANNEL, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec(
+                "dc_classic", R.string.disney_row_classic_series,
+                listOf(
+                    DisneyRowSource.Discover(
+                        TV, sortBy = MOST_VOTED, networks = DisneyPlusIds.NET_DISNEY_CHANNEL, releaseDateLte = "2012-12-31"
+                    )
+                )
+            ),
+            DisneyRowSpec("dc_dcom", R.string.disney_col_dcom, listOf(curated(DCOM_FEATURED)))
+        )
+    )
+
+    private val colDisneyXd = DisneyHubSpec(
+        hub = DisneyPlusHub.COL_DISNEY_XD,
+        heroRowId = "xd_featured",
+        rows = listOf(
+            DisneyRowSpec("xd_featured", R.string.disney_row_featured, listOf(curated(DISNEY_XD_FEATURED))),
+            DisneyRowSpec("xd_popular", R.string.disney_row_popular_shows, listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_XD))),
+            DisneyRowSpec(
+                "xd_top_rated", R.string.disney_row_top_rated,
+                listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_XD, sortBy = TOP_RATED, voteCountGte = 30))
+            ),
+            DisneyRowSpec(
+                "xd_animated", R.string.disney_row_animated_series,
+                listOf(tvNetwork(DisneyPlusIds.NET_DISNEY_XD, genres = DisneyPlusIds.G_ANIMATION))
+            )
+        )
+    )
+
+    private val colDisneynature = DisneyHubSpec(
+        hub = DisneyPlusHub.COL_DISNEYNATURE,
+        heroRowId = "dn_films",
+        rows = listOf(
+            DisneyRowSpec("dn_films", R.string.disney_row_disneynature_films, listOf(curated(DISNEYNATURE))),
+            DisneyRowSpec(
+                "dn_more", R.string.disney_row_more_nature,
+                listOf(
+                    onDisneyPlus(MOVIE, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "nature"),
+                    onDisneyPlus(TV, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "nature")
+                )
+            )
+        )
+    )
+
+    private val colDcom = DisneyHubSpec(
+        hub = DisneyPlusHub.COL_DCOM,
+        heroRowId = "dcom_featured",
+        rows = listOf(
+            DisneyRowSpec("dcom_featured", R.string.disney_row_featured, listOf(curated(DCOM_FEATURED))),
+            DisneyRowSpec("dcom_musicals", R.string.disney_row_musicals, listOf(curated(DCOM_MUSICALS))),
+            DisneyRowSpec("dcom_classics", R.string.disney_row_all_time_favorites, listOf(curated(DCOM_CLASSICS))),
+            DisneyRowSpec(
+                "dcom_all", R.string.disney_row_more_dcoms,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companyQuery = "Disney Channel"))
+            )
+        )
+    )
+
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */
     const val TODAY = "__today__"
 
@@ -917,5 +1148,11 @@ object DisneyPlusCatalog {
         DisneyPlusHub.STAR_WARS -> starWars
         DisneyPlusHub.NAT_GEO -> natGeo
         DisneyPlusHub.HULU -> hulu
+        DisneyPlusHub.COL_WDAS -> colWdas
+        DisneyPlusHub.COL_DISNEY_JR -> colDisneyJr
+        DisneyPlusHub.COL_DISNEY_CHANNEL -> colDisneyChannel
+        DisneyPlusHub.COL_DISNEY_XD -> colDisneyXd
+        DisneyPlusHub.COL_DISNEYNATURE -> colDisneynature
+        DisneyPlusHub.COL_DCOM -> colDcom
     }
 }
