@@ -140,6 +140,11 @@ sealed class Screen(val route: String) {
     data object Library : Screen("library")
     data object LiveTv : Screen("live_tv")
     data object IptvSources : Screen("iptv_sources")
+    data object DisneyPlus : Screen("disney_plus")
+    /** A Disney+ brand page (Disney, Pixar, Marvel, Star Wars, National Geographic, Hulu). [hub] is a DisneyPlusHub key. */
+    data object DisneyPlusBrand : Screen("disney_plus/{hub}") {
+        fun createRoute(hub: String): String = "disney_plus/$hub"
+    }
     data object Sports : Screen("sports")
     data object SportsFavorites : Screen("sports_favorites")
     data object SportsTeams : Screen("sports_teams")

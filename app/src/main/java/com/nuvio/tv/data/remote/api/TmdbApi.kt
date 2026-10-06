@@ -183,7 +183,31 @@ interface TmdbApi {
         @Query("without_companies") withoutCompanies: String? = null,
         @Query("without_genres") withoutGenres: String? = null,
         @Query("without_keywords") withoutKeywords: String? = null,
-        @Query("without_watch_providers") withoutWatchProviders: String? = null
+        @Query("without_watch_providers") withoutWatchProviders: String? = null,
+        @Query("with_runtime.gte") withRuntimeGte: Int? = null,
+        @Query("with_runtime.lte") withRuntimeLte: Int? = null
+    ): Response<TmdbDiscoverResponse>
+
+    /** Title search for movies. Results share the discover result shape. */
+    @GET("search/movie")
+    suspend fun searchMovies(
+        @Query("api_key") apiKey: String,
+        @Query("query") query: String,
+        @Query("language") language: String? = null,
+        @Query("primary_release_year") primaryReleaseYear: Int? = null,
+        @Query("page") page: Int = 1,
+        @Query("include_adult") includeAdult: Boolean = false
+    ): Response<TmdbDiscoverResponse>
+
+    /** Title search for TV series. Results share the discover result shape. */
+    @GET("search/tv")
+    suspend fun searchTv(
+        @Query("api_key") apiKey: String,
+        @Query("query") query: String,
+        @Query("language") language: String? = null,
+        @Query("first_air_date_year") firstAirDateYear: Int? = null,
+        @Query("page") page: Int = 1,
+        @Query("include_adult") includeAdult: Boolean = false
     ): Response<TmdbDiscoverResponse>
 
     @GET("discover/tv")

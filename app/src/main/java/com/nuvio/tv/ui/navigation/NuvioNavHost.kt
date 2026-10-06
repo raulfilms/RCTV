@@ -35,6 +35,7 @@ import com.nuvio.tv.ui.screens.library.LibraryScreen
 import com.nuvio.tv.ui.screens.livetv.IptvSourcesScreen
 import com.nuvio.tv.ui.screens.livetv.LiveTvScreen
 import com.nuvio.tv.domain.model.SportsEvent
+import com.nuvio.tv.ui.screens.disneyplus.DisneyPlusScreen
 import com.nuvio.tv.ui.screens.sports.GameDetailScreen
 import com.nuvio.tv.ui.screens.sports.LeagueDetailScreen
 import com.nuvio.tv.ui.screens.sports.SportsFavoritesScreen
@@ -84,6 +85,40 @@ private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetai
     status = event.status.name,
     statusDetail = event.statusDetail
 )
+
+/** Stream route for resuming a Continue Watching card from the Disney+ page (back returns to Disney+). */
+private fun disneyContinueWatchingRoute(item: ContinueWatchingItem): String = when (item) {
+    is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
+        videoId = item.progress.videoId,
+        contentType = item.progress.contentType,
+        title = item.progress.name,
+        poster = item.progress.poster,
+        backdrop = item.progress.backdrop,
+        logo = item.progress.logo,
+        season = item.progress.season,
+        episode = item.progress.episode,
+        episodeName = item.progress.episodeTitle,
+        contentId = item.progress.contentId,
+        contentName = item.progress.name,
+        returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
+        contentLanguage = item.contentLanguage
+    )
+    is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
+        videoId = item.info.videoId,
+        contentType = item.info.contentType,
+        title = item.info.name,
+        poster = item.info.poster,
+        backdrop = item.info.backdrop,
+        logo = item.info.logo,
+        season = item.info.season,
+        episode = item.info.episode,
+        episodeName = item.info.episodeTitle,
+        contentId = item.info.contentId,
+        contentName = item.info.name,
+        returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
+        contentLanguage = item.info.contentLanguage
+    )
+}
 
 @Composable
 fun NuvioNavHost(
@@ -1241,6 +1276,45 @@ private fun PlaybackNavHost(
         composable(Screen.IptvSources.route) {
             IptvSourcesScreen(
                 onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.DisneyPlus.route) {
+            DisneyPlusScreen(
+                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = addonBaseUrl)
+                    )
+                },
+                onOpenHub = { hub -> navController.navigate(Screen.DisneyPlusBrand.createRoute(hub.key)) },
+                onContinueWatchingClick = onContinueWatchingClick@{ item ->
+                    if (!playbackAvailability.canStream(item)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@onContinueWatchingClick
+                    }
+                    navController.navigate(disneyContinueWatchingRoute(item))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.DisneyPlusBrand.route,
+            arguments = listOf(navArgument("hub") { type = NavType.StringType })
+        ) {
+            DisneyPlusScreen(
+                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = addonBaseUrl)
+                    )
+                },
+                onOpenHub = { hub -> navController.navigate(Screen.DisneyPlusBrand.createRoute(hub.key)) },
+                onContinueWatchingClick = onContinueWatchingClick@{ item ->
+                    if (!playbackAvailability.canStream(item)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@onContinueWatchingClick
+                    }
+                    navController.navigate(disneyContinueWatchingRoute(item))
+                }
             )
         }
 

@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsSoccer
+import androidx.compose.material.icons.filled.Stars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -1014,6 +1015,7 @@ open class MainActivity : ComponentActivity() {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
                             add(Screen.Library.route)
+                            add(Screen.DisneyPlus.route)
                             add(Screen.LiveTv.route)
                             add(Screen.Sports.route)
                             add(Screen.Settings.route)
@@ -1027,6 +1029,7 @@ open class MainActivity : ComponentActivity() {
                     val strNavDiscover = stringResource(R.string.nav_discover)
                     val strNavSearch = stringResource(R.string.nav_search)
                     val strNavLibrary = stringResource(R.string.nav_library)
+                    val strNavDisneyPlus = stringResource(R.string.nav_disney_plus)
                     val strNavLiveTv = stringResource(R.string.nav_live_tv)
                     val strNavSports = stringResource(R.string.nav_sports)
                     val strNavSettings = stringResource(R.string.nav_settings)
@@ -1035,6 +1038,7 @@ open class MainActivity : ComponentActivity() {
                         strNavDiscover,
                         strNavSearch,
                         strNavLibrary,
+                        strNavDisneyPlus,
                         strNavLiveTv,
                         strNavSports,
                         strNavSettings,
@@ -1069,6 +1073,13 @@ open class MainActivity : ComponentActivity() {
                                     route = Screen.Library.route,
                                     label = strNavLibrary,
                                     iconRes = R.raw.sidebar_library
+                                )
+                            )
+                            add(
+                                DrawerItem(
+                                    route = Screen.DisneyPlus.route,
+                                    label = strNavDisneyPlus,
+                                    icon = Icons.Default.Stars
                                 )
                             )
                             add(
