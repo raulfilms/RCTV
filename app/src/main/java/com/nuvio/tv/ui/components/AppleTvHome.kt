@@ -1,3 +1,9 @@
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+    androidx.tv.material3.ExperimentalTvMaterial3Api::class
+)
+
 package com.nuvio.tv.ui.components
 
 import android.os.Build
