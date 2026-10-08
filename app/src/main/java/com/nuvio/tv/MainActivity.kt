@@ -51,6 +51,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsSoccer
@@ -2195,7 +2196,7 @@ private fun ModernSidebarScaffold(
                         .offset {
                             IntOffset(
                                 (NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs).roundToPx(),
-                                (NuvioTheme.spacing.lg + sidebarDeflateOffsetY).roundToPx()
+                                (NuvioTheme.spacing.xl + sidebarDeflateOffsetY).roundToPx()
                             )
                         }
                         .graphicsLayer {
@@ -2228,18 +2229,10 @@ private fun CollapsedSidebarPill(
     modifier: Modifier = Modifier,
     onExpand: () -> Unit
 ) {
+    // Apple TV style: a "‹" hint, then a small gray glass pill with the section icon in a circle.
     val pillShape = RoundedCornerShape(NuvioRadii.tokens.full)
-    val colors = NuvioTheme.colors
-    val bgElevated = colors.BackgroundElevated
-    val bgCard = colors.BackgroundCard
-    val borderBase = colors.Border
-    val mediaColors = colors.media
-    val pillBackgroundBrush = remember(blurEnabled) {
-        val alpha = if (blurEnabled) 0.65f else 0.96f
-        Brush.verticalGradient(listOf(
-            Color(0xFF1C1C1E).copy(alpha = alpha),
-            Color(0xFF1C1C1E).copy(alpha = alpha)
-        ))
+    val pillColor = remember(blurEnabled) {
+        Color(0xFF6E6E73).copy(alpha = if (blurEnabled) 0.55f else 0.82f)
     }
 
     Row(
@@ -2249,9 +2242,15 @@ private fun CollapsedSidebarPill(
             .padding(horizontal = NuvioTheme.spacing.hairline, vertical = NuvioTheme.spacing.xxs),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.85f),
+            modifier = Modifier.size(18.dp)
+        )
         Box(
             modifier = Modifier
-                .height(NuvioTheme.sizes.player.control)
+                .height(32.dp)
                 .clip(pillShape)
                 .then(
                     if (blurEnabled && hazeState != null) {
@@ -2263,27 +2262,28 @@ private fun CollapsedSidebarPill(
                         Modifier
                     }
                 )
-                .background(brush = pillBackgroundBrush, shape = pillShape)
+                .background(color = pillColor, shape = pillShape)
+                .border(width = 0.5.dp, color = Color.White.copy(alpha = 0.22f), shape = pillShape)
         ) {
             Row(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
-                    .padding(start = 5.dp, end = 5.dp),
+                    .padding(start = 4.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(NuvioTheme.sizes.sidebar.leadingVisual),
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.22f)),
                     contentAlignment = Alignment.Center
                 ) {
                     DrawerItemIcon(
                         iconRes = iconRes,
                         icon = icon,
-                        tint = NuvioTheme.colors.text.onOverlay,
-                        modifier = Modifier
-                            .size(NuvioTheme.sizes.sidebar.leadingVisual - NuvioTheme.spacing.md)
-                            .offset(y = (-0.5).dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp)
                     )
                 }
 
@@ -2302,13 +2302,10 @@ private fun CollapsedSidebarPill(
                 ) {
                     Text(
                         text = label,
-                        color = NuvioTheme.colors.text.onOverlay,
-                        style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
-                            lineHeight = 30.sp
-                        ),
-                        modifier = Modifier
-                            .padding(start = 9.dp, end = NuvioTheme.spacing.md - 5.dp)
-                            .offset(y = (-0.5).dp),
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 7.dp, end = 8.dp),
                         maxLines = 1
                     )
                 }

@@ -114,8 +114,11 @@ fun CatalogRowSection(
      *  Wide elements above (CW, collections) can point their D-pad down here. */
     entryFocusRequester: FocusRequester? = null,
     upFocusRequester: FocusRequester? = null,
-    listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex)
+    listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex),
+    /** Apple TV look: plain row title, no focus rings, rank numbers on "Top"/"Trending" rows. */
+    appleStyle: Boolean = false
 ) {
+    val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     val catalogRowKey = remember(catalogRow) { catalogRow.stableKey() }
     val rowItemIdentities = remember(catalogRow.items) { catalogRow.stableItemKeys() }
 
@@ -272,6 +275,10 @@ fun CatalogRowSection(
         else if (showCatalogTypeSuffix && typeLabel.isNotEmpty()) "$formattedName - $typeLabel" else formattedName
     }
 
+    val showRankNumbers = remember(appleStyle, catalogRow.catalogName) {
+        appleStyle && isRankedCatalogName(catalogRow.catalogName)
+    }
+
     Column(modifier = modifier.fillMaxWidth().then(
         if (blockingFocusExit.value) {
             Modifier.focusProperties {
@@ -280,6 +287,9 @@ fun CatalogRowSection(
             }
         } else Modifier
     )) {
+        if (appleStyle) {
+            AppleRowTitle(text = catalogTitle.ifBlank { " " })
+        } else
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -309,8 +319,8 @@ fun CatalogRowSection(
         val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
         val layoutDirection = LocalLayoutDirection.current
         val isRtl = layoutDirection == LayoutDirection.Rtl
-        val horizontalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec, isRtl) {
-            val startPx = with(density) { NuvioTheme.spacing.xxxl.roundToPx() }
+        val horizontalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec, isRtl, rowStartPadding) {
+            val startPx = with(density) { rowStartPadding.roundToPx() }
             @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
             object : BringIntoViewSpec {
                 override val scrollAnimationSpec: AnimationSpec<Float> =
@@ -375,8 +385,10 @@ fun CatalogRowSection(
                     }
                 }
                 .focusGroup(),
-            contentPadding = PaddingValues(start = NuvioTheme.spacing.xxxl, end = 200.dp),
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+            contentPadding = PaddingValues(start = rowStartPadding, end = 200.dp),
+            horizontalArrangement = Arrangement.spacedBy(
+                if (appleStyle) AppleTvCardSpacing else NuvioTheme.spacing.lg
+            )
         ) {
             itemsIndexed(
                 items = catalogRow.items,
@@ -433,6 +445,8 @@ fun CatalogRowSection(
                     onBackdropExpandedChanged = null,
                     onClick = onItemClickStable,
                     onLongPress = onItemLongPressStable,
+                    appleStyle = appleStyle,
+                    rankNumber = if (showRankNumbers && index < 10 && !isPlaceholder) index + 1 else null,
                     modifier = Modifier
                         .then(directionalFocusModifier)
                         .then(
@@ -492,10 +506,14 @@ fun CatalogRowSection(
                             focusedContainerColor = NuvioTheme.colors.BackgroundCard
                         ),
                         border = CardDefaults.border(
-                            focusedBorder = Border(
-                                border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                                shape = seeAllCardShape
-                            )
+                            focusedBorder = if (posterCardStyle.focusedBorderWidth > 0.dp) {
+                                Border(
+                                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
+                                    shape = seeAllCardShape
+                                )
+                            } else {
+                                Border.None
+                            }
                         ),
                         scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
                     ) {
@@ -535,3 +553,11 @@ fun CatalogRowSection(
         } // CompositionLocalProvider
     }
 }
+
+// Rows whose order is a ranking get Apple TV style "Top 10" numbers on their first ten posters.
+private val RankedCatalogNameRegex = Regex(
+    """\b(top|trending|popular|tendencias?|populares?|m[aá]s vist[oa]s)\b""",
+    RegexOption.IGNORE_CASE
+)
+
+internal fun isRankedCatalogName(name: String): Boolean = RankedCatalogNameRegex.containsMatchIn(name)

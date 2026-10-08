@@ -962,10 +962,10 @@
 
     <string name="layout_title">Ajustes de Diseño</string>
     <string name="layout_subtitle">Ajustar el diseño de inicio, visibilidad de contenido y comportamiento de pósteres</string>
-    <string name="layout_classic">Vista Clásica</string>
+    <string name="layout_classic">Apple TV</string>
     <string name="layout_grid">Vista de Cuadrícula</string>
     <string name="layout_modern">Vista Moderna</string>
-    <string name="layout_classic_desc">Desplázate por las categorías horizontalmente</string>
+    <string name="layout_classic_desc">Destacados arriba y filas abajo, estilo Apple TV</string>
     <string name="layout_grid_desc">Explora todo en una cuadrícula vertical con una sección destacada</string>
     <string name="layout_modern_desc">Sección destacada fija con una sola fila activa para navegación más rápida</string>
     <string name="layout_section_home">Diseño de Inicio</string>

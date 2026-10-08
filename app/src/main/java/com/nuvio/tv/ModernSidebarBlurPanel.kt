@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -32,40 +32,60 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
-import com.nuvio.tv.ui.components.AutoResizeText
 import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
 import com.nuvio.tv.ui.theme.NuvioComponents
 import com.nuvio.tv.ui.theme.NuvioMotion
-import com.nuvio.tv.ui.theme.NuvioRadii
-import com.nuvio.tv.ui.theme.NuvioStrokes
 import com.nuvio.tv.ui.theme.NuvioTheme
-import com.nuvio.tv.ui.theme.accentBrush
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.draw.drawWithCache
-import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
+import kotlinx.coroutines.delay
+import java.util.Date
 
-private val SidebarLeadingVisualSize = NuvioComponents.tokens.sidebar.leadingVisual
-private val SidebarContentGap = NuvioComponents.tokens.sidebar.contentGap
-private val SidebarProfileContentGap = NuvioComponents.tokens.sidebar.contentGap + NuvioTheme.spacing.xs
+/*
+ * Floating "glass" menu in the style of the tvOS 26 Apple TV app:
+ * a rounded translucent gray card with the profile and clock on top,
+ * every item drawn as a round icon badge plus label, and the focused
+ * item turning into a full-width white pill with dark text.
+ */
+
+private val GlassPanelShape = RoundedCornerShape(40.dp)
+private val ItemPillShape = RoundedCornerShape(percent = 50)
+private val IconBadgeSize = 44.dp
+private val ItemIconSize = 22.dp
+private val ProfileAvatarSize = 48.dp
+
+// Glass colors. With blur the gray is lighter and more see-through so the
+// hero shows through; without blur (Android 11 and older) it stays a bit
+// more solid so the text keeps enough contrast.
+private val GlassTintBlur = Color(0xFF8A8A8E).copy(alpha = 0.58f)
+private val GlassTintSolid = Color(0xFF5B5B60).copy(alpha = 0.94f)
+private val GlassEdge = Color.White.copy(alpha = 0.22f)
+
+private val PillFocused = Color(0xFFF2F2EE)
+private val TextOnPill = Color(0xFF1C1C1E)
+private val TextOnGlass = Color.White
+private val BadgeOnGlass = Color.White.copy(alpha = 0.20f)
+private val BadgeOnGlassSelected = Color.White.copy(alpha = 0.34f)
+private val BadgeOnPill = Color.Black.copy(alpha = 0.08f)
 
 @Composable
 internal fun ModernSidebarBlurPanel(
@@ -104,26 +124,7 @@ internal fun ModernSidebarBlurPanel(
     } else {
         Modifier
     }
-    val colors = NuvioTheme.colors
-    val bgElevated = colors.BackgroundElevated
-    val bgCard = colors.BackgroundCard
-    val borderBase = colors.Border
-    val isAmoledBlack = bgElevated == Color.Black
-    val panelBackgroundBrush = remember(blurEnabled, isAmoledBlack, bgElevated, bgCard) {
-        val baseColor = if (isAmoledBlack) Color.Black else Color(0xFF161618)
-        val alpha = when {
-            blurEnabled -> 0.65f
-            isAmoledBlack -> 1f
-            else -> 0.97f
-        }
-        Brush.verticalGradient(listOf(
-            baseColor.copy(alpha = alpha),
-            baseColor.copy(alpha = alpha)
-        ))
-    }
-    val panelBorderColor = remember(isAmoledBlack, blurEnabled, borderBase) {
-        if (!blurEnabled && isAmoledBlack) borderBase.copy(alpha = 0.9f) else Color.Transparent
-    }
+    val glassTint = if (blurEnabled) GlassTintBlur else GlassTintSolid
 
     Column(
         modifier = Modifier
@@ -136,93 +137,106 @@ internal fun ModernSidebarBlurPanel(
                 scaleY = s
                 transformOrigin = TransformOrigin(0f, 0f)
             }
-            .clip(panelShape)
+            .clip(GlassPanelShape)
             .then(expandedPanelBlurModifier)
-            .background(brush = panelBackgroundBrush, shape = panelShape)
-            .then(
-                if (panelBorderColor != Color.Transparent) {
-                    Modifier.border(width = NuvioStrokes.tokens.hairline, color = panelBorderColor, shape = panelShape)
-                } else {
-                    Modifier
-                }
-            )
-            .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs)
+            .background(color = glassTint, shape = GlassPanelShape)
+            .border(width = 1.dp, color = GlassEdge, shape = GlassPanelShape)
+            .padding(horizontal = 14.dp, vertical = 22.dp)
     ) {
-        if (showProfileSelector && activeProfileName.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .offset(y = NuvioTheme.spacing.md),
-                contentAlignment = Alignment.Center
-            ) {
-                SidebarProfileItem(
-                    profileName = activeProfileName,
-                    profileColorHex = activeProfileColorHex,
-                    profileAvatarImageUrl = activeProfileAvatarImageUrl,
-                    focusEnabled = keepSidebarFocusDuringCollapse,
-                    labelAlpha = sidebarLabelAlpha,
-                    onFocusChanged = { focused ->
-                        if (focused) onDrawerItemFocused(drawerItems.size)
-                    },
-                    onClick = onSwitchProfile,
-                    modifier = Modifier.fillMaxWidth(0.92f)
-                )
+        // Header: profile (or app wordmark) on the left, clock on the right.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                if (showProfileSelector && activeProfileName.isNotEmpty()) {
+                    SidebarProfileItem(
+                        profileName = activeProfileName,
+                        profileColorHex = activeProfileColorHex,
+                        profileAvatarImageUrl = activeProfileAvatarImageUrl,
+                        focusEnabled = keepSidebarFocusDuringCollapse,
+                        labelAlpha = sidebarLabelAlpha,
+                        onFocusChanged = { focused ->
+                            if (focused) onDrawerItemFocused(drawerItems.size)
+                        },
+                        onClick = onSwitchProfile,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    BrandWordmark(
+                        contentDescription = stringResource(R.string.app_name),
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .width(120.dp)
+                            .height(32.dp),
+                        alpha = sidebarLabelAlpha
+                    )
+                }
             }
-        } else {
-            Box(
+            SidebarClock(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .offset(y = NuvioTheme.spacing.md),
-                contentAlignment = Alignment.Center
-            ) {
-                BrandWordmark(
-                    contentDescription = stringResource(R.string.app_name),
-                    modifier = Modifier
-                        .fillMaxWidth(0.72f)
-                        .height(36.dp),
-                    alpha = sidebarLabelAlpha
-                )
-            }
+                    .padding(start = 8.dp, end = 10.dp)
+                    .graphicsLayer { alpha = sidebarLabelAlpha }
+            )
         }
 
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
+        Spacer(modifier = Modifier.height(36.dp))
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Column(
-                modifier = Modifier.offset(y = (-12).dp),
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm - NuvioTheme.spacing.xxs)
-            ) {
-                drawerItems.forEachIndexed { index, item ->
-                    key(item.route) {
-                        SidebarNavigationItem(
-                            label = item.label,
-                            iconRes = item.iconRes,
-                            icon = item.icon,
-                            selected = selectedDrawerRoute == item.route,
-                            focusEnabled = keepSidebarFocusDuringCollapse,
-                            labelAlpha = sidebarLabelAlpha,
-                            iconScale = sidebarIconScale,
-                            onFocusChanged = {
-                                if (it) {
-                                    onDrawerItemFocused(index)
-                                }
-                            },
-                            onClick = { onDrawerItemClick(item.route) },
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .focusRequester(drawerItemFocusRequesters.getValue(item.route))
-                        )
-                    }
+            drawerItems.forEachIndexed { index, item ->
+                key(item.route) {
+                    SidebarNavigationItem(
+                        label = item.label,
+                        iconRes = item.iconRes,
+                        icon = item.icon,
+                        selected = selectedDrawerRoute == item.route,
+                        focusEnabled = keepSidebarFocusDuringCollapse,
+                        labelAlpha = sidebarLabelAlpha,
+                        iconScale = sidebarIconScale,
+                        onFocusChanged = {
+                            if (it) {
+                                onDrawerItemFocused(index)
+                            }
+                        },
+                        onClick = { onDrawerItemClick(item.route) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(drawerItemFocusRequesters.getValue(item.route))
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SidebarClock(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    // Follows the device's 12/24-hour setting.
+    val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
+    var now by remember { mutableStateOf(Date()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = Date()
+            val msToNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
+            delay(msToNextMinute)
+        }
+    }
+    Text(
+        text = timeFormat.format(now),
+        color = TextOnGlass.copy(alpha = 0.9f),
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -239,50 +253,33 @@ private fun SidebarNavigationItem(
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val colors = NuvioTheme.colors
-    val shape = RoundedCornerShape(NuvioRadii.tokens.full)
-    val palette = NuvioTheme.palette
-    val accentColor = palette.secondary
-    val backgroundColorTarget = when {
-        isFocused && selected -> accentColor.copy(alpha = 0.28f)
-        isFocused -> Color.White.copy(alpha = 0.12f)
-        selected -> accentColor.copy(alpha = 0.15f)
-        else -> Color.Transparent
-    }
-    val animatedBackgroundColor by animateColorAsState(
-        targetValue = backgroundColorTarget,
-        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
-        label = "sidebarItemBackground"
-    )
-    val backgroundColor = if (selected && !isFocused) backgroundColorTarget else animatedBackgroundColor
+    val fast = tween<Color>(durationMillis = NuvioMotion.tokens.durations.fast)
 
-    val contentColorTarget = when {
-        selected -> accentColor
-        isFocused -> colors.TextPrimary
-        else -> colors.text.onOverlay
-    }
-    val animatedContentColor by animateColorAsState(
-        targetValue = contentColorTarget,
-        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
+    val pillColor by animateColorAsState(
+        targetValue = if (isFocused) PillFocused else Color.Transparent,
+        animationSpec = fast,
+        label = "sidebarItemPill"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (isFocused) TextOnPill else TextOnGlass,
+        animationSpec = fast,
         label = "sidebarItemContent"
     )
-    val contentColor = if (selected && !isFocused) contentColorTarget else animatedContentColor
-
-    val iconBrush = if (selected) palette.accentBrush() else null
-    val iconTintTarget = when {
-        selected -> Color.White
-        isFocused -> colors.TextPrimary
-        else -> colors.text.onOverlay
-    }
-    val animatedIconTint by animateColorAsState(
-        targetValue = iconTintTarget,
-        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast),
-        label = "sidebarItemIconTint"
+    val badgeColor by animateColorAsState(
+        targetValue = when {
+            isFocused -> BadgeOnPill
+            selected -> BadgeOnGlassSelected
+            else -> BadgeOnGlass
+        },
+        animationSpec = fast,
+        label = "sidebarItemBadge"
     )
-    val iconTint = if (selected && !isFocused) iconTintTarget else animatedIconTint
     val itemScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.1f else 1f,
-        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
+        targetValue = if (isFocused) 1.03f else 1f,
+        animationSpec = tween(
+            durationMillis = NuvioMotion.tokens.durations.fast,
+            easing = NuvioMotion.tokens.easings.standard
+        ),
         label = "sidebarItemScale"
     )
 
@@ -300,72 +297,60 @@ private fun SidebarNavigationItem(
             }
             .focusProperties { canFocus = focusEnabled },
         colors = CardDefaults.colors(
-            containerColor = backgroundColor,
-            focusedContainerColor = backgroundColor,
+            containerColor = pillColor,
+            focusedContainerColor = pillColor,
         ),
         border = CardDefaults.border(
             border = androidx.tv.material3.Border.None,
-            focusedBorder = androidx.tv.material3.Border(
-                border = androidx.compose.foundation.BorderStroke(NuvioStrokes.tokens.thin, Color.Transparent),
-                shape = shape
-            )
+            focusedBorder = androidx.tv.material3.Border.None
         ),
-        shape = CardDefaults.shape(shape = shape),
+        shape = CardDefaults.shape(shape = ItemPillShape),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs, vertical = NuvioTheme.spacing.sm + NuvioTheme.spacing.xxs),
+                .padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-        Box(
-            modifier = Modifier
-                .size(SidebarLeadingVisualSize)
-                .graphicsLayer {
-                    scaleX = iconScale
-                    scaleY = iconScale
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            val iconModifier = if (iconBrush != null) {
-                Modifier
-                    .size(NuvioComponents.tokens.sidebar.iconSize)
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithCache {
-                        onDrawWithContent {
-                            drawContent()
-                            drawRect(brush = iconBrush, blendMode = BlendMode.SrcIn)
-                        }
+            Box(
+                modifier = Modifier
+                    .size(IconBadgeSize)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
                     }
-            } else {
-                Modifier.size(NuvioComponents.tokens.sidebar.iconSize)
+                    .background(color = badgeColor, shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    icon != null -> Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(ItemIconSize)
+                    )
+                    iconRes != null -> Icon(
+                        painter = rememberRawSvgPainter(iconRes),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(ItemIconSize)
+                    )
+                }
             }
-            when {
-                icon != null -> Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = iconModifier
-                )
-                iconRes != null -> Icon(
-                    painter = rememberRawSvgPainter(iconRes),
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = iconModifier
-                )
-            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = label,
+                color = contentColor,
+                fontSize = 22.sp,
+                fontWeight = if (selected || isFocused) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .graphicsLayer { alpha = labelAlpha }
+            )
         }
-        Spacer(modifier = Modifier.width(SidebarContentGap))
-
-        AutoResizeText(
-            text = label,
-            color = contentColor,
-            modifier = Modifier
-                .weight(1f)
-                .graphicsLayer { alpha = labelAlpha }
-        )
-    }
     }
 }
 
@@ -381,9 +366,17 @@ private fun SidebarProfileItem(
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val colors = NuvioTheme.colors
-    val shape = RoundedCornerShape(NuvioRadii.tokens.full)
-    val backgroundColor = if (isFocused) Color.White.copy(alpha = 0.12f) else Color.Transparent
+    val fast = tween<Color>(durationMillis = NuvioMotion.tokens.durations.fast)
+    val pillColor by animateColorAsState(
+        targetValue = if (isFocused) PillFocused else Color.Transparent,
+        animationSpec = fast,
+        label = "sidebarProfilePill"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (isFocused) TextOnPill else TextOnGlass,
+        animationSpec = fast,
+        label = "sidebarProfileText"
+    )
     Card(
         onClick = onClick,
         modifier = modifier
@@ -393,49 +386,42 @@ private fun SidebarProfileItem(
             }
             .focusProperties { canFocus = focusEnabled },
         colors = CardDefaults.colors(
-            containerColor = backgroundColor,
-            focusedContainerColor = backgroundColor,
+            containerColor = pillColor,
+            focusedContainerColor = pillColor,
         ),
         border = CardDefaults.border(
             border = androidx.tv.material3.Border.None,
-            focusedBorder = androidx.tv.material3.Border(
-                border = androidx.compose.foundation.BorderStroke(NuvioStrokes.tokens.thin, Color.Transparent),
-                shape = shape
-            )
+            focusedBorder = androidx.tv.material3.Border.None
         ),
-        shape = CardDefaults.shape(shape = shape),
+        shape = CardDefaults.shape(shape = ItemPillShape),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = NuvioTheme.spacing.lg - NuvioTheme.spacing.xxs, vertical = NuvioTheme.spacing.sm + NuvioTheme.spacing.xxs),
+                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
-        ) {
-        Box(
-            modifier = Modifier.size(SidebarLeadingVisualSize),
-            contentAlignment = Alignment.Center
         ) {
             ProfileAvatarCircle(
                 name = profileName,
                 colorHex = profileColorHex,
-                size = SidebarLeadingVisualSize,
+                size = ProfileAvatarSize,
                 avatarImageUrl = profileAvatarImageUrl,
                 imageCrossfade = false
             )
-        }
-        Spacer(modifier = Modifier.width(SidebarProfileContentGap))
-        AutoResizeText(
-            text = profileName,
-            color = colors.text.onOverlay,
-            modifier = Modifier
-                .weight(1f)
-                .graphicsLayer { alpha = labelAlpha },
-            style = androidx.tv.material3.MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.SemiBold
+            Spacer(modifier = Modifier.width(14.dp))
+            Text(
+                text = profileName,
+                color = textColor,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .graphicsLayer { alpha = labelAlpha }
             )
-        )
-    }
+        }
     }
 }
 
@@ -444,7 +430,7 @@ private fun rememberRawSvgPainter(rawIconRes: Int): Painter {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val sizePx = with(density) { NuvioTheme.spacing.xl.roundToPx() }
     return rememberAsyncImagePainter(
-        model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+        model = ImageRequest.Builder(LocalContext.current)
             .data(rawIconRes)
             .size(sizePx)
             .build()

@@ -59,7 +59,7 @@ fun LayoutSelectionScreen(
     onContinue: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var selectedLayout by remember { mutableStateOf(HomeLayout.MODERN) }
+    var selectedLayout by remember { mutableStateOf(HomeLayout.CLASSIC) }
     val continueFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(uiState.selectedLayout) {

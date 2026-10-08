@@ -962,10 +962,10 @@
 
     <string name="layout_title">Layout Settings</string>
     <string name="layout_subtitle">Adjust home layout, content visibility, and poster behavior</string>
-    <string name="layout_classic">Classic View</string>
+    <string name="layout_classic">Apple TV</string>
     <string name="layout_grid">Grid View</string>
     <string name="layout_modern">Modern View</string>
-    <string name="layout_classic_desc">Scroll through categories horizontally</string>
+    <string name="layout_classic_desc">Featured carousel on top, rows below, Apple TV style</string>
     <string name="layout_grid_desc">Browse everything in a vertical grid with a hero section</string>
     <string name="layout_modern_desc">Fixed hero with a single active row for faster browsing</string>
     <string name="layout_section_home">Home Layout</string>

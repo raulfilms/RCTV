@@ -79,6 +79,10 @@ import com.nuvio.tv.ui.util.recompositionHighlighter
 import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import kotlinx.coroutines.delay
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 
 private const val BACKDROP_ASPECT_RATIO = 16f / 9f
 private const val TRAILER_PREVIEW_REQUEST_FOCUS_DEBOUNCE_MS = 140L
@@ -108,6 +112,10 @@ fun ContentCard(
     expandedDownFocusRequester: FocusRequester? = null,
     expandedUpFocusRequester: FocusRequester? = null,
     onLongPress: (() -> Unit)? = null,
+    /** Apple TV look: no focus ring, the focused poster grows and casts a soft shadow. */
+    appleStyle: Boolean = false,
+    /** Big rank number drawn on the poster (Top 10 rows). */
+    rankNumber: Int? = null,
     onClick: () -> Unit = {}
 ) {
     val cardShape = remember(posterCardStyle.cornerRadius) { RoundedCornerShape(posterCardStyle.cornerRadius) }
@@ -364,12 +372,17 @@ fun ContentCard(
                 focusedContainerColor = Color.Transparent
             ),
             border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                    shape = cardShape
-                )
+                focusedBorder = if (posterCardStyle.focusedBorderWidth > 0.dp) {
+                    Border(
+                        border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
+                        shape = cardShape
+                    )
+                } else {
+                    Border.None
+                }
             ),
-            scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
+            scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale),
+            glow = if (appleStyle) CardDefaults.glow(focusedGlow = AppleTvFocusGlow) else CardDefaults.glow()
         ) {
             Box(
                 modifier = Modifier
@@ -520,6 +533,27 @@ fun ContentCard(
                             )
                         }
                     }
+                }
+
+                if (rankNumber != null) {
+                    Text(
+                        text = rankNumber.toString(),
+                        color = Color.White,
+                        fontSize = 46.sp,
+                        lineHeight = 48.sp,
+                        fontWeight = FontWeight.Black,
+                        style = TextStyle(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.6f),
+                                offset = Offset(0f, 2f),
+                                blurRadius = 12f
+                            )
+                        ),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 8.dp)
+                            .zIndex(2f)
+                    )
                 }
 
                 if (isWatched) {

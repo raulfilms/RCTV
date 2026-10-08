@@ -91,6 +91,14 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.TextStyle
 import com.nuvio.tv.domain.model.CardDepthStyle
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.tv.material3.Icon
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 private val BadgeShape = RoundedCornerShape(NuvioTheme.radii.xs)
 private val CwNewEpisodeBadgeColor = Color(0xFF1D4ED8)
@@ -147,9 +155,12 @@ fun ContinueWatchingSection(
     imageHeight: Dp = 162.dp,
     cardStyle: ContinueWatchingCardStyle = ContinueWatchingCardStyle.CARD,
     cornerRadius: Dp = NuvioTheme.radii.md,
-    posterTitleOverride: TextStyle? = null
+    posterTitleOverride: TextStyle? = null,
+    /** Apple TV look: landscape artwork cards with the progress drawn on the art. */
+    appleStyle: Boolean = false
 ) {
     if (items.isEmpty()) return
+    val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
 
     var lastFocusedIndex by lastFocusedIndexState
     var lastRequestedFocusIndex by remember { mutableIntStateOf(-1) }
@@ -178,6 +189,9 @@ fun ContinueWatchingSection(
     Column(modifier = modifier.then(
         if (entryFocusRequester != null) Modifier.focusRequester(entryFocusRequester) else Modifier
     )) {
+        if (appleStyle) {
+            AppleRowTitle(text = title ?: stringResource(R.string.continue_watching))
+        } else {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -191,13 +205,14 @@ fun ContinueWatchingSection(
                 color = NuvioTheme.colors.TextPrimary
             )
         }
+        }
 
         val density = LocalDensity.current
         val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
         val layoutDirection = LocalLayoutDirection.current
         val isRtl = layoutDirection == LayoutDirection.Rtl
-        val horizontalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec, isRtl) {
-            val startPx = with(density) { NuvioTheme.spacing.xxxl.roundToPx() }
+        val horizontalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec, isRtl, rowStartPadding) {
+            val startPx = with(density) { rowStartPadding.roundToPx() }
             @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
             object : BringIntoViewSpec {
                 override val scrollAnimationSpec: AnimationSpec<Float> =
@@ -239,8 +254,10 @@ fun ContinueWatchingSection(
                         ?: FocusRequester.Default
                 }
                 .focusGroup(),
-            contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl),
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
+            contentPadding = PaddingValues(horizontal = rowStartPadding),
+            horizontalArrangement = Arrangement.spacedBy(
+                if (appleStyle) AppleTvCardSpacing else NuvioTheme.spacing.lg
+            ),
             state = listState
         ) {
             itemsIndexed(
@@ -260,6 +277,32 @@ fun ContinueWatchingSection(
                 val stableOnLongPress = remember(progress) { { optionsItem = progress } }
                 var isCardFocused by remember { mutableStateOf(false) }
 
+                if (appleStyle) {
+                    AppleContinueWatchingCard(
+                        item = progress,
+                        onClick = stableOnClick,
+                        onLongPress = stableOnLongPress,
+                        cardWidth = cardWidth,
+                        cardHeight = imageHeight,
+                        cornerRadius = cornerRadius,
+                        modifier = Modifier
+                            .onFocusChanged { focusState ->
+                                isCardFocused = focusState.isFocused
+                                if (focusState.isFocused) {
+                                    if (lastFocusedIndex != index) {
+                                        lastFocusedIndex = index
+                                    }
+                                    onItemFocused(index)
+                                }
+                            }
+                            .then(
+                                if (downFocusRequester != null) {
+                                    Modifier.focusProperties { down = downFocusRequester }
+                                } else Modifier
+                            )
+                            .then(focusModifier)
+                    )
+                } else
                     ContinueWatchingCard(
                     item = progress,
                     onClick = stableOnClick,
@@ -1217,5 +1260,249 @@ internal fun formatRemainingTime(
         hours > 0 -> strHoursMinLeft.format(hours, minutes)
         minutes > 0 -> strMinLeft.format(minutes)
         else -> strAlmostDone
+    }
+}
+
+/**
+ * Apple TV style "Continue Watching" card: the artwork fills the card, the title
+ * logo sits on it, and a small line at the bottom shows play, progress and time left.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AppleContinueWatchingCard(
+    item: ContinueWatchingItem,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+    cardWidth: Dp,
+    cardHeight: Dp,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier
+) {
+    val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+    var longPressTriggered by remember { mutableStateOf(false) }
+    val longPressKeyTracker = rememberLongPressKeyTracker()
+    val context = LocalContext.current
+    val density = LocalDensity.current
+
+    val progress = (item as? ContinueWatchingItem.InProgress)?.progress
+    val nextUp = (item as? ContinueWatchingItem.NextUp)?.info
+    val titleText = progress?.name ?: nextUp?.name.orEmpty()
+    val logoUrl = (progress?.logo ?: nextUp?.logo)?.takeIf { it.isNotBlank() }
+    val season = progress?.season ?: nextUp?.season
+    val episode = progress?.episode ?: nextUp?.episode
+    val episodeCode = remember(season, episode, context) {
+        if (season != null && episode != null) {
+            context.getString(R.string.season_episode_format, season, episode)
+        } else {
+            null
+        }
+    }
+    val strNext = stringResource(R.string.cw_next_up_short)
+    val strNew = stringResource(R.string.cw_new_episode_short)
+    val strUpcoming = stringResource(R.string.cw_upcoming)
+    val statusText = remember(progress, nextUp, strNext, strNew, strUpcoming) {
+        if (progress != null) {
+            val remainingMs = progress.duration - progress.position
+            if (progress.duration > 0 && remainingMs > 0) {
+                val totalMinutes = (remainingMs / 60_000L).coerceAtLeast(1L)
+                val hours = totalMinutes / 60
+                val minutes = totalMinutes % 60
+                when {
+                    hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+                    hours > 0 -> "${hours}h"
+                    else -> "${minutes}m"
+                }
+            } else {
+                null
+            }
+        } else if (nextUp != null) {
+            when {
+                nextUp.isReleaseAlert -> strNew
+                !nextUp.hasAired -> strUpcoming
+                else -> strNext
+            }
+        } else {
+            null
+        }
+    }
+    val infoText = listOfNotNull(episodeCode, statusText).joinToString(separator = " · ")
+    val progressFraction = progress?.progressPercentage?.coerceIn(0f, 1f) ?: 0f
+
+    // Show artwork (not the episode still), like the Apple TV app.
+    var reloadKey by remember(item) { mutableIntStateOf(0) }
+    val imageUrl = remember(item, reloadKey) { continueWatchingImageModel(item, useEpisodeThumbnails = false) }
+    val requestWidthPx = remember(cardWidth, density) { with(density) { cardWidth.roundToPx() }.coerceAtLeast(1) }
+    val requestHeightPx = remember(cardHeight, density) { with(density) { cardHeight.roundToPx() }.coerceAtLeast(1) }
+    val imageRequest = remember(imageUrl, requestWidthPx, requestHeightPx) {
+        ImageRequest.Builder(context)
+            .data(imageUrl)
+            .crossfade(true)
+            .size(width = requestWidthPx, height = requestHeightPx)
+            .build()
+    }
+    val logoRequest = remember(logoUrl, requestWidthPx) {
+        logoUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .size(width = requestWidthPx, height = with(density) { 34.dp.roundToPx() })
+                .crossfade(true)
+                .build()
+        }
+    }
+    var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+    val bgCardColor = NuvioTheme.colors.BackgroundCard
+    val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
+
+    Card(
+        onClick = {
+            if (longPressTriggered) {
+                longPressTriggered = false
+            } else {
+                onClick()
+            }
+        },
+        modifier = modifier
+            .width(cardWidth)
+            .height(cardHeight)
+            .onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (native.action == AndroidKeyEvent.ACTION_DOWN && native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
+                    longPressTriggered = true
+                    onLongPress()
+                    return@onPreviewKeyEvent true
+                }
+                if (longPressKeyTracker.handle(native, ::isSelectKey) {
+                        longPressTriggered = true
+                        onLongPress()
+                    }
+                ) {
+                    if (native.action == AndroidKeyEvent.ACTION_UP) {
+                        longPressTriggered = false
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                if (native.action == AndroidKeyEvent.ACTION_UP &&
+                    longPressTriggered &&
+                    (isSelectKey(native.keyCode) || native.keyCode == AndroidKeyEvent.KEYCODE_MENU)
+                ) {
+                    longPressTriggered = false
+                    return@onPreviewKeyEvent true
+                }
+                false
+            },
+        shape = CardDefaults.shape(shape = shape),
+        colors = CardDefaults.colors(
+            containerColor = bgCardColor,
+            focusedContainerColor = bgCardColor
+        ),
+        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
+        glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+        ) {
+            if (imageUrl.isNullOrBlank()) {
+                MonochromePosterPlaceholder()
+            } else {
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = titleText,
+                    contentScale = ContentScale.Crop,
+                    placeholder = backgroundPainter,
+                    error = backgroundPainter,
+                    fallback = backgroundPainter,
+                    onError = {
+                        if (reloadKey < 3) {
+                            brokenImageUrls.add(imageUrl)
+                            reloadKey++
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Darken the lower part so the logo and the progress line read on any artwork.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.42f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.78f)
+                            )
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+            ) {
+                if (logoRequest != null && !logoFailed) {
+                    AsyncImage(
+                        model = logoRequest,
+                        contentDescription = titleText,
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.BottomStart,
+                        onError = { logoFailed = true },
+                        modifier = Modifier
+                            .height(28.dp)
+                            .widthIn(max = cardWidth * 0.62f)
+                    )
+                } else {
+                    Text(
+                        text = titleText,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    if (progress != null && progressFraction > 0f) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(26.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.35f))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progressFraction)
+                                    .background(Color.White)
+                            )
+                        }
+                    }
+                    if (infoText.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = infoText,
+                            color = Color.White.copy(alpha = 0.92f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
     }
 }

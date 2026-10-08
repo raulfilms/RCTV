@@ -95,7 +95,9 @@ fun HomeScreen(
     onContinueWatchingStartFromBeginning: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onContinueWatchingPlayManually: (ContinueWatchingItem) -> Unit = onContinueWatchingClick,
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit = { _, _, _ -> },
-    onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> }
+    onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
+    /** Play button on the Apple TV style hero: opens the title and starts playback. */
+    onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -376,7 +378,8 @@ fun HomeScreen(
                                 onNavigateToCatalogSeeAll = onNavigateToCatalogSeeAllStable,
                                 onNavigateToFolderDetail = onNavigateToFolderDetailStable,
                                 isCatalogItemWatched = isCatalogItemWatched,
-                                onCatalogItemLongPress = onCatalogItemLongPress
+                                onCatalogItemLongPress = onCatalogItemLongPress,
+                                onPlayFromHero = onPlayFromHero
                             )
 
                             HomeLayout.GRID -> GridHomeRoute(
@@ -532,11 +535,26 @@ private fun ClassicHomeRoute(
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit,
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
     isCatalogItemWatched: (MetaPreview) -> Boolean,
-    onCatalogItemLongPress: (MetaPreview, String) -> Unit
+    onCatalogItemLongPress: (MetaPreview, String) -> Unit,
+    onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") }
 ) {
     val focusState by viewModel.focusState.collectAsStateWithLifecycle()
     val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsStateWithLifecycle()
+    val libraryMembership = uiState.posterLibraryMembership
+    val librarySourceMode = uiState.librarySourceMode
     ClassicHomeContent(
+        onHeroPlay = { item -> onPlayFromHero(item.id, item.apiType) },
+        onHeroToggleLibrary = { item ->
+            if (librarySourceMode != LibrarySourceMode.LOCAL) {
+                viewModel.openPosterListPicker(item, null)
+            } else {
+                viewModel.togglePosterLibrary(item, null)
+            }
+        },
+        isHeroItemInLibrary = { item ->
+            libraryMembership[homeItemStatusKey(item.id, item.apiType)] == true
+        },
+        onHeroItemShown = { item -> viewModel.refreshPosterLibraryStatus(item) },
         uiState = uiState,
         posterCardStyle = posterCardStyle,
         focusState = focusState,

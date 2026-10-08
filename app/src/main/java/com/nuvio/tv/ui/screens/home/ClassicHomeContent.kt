@@ -64,8 +64,10 @@ import com.nuvio.tv.ui.components.CollectionRowSection
 import com.nuvio.tv.ui.components.ContinueWatchingSection
 import com.nuvio.tv.core.poster.withCustomPosterUrls
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
-import com.nuvio.tv.ui.components.HeroCarousel
-import com.nuvio.tv.ui.components.HeroCarouselBackdrop
+import com.nuvio.tv.ui.components.AppleAmbientBackdrop
+import com.nuvio.tv.ui.components.AppleHeroCarousel
+import com.nuvio.tv.ui.components.AppleTvFocusScale
+import androidx.compose.ui.platform.LocalConfiguration
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
 import com.nuvio.tv.ui.components.PosterCardStyle
@@ -81,7 +83,13 @@ private class FocusSnapshot(
 
 private const val CLASSIC_CATALOG_POSTER_SCALE = 1.35f
 private const val CLASSIC_SECONDARY_ROW_POSTER_SCALE = 1.2f
-private val CLASSIC_ROW_HEADER_FOCUS_INSET = 85.dp
+// Apple TV keeps the focused row well below the top so the hero (or the row above) still peeks in.
+private val CLASSIC_ROW_HEADER_FOCUS_INSET = 160.dp
+// Scroll distance over which the hero artwork shrinks back into its own slot.
+private val APPLE_HERO_FADE_DISTANCE = 200.dp
+// Apple TV "Continue Watching" cards are a little squarer than 16:9.
+private val APPLE_CW_CARD_WIDTH = 184.dp
+private val APPLE_CW_CARD_HEIGHT = 124.dp
 private val CLASSIC_IMMERSIVE_FADE_DISTANCE = 180.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -108,14 +116,19 @@ fun ClassicHomeContent(
     onSaveFocusState: (Int, Int, String?, Map<String, String>, Map<String, Int>, Int, Int) -> Unit,
     onFocusedRowKeyChanged: (String?) -> Unit = {},
     scrollToTopTrigger: Int = 0,
-    onRequestLazyCatalogLoad: (String) -> Unit = {}
+    onRequestLazyCatalogLoad: (String) -> Unit = {},
+    onHeroPlay: (MetaPreview) -> Unit = { item -> onNavigateToDetail(item.id, item.apiType, "") },
+    onHeroToggleLibrary: (MetaPreview) -> Unit = {},
+    isHeroItemInLibrary: (MetaPreview) -> Boolean = { false },
+    onHeroItemShown: (MetaPreview) -> Unit = {}
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val density = LocalDensity.current
+    // Apple TV style: vertical posters at the user's poster size, no focus ring, they grow and lift instead.
     val classicCatalogPosterCardStyle = remember(posterCardStyle) {
         posterCardStyle.copy(
-            width = posterCardStyle.width * CLASSIC_CATALOG_POSTER_SCALE,
-            height = posterCardStyle.height * CLASSIC_CATALOG_POSTER_SCALE
+            focusedBorderWidth = 0.dp,
+            focusedScale = AppleTvFocusScale
         )
     }
     val classicSecondaryPosterCardStyle = remember(posterCardStyle) {
@@ -156,6 +169,8 @@ fun ClassicHomeContent(
         initialFirstVisibleItemScrollOffset = focusState.verticalScrollOffset,
         prefetchStrategy = nestedPrefetchStrategy
     )
+    // True while the hero buttons hold focus; read by the scroll spec below.
+    val heroFocusFlag = remember { booleanArrayOf(false) }
     val verticalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec, columnListState) {
         val topInsetPx = with(density) { CLASSIC_ROW_HEADER_FOCUS_INSET.toPx() }
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
@@ -168,6 +183,10 @@ fun ClassicHomeContent(
                 size: Float,
                 containerSize: Float
             ): Float {
+                // Focus on the hero buttons always brings the page back to the very top.
+                if (heroFocusFlag[0] && columnListState.firstVisibleItemIndex == 0) {
+                    return -columnListState.firstVisibleItemScrollOffset.toFloat()
+                }
                 val distance = offset - topInsetPx
                 if (kotlin.math.abs(distance) < 1f) return 0f
                 if (distance < 0f && !columnListState.canScrollBackward) return 0f
@@ -472,48 +491,32 @@ fun ClassicHomeContent(
     val catalogFocusBackdropVisible = remember(immersiveBackdropAlpha) {
         derivedStateOf { immersiveBackdropAlpha.value <= 0f }
     }
-    val immersiveBackdropVisible = remember(immersiveBackdropAlpha) {
-        derivedStateOf { immersiveBackdropAlpha.value > 0f }
+    val heroFadeDistancePx = remember(density) {
+        with(density) { APPLE_HERO_FADE_DISTANCE.toPx() }
     }
-    val backgroundColor = NuvioTheme.colors.Background
+    // 0 at the top of the page, 1 once the hero has scrolled away. Read only while drawing.
+    val heroScrollFraction: () -> Float = remember(columnListState, heroFadeDistancePx) {
+        {
+            if (columnListState.firstVisibleItemIndex > 0) 1f
+            else (columnListState.firstVisibleItemScrollOffset / heroFadeDistancePx).coerceIn(0f, 1f)
+        }
+    }
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+    // Like Apple TV: the hero fills most of the screen and the first row peeks in at the bottom.
+    val appleHeroHeight = remember(screenHeight) { (screenHeight - 140.dp).coerceAtLeast(300.dp) }
     CompositionLocalProvider(
         LocalBringIntoViewSpec provides verticalBringIntoViewSpec,
         LocalFastScrollActive provides isFastScrollingState,
         LocalVerticalRowsScrolling provides isVerticalScrollingState
     ) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
+        modifier = Modifier.fillMaxSize()
     ) {
-    if (heroVisible) {
-        activeHeroItem?.let { item ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawWithContent {
-                        if (immersiveBackdropVisible.value) {
-                            drawContent()
-                        }
-                    }
-            ) {
-                HeroCarouselBackdrop(
-                    item = item,
-                    fullPage = true,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                val coverAlpha = 1f - immersiveBackdropAlpha.value
-                if (coverAlpha > 0f && coverAlpha < 1f) {
-                    drawRect(color = backgroundColor, alpha = coverAlpha)
-                }
-            }
+    // Blurred wash of the featured artwork behind everything (the Apple TV "glass" background).
+    AppleAmbientBackdrop(
+        imageUrl = if (heroVisible) activeHeroItem?.backdropUrl else null,
+        modifier = Modifier.fillMaxSize()
     )
     ClassicFocusGradientBackdrop(
         artworkProvider = { focusedArtwork },
@@ -587,30 +590,30 @@ fun ClassicHomeContent(
                     null // Classic uses imperative requestFocus
                 },
             ),
-        contentPadding = PaddingValues(top = if (heroVisible) NuvioTheme.spacing.none else NuvioTheme.spacing.xl, bottom = NuvioTheme.spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxl)
+        contentPadding = PaddingValues(top = if (heroVisible) NuvioTheme.spacing.none else NuvioTheme.spacing.xxxl, bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(26.dp)
     ) {
         if (heroVisible) {
             item(key = "hero_carousel", contentType = "hero") {
-                HeroCarousel(
+                AppleHeroCarousel(
                     items = uiState.heroItems.asStable(),
-                    focusRequester = if (shouldRequestInitialFocus || shouldRestoreHeroFocus) heroFocusRequester else null,
-                    showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
+                    heroHeight = appleHeroHeight,
+                    imageHeight = screenHeight,
+                    scrollFraction = heroScrollFraction,
+                    playFocusRequester = heroFocusRequester,
                     onActiveItemChanged = { item ->
                         activeHeroItem = item
                         val idx = uiState.heroItems.indexOfFirst { it.id == item.id }
                         if (idx >= 0) savedHeroIndex.intValue = idx
+                        onHeroItemShown(item)
                     },
-                    showBackdrop = false,
                     onItemFocus = handleHeroFocus,
                     initialActiveIndex = savedHeroIndex.intValue,
-                    onItemClick = { item ->
-                        onNavigateToDetail(
-                            item.id,
-                            item.apiType,
-                            ""
-                        )
-                    }
+                    onPlay = onHeroPlay,
+                    onDetails = { item -> onNavigateToDetail(item.id, item.apiType, "") },
+                    onToggleLibrary = onHeroToggleLibrary,
+                    isInLibrary = isHeroItemInLibrary,
+                    modifier = Modifier.onFocusChanged { heroFocusFlag[0] = it.hasFocus }
                 )
             }
         }
@@ -683,12 +686,13 @@ fun ClassicHomeContent(
                     focusRequesters = cwItemFocusRequesters,
                     rowFocusRequester = cwRowFocusRequester,
                     lastFocusedIndexState = lastFocusedCwIndex,
-                    cardWidth = classicContinueWatchingCardWidth,
-                    imageHeight = classicContinueWatchingImageHeight,
+                    cardWidth = APPLE_CW_CARD_WIDTH,
+                    imageHeight = APPLE_CW_CARD_HEIGHT,
                     cardStyle = uiState.continueWatchingCardStyle,
                     cornerRadius = posterCardStyle.cornerRadius,
                     posterTitleOverride = classicPosterTitleStyle,
-                    listState = cwListState
+                    listState = cwListState,
+                    appleStyle = true
                 )
             }
         }
@@ -757,12 +761,13 @@ fun ClassicHomeContent(
                                 ?.toClassicFocusArtwork(uiState.focusedPosterBackdropExpandEnabled)
                         }
                     },
-                    cardWidth = classicContinueWatchingCardWidth,
-                    imageHeight = classicContinueWatchingImageHeight,
+                    cardWidth = APPLE_CW_CARD_WIDTH,
+                    imageHeight = APPLE_CW_CARD_HEIGHT,
                     cardStyle = uiState.continueWatchingCardStyle,
                     cornerRadius = posterCardStyle.cornerRadius,
                     posterTitleOverride = classicPosterTitleStyle,
-                    listState = upcomingListState
+                    listState = upcomingListState,
+                    appleStyle = true
                 )
             }
         }
@@ -824,7 +829,8 @@ fun ClassicHomeContent(
                     CatalogRowSection(
                         catalogRow = catalogRow,
                         posterCardStyle = classicCatalogPosterCardStyle,
-                        showPosterLabels = uiState.posterLabelsEnabled,
+                        showPosterLabels = false,
+                        appleStyle = true,
                         showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                         showAddonName = uiState.catalogAddonNameEnabled,
                         showCatalogTypeSuffix = uiState.catalogTypeSuffixEnabled,
