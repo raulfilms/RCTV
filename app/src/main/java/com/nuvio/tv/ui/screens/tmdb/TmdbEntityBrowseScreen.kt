@@ -624,6 +624,7 @@ private fun EntityRailRow(
 private fun entityKindLabel(kind: TmdbEntityKind): String = when (kind) {
     TmdbEntityKind.COMPANY -> stringResource(R.string.tmdb_entity_kind_company)
     TmdbEntityKind.NETWORK -> stringResource(R.string.tmdb_entity_kind_network)
+    TmdbEntityKind.PROVIDER -> stringResource(R.string.tmdb_entity_kind_provider)
 }
 
 @Composable

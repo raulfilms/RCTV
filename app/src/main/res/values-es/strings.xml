@@ -1066,4 +1066,6 @@
     <string name="watchlist_removed">Eliminado de lista de deseos</string>
     <string name="playback_player_auto">Automático (Mejor para el contenido)</string>
     <string name="playback_player_auto_desc">ExoPlayer para Películas y Series · MPV para Anime</string>
+    <string name="tmdb_entity_kind_provider">Servicio de streaming</string>
+    <string name="home_streaming_services">Servicios de streaming</string>
 </resources>

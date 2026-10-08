@@ -89,6 +89,17 @@ import com.nuvio.tv.ui.util.StableList
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.delay
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.text.style.TextAlign
+import com.nuvio.tv.domain.model.StreamingService
 
 /*
  * Pieces of the Apple TV (tvOS 26) style home screen:
@@ -646,5 +657,188 @@ private fun AppleGlassIconButton(
             tint = color,
             modifier = Modifier.size(if (bare) 26.dp else 20.dp)
         )
+    }
+}
+
+/**
+ * "Streaming Services" row: one tile per service with its logo on a soft wash of the
+ * logo's own colors. Selecting a tile opens that service's page.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun AppleStreamingServicesRow(
+    title: String,
+    services: List<StreamingService>,
+    onServiceClick: (StreamingService) -> Unit,
+    modifier: Modifier = Modifier,
+    rowFocusRequester: FocusRequester? = null,
+    initialFocusIndex: Int = -1,
+    onItemFocused: (Int) -> Unit = {}
+) {
+    if (services.isEmpty()) return
+
+    val itemRequesters = remember(services.size) { List(services.size) { FocusRequester() } }
+    var lastFocusedIndex by remember { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+
+    // Coming back from a service page: put focus back on the tile that was opened.
+    LaunchedEffect(initialFocusIndex, services.size) {
+        val target = initialFocusIndex
+        if (target !in services.indices) return@LaunchedEffect
+        runCatching { listState.scrollToItem(target) }
+        repeat(4) {
+            withFrameNanos { }
+            val focused = runCatching { itemRequesters[target].requestFocus(); true }.getOrDefault(false)
+            if (focused) return@LaunchedEffect
+        }
+    }
+
+    // Keep the focused tile at the row's left edge, like the other rows.
+    val density = LocalDensity.current
+    val parentSpec = LocalBringIntoViewSpec.current
+    val startPx = with(density) { AppleTvContentStart.toPx() }
+    val horizontalSpec = remember(parentSpec, startPx) {
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec: AnimationSpec<Float> = parentSpec.scrollAnimationSpec
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                val childSize = kotlin.math.abs(size)
+                val space = containerSize - startPx
+                val leading = if (childSize <= containerSize && space < childSize) containerSize - childSize else startPx
+                return offset - leading
+            }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        AppleRowTitle(text = title)
+        CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalSpec) {
+            LazyRow(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (rowFocusRequester != null) Modifier.focusRequester(rowFocusRequester) else Modifier)
+                    .focusRestorer { itemRequesters.getOrNull(lastFocusedIndex) ?: FocusRequester.Default }
+                    .focusGroup(),
+                contentPadding = PaddingValues(start = AppleTvContentStart, end = AppleTvContentStart),
+                horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
+            ) {
+                itemsIndexed(
+                    items = services,
+                    key = { _, service -> "streaming_service_${service.id}" }
+                ) { index, service ->
+                    AppleStreamingServiceTile(
+                        service = service,
+                        onClick = { onServiceClick(service) },
+                        modifier = Modifier
+                            .focusRequester(itemRequesters[index])
+                            .onFocusChanged {
+                                if (it.isFocused) {
+                                    lastFocusedIndex = index
+                                    onItemFocused(index)
+                                }
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AppleStreamingServiceTile(
+    service: StreamingService,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val shape = remember { RoundedCornerShape(12.dp) }
+    val iconShape = remember { RoundedCornerShape(12.dp) }
+    val iconSizePx = remember(density) { with(density) { 56.dp.roundToPx() }.coerceAtLeast(1) }
+    val logoUrl = service.logoUrl
+    val washModel = remember(context, logoUrl) {
+        logoUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .size(width = 6, height = 6)
+                .memoryCacheKey("${it}_service_wash")
+                .crossfade(false)
+                .build()
+        }
+    }
+    val logoModel = remember(context, logoUrl, iconSizePx) {
+        logoUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .size(width = iconSizePx, height = iconSizePx)
+                .crossfade(true)
+                .build()
+        }
+    }
+    var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+
+    Card(
+        onClick = onClick,
+        modifier = modifier.size(width = 168.dp, height = 94.dp),
+        shape = CardDefaults.shape(shape = shape),
+        colors = CardDefaults.colors(
+            containerColor = Color(0xFF2C2C30),
+            focusedContainerColor = Color(0xFF2C2C30)
+        ),
+        border = CardDefaults.border(
+            border = Border(border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.14f)), shape = shape),
+            focusedBorder = Border.None
+        ),
+        scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
+        glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (logoModel != null && !logoFailed) {
+                // Soft wash in the service's own colors behind its logo.
+                AsyncImage(
+                    model = washModel,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(24.dp)
+                            else Modifier
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.22f))
+                )
+                AsyncImage(
+                    model = logoModel,
+                    contentDescription = service.name,
+                    contentScale = ContentScale.Fit,
+                    onError = { logoFailed = true },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(iconShape)
+                )
+            } else {
+                Text(
+                    text = service.name,
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 10.dp)
+                )
+            }
+        }
     }
 }

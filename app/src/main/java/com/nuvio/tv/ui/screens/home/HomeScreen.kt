@@ -49,6 +49,7 @@ import com.nuvio.tv.domain.model.HomeLayout
 import com.nuvio.tv.domain.model.LibraryListTab
 import com.nuvio.tv.domain.model.localizedMembershipTitle
 import com.nuvio.tv.domain.model.LibrarySourceMode
+import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.LoadingIndicator
@@ -97,7 +98,9 @@ fun HomeScreen(
     onNavigateToCatalogSeeAll: (String, String, String) -> Unit = { _, _, _ -> },
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
     /** Play button on the Apple TV style hero: opens the title and starts playback. */
-    onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") }
+    onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") },
+    /** A tile in the "Streaming Services" row was chosen. */
+    onOpenStreamingService: (StreamingService) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -379,7 +382,8 @@ fun HomeScreen(
                                 onNavigateToFolderDetail = onNavigateToFolderDetailStable,
                                 isCatalogItemWatched = isCatalogItemWatched,
                                 onCatalogItemLongPress = onCatalogItemLongPress,
-                                onPlayFromHero = onPlayFromHero
+                                onPlayFromHero = onPlayFromHero,
+                                onOpenStreamingService = onOpenStreamingService
                             )
 
                             HomeLayout.GRID -> GridHomeRoute(
@@ -536,10 +540,13 @@ private fun ClassicHomeRoute(
     onNavigateToFolderDetail: (String, String) -> Unit = { _, _ -> },
     isCatalogItemWatched: (MetaPreview) -> Boolean,
     onCatalogItemLongPress: (MetaPreview, String) -> Unit,
-    onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") }
+    onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") },
+    onOpenStreamingService: (StreamingService) -> Unit = {},
+    streamingServicesViewModel: StreamingServicesViewModel = hiltViewModel()
 ) {
     val focusState by viewModel.focusState.collectAsStateWithLifecycle()
     val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsStateWithLifecycle()
+    val streamingServices by streamingServicesViewModel.services.collectAsStateWithLifecycle()
     val libraryMembership = uiState.posterLibraryMembership
     val librarySourceMode = uiState.librarySourceMode
     ClassicHomeContent(
@@ -555,6 +562,8 @@ private fun ClassicHomeRoute(
             libraryMembership[homeItemStatusKey(item.id, item.apiType)] == true
         },
         onHeroItemShown = { item -> viewModel.refreshPosterLibraryStatus(item) },
+        streamingServices = streamingServices,
+        onStreamingServiceClick = onOpenStreamingService,
         uiState = uiState,
         posterCardStyle = posterCardStyle,
         focusState = focusState,

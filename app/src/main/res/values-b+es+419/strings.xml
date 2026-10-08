@@ -259,6 +259,8 @@
     <string name="detail_comments_likes">%1$d me gusta</string>
     <string name="tmdb_entity_kind_company">Compañía de producción</string>
     <string name="tmdb_entity_kind_network">Cadena</string>
+    <string name="tmdb_entity_kind_provider">Servicio de streaming</string>
+    <string name="home_streaming_services">Servicios de streaming</string>
     <string name="tmdb_entity_rail_popular">Populares</string>
     <string name="tmdb_entity_rail_top_rated">Mejor valorados</string>
     <string name="tmdb_entity_rail_recent">Recientes</string>

@@ -259,6 +259,8 @@
     <string name="detail_comments_likes">%1$d likes</string>
     <string name="tmdb_entity_kind_company">Production Company</string>
     <string name="tmdb_entity_kind_network">Network</string>
+    <string name="tmdb_entity_kind_provider">Streaming service</string>
+    <string name="home_streaming_services">Streaming Services</string>
     <string name="tmdb_entity_rail_popular">Popular</string>
     <string name="tmdb_entity_rail_top_rated">Top Rated</string>
     <string name="tmdb_entity_rail_recent">Recent</string>

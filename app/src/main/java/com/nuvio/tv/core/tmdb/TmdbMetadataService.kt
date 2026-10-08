@@ -971,6 +971,24 @@ class TmdbMetadataService(
                     }
                 }
 
+                TmdbEntityKind.PROVIDER -> {
+                    val entry = tmdbApi.getTvWatchProviders(TMDB_API_KEY, STREAMING_PROVIDER_REGION).body()
+                        ?.results.orEmpty()
+                        .plus(tmdbApi.getMovieWatchProviders(TMDB_API_KEY, STREAMING_PROVIDER_REGION).body()?.results.orEmpty())
+                        .firstOrNull { it.providerId == entityId }
+                    TmdbEntityHeader(
+                        id = entityId,
+                        kind = entityKind,
+                        name = fallbackName?.takeIf { it.isNotBlank() }
+                            ?: entry?.providerName?.takeIf { it.isNotBlank() }
+                            ?: "Unknown",
+                        logo = buildImageUrl(entry?.logoPath, size = "w300"),
+                        originCountry = null,
+                        secondaryLabel = null,
+                        description = null
+                    )
+                }
+
                 TmdbEntityKind.NETWORK -> {
                     val body = tmdbApi.getNetworkDetails(entityId, TMDB_API_KEY).body()
                     if (body == null) {
@@ -1033,6 +1051,10 @@ class TmdbMetadataService(
 
         val today = LocalDate.now().toString()
         val voteCountFloor = if (railType == TmdbEntityRailType.TOP_RATED) TOP_RATED_VOTE_COUNT_FLOOR else null
+        val isProvider = entityKind == TmdbEntityKind.PROVIDER
+        val providerRegion = if (isProvider) STREAMING_PROVIDER_REGION else null
+        val providerIds = if (isProvider) entityId.toString() else null
+        val providerMonetization = if (isProvider) "flatrate" else null
         val result = try {
             suspend fun loadDiscover(requestLanguage: String) = when (mediaType) {
                 TmdbEntityMediaType.MOVIE -> {
@@ -1041,9 +1063,12 @@ class TmdbMetadataService(
                         language = requestLanguage,
                         page = page,
                         sortBy = movieSortBy(railType),
-                        withCompanies = entityId.toString(),
+                        withCompanies = if (entityKind == TmdbEntityKind.COMPANY) entityId.toString() else null,
                         releaseDateLte = if (railType == TmdbEntityRailType.RECENT) today else null,
-                        voteCountGte = voteCountFloor
+                        voteCountGte = voteCountFloor,
+                        watchRegion = providerRegion,
+                        withWatchProviders = providerIds,
+                        withWatchMonetizationTypes = providerMonetization
                     ).body()
                 }
 
@@ -1057,7 +1082,10 @@ class TmdbMetadataService(
                         withNetworks = if (entityKind == TmdbEntityKind.NETWORK) entityId.toString() else null,
                         firstAirDateLte = if (railType == TmdbEntityRailType.RECENT || entityKind == TmdbEntityKind.NETWORK) today else null,
                         voteCountGte = voteCountFloor,
-                        withStatus = if (entityKind == TmdbEntityKind.NETWORK) "0|3|4" else null
+                        withStatus = if (entityKind == TmdbEntityKind.NETWORK) "0|3|4" else null,
+                        watchRegion = providerRegion,
+                        withWatchProviders = providerIds,
+                        withWatchMonetizationTypes = providerMonetization
                     ).body()
                 }
             }
@@ -1678,15 +1706,22 @@ data class TmdbEpisodeEnrichment(
 
 enum class TmdbEntityKind(val routeValue: String) {
     COMPANY("company"),
-    NETWORK("network");
+    NETWORK("network"),
+
+    /** A streaming service (TMDB watch provider): what is included with a subscription. */
+    PROVIDER("provider");
 
     companion object {
         fun fromRouteValue(value: String): TmdbEntityKind = when (value.trim().lowercase(Locale.US)) {
             "network" -> NETWORK
+            "provider" -> PROVIDER
             else -> COMPANY
         }
     }
 }
+
+/** Region used for streaming-service catalogs (same region the Disney+ hub uses). */
+const val STREAMING_PROVIDER_REGION = "US"
 
 enum class TmdbEntityMediaType(val value: String) {
     MOVIE("movie"),

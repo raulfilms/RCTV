@@ -154,6 +154,21 @@ interface TmdbApi {
         @Query("api_key") apiKey: String
     ): Response<TmdbCompanyDetailsResponse>
 
+    /** Streaming services (watch providers) TMDB knows for a region, with their logos. */
+    @GET("watch/providers/movie")
+    suspend fun getMovieWatchProviders(
+        @Query("api_key") apiKey: String,
+        @Query("watch_region") watchRegion: String? = null,
+        @Query("language") language: String? = null
+    ): Response<TmdbWatchProviderListResponse>
+
+    @GET("watch/providers/tv")
+    suspend fun getTvWatchProviders(
+        @Query("api_key") apiKey: String,
+        @Query("watch_region") watchRegion: String? = null,
+        @Query("language") language: String? = null
+    ): Response<TmdbWatchProviderListResponse>
+
     @GET("network/{network_id}")
     suspend fun getNetworkDetails(
         @Path("network_id") networkId: Int,
@@ -768,4 +783,17 @@ data class TmdbNetworkDetailsResponse(
     @Json(name = "homepage") val homepage: String? = null,
     @Json(name = "logo_path") val logoPath: String? = null,
     @Json(name = "origin_country") val originCountry: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TmdbWatchProviderListResponse(
+    @Json(name = "results") val results: List<TmdbWatchProviderEntry>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TmdbWatchProviderEntry(
+    @Json(name = "provider_id") val providerId: Int,
+    @Json(name = "provider_name") val providerName: String? = null,
+    @Json(name = "logo_path") val logoPath: String? = null,
+    @Json(name = "display_priority") val displayPriority: Int? = null
 )

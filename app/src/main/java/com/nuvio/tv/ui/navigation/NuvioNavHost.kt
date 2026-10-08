@@ -327,6 +327,25 @@ private fun PlaybackNavHost(
                             playOnLoad = true
                         )
                     )
+                },
+                onOpenStreamingService = { service ->
+                    if (service.opensDisneyHub) {
+                        // Disney+ already has its own section in the menu; open it the way the menu does.
+                        navController.navigate(Screen.DisneyPlus.route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    } else {
+                        navController.navigate(
+                            Screen.TmdbEntityBrowse.createRoute(
+                                entityKind = "provider",
+                                entityId = service.id,
+                                entityName = service.name,
+                                sourceType = "tv"
+                            )
+                        )
+                    }
                 }
             )
         }

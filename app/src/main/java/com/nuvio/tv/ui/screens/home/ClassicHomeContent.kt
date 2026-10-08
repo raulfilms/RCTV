@@ -66,6 +66,8 @@ import com.nuvio.tv.core.poster.withCustomPosterUrls
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.ui.components.AppleAmbientBackdrop
 import com.nuvio.tv.ui.components.AppleHeroCarousel
+import com.nuvio.tv.ui.components.AppleStreamingServicesRow
+import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleTvFocusScale
 import androidx.compose.ui.platform.LocalConfiguration
 import com.nuvio.tv.ui.components.LoadingIndicator
@@ -90,6 +92,9 @@ private val APPLE_HERO_FADE_DISTANCE = 200.dp
 // Apple TV "Continue Watching" cards are a little squarer than 16:9.
 private val APPLE_CW_CARD_WIDTH = 184.dp
 private val APPLE_CW_CARD_HEIGHT = 124.dp
+private const val STREAMING_SERVICES_ROW_KEY = "streaming_services"
+// Saved-focus row index for the services row; catalog rows use 0 and up, Continue Watching -1, the hero -2.
+private const val STREAMING_SERVICES_ROW_INDEX = -3
 private val CLASSIC_IMMERSIVE_FADE_DISTANCE = 180.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -120,7 +125,9 @@ fun ClassicHomeContent(
     onHeroPlay: (MetaPreview) -> Unit = { item -> onNavigateToDetail(item.id, item.apiType, "") },
     onHeroToggleLibrary: (MetaPreview) -> Unit = {},
     isHeroItemInLibrary: (MetaPreview) -> Boolean = { false },
-    onHeroItemShown: (MetaPreview) -> Unit = {}
+    onHeroItemShown: (MetaPreview) -> Unit = {},
+    streamingServices: List<StreamingService> = emptyList(),
+    onStreamingServiceClick: (StreamingService) -> Unit = {}
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val density = LocalDensity.current
@@ -236,6 +243,7 @@ fun ClassicHomeContent(
     val cwItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val cwRowFocusRequester = remember { FocusRequester() }
+    val servicesRowFocusRequester = remember { FocusRequester() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
     // Saveable so the rows come back where they were left after navigating away and
     // returning. The restorer picks the first visible card when the remembered one is
@@ -442,6 +450,7 @@ fun ClassicHomeContent(
     // Lazy catalog loading: trigger load when rows approach visibility
     val latestOnRequestLazyCatalogLoad = rememberUpdatedState(onRequestLazyCatalogLoad)
     val latestVisibleHomeRows = rememberUpdatedState(visibleHomeRows)
+    val latestStreamingServices = rememberUpdatedState(streamingServices)
     LaunchedEffect(columnListState) {
         val prefetchAhead = 1
         snapshotFlow {
@@ -458,7 +467,8 @@ fun ClassicHomeContent(
             // Offset for hero + CW sections that precede homeRows in LazyColumn
             val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
             val cwOffset = if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) 1 else 0
-            val rowsOffset = heroOffset + cwOffset
+            val servicesOffset = if (latestStreamingServices.value.isNotEmpty()) 1 else 0
+            val rowsOffset = heroOffset + cwOffset + servicesOffset
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAhead)) {
                 val rowIdx = idx - rowsOffset
                 val row = rows.getOrNull(rowIdx) ?: continue
@@ -567,6 +577,7 @@ fun ClassicHomeContent(
                     fun requesterForKey(k: String?): FocusRequester? = when {
                         k == null -> null
                         k == "hero_carousel" -> heroFocusRequester
+                        k == STREAMING_SERVICES_ROW_KEY -> servicesRowFocusRequester
                         rowFocusRequesters.containsKey(k) -> rowFocusRequesters[k]
                         else -> {
                             val baseKey = k.substringBeforeLast('_')
@@ -693,6 +704,29 @@ fun ClassicHomeContent(
                     posterTitleOverride = classicPosterTitleStyle,
                     listState = cwListState,
                     appleStyle = true
+                )
+            }
+        }
+
+        // Streaming services, right under Continue Watching.
+        if (streamingServices.isNotEmpty()) {
+            item(key = STREAMING_SERVICES_ROW_KEY, contentType = "streaming_services") {
+                val restoreServicesFocus = restoringFocus &&
+                    focusState.focusedRowKey == STREAMING_SERVICES_ROW_KEY
+                AppleStreamingServicesRow(
+                    title = stringResource(R.string.home_streaming_services),
+                    services = streamingServices,
+                    onServiceClick = onStreamingServiceClick,
+                    rowFocusRequester = servicesRowFocusRequester,
+                    initialFocusIndex = if (restoreServicesFocus) focusState.focusedItemIndex else -1,
+                    onItemFocused = { itemIndex ->
+                        if (restoringFocus) restoringFocus = false
+                        currentFocusSnapshot.rowIndex = STREAMING_SERVICES_ROW_INDEX
+                        currentFocusSnapshot.itemIndex = itemIndex
+                        currentFocusSnapshot.rowKey = STREAMING_SERVICES_ROW_KEY
+                        activeRowKeyState.value = null
+                        onFocusedRowKeyChanged(null)
+                    }
                 )
             }
         }
