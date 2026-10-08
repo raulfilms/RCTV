@@ -61,6 +61,8 @@ import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.core.tracking.LOCAL_LIBRARY_LIST_KEY
 import com.nuvio.tv.core.tracking.supportsMembershipFor
 import com.nuvio.tv.data.local.StartupAuthNotice
@@ -547,6 +549,7 @@ private fun ClassicHomeRoute(
     val focusState by viewModel.focusState.collectAsStateWithLifecycle()
     val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsStateWithLifecycle()
     val streamingServices by streamingServicesViewModel.services.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val libraryMembership = uiState.posterLibraryMembership
     val librarySourceMode = uiState.librarySourceMode
     ClassicHomeContent(
@@ -563,7 +566,15 @@ private fun ClassicHomeRoute(
         },
         onHeroItemShown = { item -> viewModel.refreshPosterLibraryStatus(item) },
         streamingServices = streamingServices,
-        onStreamingServiceClick = onOpenStreamingService,
+        onStreamingServiceClick = { service ->
+            if (service.opensDisneyHub || service.target != null) {
+                onOpenStreamingService(service)
+            } else {
+                // Its page couldn't be looked up yet (no connection?): try again and let the viewer know.
+                streamingServicesViewModel.resolve()
+                Toast.makeText(context, R.string.streaming_service_unavailable, Toast.LENGTH_SHORT).show()
+            }
+        },
         uiState = uiState,
         posterCardStyle = posterCardStyle,
         focusState = focusState,

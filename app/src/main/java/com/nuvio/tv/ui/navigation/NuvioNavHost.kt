@@ -337,14 +337,18 @@ private fun PlaybackNavHost(
                             restoreState = true
                         }
                     } else {
-                        navController.navigate(
-                            Screen.TmdbEntityBrowse.createRoute(
-                                entityKind = "provider",
-                                entityId = service.id,
-                                entityName = service.name,
-                                sourceType = "tv"
+                        val target = service.target
+                        if (target != null) {
+                            navController.navigate(
+                                Screen.TmdbEntityBrowse.createRoute(
+                                    entityKind = target.entityKind,
+                                    entityId = target.entityId,
+                                    entityName = service.name,
+                                    // Studios (A24...) are mostly films; services lead with series.
+                                    sourceType = if (target.entityKind == "company") "movie" else "tv"
+                                )
                             )
-                        )
+                        }
                     }
                 }
             )

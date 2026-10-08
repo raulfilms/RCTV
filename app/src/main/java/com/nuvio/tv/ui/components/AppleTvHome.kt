@@ -100,6 +100,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.text.style.TextAlign
 import com.nuvio.tv.domain.model.StreamingService
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 
 /*
  * Pieces of the Apple TV (tvOS 26) style home screen:
@@ -725,7 +727,7 @@ fun AppleStreamingServicesRow(
             ) {
                 itemsIndexed(
                     items = services,
-                    key = { _, service -> "streaming_service_${service.id}" }
+                    key = { _, service -> "streaming_service_${service.key}" }
                 ) { index, service ->
                     AppleStreamingServiceTile(
                         service = service,
@@ -752,43 +754,21 @@ private fun AppleStreamingServiceTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val density = LocalDensity.current
     val shape = remember { RoundedCornerShape(12.dp) }
-    val iconShape = remember { RoundedCornerShape(12.dp) }
-    val iconSizePx = remember(density) { with(density) { 56.dp.roundToPx() }.coerceAtLeast(1) }
-    val logoUrl = service.logoUrl
-    val washModel = remember(context, logoUrl) {
-        logoUrl?.let {
-            ImageRequest.Builder(context)
-                .data(it)
-                .size(width = 6, height = 6)
-                .memoryCacheKey("${it}_service_wash")
-                .crossfade(false)
-                .build()
-        }
-    }
-    val logoModel = remember(context, logoUrl, iconSizePx) {
-        logoUrl?.let {
-            ImageRequest.Builder(context)
-                .data(it)
-                .size(width = iconSizePx, height = iconSizePx)
-                .crossfade(true)
-                .build()
-        }
-    }
-    var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+    // Light tile for dark logos; dark tile for logos with white lettering (HBO Max).
+    val tileColor = if (service.darkTile) Color(0xFF050507) else Color(0xFFF5F5F7)
+    val edgeColor = if (service.darkTile) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.06f)
 
     Card(
         onClick = onClick,
         modifier = modifier.size(width = 168.dp, height = 94.dp),
         shape = CardDefaults.shape(shape = shape),
         colors = CardDefaults.colors(
-            containerColor = Color(0xFF2C2C30),
-            focusedContainerColor = Color(0xFF2C2C30)
+            containerColor = tileColor,
+            focusedContainerColor = tileColor
         ),
         border = CardDefaults.border(
-            border = Border(border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.14f)), shape = shape),
+            border = Border(border = BorderStroke(0.5.dp, edgeColor), shape = shape),
             focusedBorder = Border.None
         ),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
@@ -797,48 +777,16 @@ private fun AppleStreamingServiceTile(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(shape),
+                .clip(shape)
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (logoModel != null && !logoFailed) {
-                // Soft wash in the service's own colors behind its logo.
-                AsyncImage(
-                    model = washModel,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(24.dp)
-                            else Modifier
-                        )
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.22f))
-                )
-                AsyncImage(
-                    model = logoModel,
-                    contentDescription = service.name,
-                    contentScale = ContentScale.Fit,
-                    onError = { logoFailed = true },
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(iconShape)
-                )
-            } else {
-                Text(
-                    text = service.name,
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 10.dp)
-                )
-            }
+            Image(
+                painter = painterResource(id = service.logoRes),
+                contentDescription = service.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

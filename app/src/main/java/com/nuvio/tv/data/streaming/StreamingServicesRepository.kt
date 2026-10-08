@@ -2,10 +2,12 @@ package com.nuvio.tv.data.streaming
 
 import android.util.Log
 import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.R
 import com.nuvio.tv.core.tmdb.STREAMING_PROVIDER_REGION
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbWatchProviderEntry
 import com.nuvio.tv.domain.model.StreamingService
+import com.nuvio.tv.domain.model.StreamingServiceTarget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -16,45 +18,69 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "StreamingServicesRepo"
-private const val LOGO_BASE_URL = "https://image.tmdb.org/t/p/w300"
 
 /**
- * The streaming services row on the home screen. The list of services is fixed (the big
- * subscription services), but names and logos come from TMDB for the region, so a service
- * TMDB doesn't list there is simply left out.
+ * The "Streaming Services" row on the home screen: a fixed list of services, in the order
+ * they appear, with logos bundled in the app. Where each tile leads is looked up on TMDB:
+ * the service's watch provider page (what its subscription includes), or for studios like
+ * A24 the studio's page.
  */
 @Singleton
 class StreamingServicesRepository @Inject constructor(
     private val tmdbApi: TmdbApi
 ) {
-    private val cache = ConcurrentHashMap<String, List<StreamingService>>()
-
-    private data class Curated(
-        /** TMDB provider ids, best match first. */
-        val ids: List<Int>,
-        /** Names to fall back on if TMDB renumbers a service. */
-        val names: List<String>,
-        /** Short name shown in the app; null keeps TMDB's own name. */
-        val displayName: String?,
-        val opensDisneyHub: Boolean = false
+    private data class Entry(
+        val service: StreamingService,
+        /** TMDB watch provider ids, best match first. */
+        val providerIds: List<Int> = emptyList(),
+        /** Provider names to match if TMDB renumbers a service. */
+        val providerNames: List<String> = emptyList(),
+        /** TMDB company to open when the service isn't a watch provider (studios). */
+        val companyId: Int? = null,
+        /** Company name to look up as a last resort. */
+        val companyName: String? = null
     )
 
-    private val curated = listOf(
-        Curated(listOf(8), listOf("Netflix"), "Netflix"),
-        Curated(listOf(9, 119), listOf("Amazon Prime Video", "Prime Video"), "Prime Video"),
-        Curated(listOf(337), listOf("Disney Plus", "Disney+"), "Disney+", opensDisneyHub = true),
-        Curated(listOf(1899, 384), listOf("HBO Max", "Max"), null),
-        Curated(listOf(350), listOf("Apple TV Plus", "Apple TV+", "Apple TV"), "Apple TV"),
-        Curated(listOf(15), listOf("Hulu"), "Hulu"),
-        Curated(listOf(531, 2303), listOf("Paramount Plus", "Paramount+", "Paramount Plus Premium"), "Paramount+"),
-        Curated(listOf(386, 387), listOf("Peacock Premium", "Peacock"), "Peacock")
+    private val entries = listOf(
+        Entry(StreamingService("netflix", "Netflix", R.drawable.streaming_logo_netflix),
+            providerIds = listOf(8), providerNames = listOf("Netflix")),
+        Entry(StreamingService("prime", "Prime Video", R.drawable.streaming_logo_prime),
+            providerIds = listOf(9, 119), providerNames = listOf("Amazon Prime Video", "Prime Video")),
+        Entry(StreamingService("hbomax", "HBO Max", R.drawable.streaming_logo_hbomax, darkTile = true),
+            providerIds = listOf(1899, 384), providerNames = listOf("HBO Max", "Max")),
+        Entry(StreamingService("appletv", "Apple TV+", R.drawable.streaming_logo_appletv),
+            providerIds = listOf(350), providerNames = listOf("Apple TV Plus", "Apple TV+", "Apple TV")),
+        Entry(StreamingService("disney", "Disney+", R.drawable.streaming_logo_disney, opensDisneyHub = true),
+            providerIds = listOf(337), providerNames = listOf("Disney Plus", "Disney+")),
+        Entry(StreamingService("paramount", "Paramount+", R.drawable.streaming_logo_paramount),
+            providerIds = listOf(531, 2303), providerNames = listOf("Paramount Plus", "Paramount+", "Paramount Plus Premium")),
+        Entry(StreamingService("peacock", "Peacock", R.drawable.streaming_logo_peacock),
+            providerIds = listOf(386, 387), providerNames = listOf("Peacock Premium", "Peacock", "Peacock Premium Plus")),
+        Entry(StreamingService("discovery", "Discovery+", R.drawable.streaming_logo_discovery),
+            providerIds = listOf(520), providerNames = listOf("Discovery+", "Discovery Plus")),
+        Entry(StreamingService("a24", "A24", R.drawable.streaming_logo_a24),
+            companyId = 41077, companyName = "A24"),
+        Entry(StreamingService("angel", "Angel Studios", R.drawable.streaming_logo_angel),
+            providerNames = listOf("Angel Studios"), companyName = "Angel Studios"),
+        Entry(StreamingService("shudder", "Shudder", R.drawable.streaming_logo_shudder),
+            providerIds = listOf(99), providerNames = listOf("Shudder"), companyName = "Shudder"),
+        Entry(StreamingService("foxnation", "Fox Nation", R.drawable.streaming_logo_foxnation),
+            providerNames = listOf("Fox Nation"), companyName = "Fox Nation")
     )
 
-    suspend fun services(region: String = STREAMING_PROVIDER_REGION): List<StreamingService> =
+    /** The tiles, in order, before anything is looked up (so the row shows instantly). */
+    val services: List<StreamingService> = entries.map { it.service }
+
+    private val targetCache = ConcurrentHashMap<String, StreamingServiceTarget>()
+
+    /** Looks up where each tile leads. Tiles TMDB can't place keep a null target. */
+    suspend fun resolveTargets(region: String = STREAMING_PROVIDER_REGION): List<StreamingService> =
         withContext(Dispatchers.IO) {
-            cache[region]?.let { return@withContext it }
+            if (entries.all { it.service.opensDisneyHub || targetCache.containsKey(it.service.key) }) {
+                return@withContext withTargets()
+            }
 
-            val entries: List<TmdbWatchProviderEntry> = try {
+            val providers: List<TmdbWatchProviderEntry> = try {
                 coroutineScope {
                     val tv = async {
                         tmdbApi.getTvWatchProviders(BuildConfig.TMDB_API_KEY, region).body()?.results.orEmpty()
@@ -70,24 +96,40 @@ class StreamingServicesRepository @Inject constructor(
                 Log.w(TAG, "Failed to load watch providers for $region: ${e.message}")
                 emptyList()
             }
-            if (entries.isEmpty()) return@withContext emptyList()
+            val providersById = providers.associateBy { it.providerId }
 
-            val byId = entries.associateBy { it.providerId }
-            val resolved = curated.mapNotNull { service ->
-                val entry = service.ids.firstNotNullOfOrNull { byId[it] }
-                    ?: entries.firstOrNull { entry ->
-                        service.names.any { it.equals(entry.providerName?.trim(), ignoreCase = true) }
+            for (entry in entries) {
+                val key = entry.service.key
+                if (entry.service.opensDisneyHub || targetCache.containsKey(key)) continue
+
+                val provider = entry.providerIds.firstNotNullOfOrNull { providersById[it] }
+                    ?: providers.firstOrNull { candidate ->
+                        val name = candidate.providerName?.trim().orEmpty()
+                        entry.providerNames.any { it.equals(name, ignoreCase = true) }
                     }
-                    ?: return@mapNotNull null
-                StreamingService(
-                    id = entry.providerId,
-                    name = service.displayName ?: entry.providerName?.trim().orEmpty().ifBlank { service.names.first() },
-                    logoUrl = entry.logoPath?.takeIf { it.isNotBlank() }?.let { "$LOGO_BASE_URL$it" },
-                    opensDisneyHub = service.opensDisneyHub
-                )
-            }.distinctBy { it.id }
-
-            if (resolved.isNotEmpty()) cache[region] = resolved
-            resolved
+                val target = when {
+                    provider != null -> StreamingServiceTarget("provider", provider.providerId)
+                    entry.companyId != null -> StreamingServiceTarget("company", entry.companyId)
+                    entry.companyName != null -> findCompanyId(entry.companyName)
+                        ?.let { StreamingServiceTarget("company", it) }
+                    else -> null
+                }
+                if (target != null) targetCache[key] = target
+            }
+            withTargets()
         }
+
+    private fun withTargets(): List<StreamingService> =
+        services.map { service -> service.copy(target = targetCache[service.key]) }
+
+    private suspend fun findCompanyId(name: String): Int? = try {
+        tmdbApi.searchCompanies(BuildConfig.TMDB_API_KEY, name).body()?.results.orEmpty()
+            .firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?.id
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Company lookup failed for $name: ${e.message}")
+        null
+    }
 }
