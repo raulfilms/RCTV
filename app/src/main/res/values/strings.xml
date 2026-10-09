@@ -261,6 +261,8 @@
     <string name="tmdb_entity_kind_network">Network</string>
     <string name="tmdb_entity_kind_provider">Streaming service</string>
     <string name="home_streaming_services">Streaming Services</string>
+    <string name="nav_guide">Guide</string>
+    <string name="nav_movies_tv">Movies &amp; TV</string>
     <string name="streaming_service_unavailable">Couldn\'t load this service right now. Try again in a moment.</string>
     <string name="tmdb_entity_rail_popular">Popular</string>
     <string name="tmdb_entity_rail_top_rated">Top Rated</string>

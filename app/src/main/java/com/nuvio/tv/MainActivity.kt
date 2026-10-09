@@ -51,6 +51,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Search
@@ -999,112 +1002,76 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    LaunchedEffect(discoverLocation, currentRoute) {
-                        if (discoverLocation == null) return@LaunchedEffect
-                        val onDiscoverRoute = currentRoute == Screen.Discover.route ||
-                            currentRoute?.startsWith("${Screen.Discover.route}/") == true
-                        if (discoverLocation == DiscoverLocation.OFF && onDiscoverRoute) {
-                            navController.navigate(Screen.Home.route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = false }
-                                launchSingleTop = true
-                            }
-                        }
-                    }
+                    // Discover is the menu's "Movies & TV" page, so the old "Discover off" redirect is gone.
 
                     val rootRoutes = remember(discoverLocation) {
                         buildSet {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
                             add(Screen.Library.route)
-                            add(Screen.DisneyPlus.route)
                             add(Screen.LiveTv.route)
                             add(Screen.Sports.route)
                             add(Screen.Settings.route)
-                            if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
-                                add(Screen.Discover.route)
-                            }
+                            // "Movies & TV" is always in the menu now. Disney+ left the menu
+                            // (it opens from the Streaming Services row, so Back returns Home).
+                            add(Screen.Discover.route)
                         }
                     }
 
                     val strNavHome = stringResource(R.string.nav_home)
-                    val strNavDiscover = stringResource(R.string.nav_discover)
                     val strNavSearch = stringResource(R.string.nav_search)
                     val strNavLibrary = stringResource(R.string.nav_library)
-                    val strNavDisneyPlus = stringResource(R.string.nav_disney_plus)
-                    val strNavLiveTv = stringResource(R.string.nav_live_tv)
+                    val strNavGuide = stringResource(R.string.nav_guide)
                     val strNavSports = stringResource(R.string.nav_sports)
+                    val strNavMoviesTv = stringResource(R.string.nav_movies_tv)
                     val strNavSettings = stringResource(R.string.nav_settings)
+                    // Apple TV order: Search, Home, Guide, Sports, Movies & TV, Library, Settings.
                     val drawerItems = remember(
                         strNavHome,
-                        strNavDiscover,
                         strNavSearch,
                         strNavLibrary,
-                        strNavDisneyPlus,
-                        strNavLiveTv,
+                        strNavGuide,
                         strNavSports,
-                        strNavSettings,
-                        discoverLocation
+                        strNavMoviesTv,
+                        strNavSettings
                     ) {
-                        buildList {
-                            add(
-                                DrawerItem(
-                                    route = Screen.Home.route,
-                                    label = strNavHome,
-                                    icon = Icons.Default.Home
-                                )
+                        listOf(
+                            DrawerItem(
+                                route = Screen.Search.route,
+                                label = strNavSearch,
+                                icon = Icons.Default.Search
+                            ),
+                            DrawerItem(
+                                route = Screen.Home.route,
+                                label = strNavHome,
+                                icon = Icons.Default.Home
+                            ),
+                            DrawerItem(
+                                route = Screen.LiveTv.route,
+                                label = strNavGuide,
+                                icon = Icons.Default.LiveTv
+                            ),
+                            DrawerItem(
+                                route = Screen.Sports.route,
+                                label = strNavSports,
+                                icon = Icons.Default.SportsSoccer
+                            ),
+                            DrawerItem(
+                                route = Screen.Discover.route,
+                                label = strNavMoviesTv,
+                                icon = Icons.Default.Movie
+                            ),
+                            DrawerItem(
+                                route = Screen.Library.route,
+                                label = strNavLibrary,
+                                icon = Icons.Default.VideoLibrary
+                            ),
+                            DrawerItem(
+                                route = Screen.Settings.route,
+                                label = strNavSettings,
+                                icon = Icons.Default.Settings
                             )
-                            if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
-                                add(
-                                    DrawerItem(
-                                        route = Screen.Discover.route,
-                                        label = strNavDiscover,
-                                        icon = Icons.Default.Explore
-                                    )
-                                )
-                            }
-                            add(
-                                DrawerItem(
-                                    route = Screen.Search.route,
-                                    label = strNavSearch,
-                                    iconRes = R.raw.sidebar_search
-                                )
-                            )
-                            add(
-                                DrawerItem(
-                                    route = Screen.Library.route,
-                                    label = strNavLibrary,
-                                    iconRes = R.raw.sidebar_library
-                                )
-                            )
-                            add(
-                                DrawerItem(
-                                    route = Screen.DisneyPlus.route,
-                                    label = strNavDisneyPlus,
-                                    icon = Icons.Default.Stars
-                                )
-                            )
-                            add(
-                                DrawerItem(
-                                    route = Screen.LiveTv.route,
-                                    label = strNavLiveTv,
-                                    icon = Icons.Default.LiveTv
-                                )
-                            )
-                            add(
-                                DrawerItem(
-                                    route = Screen.Sports.route,
-                                    label = strNavSports,
-                                    icon = Icons.Default.SportsSoccer
-                                )
-                            )
-                            add(
-                                DrawerItem(
-                                    route = Screen.Settings.route,
-                                    label = strNavSettings,
-                                    iconRes = R.raw.sidebar_settings
-                                )
-                            )
-                        }
+                        )
                     }
                     val selectedDrawerRoute = drawerItems.firstOrNull { item ->
                         currentRoute == item.route || currentRoute?.startsWith("${item.route}/") == true

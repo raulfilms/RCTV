@@ -330,11 +330,9 @@ private fun PlaybackNavHost(
                 },
                 onOpenStreamingService = { service ->
                     if (service.opensDisneyHub) {
-                        // Disney+ already has its own section in the menu; open it the way the menu does.
+                        // The app's own Disney+ section; Back returns to Home.
                         navController.navigate(Screen.DisneyPlus.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
                             launchSingleTop = true
-                            restoreState = true
                         }
                     } else {
                         val target = service.target

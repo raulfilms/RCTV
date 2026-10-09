@@ -10,14 +10,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,13 +35,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,9 +52,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
-import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
-import com.nuvio.tv.ui.theme.NuvioComponents
 import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
 import dev.chrisbanes.haze.HazeInputScale
@@ -61,31 +62,37 @@ import kotlinx.coroutines.delay
 import java.util.Date
 
 /*
- * Floating "glass" menu in the style of the tvOS 26 Apple TV app:
- * a rounded translucent gray card with the profile and clock on top,
- * every item drawn as a round icon badge plus label, and the focused
- * item turning into a full-width white pill with dark text.
+ * The side menu, drawn like the Apple TV app (tvOS 26):
+ *  - a floating, neutral gray "glass" card with big rounded corners that ends
+ *    after its last item (it does not run to the bottom of the screen);
+ *  - the profile photo and name at the top, the time on the right;
+ *  - every item is a light round badge with a white glyph and a white label;
+ *  - the focused item becomes a full-width white pill with dark text, and its
+ *    badge turns light gray with a dark glyph.
  */
 
-private val GlassPanelShape = RoundedCornerShape(40.dp)
-private val ItemPillShape = RoundedCornerShape(percent = 50)
-private val IconBadgeSize = 44.dp
-private val ItemIconSize = 22.dp
-private val ProfileAvatarSize = 48.dp
+private val PanelShape = RoundedCornerShape(36.dp)
+private val PillShape = RoundedCornerShape(percent = 50)
 
-// Glass colors. With blur the gray is lighter and more see-through so the
-// hero shows through; without blur (Android 11 and older) it stays a bit
-// more solid so the text keeps enough contrast.
-private val GlassTintBlur = Color(0xFF8A8A8E).copy(alpha = 0.58f)
-private val GlassTintSolid = Color(0xFF5B5B60).copy(alpha = 0.94f)
-private val GlassEdge = Color.White.copy(alpha = 0.22f)
+private val ItemHeight = 46.dp
+private val ItemSpacing = 6.dp
+private val BadgeSize = 34.dp
+private val GlyphSize = 19.dp
+private val AvatarSize = 38.dp
 
-private val PillFocused = Color(0xFFF2F2EE)
-private val TextOnPill = Color(0xFF1C1C1E)
-private val TextOnGlass = Color.White
-private val BadgeOnGlass = Color.White.copy(alpha = 0.20f)
-private val BadgeOnGlassSelected = Color.White.copy(alpha = 0.34f)
-private val BadgeOnPill = Color.Black.copy(alpha = 0.08f)
+// Neutral gray glass. Without a real blur (Android 11 and older) it is fully
+// opaque, so the picture behind never makes the labels hard to read.
+private val PanelTop = Color(0xFF77777C)
+private val PanelBottom = Color(0xFF8E8E93)
+private val PanelEdge = Color.White.copy(alpha = 0.22f)
+
+private val PillFocused = Color(0xFFF2F2F2)
+private val PillSelected = Color.White.copy(alpha = 0.14f)
+private val LabelOnGlass = Color.White
+private val LabelOnPill = Color(0xFF2C2C2E)
+private val BadgeOnGlass = Color.White.copy(alpha = 0.24f)
+private val BadgeOnPill = Color(0xFFE1E1E6)
+private val GlyphOnPill = Color(0xFF3A3A3C)
 
 @Composable
 internal fun ModernSidebarBlurPanel(
@@ -115,20 +122,28 @@ internal fun ModernSidebarBlurPanel(
         isSidebarExpanded &&
         !sidebarCollapsePending &&
         delayedBlurProgress > 0f
-    val expandedPanelBlurModifier = if (showPanelBlur) {
+    val blurModifier = if (showPanelBlur) {
         Modifier.hazeEffect(state = sidebarHazeState) {
-            blurRadius = NuvioTheme.effects.blurPanel * delayedBlurProgress
-            noiseFactor = 0.04f * delayedBlurProgress
+            blurRadius = NuvioTheme.effects.blurPanel * 1.4f * delayedBlurProgress
+            noiseFactor = 0f
             inputScale = HazeInputScale.Fixed(0.66f)
         }
     } else {
         Modifier
     }
-    val glassTint = if (blurEnabled) GlassTintBlur else GlassTintSolid
+    // Fully opaque without blur, so nothing behind the menu shows through.
+    val panelAlpha = if (blurEnabled) 0.86f else 1f
+    val panelBrush = remember(panelAlpha) {
+        Brush.linearGradient(
+            colors = listOf(
+                PanelTop.copy(alpha = panelAlpha),
+                PanelBottom.copy(alpha = panelAlpha)
+            )
+        )
+    }
 
     Column(
         modifier = Modifier
-            .fillMaxHeight()
             .graphicsLayer {
                 val p = sidebarExpandProgress
                 alpha = p
@@ -137,26 +152,24 @@ internal fun ModernSidebarBlurPanel(
                 scaleY = s
                 transformOrigin = TransformOrigin(0f, 0f)
             }
-            .clip(GlassPanelShape)
-            .then(expandedPanelBlurModifier)
-            .background(color = glassTint, shape = GlassPanelShape)
-            .border(width = 1.dp, color = GlassEdge, shape = GlassPanelShape)
-            .padding(horizontal = 14.dp, vertical = 22.dp)
+            .clip(PanelShape)
+            .then(blurModifier)
+            .background(brush = panelBrush, shape = PanelShape)
+            .border(width = 1.dp, color = PanelEdge, shape = PanelShape)
+            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
     ) {
-        // Header: profile (or app wordmark) on the left, clock on the right.
+        // Header: profile photo and name, time on the right.
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.weight(1f)) {
-                if (showProfileSelector && activeProfileName.isNotEmpty()) {
+                if (activeProfileName.isNotEmpty()) {
                     SidebarProfileItem(
                         profileName = activeProfileName,
                         profileColorHex = activeProfileColorHex,
                         profileAvatarImageUrl = activeProfileAvatarImageUrl,
-                        focusEnabled = keepSidebarFocusDuringCollapse,
+                        focusEnabled = keepSidebarFocusDuringCollapse && showProfileSelector,
                         labelAlpha = sidebarLabelAlpha,
                         onFocusChanged = { focused ->
                             if (focused) onDrawerItemFocused(drawerItems.size)
@@ -165,30 +178,38 @@ internal fun ModernSidebarBlurPanel(
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
-                    BrandWordmark(
-                        contentDescription = stringResource(R.string.app_name),
+                    // No profile yet: a plain person badge in the same spot.
+                    Box(
                         modifier = Modifier
-                            .padding(start = 10.dp)
-                            .width(120.dp)
-                            .height(32.dp),
-                        alpha = sidebarLabelAlpha
-                    )
+                            .padding(start = 4.dp)
+                            .size(AvatarSize)
+                            .clip(CircleShape)
+                            .background(BadgeOnGlass),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
             SidebarClock(
                 modifier = Modifier
-                    .padding(start = 8.dp, end = 10.dp)
+                    .padding(start = 8.dp, end = 12.dp)
                     .graphicsLayer { alpha = sidebarLabelAlpha }
             )
         }
 
-        Spacer(modifier = Modifier.height(36.dp))
+        Spacer(modifier = Modifier.height(30.dp))
 
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(ItemSpacing)
         ) {
             drawerItems.forEachIndexed { index, item ->
                 key(item.route) {
@@ -231,8 +252,8 @@ private fun SidebarClock(modifier: Modifier = Modifier) {
     }
     Text(
         text = timeFormat.format(now),
-        color = TextOnGlass.copy(alpha = 0.9f),
-        fontSize = 20.sp,
+        color = Color.White.copy(alpha = 0.95f),
+        fontSize = 17.sp,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = modifier
@@ -256,26 +277,31 @@ private fun SidebarNavigationItem(
     val fast = tween<Color>(durationMillis = NuvioMotion.tokens.durations.fast)
 
     val pillColor by animateColorAsState(
-        targetValue = if (isFocused) PillFocused else Color.Transparent,
+        targetValue = when {
+            isFocused -> PillFocused
+            selected -> PillSelected
+            else -> Color.Transparent
+        },
         animationSpec = fast,
         label = "sidebarItemPill"
     )
-    val contentColor by animateColorAsState(
-        targetValue = if (isFocused) TextOnPill else TextOnGlass,
+    val labelColor by animateColorAsState(
+        targetValue = if (isFocused) LabelOnPill else LabelOnGlass,
         animationSpec = fast,
-        label = "sidebarItemContent"
+        label = "sidebarItemLabel"
     )
     val badgeColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> BadgeOnPill
-            selected -> BadgeOnGlassSelected
-            else -> BadgeOnGlass
-        },
+        targetValue = if (isFocused) BadgeOnPill else BadgeOnGlass,
         animationSpec = fast,
         label = "sidebarItemBadge"
     )
+    val glyphColor by animateColorAsState(
+        targetValue = if (isFocused) GlyphOnPill else Color.White,
+        animationSpec = fast,
+        label = "sidebarItemGlyph"
+    )
     val itemScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.03f else 1f,
+        targetValue = if (isFocused) 1.02f else 1f,
         animationSpec = tween(
             durationMillis = NuvioMotion.tokens.durations.fast,
             easing = NuvioMotion.tokens.easings.standard
@@ -286,6 +312,7 @@ private fun SidebarNavigationItem(
     Card(
         onClick = onClick,
         modifier = modifier
+            .height(ItemHeight)
             .graphicsLayer {
                 scaleX = itemScale
                 scaleY = itemScale
@@ -304,46 +331,48 @@ private fun SidebarNavigationItem(
             border = androidx.tv.material3.Border.None,
             focusedBorder = androidx.tv.material3.Border.None
         ),
-        shape = CardDefaults.shape(shape = ItemPillShape),
+        shape = CardDefaults.shape(shape = PillShape),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                .height(ItemHeight)
+                .padding(start = 6.dp, end = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(IconBadgeSize)
+                    .size(BadgeSize)
                     .graphicsLayer {
                         scaleX = iconScale
                         scaleY = iconScale
                     }
-                    .background(color = badgeColor, shape = CircleShape),
+                    .clip(CircleShape)
+                    .background(badgeColor),
                 contentAlignment = Alignment.Center
             ) {
                 when {
                     icon != null -> Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(ItemIconSize)
+                        tint = glyphColor,
+                        modifier = Modifier.size(GlyphSize)
                     )
                     iconRes != null -> Icon(
                         painter = rememberRawSvgPainter(iconRes),
                         contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(ItemIconSize)
+                        tint = glyphColor,
+                        modifier = Modifier.size(GlyphSize)
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = label,
-                color = contentColor,
-                fontSize = 22.sp,
-                fontWeight = if (selected || isFocused) FontWeight.SemiBold else FontWeight.Medium,
+                color = labelColor,
+                fontSize = 18.sp,
+                fontWeight = if (isFocused) FontWeight.Medium else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -373,7 +402,7 @@ private fun SidebarProfileItem(
         label = "sidebarProfilePill"
     )
     val textColor by animateColorAsState(
-        targetValue = if (isFocused) TextOnPill else TextOnGlass,
+        targetValue = if (isFocused) LabelOnPill else LabelOnGlass,
         animationSpec = fast,
         label = "sidebarProfileText"
     )
@@ -393,27 +422,27 @@ private fun SidebarProfileItem(
             border = androidx.tv.material3.Border.None,
             focusedBorder = androidx.tv.material3.Border.None
         ),
-        shape = CardDefaults.shape(shape = ItemPillShape),
+        shape = CardDefaults.shape(shape = PillShape),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                .padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ProfileAvatarCircle(
                 name = profileName,
                 colorHex = profileColorHex,
-                size = ProfileAvatarSize,
+                size = AvatarSize,
                 avatarImageUrl = profileAvatarImageUrl,
                 imageCrossfade = false
             )
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = profileName,
                 color = textColor,
-                fontSize = 22.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
