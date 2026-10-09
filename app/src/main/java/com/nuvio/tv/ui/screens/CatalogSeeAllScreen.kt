@@ -283,9 +283,12 @@ fun CatalogSeeAllScreen(
             // Genre filter, top right.
             if (hasRawItems && genreYearFilter.genreOptions.isNotEmpty()) {
                 val allGenresLabel = stringResource(R.string.apple_all_genres)
-                val genreOptions = remember(genreYearFilter.genreOptions, allGenresLabel) {
+                val genreContext = androidx.compose.ui.platform.LocalContext.current
+                val genreOptions = remember(genreYearFilter.genreOptions, allGenresLabel, genreContext) {
                     listOf(AppleFilterOption(allGenresLabel, null)) +
-                        genreYearFilter.genreOptions.map { AppleFilterOption(localizedGenreLabel(it.label), it.key) }
+                        genreYearFilter.genreOptions.map {
+                            AppleFilterOption(localizedGenreLabel(genreContext, it.label), it.key)
+                        }
                 }
                 val currentGenreLabel = genreOptions.firstOrNull { it.value == selectedGenre }?.label ?: allGenresLabel
                 AppleGenreFilterButton(
