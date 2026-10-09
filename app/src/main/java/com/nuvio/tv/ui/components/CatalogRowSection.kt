@@ -287,6 +287,10 @@ fun CatalogRowSection(
     val showRankNumbers = remember(appleStyle, catalogRow.catalogName) {
         appleStyle && isRankedCatalogName(catalogRow.catalogName)
     }
+    // Popular series use horizontal 16:9 cards; every other row keeps vertical posters.
+    val useLandscapeCards = remember(appleStyle, catalogRow.catalogName, catalogRow.apiType) {
+        appleStyle && isLandscapeCatalog(catalogRow.catalogName, catalogRow.apiType)
+    }
 
     Column(modifier = modifier.fillMaxWidth().then(
         if (blockingFocusExit.value) {
@@ -436,6 +440,27 @@ fun CatalogRowSection(
                     }
                 }
 
+                if (useLandscapeCards) {
+                    AppleLandscapeCard(
+                        item = item,
+                        cornerRadius = posterCardStyle.cornerRadius,
+                        rankNumber = if (showRankNumbers && index < 10 && !isPlaceholder) index + 1 else null,
+                        isWatched = latestIsItemWatched(item),
+                        focusRequester = cardFocusRequester,
+                        onFocus = onFocusStable,
+                        onClick = onItemClickStable,
+                        onLongPress = onItemLongPressStable,
+                        modifier = Modifier
+                            .then(directionalFocusModifier)
+                            .then(
+                                if (isNonFirstPlaceholder) Modifier.focusProperties { canFocus = false }
+                                else Modifier
+                            )
+                            .then(
+                                if (isEntryTarget) Modifier.focusRequester(entryFocusRequester!!) else Modifier
+                            )
+                    )
+                } else
                 ContentCard(
                     item = item,
                     posterCardStyle = posterCardStyle,
@@ -504,8 +529,8 @@ fun CatalogRowSection(
                 item(key = "${catalogRow.type}_${catalogRow.catalogId}_see_all") {
                     AppleSeeAllCard(
                         label = seeAllLabel ?: stringResource(R.string.action_see_all),
-                        width = posterCardStyle.width,
-                        height = posterCardStyle.height,
+                        width = if (useLandscapeCards) AppleLandscapeCardWidth else posterCardStyle.width,
+                        height = if (useLandscapeCards) AppleLandscapeCardHeight else posterCardStyle.height,
                         cornerRadius = posterCardStyle.cornerRadius,
                         onClick = { latestOnSeeAll() },
                         modifier = directionalFocusModifier
@@ -584,3 +609,11 @@ internal fun isRankedCatalogName(name: String): Boolean = RankedCatalogNameRegex
 
 /** Titles shown in an Apple TV style row before its "See All" card. */
 const val APPLE_ROW_MAX_ITEMS = 5
+
+// Rows drawn with horizontal 16:9 cards instead of posters: popular series.
+private val LandscapeCatalogNameRegex = Regex("""\b(popular|populares?)\b""", RegexOption.IGNORE_CASE)
+
+internal fun isLandscapeCatalog(name: String, apiType: String): Boolean {
+    val isSeries = apiType.equals("series", ignoreCase = true) || apiType.equals("tv", ignoreCase = true)
+    return isSeries && LandscapeCatalogNameRegex.containsMatchIn(name)
+}

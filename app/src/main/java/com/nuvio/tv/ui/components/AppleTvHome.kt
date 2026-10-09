@@ -106,6 +106,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.text.style.TextAlign
 import com.nuvio.tv.domain.model.StreamingService
+import com.nuvio.tv.domain.model.MetaPreview as AppleMetaPreview
+import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
+import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
@@ -996,3 +999,190 @@ fun AppleGenreFilterButton(
         }
     }
 }
+
+/** Size of the horizontal (16:9) cards used by landscape rows. */
+val AppleLandscapeCardWidth: Dp = 224.dp
+val AppleLandscapeCardHeight: Dp = 126.dp
+
+/**
+ * Horizontal 16:9 card for landscape rows (e.g. Popular Series): wide artwork,
+ * title logo (or the name) at the bottom left, optional rank number; grows with a
+ * soft shadow when focused, like every other card.
+ */
+@Composable
+fun AppleLandscapeCard(
+    item: AppleMetaPreview,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp = AppleLandscapeCardWidth,
+    height: Dp = AppleLandscapeCardHeight,
+    cornerRadius: Dp = 12.dp,
+    rankNumber: Int? = null,
+    isWatched: Boolean = false,
+    focusRequester: FocusRequester? = null,
+    onFocus: (AppleMetaPreview) -> Unit = {},
+    onLongPress: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+    val isPlaceholder = item.poster == PLACEHOLDER_IMAGE_URL
+    val imageUrl = item.landscapePoster?.takeIf { it.isNotBlank() }
+        ?: item.background?.takeIf { it.isNotBlank() }
+        ?: item.poster
+    val widthPx = remember(width, density) { with(density) { width.roundToPx() }.coerceAtLeast(1) }
+    val heightPx = remember(height, density) { with(density) { height.roundToPx() }.coerceAtLeast(1) }
+    val imageModel = remember(context, imageUrl, widthPx, heightPx) {
+        ImageRequest.Builder(context)
+            .data(imageUrl)
+            .size(width = widthPx, height = heightPx)
+            .crossfade(true)
+            .build()
+    }
+    val logoModel = remember(context, item.logo, widthPx) {
+        item.logo?.takeIf { it.isNotBlank() }?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .size(width = widthPx, height = with(density) { 40.dp.roundToPx() })
+                .crossfade(true)
+                .build()
+        }
+    }
+    var logoFailed by remember(item.logo) { mutableStateOf(false) }
+    var longPressTriggered by remember { mutableStateOf(false) }
+    val longPressKeyTracker = rememberLongPressKeyTracker()
+
+    Card(
+        onClick = {
+            if (longPressTriggered) longPressTriggered = false else onClick()
+        },
+        modifier = modifier
+            .size(width = width, height = height)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { if (it.isFocused) onFocus(item) }
+            .onPreviewKeyEvent { event ->
+                if (onLongPress == null) return@onPreviewKeyEvent false
+                val native = event.nativeKeyEvent
+                if (native.action == android.view.KeyEvent.ACTION_DOWN &&
+                    native.keyCode == android.view.KeyEvent.KEYCODE_MENU
+                ) {
+                    longPressTriggered = true
+                    onLongPress()
+                    return@onPreviewKeyEvent true
+                }
+                if (longPressKeyTracker.handle(native, ::isAppleSelectKey) {
+                        longPressTriggered = true
+                        onLongPress()
+                    }
+                ) {
+                    if (native.action == android.view.KeyEvent.ACTION_UP) longPressTriggered = false
+                    return@onPreviewKeyEvent true
+                }
+                if (native.action == android.view.KeyEvent.ACTION_UP && longPressTriggered &&
+                    (isAppleSelectKey(native.keyCode) || native.keyCode == android.view.KeyEvent.KEYCODE_MENU)
+                ) {
+                    longPressTriggered = false
+                    return@onPreviewKeyEvent true
+                }
+                false
+            },
+        shape = CardDefaults.shape(shape = shape),
+        colors = CardDefaults.colors(
+            containerColor = Color(0xFF2C2C2E),
+            focusedContainerColor = Color(0xFF2C2C2E)
+        ),
+        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
+        glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+        ) {
+            if (!isPlaceholder && !imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = imageModel,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            if (!isPlaceholder) {
+                // Shade the lower part so the title reads on any artwork.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    0.45f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = 0.72f)
+                                )
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 10.dp, end = 10.dp, bottom = 9.dp)
+                ) {
+                    if (logoModel != null && !logoFailed) {
+                        AsyncImage(
+                            model = logoModel,
+                            contentDescription = item.name,
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.BottomStart,
+                            onError = { logoFailed = true },
+                            modifier = Modifier
+                                .height(32.dp)
+                                .widthIn(max = width * 0.6f)
+                        )
+                    } else {
+                        Text(
+                            text = item.name,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = TextStyle(shadow = AppleTvTextShadow)
+                        )
+                    }
+                }
+            }
+            if (rankNumber != null) {
+                Text(
+                    text = rankNumber.toString(),
+                    color = Color.White,
+                    fontSize = 38.sp,
+                    lineHeight = 40.sp,
+                    fontWeight = FontWeight.Black,
+                    style = TextStyle(
+                        shadow = Shadow(
+                            color = Color.Black.copy(alpha = 0.6f),
+                            offset = Offset(0f, 2f),
+                            blurRadius = 12f
+                        )
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 8.dp)
+                )
+            }
+            if (isWatched) {
+                WatchedMarker(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 8.dp, top = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun isAppleSelectKey(keyCode: Int): Boolean =
+    keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+        keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+        keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
