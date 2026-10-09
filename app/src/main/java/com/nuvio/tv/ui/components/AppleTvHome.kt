@@ -140,8 +140,8 @@ val AppleTvTextShadow: Shadow = Shadow(
 
 private const val HERO_AUTO_ADVANCE_MS = 9_000L
 private val HeroPillShape = RoundedCornerShape(percent = 50)
-private val GlassFill = Color.White.copy(alpha = 0.16f)
-private val GlassEdge = Color.White.copy(alpha = 0.38f)
+private val GlassFill = Color.Black.copy(alpha = 0.30f)
+private val GlassEdge = Color.White.copy(alpha = 0.32f)
 private val OnWhite = Color(0xFF1C1C1E)
 
 /** Row header ("Continue Watching", "Top 10 …"). */
@@ -312,10 +312,10 @@ fun AppleHeroCarousel(
                 AppleGlassButton(
                     onClick = { onPlay(activeItem) },
                     shape = HeroPillShape,
+                    minWidth = 116.dp,
                     modifier = Modifier
                         .focusRequester(playRequester)
                         .height(38.dp)
-                        .widthIn(min = 116.dp)
                 ) { color ->
                     Row(
                         modifier = Modifier.padding(horizontal = 20.dp),
@@ -610,6 +610,8 @@ fun AppleGlassButton(
     onClick: () -> Unit,
     shape: Shape,
     modifier: Modifier = Modifier,
+    /** Narrowest the button gets; its content is centered inside. */
+    minWidth: Dp = 0.dp,
     bare: Boolean = false,
     content: @Composable (contentColor: Color) -> Unit
 ) {
@@ -634,11 +636,11 @@ fun AppleGlassButton(
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
-        // Wraps its content horizontally (so the Play pill fits its label) and centers it.
+        // At least as wide as the button (minWidth), so the icon or label is centered both ways.
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .align(Alignment.CenterHorizontally),
+                .widthIn(min = minWidth),
             contentAlignment = Alignment.Center
         ) {
             content(contentColor)
@@ -657,6 +659,7 @@ private fun AppleGlassIconButton(
         onClick = onClick,
         shape = CircleShape,
         bare = bare,
+        minWidth = 38.dp,
         modifier = modifier.size(38.dp)
     ) { color ->
         Icon(
