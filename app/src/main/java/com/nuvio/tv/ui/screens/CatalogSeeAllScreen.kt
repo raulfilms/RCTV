@@ -49,7 +49,19 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
-import com.nuvio.tv.ui.components.CombinedFilterMenuButton
+import com.nuvio.tv.ui.components.AppleAmbientBackdrop
+import com.nuvio.tv.ui.components.AppleFilterOption
+import com.nuvio.tv.ui.components.AppleGenreFilterButton
+import com.nuvio.tv.ui.components.AppleTvCardSpacing
+import com.nuvio.tv.ui.components.AppleTvContentStart
+import com.nuvio.tv.ui.components.AppleTvFocusScale
+import com.nuvio.tv.ui.components.AppleTvTextShadow
+import com.nuvio.tv.ui.components.ContentCard
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.FilterDropdownOption
 import com.nuvio.tv.ui.components.GridContentCard
@@ -94,8 +106,8 @@ fun CatalogSeeAllScreen(
         width = uiState.posterCardWidthDp.dp,
         height = computedHeightDp.dp,
         cornerRadius = uiState.posterCardCornerRadiusDp.dp,
-        focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
-        focusedScale = PosterCardDefaults.Style.focusedScale
+        focusedBorderWidth = 0.dp,
+        focusedScale = AppleTvFocusScale
     )
 
     BackHandler { onBackPress() }
@@ -226,78 +238,69 @@ fun CatalogSeeAllScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
+    // Same blurred wash as the Apple TV style home, taken from the catalog's first title.
+    AppleAmbientBackdrop(
+        imageUrl = catalogRow?.items?.firstOrNull { !it.id.startsWith("__placeholder_") }?.backdropUrl,
+        modifier = Modifier.fillMaxSize()
+    )
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(vertical = NuvioTheme.spacing.xl)
+            .padding(top = 36.dp)
     ) {
         val hasRawItems = catalogRow?.items?.isNotEmpty() == true
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = NuvioTheme.spacing.xxxl),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppleTvContentStart),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = catalogRow?.catalogName ?: stringResource(R.string.catalog_see_all_title_fallback),
-                style = MaterialTheme.typography.headlineLarge,
-                color = NuvioTheme.colors.TextPrimary,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = catalogRow?.catalogName?.replaceFirstChar { it.uppercase() }
+                        ?: stringResource(R.string.catalog_see_all_title_fallback),
+                    color = Color.White,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(shadow = AppleTvTextShadow)
+                )
+                if (uiState.catalogAddonNameEnabled) {
+                    catalogRow?.addonName?.let { addonName ->
+                        Text(
+                            text = stringResource(R.string.catalog_see_all_from, addonName),
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
 
-            if (hasRawItems && hasAnyFilterOptions) {
-                val allLabel = stringResource(R.string.library_type_all)
-                CombinedFilterMenuButton(
-                    contentDescription = stringResource(R.string.catalog_filter_button_cd),
-                    typeLabel = stringResource(R.string.library_filter_type),
-                    genreLabel = stringResource(R.string.library_filter_genre),
-                    yearLabel = stringResource(R.string.library_filter_year),
-                    allLabel = allLabel,
-                    clearLabel = stringResource(R.string.catalog_filter_clear),
-                    typeOptions = typeFilterOptions.map {
-                        FilterDropdownOption("${localizedContentType(it.label)} (${it.count})", it.key)
-                    },
-                    genreOptions = genreYearFilter.genreOptions.map {
-                        FilterDropdownOption("${localizedGenreLabel(it.label)} (${it.count})", it.key)
-                    },
-                    yearOptions = genreYearFilter.yearOptions.map {
-                        FilterDropdownOption("${it.label} (${it.count})", it.key)
-                    },
-                    selectedTypeValue = selectedType ?: "__all__",
-                    selectedGenreValue = selectedGenre ?: "__all__",
-                    selectedYearValue = selectedYear ?: "__all__",
-                    hasActiveFilter = selectedType != null || selectedGenre != null || selectedYear != null,
-                    expanded = filterMenuExpanded,
-                    onExpandedChange = { filterMenuExpanded = it },
-                    onSelectType = { option ->
-                        selectedType = if (option.value == "__all__") null else option.value
-                    },
-                    onSelectGenre = { option ->
-                        selectedGenre = if (option.value == "__all__") null else option.value
-                    },
-                    onSelectYear = { option ->
-                        selectedYear = if (option.value == "__all__") null else option.value
-                    },
-                    onClearAll = {
-                        selectedType = null
-                        selectedGenre = null
-                        selectedYear = null
+            // Genre filter, top right.
+            if (hasRawItems && genreYearFilter.genreOptions.isNotEmpty()) {
+                val allGenresLabel = stringResource(R.string.apple_all_genres)
+                val genreOptions = remember(genreYearFilter.genreOptions, allGenresLabel) {
+                    listOf(AppleFilterOption(allGenresLabel, null)) +
+                        genreYearFilter.genreOptions.map { AppleFilterOption(localizedGenreLabel(it.label), it.key) }
+                }
+                val currentGenreLabel = genreOptions.firstOrNull { it.value == selectedGenre }?.label ?: allGenresLabel
+                AppleGenreFilterButton(
+                    label = currentGenreLabel,
+                    options = genreOptions,
+                    selectedValue = selectedGenre,
+                    onSelect = { option ->
+                        selectedGenre = option.value
+                        focusedItemKey = null
                     }
                 )
             }
         }
 
-        if (uiState.catalogAddonNameEnabled) {
-            catalogRow?.addonName?.let { addonName ->
-                Text(
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl),
-                    text = stringResource(R.string.catalog_see_all_from, addonName),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioTheme.colors.TextSecondary
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
+        Spacer(modifier = Modifier.height(18.dp))
 
         val hasItems = filteredItems.isNotEmpty()
         val isCatalogLoading = catalogRow == null || catalogRow.isLoading
@@ -312,13 +315,13 @@ fun CatalogSeeAllScreen(
                     columns = GridCells.Adaptive(minSize = posterCardStyle.width),
                     modifier = Modifier.dpadRepeatThrottle(),
                     contentPadding = PaddingValues(
-                        start = NuvioTheme.spacing.xxxl,
-                        end = NuvioTheme.spacing.xl,
-                        top = NuvioTheme.spacing.md,
-                        bottom = NuvioTheme.spacing.xxl
+                        start = AppleTvContentStart,
+                        end = AppleTvContentStart,
+                        top = 14.dp,
+                        bottom = 60.dp
                     ),
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                    verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+                    horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing),
+                    verticalArrangement = Arrangement.spacedBy(30.dp)
                 ) {
                     itemsIndexed(
                         items = filteredItems,
@@ -334,22 +337,23 @@ fun CatalogSeeAllScreen(
                             ] == true
                         }
                         val itemFocusKey = catalogItemFocusKey(item)
-                        GridContentCard(
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        ContentCard(
                             item = item,
                             posterCardStyle = posterCardStyle,
-                            showLabel = uiState.posterLabelsEnabled,
+                            showLabels = false,
                             isWatched = isWatched,
+                            appleStyle = true,
                             focusRequester = if (index == focusedItemIndex) restoreFocusRequester else null,
-                            onFocused = {
+                            onFocus = {
                                 // While restoring after Details/resume, ignore transient focus on the
                                 // first/leftmost cell so it cannot overwrite the saved poster key.
-                                if (shouldRestoreFocus &&
-                                    focusedItemKey != null &&
-                                    itemFocusKey != focusedItemKey
+                                if (!(shouldRestoreFocus &&
+                                        focusedItemKey != null &&
+                                        itemFocusKey != focusedItemKey)
                                 ) {
-                                    return@GridContentCard
+                                    focusedItemKey = itemFocusKey
                                 }
-                                focusedItemKey = itemFocusKey
                             },
                             onClick = {
                                 focusedItemKey = itemFocusKey
@@ -364,6 +368,7 @@ fun CatalogSeeAllScreen(
                                 posterOptionsController.show(item, row.addonBaseUrl)
                             }
                         )
+                        }
                     }
 
                     if (row.isLoading) {
@@ -445,4 +450,5 @@ fun CatalogSeeAllScreen(
             }
         )
     }
+    } // ambient Box
 }

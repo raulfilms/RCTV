@@ -119,6 +119,15 @@ fun CatalogRowSection(
     appleStyle: Boolean = false
 ) {
     val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
+    // Apple TV style rows show a handful of titles and then a "See All" card.
+    val displayItems = remember(catalogRow.items, appleStyle) {
+        if (appleStyle) catalogRow.items.take(APPLE_ROW_MAX_ITEMS) else catalogRow.items
+    }
+    val effectiveShowSeeAll = if (appleStyle) {
+        catalogRow.hasMore || catalogRow.items.size > APPLE_ROW_MAX_ITEMS
+    } else {
+        showSeeAll
+    }
     val catalogRowKey = remember(catalogRow) { catalogRow.stableKey() }
     val rowItemIdentities = remember(catalogRow.items) { catalogRow.stableItemKeys() }
 
@@ -234,7 +243,7 @@ fun CatalogRowSection(
 
     // Restore focus from saved state when focusedItemIndex is set.
     LaunchedEffect(focusedItemIndex, catalogRow.items) {
-        if (focusedItemIndex >= 0 && focusedItemIndex < catalogRow.items.size) {
+        if (focusedItemIndex >= 0 && focusedItemIndex < displayItems.size) {
             val targetItem = catalogRow.items[focusedItemIndex]
             val targetItemKey = rowItemFocusKey(focusedItemIndex, targetItem)
             if (lastRequestedFocusItemKey == targetItemKey) return@LaunchedEffect
@@ -366,7 +375,7 @@ fun CatalogRowSection(
                     if (enableRowFocusRestorer) {
                         val visibleIndices = listState.layoutInfo.visibleItemsInfo
                             .map { it.index }
-                            .filter { it in catalogRow.items.indices }
+                            .filter { it in displayItems.indices }
                         val preferredIndex = if (lastFocusedItemIndex.intValue >= 0) {
                             lastFocusedItemIndex.intValue
                         } else {
@@ -375,7 +384,7 @@ fun CatalogRowSection(
                         val idx = preferredIndex.takeIf { it in visibleIndices }
                             ?: visibleIndices.firstOrNull()
                         idx?.let { visibleIndex ->
-                            catalogRow.items.getOrNull(visibleIndex)?.let { item ->
+                            displayItems.getOrNull(visibleIndex)?.let { item ->
                                 itemFocusRequestersByKey[rowItemFocusKey(visibleIndex, item)]
                             }
                         }
@@ -391,7 +400,7 @@ fun CatalogRowSection(
             )
         ) {
             itemsIndexed(
-                items = catalogRow.items,
+                items = displayItems,
                 key = { index, item ->
                     rowItemFocusKey(index, item)
                 },
@@ -460,7 +469,7 @@ fun CatalogRowSection(
                 )
             }
 
-            if (!showSeeAll && catalogRow.isLoading) {
+            if (!effectiveShowSeeAll && catalogRow.isLoading && !appleStyle) {
                 item(key = "${catalogRow.type}_${catalogRow.catalogId}_loading") {
                     val cardDepthStyle = LocalCardDepthStyle.current
                     Card(
@@ -491,7 +500,18 @@ fun CatalogRowSection(
                     }
                 }
             }
-            if (showSeeAll) {
+            if (effectiveShowSeeAll && appleStyle) {
+                item(key = "${catalogRow.type}_${catalogRow.catalogId}_see_all") {
+                    AppleSeeAllCard(
+                        label = seeAllLabel ?: stringResource(R.string.action_see_all),
+                        width = posterCardStyle.width,
+                        height = posterCardStyle.height,
+                        cornerRadius = posterCardStyle.cornerRadius,
+                        onClick = { latestOnSeeAll() },
+                        modifier = directionalFocusModifier
+                    )
+                }
+            } else if (effectiveShowSeeAll) {
                 item(key = "${catalogRow.type}_${catalogRow.catalogId}_see_all") {
                     val cardDepthStyle = LocalCardDepthStyle.current
                     Card(
@@ -561,3 +581,6 @@ private val RankedCatalogNameRegex = Regex(
 )
 
 internal fun isRankedCatalogName(name: String): Boolean = RankedCatalogNameRegex.containsMatchIn(name)
+
+/** Titles shown in an Apple TV style row before its "See All" card. */
+const val APPLE_ROW_MAX_ITEMS = 5

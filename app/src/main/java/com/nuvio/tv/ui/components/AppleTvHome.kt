@@ -106,6 +106,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.text.style.TextAlign
 import com.nuvio.tv.domain.model.StreamingService
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextAlign as AppleTextAlign
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 
@@ -796,6 +803,195 @@ private fun AppleStreamingServiceTile(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
+        }
+    }
+}
+
+/**
+ * "See All" card at the end of an Apple TV style row: poster sized glass card with an
+ * arrow and a label; white with dark content when focused.
+ */
+@Composable
+fun AppleSeeAllCard(
+    label: String,
+    width: Dp,
+    height: Dp,
+    cornerRadius: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var focused by remember { mutableStateOf(false) }
+    val contentColor by animateColorAsState(
+        targetValue = if (focused) OnWhite else Color.White,
+        animationSpec = tween(durationMillis = 150),
+        label = "appleSeeAllContent"
+    )
+    val badgeColor by animateColorAsState(
+        targetValue = if (focused) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.18f),
+        animationSpec = tween(durationMillis = 150),
+        label = "appleSeeAllBadge"
+    )
+    val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .size(width = width, height = height)
+            .onFocusChanged { focused = it.isFocused || it.hasFocus },
+        shape = CardDefaults.shape(shape = shape),
+        colors = CardDefaults.colors(
+            containerColor = Color.White.copy(alpha = 0.12f),
+            focusedContainerColor = Color.White
+        ),
+        border = CardDefaults.border(
+            border = Border(border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)), shape = shape),
+            focusedBorder = Border.None
+        ),
+        scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
+        glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(badgeColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = label,
+                color = contentColor,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = AppleTextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+        }
+    }
+}
+
+/** One choice in the genre menu. [value] null means "all genres". */
+@androidx.compose.runtime.Immutable
+data class AppleFilterOption(val label: String, val value: String?)
+
+/**
+ * Glass pill for the top right of a See All page ("All Genres  v"); opens a gray
+ * glass menu of genres. The current choice gets a check mark, the focused row a white pill.
+ */
+@Composable
+fun AppleGenreFilterButton(
+    label: String,
+    options: List<AppleFilterOption>,
+    selectedValue: String?,
+    onSelect: (AppleFilterOption) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedRequester = remember { FocusRequester() }
+
+    // Opening the menu puts focus on the current choice.
+    LaunchedEffect(expanded) {
+        if (!expanded) return@LaunchedEffect
+        repeat(8) {
+            withFrameNanos { }
+            if (runCatching { selectedRequester.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+
+    Box(modifier = modifier) {
+        AppleGlassButton(
+            onClick = { expanded = !expanded },
+            shape = HeroPillShape,
+            minWidth = 150.dp,
+            modifier = Modifier.height(40.dp)
+        ) { color ->
+            Row(
+                modifier = Modifier.padding(start = 20.dp, end = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    color = color,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .width(260.dp)
+                .heightIn(max = 380.dp),
+            shape = RoundedCornerShape(22.dp),
+            containerColor = Color(0xFF7C7C81),
+            tonalElevation = 0.dp,
+            shadowElevation = 12.dp,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+        ) {
+            options.forEach { option ->
+                val isSelected = option.value == selectedValue
+                var rowFocused by remember { mutableStateOf(false) }
+                val textColor = if (rowFocused) OnWhite else Color.White
+                DropdownMenuItem(
+                    modifier = Modifier
+                        .then(if (isSelected) Modifier.focusRequester(selectedRequester) else Modifier)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .clip(HeroPillShape)
+                        .background(if (rowFocused) Color.White else Color.Transparent)
+                        .onFocusChanged { rowFocused = it.isFocused || it.hasFocus },
+                    text = {
+                        Text(
+                            text = option.label,
+                            color = textColor,
+                            fontSize = 16.sp,
+                            fontWeight = if (rowFocused) FontWeight.Medium else FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    trailingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = textColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    },
+                    colors = MenuDefaults.itemColors(textColor = textColor)
+                )
+            }
         }
     }
 }
