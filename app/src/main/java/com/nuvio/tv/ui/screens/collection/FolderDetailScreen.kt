@@ -71,8 +71,11 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.domain.model.FolderViewMode
 import com.nuvio.tv.domain.model.HomeLayout
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridView
 import com.nuvio.tv.ui.components.CatalogRowSection
 import com.nuvio.tv.ui.components.ContentCard
+import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.R
 import androidx.compose.ui.res.stringResource
@@ -259,6 +262,10 @@ private fun FolderHeader(folder: com.nuvio.tv.domain.model.CollectionFolder) {
     }
 }
 
+private const val FOLDER_FILTER_TYPE = "type"
+private const val FOLDER_FILTER_GENRE = "genre"
+private const val FOLDER_FILTER_YEAR = "year"
+
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TabbedGridContent(
@@ -275,6 +282,26 @@ private fun TabbedGridContent(
     val tabFocusRequesters = remember(uiState.tabs.size) { uiState.tabs.indices.map { FocusRequester() } }
     var gridHasFocus by remember { mutableStateOf(false) }
     var gridScrollToTopTrigger by remember { mutableIntStateOf(0) }
+    var selectedType by remember(uiState.selectedTabIndex) { mutableStateOf<String?>(null) }
+    var selectedGenre by remember(uiState.selectedTabIndex) { mutableStateOf<String?>(null) }
+    var selectedYear by remember(uiState.selectedTabIndex) { mutableStateOf<String?>(null) }
+
+    val currentTab = uiState.tabs.getOrNull(uiState.selectedTabIndex)
+    val rawItems = currentTab?.catalogRow?.items.orEmpty()
+    val genreYearFilter = remember(rawItems, selectedType, selectedGenre, selectedYear) {
+        com.nuvio.tv.ui.util.buildMetaGenreYearFilter(
+            items = rawItems,
+            selectedType = selectedType,
+            selectedGenre = selectedGenre,
+            selectedYear = selectedYear
+        )
+    }
+    // Only worth offering the Type facet when this tab actually mixes more than one type
+    // (e.g. the "All" tab); a type-specific tab already has just one.
+    val folderTypeFilterOptions = if (genreYearFilter.typeOptions.size > 1) genreYearFilter.typeOptions else emptyList()
+    val hasAnyFolderFilterOptions = folderTypeFilterOptions.isNotEmpty() ||
+        genreYearFilter.genreOptions.isNotEmpty() ||
+        genreYearFilter.yearOptions.isNotEmpty()
 
     // Grid Back: focus on grid -> move focus to active tab (grid stays scrolled).
     BackHandler(enabled = gridHasFocus && uiState.tabs.size > 1) {
@@ -366,9 +393,108 @@ private fun TabbedGridContent(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        if (rawItems.isNotEmpty() && hasAnyFolderFilterOptions) {
+            // Same Apple TV style Type / Genre / Year menu as the See All page.
+            val filterContext = LocalContext.current
+            val allLabel = stringResource(R.string.apple_filter_all)
+            val typeTitle = stringResource(R.string.library_filter_type)
+            val genreTitle = stringResource(R.string.library_filter_genre)
+            val yearTitle = stringResource(R.string.library_filter_year)
+            val filtersLabel = stringResource(R.string.apple_filters)
+            val filterSections = remember(
+                folderTypeFilterOptions,
+                genreYearFilter.genreOptions,
+                genreYearFilter.yearOptions,
+                selectedType,
+                selectedGenre,
+                selectedYear,
+                allLabel,
+                typeTitle,
+                genreTitle,
+                yearTitle,
+                filterContext
+            ) {
+                buildList {
+                    if (folderTypeFilterOptions.isNotEmpty()) {
+                        add(
+                            com.nuvio.tv.ui.components.AppleFilterSection(
+                                key = FOLDER_FILTER_TYPE,
+                                title = typeTitle,
+                                selectedValue = selectedType,
+                                options = listOf(com.nuvio.tv.ui.components.AppleFilterOption(allLabel, null)) +
+                                    folderTypeFilterOptions.map {
+                                        com.nuvio.tv.ui.components.AppleFilterOption(
+                                            com.nuvio.tv.ui.util.localizedContentType(filterContext, it.label),
+                                            it.key,
+                                            it.count
+                                        )
+                                    }
+                            )
+                        )
+                    }
+                    if (genreYearFilter.genreOptions.isNotEmpty()) {
+                        add(
+                            com.nuvio.tv.ui.components.AppleFilterSection(
+                                key = FOLDER_FILTER_GENRE,
+                                title = genreTitle,
+                                selectedValue = selectedGenre,
+                                options = listOf(com.nuvio.tv.ui.components.AppleFilterOption(allLabel, null)) +
+                                    genreYearFilter.genreOptions.map {
+                                        com.nuvio.tv.ui.components.AppleFilterOption(
+                                            com.nuvio.tv.ui.util.localizedGenreLabel(filterContext, it.label),
+                                            it.key,
+                                            it.count
+                                        )
+                                    }
+                            )
+                        )
+                    }
+                    if (genreYearFilter.yearOptions.isNotEmpty()) {
+                        add(
+                            com.nuvio.tv.ui.components.AppleFilterSection(
+                                key = FOLDER_FILTER_YEAR,
+                                title = yearTitle,
+                                selectedValue = selectedYear,
+                                options = listOf(com.nuvio.tv.ui.components.AppleFilterOption(allLabel, null)) +
+                                    genreYearFilter.yearOptions.map {
+                                        com.nuvio.tv.ui.components.AppleFilterOption(it.label, it.key, it.count)
+                                    }
+                            )
+                        )
+                    }
+                }
+            }
+            val activeSummary = listOfNotNull(
+                selectedType?.let { com.nuvio.tv.ui.util.localizedContentType(filterContext, it) },
+                selectedGenre?.let { com.nuvio.tv.ui.util.localizedGenreLabel(filterContext, it) },
+                selectedYear
+            ).joinToString(" · ")
+            com.nuvio.tv.ui.components.AppleFilterMenuButton(
+                label = activeSummary.ifEmpty { filtersLabel },
+                sections = filterSections,
+                hasActiveFilter = selectedType != null || selectedGenre != null || selectedYear != null,
+                clearLabel = stringResource(R.string.apple_filter_clear),
+                onSelect = { sectionKey, option ->
+                    when (sectionKey) {
+                        FOLDER_FILTER_TYPE -> selectedType = option.value
+                        FOLDER_FILTER_GENRE -> selectedGenre = option.value
+                        FOLDER_FILTER_YEAR -> selectedYear = option.value
+                    }
+                    gridScrollToTopTrigger++
+                },
+                onClearAll = {
+                    selectedType = null
+                    selectedGenre = null
+                    selectedYear = null
+                    gridScrollToTopTrigger++
+                }
+            )
+        }
     }
 
-    val currentTab = uiState.tabs.getOrNull(uiState.selectedTabIndex)
     if (currentTab == null) return
 
     when {
@@ -386,7 +512,9 @@ private fun TabbedGridContent(
             }
         }
         currentTab.catalogRow != null -> {
-            val items = currentTab.catalogRow.items
+            // rawItems / genreYearFilter / hasAnyFolderFilterOptions are hoisted above (used by the
+            // filter icon in the title row too).
+            val items = genreYearFilter.filteredItems
             val posterCardStyle = PosterCardDefaults.Style.copy(
                 cornerRadius = uiState.posterCardCornerRadiusDp.dp
             )
@@ -457,6 +585,15 @@ private fun TabbedGridContent(
                             }
                         }
                     }
+            }
+
+            if (items.isEmpty() && rawItems.isNotEmpty() && !(catalogRow?.isLoading == true)) {
+                EmptyScreenState(
+                    title = stringResource(R.string.catalog_filter_empty_title),
+                    subtitle = stringResource(R.string.catalog_filter_empty_subtitle),
+                    icon = Icons.Default.GridView
+                )
+                return
             }
 
             LazyVerticalGrid(

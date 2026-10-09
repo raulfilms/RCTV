@@ -29,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -51,7 +52,8 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.components.AppleAmbientBackdrop
 import com.nuvio.tv.ui.components.AppleFilterOption
-import com.nuvio.tv.ui.components.AppleGenreFilterButton
+import com.nuvio.tv.ui.components.AppleFilterMenuButton
+import com.nuvio.tv.ui.components.AppleFilterSection
 import com.nuvio.tv.ui.components.AppleTvCardSpacing
 import com.nuvio.tv.ui.components.AppleTvContentStart
 import com.nuvio.tv.ui.components.AppleTvFocusScale
@@ -82,10 +84,15 @@ import com.nuvio.tv.ui.util.buildMetaGenreYearFilter
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Stable focus key for a catalog poster (survives list reloads; not a grid index). */
 private fun catalogItemFocusKey(item: MetaPreview): String = "${item.apiType}:${item.id}"
+
+private const val FILTER_SECTION_TYPE = "type"
+private const val FILTER_SECTION_GENRE = "genre"
+private const val FILTER_SECTION_YEAR = "year"
 
 @Composable
 fun CatalogSeeAllScreen(
@@ -138,7 +145,6 @@ fun CatalogSeeAllScreen(
     var selectedType by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
     var selectedGenre by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
     var selectedYear by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
-    var filterMenuExpanded by remember(catalogKey) { mutableStateOf(false) }
     val genreYearFilter = remember(catalogRow?.items, selectedType, selectedGenre, selectedYear) {
         buildMetaGenreYearFilter(
             items = catalogRow?.items.orEmpty(),
@@ -147,7 +153,8 @@ fun CatalogSeeAllScreen(
             selectedYear = selectedYear
         )
     }
-    val typeFilterOptions = genreYearFilter.typeOptions
+    // Only worth offering the Type facet when this catalog actually mixes more than one type.
+    val typeFilterOptions = if (genreYearFilter.typeOptions.size > 1) genreYearFilter.typeOptions else emptyList()
     val filteredItems = genreYearFilter.filteredItems
     val filteredItemKeys = remember(catalogRow, filteredItems) {
         val row = catalogRow
@@ -168,6 +175,7 @@ fun CatalogSeeAllScreen(
         genreYearFilter.yearOptions.isNotEmpty()
 
     val gridState = rememberLazyGridState()
+    val filterScope = rememberCoroutineScope()
     val restoreFocusRequester = remember { FocusRequester() }
     // Persist the focused catalog item by stable id (not grid index) so return-from-Details
     // can re-focus the same poster even if the row reloads or the first cell steals focus.
@@ -280,24 +288,95 @@ fun CatalogSeeAllScreen(
                 }
             }
 
-            // Genre filter, top right.
-            if (hasRawItems && genreYearFilter.genreOptions.isNotEmpty()) {
-                val allGenresLabel = stringResource(R.string.apple_all_genres)
-                val genreContext = androidx.compose.ui.platform.LocalContext.current
-                val genreOptions = remember(genreYearFilter.genreOptions, allGenresLabel, genreContext) {
-                    listOf(AppleFilterOption(allGenresLabel, null)) +
-                        genreYearFilter.genreOptions.map {
-                            AppleFilterOption(localizedGenreLabel(genreContext, it.label), it.key)
+            // Type / Genre / Year filter, top right: one menu with every section and its counts.
+            if (hasRawItems && hasAnyFilterOptions) {
+                val filterContext = androidx.compose.ui.platform.LocalContext.current
+                val allLabel = stringResource(R.string.apple_filter_all)
+                val typeTitle = stringResource(R.string.library_filter_type)
+                val genreTitle = stringResource(R.string.library_filter_genre)
+                val yearTitle = stringResource(R.string.library_filter_year)
+                val filtersLabel = stringResource(R.string.apple_filters)
+                val filterSections = remember(
+                    typeFilterOptions,
+                    genreYearFilter.genreOptions,
+                    genreYearFilter.yearOptions,
+                    selectedType,
+                    selectedGenre,
+                    selectedYear,
+                    allLabel,
+                    typeTitle,
+                    genreTitle,
+                    yearTitle,
+                    filterContext
+                ) {
+                    buildList {
+                        if (typeFilterOptions.isNotEmpty()) {
+                            add(
+                                AppleFilterSection(
+                                    key = FILTER_SECTION_TYPE,
+                                    title = typeTitle,
+                                    selectedValue = selectedType,
+                                    options = listOf(AppleFilterOption(allLabel, null)) +
+                                        typeFilterOptions.map {
+                                            AppleFilterOption(localizedContentType(filterContext, it.label), it.key, it.count)
+                                        }
+                                )
+                            )
                         }
+                        if (genreYearFilter.genreOptions.isNotEmpty()) {
+                            add(
+                                AppleFilterSection(
+                                    key = FILTER_SECTION_GENRE,
+                                    title = genreTitle,
+                                    selectedValue = selectedGenre,
+                                    options = listOf(AppleFilterOption(allLabel, null)) +
+                                        genreYearFilter.genreOptions.map {
+                                            AppleFilterOption(localizedGenreLabel(filterContext, it.label), it.key, it.count)
+                                        }
+                                )
+                            )
+                        }
+                        if (genreYearFilter.yearOptions.isNotEmpty()) {
+                            add(
+                                AppleFilterSection(
+                                    key = FILTER_SECTION_YEAR,
+                                    title = yearTitle,
+                                    selectedValue = selectedYear,
+                                    options = listOf(AppleFilterOption(allLabel, null)) +
+                                        genreYearFilter.yearOptions.map {
+                                            AppleFilterOption(it.label, it.key, it.count)
+                                        }
+                                )
+                            )
+                        }
+                    }
                 }
-                val currentGenreLabel = genreOptions.firstOrNull { it.value == selectedGenre }?.label ?: allGenresLabel
-                AppleGenreFilterButton(
-                    label = currentGenreLabel,
-                    options = genreOptions,
-                    selectedValue = selectedGenre,
-                    onSelect = { option ->
-                        selectedGenre = option.value
+                // The pill shows what is picked ("Action · 2024"), or "Filters" when nothing is.
+                val activeSummary = listOfNotNull(
+                    selectedType?.let { localizedContentType(filterContext, it) },
+                    selectedGenre?.let { localizedGenreLabel(filterContext, it) },
+                    selectedYear
+                ).joinToString(" · ")
+                AppleFilterMenuButton(
+                    label = activeSummary.ifEmpty { filtersLabel },
+                    sections = filterSections,
+                    hasActiveFilter = selectedType != null || selectedGenre != null || selectedYear != null,
+                    clearLabel = stringResource(R.string.apple_filter_clear),
+                    onSelect = { sectionKey, option ->
+                        when (sectionKey) {
+                            FILTER_SECTION_TYPE -> selectedType = option.value
+                            FILTER_SECTION_GENRE -> selectedGenre = option.value
+                            FILTER_SECTION_YEAR -> selectedYear = option.value
+                        }
                         focusedItemKey = null
+                        filterScope.launch { runCatching { gridState.scrollToItem(0) } }
+                    },
+                    onClearAll = {
+                        selectedType = null
+                        selectedGenre = null
+                        selectedYear = null
+                        focusedItemKey = null
+                        filterScope.launch { runCatching { gridState.scrollToItem(0) } }
                     }
                 )
             }

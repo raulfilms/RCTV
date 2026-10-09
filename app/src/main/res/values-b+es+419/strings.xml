@@ -262,6 +262,11 @@
     <string name="tmdb_entity_kind_provider">Servicio de streaming</string>
     <string name="home_streaming_services">Servicios de streaming</string>
     <string name="apple_all_genres">Todos los géneros</string>
+    <string name="apple_filters">Filtros</string>
+    <string name="apple_filter_all">Todos</string>
+    <string name="apple_filter_clear">Borrar filtros</string>
+    <string name="catalog_filter_empty_title">Sin resultados</string>
+    <string name="catalog_filter_empty_subtitle">Prueba con otro tipo, género o año</string>
     <string name="nav_guide">Guía</string>
     <string name="nav_movies_tv">Películas y TV</string>
     <string name="streaming_service_unavailable">No se pudo cargar este servicio ahora. Intenta de nuevo en un momento.</string>

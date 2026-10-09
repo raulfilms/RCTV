@@ -111,6 +111,8 @@ import com.nuvio.tv.domain.model.PLACEHOLDER_IMAGE_URL
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MenuDefaults
@@ -866,31 +868,49 @@ fun AppleSeeAllCard(
     }
 }
 
-/** One choice in the genre menu. [value] null means "all genres". */
+/** One choice in the filter menu. [value] null means "all"; [count] is how many titles match it. */
 @androidx.compose.runtime.Immutable
-data class AppleFilterOption(val label: String, val value: String?)
+data class AppleFilterOption(val label: String, val value: String?, val count: Int? = null)
+
+/** A titled group of choices in the filter menu (Type, Genre, Year). [options] starts with the "All" row. */
+@androidx.compose.runtime.Immutable
+data class AppleFilterSection(
+    val key: String,
+    val title: String,
+    val options: List<AppleFilterOption>,
+    val selectedValue: String?
+)
+
+private val AppleMenuFill = Color(0xFF2C2C2E)
+private val AppleMenuEdge = Color.White.copy(alpha = 0.12f)
+private val AppleMenuDividerColor = Color.White.copy(alpha = 0.10f)
 
 /**
- * Glass pill for the top right of a See All page ("All Genres  v"); opens a gray
- * glass menu of genres. The current choice gets a check mark, the focused row a white pill.
+ * Glass pill for the top right of a See All page ("Filters  v", or the active choices such
+ * as "Action · 2024"). Opens one dark tvOS-style menu with every section together (Type,
+ * Genre, Year), each with an "All" row and how many titles match each choice. Picking a row
+ * applies right away and keeps the menu open, so several filters can be set in one visit;
+ * the menu closes with Back or with "Clear Filters".
  */
 @Composable
-fun AppleGenreFilterButton(
+fun AppleFilterMenuButton(
     label: String,
-    options: List<AppleFilterOption>,
-    selectedValue: String?,
-    onSelect: (AppleFilterOption) -> Unit,
+    sections: List<AppleFilterSection>,
+    hasActiveFilter: Boolean,
+    clearLabel: String,
+    onSelect: (sectionKey: String, option: AppleFilterOption) -> Unit,
+    onClearAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedRequester = remember { FocusRequester() }
+    val firstRowRequester = remember { FocusRequester() }
 
-    // Opening the menu puts focus on the current choice.
+    // Opening the menu puts focus on its first row.
     LaunchedEffect(expanded) {
         if (!expanded) return@LaunchedEffect
         repeat(8) {
             withFrameNanos { }
-            if (runCatching { selectedRequester.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
+            if (runCatching { firstRowRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
         }
     }
 
@@ -898,20 +918,28 @@ fun AppleGenreFilterButton(
         AppleGlassButton(
             onClick = { expanded = !expanded },
             shape = HeroPillShape,
-            minWidth = 150.dp,
+            minWidth = 140.dp,
             modifier = Modifier.height(40.dp)
         ) { color ->
             Row(
-                modifier = Modifier.padding(start = 20.dp, end = 14.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Icon(
+                    imageVector = Icons.Filled.Tune,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = label,
                     color = color,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 260.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(
@@ -927,57 +955,129 @@ fun AppleGenreFilterButton(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier
-                .width(240.dp)
-                .heightIn(max = 360.dp),
-            // Dark glass like tvOS pop-up menus, so the white genre names read clearly.
+                .widthIn(min = 260.dp, max = 300.dp)
+                .heightIn(max = 420.dp),
+            // Dark glass like tvOS pop-up menus, so the white names read clearly.
             shape = RoundedCornerShape(20.dp),
-            containerColor = Color(0xFF2C2C2E),
+            containerColor = AppleMenuFill,
             tonalElevation = 0.dp,
             shadowElevation = 16.dp,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+            border = BorderStroke(1.dp, AppleMenuEdge)
         ) {
-            options.forEach { option ->
-                val isSelected = option.value == selectedValue
-                var rowFocused by remember { mutableStateOf(false) }
-                val textColor = if (rowFocused) OnWhite else Color.White
-                DropdownMenuItem(
-                    modifier = Modifier
-                        .then(if (isSelected) Modifier.focusRequester(selectedRequester) else Modifier)
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                        .clip(HeroPillShape)
-                        .background(if (rowFocused) Color.White else Color.Transparent)
-                        .onFocusChanged { rowFocused = it.isFocused || it.hasFocus },
-                    text = {
-                        Text(
-                            text = option.label,
-                            color = textColor,
-                            fontSize = 15.sp,
-                            fontWeight = if (rowFocused) FontWeight.Medium else FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+            sections.forEachIndexed { sectionIndex, section ->
+                if (sectionIndex > 0) AppleFilterMenuDivider()
+                Text(
+                    text = section.title,
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 4.dp)
+                )
+                section.options.forEachIndexed { optionIndex, option ->
+                    androidx.compose.runtime.key(section.key, option.value) {
+                        AppleFilterMenuRow(
+                            label = option.label,
+                            count = option.count,
+                            isSelected = option.value == section.selectedValue,
+                            focusRequester = if (sectionIndex == 0 && optionIndex == 0) firstRowRequester else null,
+                            onClick = { onSelect(section.key, option) }
                         )
-                    },
-                    trailingIcon = if (isSelected) {
-                        {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = textColor,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    } else {
-                        null
-                    },
+                    }
+                }
+            }
+            if (hasActiveFilter) {
+                AppleFilterMenuDivider()
+                AppleFilterMenuRow(
+                    label = clearLabel,
+                    leadingIcon = Icons.Filled.Close,
                     onClick = {
-                        onSelect(option)
+                        onClearAll()
                         expanded = false
-                    },
-                    colors = MenuDefaults.itemColors(textColor = textColor)
+                    }
                 )
             }
         }
     }
+}
+
+@Composable
+private fun AppleFilterMenuDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .height(1.dp)
+            .background(AppleMenuDividerColor)
+    )
+}
+
+/** One row of the filter menu: check mark when chosen, name, count on the right; white pill on focus. */
+@Composable
+private fun AppleFilterMenuRow(
+    label: String,
+    onClick: () -> Unit,
+    isSelected: Boolean = false,
+    count: Int? = null,
+    leadingIcon: ImageVector? = null,
+    focusRequester: FocusRequester? = null
+) {
+    var rowFocused by remember { mutableStateOf(false) }
+    val textColor = if (rowFocused) OnWhite else Color.White
+    val countColor = if (rowFocused) OnWhite.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.5f)
+    DropdownMenuItem(
+        modifier = Modifier
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(HeroPillShape)
+            .background(if (rowFocused) Color.White else Color.Transparent)
+            .onFocusChanged { rowFocused = it.isFocused || it.hasFocus },
+        leadingIcon = {
+            Box(modifier = Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                val icon = leadingIcon ?: if (isSelected) Icons.Filled.Check else null
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = textColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    color = textColor,
+                    fontSize = 15.sp,
+                    fontWeight = if (rowFocused) FontWeight.Medium else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (count != null) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = count.toString(),
+                        color = countColor,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
+            }
+        },
+        onClick = onClick,
+        colors = MenuDefaults.itemColors(
+            textColor = textColor,
+            leadingIconColor = textColor,
+            trailingIconColor = textColor
+        )
+    )
 }
 
 /** Size of the horizontal (16:9) cards used by landscape rows. */
