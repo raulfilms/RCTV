@@ -66,6 +66,8 @@ import com.nuvio.tv.core.poster.withCustomPosterUrls
 import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.ui.components.AppleAmbientBackdrop
 import com.nuvio.tv.ui.components.AppleHeroCarousel
+import com.nuvio.tv.ui.components.AppleHomeChrome
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleTvFocusScale
@@ -200,6 +202,20 @@ fun ClassicHomeContent(
                 return distance
             }
         }
+    }
+
+    // Hide the "‹ Home" pill once the page scrolls (Apple TV shows it only at the top).
+    val pillHideThresholdPx = remember(density) { with(density) { 24.dp.toPx() } }
+    LaunchedEffect(columnListState, pillHideThresholdPx) {
+        snapshotFlow {
+            columnListState.firstVisibleItemIndex == 0 &&
+                columnListState.firstVisibleItemScrollOffset < pillHideThresholdPx
+        }
+            .distinctUntilChanged()
+            .collect { atTop -> AppleHomeChrome.showSectionPill.value = atTop }
+    }
+    DisposableEffect(Unit) {
+        onDispose { AppleHomeChrome.showSectionPill.value = true }
     }
 
     // Scroll to top when triggered from sidebar Home button.

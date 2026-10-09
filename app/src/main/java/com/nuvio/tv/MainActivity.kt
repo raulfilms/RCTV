@@ -179,6 +179,7 @@ import com.nuvio.tv.ui.components.NuvioScrollDefaults
 import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
+import com.nuvio.tv.ui.components.AppleHomeChrome
 import com.nuvio.tv.ui.navigation.NuvioNavHost
 import com.nuvio.tv.ui.navigation.Screen
 import com.nuvio.tv.ui.membership.LocalMemberAccess
@@ -2161,10 +2162,18 @@ private fun ModernSidebarScaffold(
                 }
             }
 
+            // On the home page the pill shows only at the top, like Apple TV.
+            val pillChromeVisible = currentRoute != Screen.Home.route || AppleHomeChrome.showSectionPill.value
+            val pillChromeAlpha by animateFloatAsState(
+                targetValue = if (pillChromeVisible) 1f else 0f,
+                animationSpec = tween(durationMillis = 200),
+                label = "homePillChrome"
+            )
             if (
                 !sidebarCollapsed &&
                 sidebarShowCollapsedPill &&
-                selectedDrawerRoute != Screen.Search.route
+                selectedDrawerRoute != Screen.Search.route &&
+                pillChromeAlpha > 0.01f
             ) {
                 CollapsedSidebarPill(
                     label = selectedDrawerItem.label,
@@ -2183,7 +2192,7 @@ private fun ModernSidebarScaffold(
                         }
                         .graphicsLayer {
                             val progress = sidebarExpandProgress
-                            alpha = 1f - progress
+                            alpha = (1f - progress) * pillChromeAlpha
                             val s = 0.9f + (0.1f * (1f - progress))
                             scaleX = s
                             scaleY = s

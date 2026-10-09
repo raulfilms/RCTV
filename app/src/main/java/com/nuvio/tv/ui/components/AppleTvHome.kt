@@ -172,52 +172,30 @@ fun AppleRowTitle(
     )
 }
 
+/** False while the Apple TV style home is scrolled down: the "‹ Home" pill hides then, like tvOS. */
+object AppleHomeChrome {
+    val showSectionPill = mutableStateOf(true)
+}
+
+// Apple TV's plain gray backdrop behind the rows (tvOS 26), slightly lighter at the top.
+private val AppleBackdropTop = Color(0xFF727277)
+private val AppleBackdropBottom = Color(0xFF5E5E63)
+
 /**
- * Full-screen, heavily blurred copy of the featured artwork. It is decoded at a
- * tiny size and stretched, which blurs it on every Android version; on
- * Android 12+ a real blur is added on top to smooth it further.
+ * The page background behind the rows: Apple TV's plain gray. At the top of the
+ * home page the featured artwork covers it; it shows as soon as the rows scroll up.
+ * [imageUrl] is kept for callers but no longer tints the background.
  */
 @Composable
 fun AppleAmbientBackdrop(
-    imageUrl: String?,
+    @Suppress("UNUSED_PARAMETER") imageUrl: String?,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    Box(modifier = modifier.background(Color(0xFF1C1C1E))) {
-        Crossfade(
-            targetState = imageUrl,
-            animationSpec = tween(durationMillis = 700),
-            label = "appleAmbientBackdrop"
-        ) { url ->
-            if (!url.isNullOrBlank()) {
-                val model = remember(context, url) {
-                    ImageRequest.Builder(context)
-                        .data(url)
-                        .size(width = 64, height = 36)
-                        .memoryCacheKey("${url}_apple_ambient")
-                        .crossfade(false)
-                        .build()
-                }
-                AsyncImage(
-                    model = model,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(48.dp)
-                            else Modifier
-                        )
-                )
-            }
-        }
-        // Tint so white text stays readable on bright artwork.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF26262A).copy(alpha = 0.58f))
+    Box(
+        modifier = modifier.background(
+            Brush.verticalGradient(listOf(AppleBackdropTop, AppleBackdropBottom))
         )
-    }
+    )
 }
 
 /**
@@ -436,7 +414,9 @@ private fun AppleHeroArtwork(
                 // bottom of the screen; once scrolled it ends with the hero slot.
                 val f = scrollFraction().coerceIn(0f, 1f)
                 val fadeEnd = size.height * (1f + (heroFraction - 1f) * f)
-                val fadeLength = size.height * (0.30f - 0.18f * f)
+                // Short fade: at the top the artwork runs to the bottom of the screen; once
+                // scrolled it ends in a clean edge over the gray, as on Apple TV.
+                val fadeLength = size.height * 0.04f
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(Color.Black, Color.Transparent),
