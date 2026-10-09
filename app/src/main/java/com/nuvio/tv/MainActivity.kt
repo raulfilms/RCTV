@@ -1017,7 +1017,17 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Discover is the menu's "Movies & TV" page, so the old "Discover off" redirect is gone.
+                    LaunchedEffect(discoverLocation, currentRoute) {
+                        if (discoverLocation == null) return@LaunchedEffect
+                        val onDiscoverRoute = currentRoute == Screen.Discover.route ||
+                            currentRoute?.startsWith("${Screen.Discover.route}/") == true
+                        if (discoverLocation == DiscoverLocation.OFF && onDiscoverRoute) {
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = false }
+                                launchSingleTop = true
+                            }
+                        }
+                    }
 
                     val rootRoutes = remember(discoverLocation) {
                         buildSet {
@@ -1027,9 +1037,12 @@ open class MainActivity : ComponentActivity() {
                             add(Screen.LiveTv.route)
                             add(Screen.Sports.route)
                             add(Screen.Settings.route)
-                            // "Movies & TV" is always in the menu now. Disney+ left the menu
-                            // (it opens from the Streaming Services row, so Back returns Home).
-                            add(Screen.Discover.route)
+                            // "Movies & TV" (a copy of Home) is always in the menu. Disney+ left the
+                            // menu (it opens from the Streaming Services row, so Back returns Home).
+                            add(Screen.MoviesTv.route)
+                            if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
+                                add(Screen.Discover.route)
+                            }
                         }
                     }
 
@@ -1072,7 +1085,7 @@ open class MainActivity : ComponentActivity() {
                                 icon = Icons.Default.SportsSoccer
                             ),
                             DrawerItem(
-                                route = Screen.Discover.route,
+                                route = Screen.MoviesTv.route,
                                 label = strNavMoviesTv,
                                 icon = Icons.Default.Movie
                             ),
@@ -2163,7 +2176,8 @@ private fun ModernSidebarScaffold(
             }
 
             // On the home page the pill shows only at the top, like Apple TV.
-            val pillChromeVisible = currentRoute != Screen.Home.route || AppleHomeChrome.showSectionPill.value
+            val pillChromeVisible = (currentRoute != Screen.Home.route && currentRoute != Screen.MoviesTv.route) ||
+                AppleHomeChrome.showSectionPill.value
             val pillChromeAlpha by animateFloatAsState(
                 targetValue = if (pillChromeVisible) 1f else 0f,
                 animationSpec = tween(durationMillis = 200),
@@ -2311,7 +2325,8 @@ private fun navigateToDrawerRoute(
     targetRoute: String
 ) {
     if (currentRoute == targetRoute) {
-        if (targetRoute == Screen.Home.route) {
+        // Home and Movies & TV share Home's ViewModel, so both scroll back to the top this way.
+        if (targetRoute == Screen.Home.route || targetRoute == Screen.MoviesTv.route) {
             // Scroll Home to top by clearing saved focus/scroll state on the ViewModel.
             val homeEntry = try {
                 navController.getBackStackEntry(Screen.Home.route)

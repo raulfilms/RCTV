@@ -29,6 +29,7 @@ import com.nuvio.tv.ui.screens.ExperienceModeSelectionScreen
 import com.nuvio.tv.ui.screens.LayoutSelectionScreen
 import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
+import com.nuvio.tv.ui.screens.home.HomeViewModel
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import com.nuvio.tv.ui.screens.library.LibraryScreen
@@ -224,132 +225,26 @@ private fun PlaybackNavHost(
             )
         }
 
-        composable(Screen.Home.route) {
-            fun createContinueWatchingRoute(
-                item: ContinueWatchingItem,
-                manualSelection: Boolean = false,
-                startFromBeginning: Boolean = false
-            ): String {
-                return when (item) {
-                    is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
-                        videoId = item.progress.videoId,
-                        contentType = item.progress.contentType,
-                        title = item.progress.name,
-                        poster = item.progress.poster,
-                        backdrop = item.progress.backdrop,
-                        logo = item.progress.logo,
-                        season = item.progress.season,
-                        episode = item.progress.episode,
-                        episodeName = item.progress.episodeTitle,
-                        genres = null,
-                        year = null,
-                        contentId = item.progress.contentId,
-                        contentName = item.progress.name,
-                        runtime = null,
-                        manualSelection = manualSelection,
-                        returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
-                        returnToHomeOnBack = true,
-                        startFromBeginning = startFromBeginning,
-                        contentLanguage = item.contentLanguage
-                    )
-                    is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
-                        videoId = item.info.videoId,
-                        contentType = item.info.contentType,
-                        title = item.info.name,
-                        poster = item.info.poster,
-                        backdrop = item.info.backdrop,
-                        logo = item.info.logo,
-                        season = item.info.season,
-                        episode = item.info.episode,
-                        episodeName = item.info.episodeTitle,
-                        genres = null,
-                        year = null,
-                        contentId = item.info.contentId,
-                        contentName = item.info.name,
-                        runtime = null,
-                        manualSelection = manualSelection,
-                        returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
-                        returnToHomeOnBack = true,
-                        startFromBeginning = startFromBeginning,
-                        contentLanguage = item.info.contentLanguage
-                    )
-                }
-            }
-
-            HomeScreen(
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    val heroBackdrop = HeroBackdropState.consumeAndClear()
-                    navController.navigate(
-                        Screen.Detail.createRoute(
-                            itemId = itemId,
-                            itemType = itemType,
-                            addonBaseUrl = addonBaseUrl,
-                            heroBackdropUrl = heroBackdrop
-                        )
-                    )
-                },
-                onContinueWatchingClick = onContinueWatchingClick@{ item ->
-                    if (!playbackAvailability.canStream(item)) {
-                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
-                        return@onContinueWatchingClick
-                    }
-                    navController.navigate(createContinueWatchingRoute(item))
-                },
-                onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginning@{ item ->
-                    if (!playbackAvailability.canStream(item)) {
-                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
-                        return@onContinueWatchingStartFromBeginning
-                    }
-                    navController.navigate(
-                        createContinueWatchingRoute(item, startFromBeginning = true)
-                    )
-                },
-                onContinueWatchingPlayManually = onContinueWatchingPlayManually@{ item ->
-                    if (!playbackAvailability.canStream(item)) {
-                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
-                        return@onContinueWatchingPlayManually
-                    }
-                    navController.navigate(
-                        createContinueWatchingRoute(item, manualSelection = true)
-                    )
-                },
-                onNavigateToCatalogSeeAll = { catalogId, addonId, type ->
-                    navController.navigate(Screen.CatalogSeeAll.createRoute(catalogId, addonId, type))
-                },
-                onNavigateToFolderDetail = { collectionId, folderId ->
-                    navController.navigate(Screen.FolderDetail.createRoute(collectionId, folderId))
-                },
-                onPlayFromHero = { itemId, itemType ->
-                    navController.navigate(
-                        Screen.Detail.createRoute(
-                            itemId = itemId,
-                            itemType = itemType,
-                            playOnLoad = true
-                        )
-                    )
-                },
-                onOpenStreamingService = { service ->
-                    if (service.opensDisneyHub) {
-                        // The app's own Disney+ section; Back returns to Home.
-                        navController.navigate(Screen.DisneyPlus.route) {
-                            launchSingleTop = true
-                        }
-                    } else {
-                        val target = service.target
-                        if (target != null) {
-                            navController.navigate(
-                                Screen.TmdbEntityBrowse.createRoute(
-                                    entityKind = target.entityKind,
-                                    entityId = target.entityId,
-                                    entityName = service.name,
-                                    // Studios (A24...) are mostly films; services lead with series.
-                                    sourceType = if (target.entityKind == "company") "movie" else "tv"
-                                )
-                            )
-                        }
-                    }
-                }
+        composable(Screen.Home.route) { backStackEntry ->
+            HomeRouteContent(
+                navController = navController,
+                viewModel = androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
             )
+        }
+
+        // "Movies & TV" in the menu: an exact copy of Home. It uses Home's own ViewModel, so the
+        // two pages always show the same rows and nothing loads twice.
+        composable(Screen.MoviesTv.route) { backStackEntry ->
+            val homeBackStackEntry = androidx.compose.runtime.remember(backStackEntry) {
+                try { navController.getBackStackEntry(Screen.Home.route) } catch (_: Exception) { null }
+            }
+            val homeViewModel: HomeViewModel =
+                if (homeBackStackEntry != null) {
+                    androidx.hilt.navigation.compose.hiltViewModel(homeBackStackEntry)
+                } else {
+                    androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
+                }
+            HomeRouteContent(navController = navController, viewModel = homeViewModel)
         }
 
         composable(
@@ -1680,4 +1575,143 @@ private fun PlaybackNavHost(
             )
         }
     }
+}
+
+/**
+ * The Home page (Apple TV layout and its navigation). Shown by the "Home" menu item and, with the
+ * very same content, by "Movies & TV".
+ */
+@Composable
+private fun HomeRouteContent(
+    navController: NavHostController,
+    viewModel: HomeViewModel
+) {
+    val playbackAvailability = LocalPlaybackAvailability.current
+    val context = LocalContext.current
+    fun createContinueWatchingRoute(
+        item: ContinueWatchingItem,
+        manualSelection: Boolean = false,
+        startFromBeginning: Boolean = false
+    ): String {
+        return when (item) {
+            is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
+                videoId = item.progress.videoId,
+                contentType = item.progress.contentType,
+                title = item.progress.name,
+                poster = item.progress.poster,
+                backdrop = item.progress.backdrop,
+                logo = item.progress.logo,
+                season = item.progress.season,
+                episode = item.progress.episode,
+                episodeName = item.progress.episodeTitle,
+                genres = null,
+                year = null,
+                contentId = item.progress.contentId,
+                contentName = item.progress.name,
+                runtime = null,
+                manualSelection = manualSelection,
+                returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
+                returnToHomeOnBack = true,
+                startFromBeginning = startFromBeginning,
+                contentLanguage = item.contentLanguage
+            )
+            is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
+                videoId = item.info.videoId,
+                contentType = item.info.contentType,
+                title = item.info.name,
+                poster = item.info.poster,
+                backdrop = item.info.backdrop,
+                logo = item.info.logo,
+                season = item.info.season,
+                episode = item.info.episode,
+                episodeName = item.info.episodeTitle,
+                genres = null,
+                year = null,
+                contentId = item.info.contentId,
+                contentName = item.info.name,
+                runtime = null,
+                manualSelection = manualSelection,
+                returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
+                returnToHomeOnBack = true,
+                startFromBeginning = startFromBeginning,
+                contentLanguage = item.info.contentLanguage
+            )
+        }
+    }
+
+    HomeScreen(
+        viewModel = viewModel,
+        onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+            val heroBackdrop = HeroBackdropState.consumeAndClear()
+            navController.navigate(
+                Screen.Detail.createRoute(
+                    itemId = itemId,
+                    itemType = itemType,
+                    addonBaseUrl = addonBaseUrl,
+                    heroBackdropUrl = heroBackdrop
+                )
+            )
+        },
+        onContinueWatchingClick = onContinueWatchingClick@{ item ->
+            if (!playbackAvailability.canStream(item)) {
+                Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                return@onContinueWatchingClick
+            }
+            navController.navigate(createContinueWatchingRoute(item))
+        },
+        onContinueWatchingStartFromBeginning = onContinueWatchingStartFromBeginning@{ item ->
+            if (!playbackAvailability.canStream(item)) {
+                Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                return@onContinueWatchingStartFromBeginning
+            }
+            navController.navigate(
+                createContinueWatchingRoute(item, startFromBeginning = true)
+            )
+        },
+        onContinueWatchingPlayManually = onContinueWatchingPlayManually@{ item ->
+            if (!playbackAvailability.canStream(item)) {
+                Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                return@onContinueWatchingPlayManually
+            }
+            navController.navigate(
+                createContinueWatchingRoute(item, manualSelection = true)
+            )
+        },
+        onNavigateToCatalogSeeAll = { catalogId, addonId, type ->
+            navController.navigate(Screen.CatalogSeeAll.createRoute(catalogId, addonId, type))
+        },
+        onNavigateToFolderDetail = { collectionId, folderId ->
+            navController.navigate(Screen.FolderDetail.createRoute(collectionId, folderId))
+        },
+        onPlayFromHero = { itemId, itemType ->
+            navController.navigate(
+                Screen.Detail.createRoute(
+                    itemId = itemId,
+                    itemType = itemType,
+                    playOnLoad = true
+                )
+            )
+        },
+        onOpenStreamingService = { service ->
+            if (service.opensDisneyHub) {
+                // The app's own Disney+ section; Back returns to Home.
+                navController.navigate(Screen.DisneyPlus.route) {
+                    launchSingleTop = true
+                }
+            } else {
+                val target = service.target
+                if (target != null) {
+                    navController.navigate(
+                        Screen.TmdbEntityBrowse.createRoute(
+                            entityKind = target.entityKind,
+                            entityId = target.entityId,
+                            entityName = service.name,
+                            // Studios (A24...) are mostly films; services lead with series.
+                            sourceType = if (target.entityKind == "company") "movie" else "tv"
+                        )
+                    )
+                }
+            }
+        }
+    )
 }

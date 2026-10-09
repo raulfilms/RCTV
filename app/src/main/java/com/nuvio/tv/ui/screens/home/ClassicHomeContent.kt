@@ -206,16 +206,17 @@ fun ClassicHomeContent(
 
     // Hide the "‹ Home" pill once the page scrolls (Apple TV shows it only at the top).
     val pillHideThresholdPx = remember(density) { with(density) { 24.dp.toPx() } }
+    val chromePage = remember { Any() }
     LaunchedEffect(columnListState, pillHideThresholdPx) {
         snapshotFlow {
             columnListState.firstVisibleItemIndex == 0 &&
                 columnListState.firstVisibleItemScrollOffset < pillHideThresholdPx
         }
             .distinctUntilChanged()
-            .collect { atTop -> AppleHomeChrome.showSectionPill.value = atTop }
+            .collect { atTop -> AppleHomeChrome.report(chromePage, atTop) }
     }
-    DisposableEffect(Unit) {
-        onDispose { AppleHomeChrome.showSectionPill.value = true }
+    DisposableEffect(chromePage) {
+        onDispose { AppleHomeChrome.release(chromePage) }
     }
 
     // Scroll to top when triggered from sidebar Home button.

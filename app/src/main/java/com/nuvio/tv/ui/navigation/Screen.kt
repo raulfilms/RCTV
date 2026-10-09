@@ -137,6 +137,8 @@ sealed class Screen(val route: String) {
     }
     data object Search : Screen("search")
     data object Discover : Screen("discover")
+    /** Menu "Movies & TV": the very same page as Home, on Home's own data. */
+    data object MoviesTv : Screen("movies_tv")
     data object Library : Screen("library")
     data object LiveTv : Screen("live_tv")
     data object IptvSources : Screen("iptv_sources")

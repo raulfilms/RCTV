@@ -177,6 +177,22 @@ fun AppleRowTitle(
 /** False while the Apple TV style home is scrolled down: the "‹ Home" pill hides then, like tvOS. */
 object AppleHomeChrome {
     val showSectionPill = mutableStateOf(true)
+
+    // Home and Movies & TV show the same page; only the one on screen now drives the pill,
+    // so the page that is leaving can't switch it back on while the new one is scrolled down.
+    private var owner: Any? = null
+
+    fun report(page: Any, atTop: Boolean) {
+        owner = page
+        showSectionPill.value = atTop
+    }
+
+    fun release(page: Any) {
+        if (owner === page) {
+            owner = null
+            showSectionPill.value = true
+        }
+    }
 }
 
 // Apple TV's plain gray backdrop behind the rows (tvOS 26), slightly lighter at the top.
