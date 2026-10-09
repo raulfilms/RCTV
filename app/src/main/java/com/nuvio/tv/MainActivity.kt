@@ -449,6 +449,9 @@ open class MainActivity : ComponentActivity() {
             }
 
             var profileSwitchedManually by remember { mutableStateOf(false) }
+            // Set when the profile photo in the menu is pressed: show "Who's watching?" even
+            // with a single profile (that screen can also add profiles).
+            var forceProfileSelection by remember { mutableStateOf(false) }
             val shouldAutoSelectProfile = rememberLastProfileEnabled &&
                 hasEverSelectedProfile && !activeProfileHasPin &&
                 !hasSelectedProfileThisSession && !profileSwitchedManually
@@ -764,7 +767,7 @@ open class MainActivity : ComponentActivity() {
                     } else {
 
                     val shouldShowProfileSelection =
-                        !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin)
+                        !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin || forceProfileSelection)
 
                     if (shouldShowProfileSelection) {
                         startupDestination = if (splashTriggered) StartupDestination.Loading else StartupDestination.ProfileSelection
@@ -788,10 +791,21 @@ open class MainActivity : ComponentActivity() {
                                 }
                             },
                             onProfileSelected = {
+                                forceProfileSelection = false
                                 hasSelectedProfileThisSession = true
                                 if (authManager.authState.value is AuthState.FullAccount) {
                                     startupSyncService.requestSyncNow()
                                 }
+                            },
+                            // Opened from the menu with one profile: Back returns to the app.
+                            onBackPress = if (forceProfileSelection && profiles.size <= 1 && !activeProfileHasPin) {
+                                {
+                                    forceProfileSelection = false
+                                    splashTriggered = true
+                                    hasSelectedProfileThisSession = true
+                                }
+                            } else {
+                                null
                             }
                         )
                     } else {
@@ -1116,6 +1130,7 @@ open class MainActivity : ComponentActivity() {
                         onFeedbackShown = updateViewModel::consumeFeedbackMessage
                     ) {
                         val handleSwitchProfile = {
+                            forceProfileSelection = true
                             startupSession++
                             splashTriggered = false
                             profileSwitchedManually = true
@@ -1142,7 +1157,7 @@ open class MainActivity : ComponentActivity() {
                                     activeProfileName = activeProfile?.name ?: "",
                                     activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
                                     activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                                    showProfileSelector = profiles.size > 1,
+                                    showProfileSelector = profiles.isNotEmpty(),
                                     onSwitchProfile = handleSwitchProfile,
                                     onNavigate = { optimisticRoute = it },
                                     onExitApp = handleExitApp

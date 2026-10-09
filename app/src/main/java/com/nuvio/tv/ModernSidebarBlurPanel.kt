@@ -71,27 +71,29 @@ import java.util.Date
  *    badge turns light gray with a dark glyph.
  */
 
-private val PanelShape = RoundedCornerShape(36.dp)
+// Sizes measured against the Apple TV (tvOS 26) menu at 1080p: a compact card
+// about 200dp wide, an item every ~41dp, small badges and 14sp labels.
+private val PanelShape = RoundedCornerShape(28.dp)
 private val PillShape = RoundedCornerShape(percent = 50)
 
-private val ItemHeight = 46.dp
-private val ItemSpacing = 6.dp
-private val BadgeSize = 34.dp
-private val GlyphSize = 19.dp
-private val AvatarSize = 38.dp
+private val ItemHeight = 36.dp
+private val ItemSpacing = 5.dp
+private val BadgeSize = 24.dp
+private val GlyphSize = 14.dp
+private val AvatarSize = 26.dp
+private val LabelSize = 14.sp
 
-// Neutral gray glass. Without a real blur (Android 11 and older) it is fully
-// opaque, so the picture behind never makes the labels hard to read.
-private val PanelTop = Color(0xFF77777C)
-private val PanelBottom = Color(0xFF8E8E93)
-private val PanelEdge = Color.White.copy(alpha = 0.22f)
+// Smoky mid gray like the Apple TV menu. Darker than a "light gray" so white
+// labels stay crisp on TVs that push grays toward blue/lilac.
+private val PanelTop = Color(0xFF58585C)
+private val PanelBottom = Color(0xFF6A6A6E)
+private val PanelEdge = Color.White.copy(alpha = 0.16f)
 
-private val PillFocused = Color(0xFFF2F2F2)
-private val PillSelected = Color.White.copy(alpha = 0.14f)
+private val PillFocused = Color(0xFFF5F5F5)
 private val LabelOnGlass = Color.White
-private val LabelOnPill = Color(0xFF2C2C2E)
-private val BadgeOnGlass = Color.White.copy(alpha = 0.24f)
-private val BadgeOnPill = Color(0xFFE1E1E6)
+private val LabelOnPill = Color(0xFF1C1C1E)
+private val BadgeOnGlass = Color.White.copy(alpha = 0.20f)
+private val BadgeOnPill = Color(0xFFDCDCE0)
 private val GlyphOnPill = Color(0xFF3A3A3C)
 
 @Composable
@@ -132,7 +134,7 @@ internal fun ModernSidebarBlurPanel(
         Modifier
     }
     // Fully opaque without blur, so nothing behind the menu shows through.
-    val panelAlpha = if (blurEnabled) 0.86f else 1f
+    val panelAlpha = if (blurEnabled) 0.94f else 1f
     val panelBrush = remember(panelAlpha) {
         Brush.linearGradient(
             colors = listOf(
@@ -156,7 +158,7 @@ internal fun ModernSidebarBlurPanel(
             .then(blurModifier)
             .background(brush = panelBrush, shape = PanelShape)
             .border(width = 1.dp, color = PanelEdge, shape = PanelShape)
-            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
+            .padding(start = 10.dp, end = 10.dp, top = 14.dp, bottom = 12.dp)
     ) {
         // Header: profile photo and name, time on the right.
         Row(
@@ -169,7 +171,7 @@ internal fun ModernSidebarBlurPanel(
                         profileName = activeProfileName,
                         profileColorHex = activeProfileColorHex,
                         profileAvatarImageUrl = activeProfileAvatarImageUrl,
-                        focusEnabled = keepSidebarFocusDuringCollapse && showProfileSelector,
+                        focusEnabled = keepSidebarFocusDuringCollapse,
                         labelAlpha = sidebarLabelAlpha,
                         onFocusChanged = { focused ->
                             if (focused) onDrawerItemFocused(drawerItems.size)
@@ -191,19 +193,19 @@ internal fun ModernSidebarBlurPanel(
                             imageVector = Icons.Filled.Person,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
             }
             SidebarClock(
                 modifier = Modifier
-                    .padding(start = 8.dp, end = 12.dp)
+                    .padding(start = 6.dp, end = 10.dp)
                     .graphicsLayer { alpha = sidebarLabelAlpha }
             )
         }
 
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Column(
             modifier = Modifier
@@ -252,8 +254,8 @@ private fun SidebarClock(modifier: Modifier = Modifier) {
     }
     Text(
         text = timeFormat.format(now),
-        color = Color.White.copy(alpha = 0.95f),
-        fontSize = 17.sp,
+        color = Color.White.copy(alpha = 0.92f),
+        fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = modifier
@@ -277,11 +279,7 @@ private fun SidebarNavigationItem(
     val fast = tween<Color>(durationMillis = NuvioMotion.tokens.durations.fast)
 
     val pillColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> PillFocused
-            selected -> PillSelected
-            else -> Color.Transparent
-        },
+        targetValue = if (isFocused) PillFocused else Color.Transparent,
         animationSpec = fast,
         label = "sidebarItemPill"
     )
@@ -301,7 +299,7 @@ private fun SidebarNavigationItem(
         label = "sidebarItemGlyph"
     )
     val itemScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.02f else 1f,
+        targetValue = if (isFocused) 1.03f else 1f,
         animationSpec = tween(
             durationMillis = NuvioMotion.tokens.durations.fast,
             easing = NuvioMotion.tokens.easings.standard
@@ -338,7 +336,7 @@ private fun SidebarNavigationItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(ItemHeight)
-                .padding(start = 6.dp, end = 14.dp),
+                .padding(start = 6.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -367,11 +365,11 @@ private fun SidebarNavigationItem(
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(9.dp))
             Text(
                 text = label,
                 color = labelColor,
-                fontSize = 18.sp,
+                fontSize = LabelSize,
                 fontWeight = if (isFocused) FontWeight.Medium else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -428,7 +426,7 @@ private fun SidebarProfileItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+                .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ProfileAvatarCircle(
@@ -438,11 +436,11 @@ private fun SidebarProfileItem(
                 avatarImageUrl = profileAvatarImageUrl,
                 imageCrossfade = false
             )
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = profileName,
                 color = textColor,
-                fontSize = 18.sp,
+                fontSize = LabelSize,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

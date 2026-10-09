@@ -944,13 +944,14 @@ fun AppleGenreFilterButton(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier
-                .width(260.dp)
-                .heightIn(max = 380.dp),
-            shape = RoundedCornerShape(22.dp),
-            containerColor = Color(0xFF7C7C81),
+                .width(240.dp)
+                .heightIn(max = 360.dp),
+            // Dark glass like tvOS pop-up menus, so the white genre names read clearly.
+            shape = RoundedCornerShape(20.dp),
+            containerColor = Color(0xFF2C2C2E),
             tonalElevation = 0.dp,
-            shadowElevation = 12.dp,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+            shadowElevation = 16.dp,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
         ) {
             options.forEach { option ->
                 val isSelected = option.value == selectedValue
@@ -967,7 +968,7 @@ fun AppleGenreFilterButton(
                         Text(
                             text = option.label,
                             color = textColor,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = if (rowFocused) FontWeight.Medium else FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
