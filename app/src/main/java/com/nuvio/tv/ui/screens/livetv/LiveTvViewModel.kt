@@ -60,10 +60,14 @@ data class LiveTvUiState(
     val isPreviewGuide: Boolean = false,
     /** Why the sample EPG couldn't load, if it failed. */
     val previewError: String? = null,
-    /** Guide filter: only channels showing something live right now. */
-    val guideLiveOnly: Boolean = false,
+    /** Guide's first menu: how to list channels (Live Now, A to Z, Custom) or which category. */
+    val guideBrowse: GuideBrowse = GuideBrowse.LIVE_NOW,
     /** Guide filter: ISO country code, or null for every country. */
-    val guideCountry: String? = null
+    val guideCountry: String? = null,
+    /** Channels the user added to "Custom". */
+    val customChannelIds: Set<String> = emptySet(),
+    /** Guide categories of each channel id. */
+    val channelCategories: Map<String, Set<GuideBrowse>> = emptyMap()
 ) {
     val visibleChannels: List<LiveTvChannel>
         get() {
@@ -146,6 +150,11 @@ class LiveTvViewModel @Inject constructor(
                     }
                     startPreviewGuide()
                 }
+            }
+        }
+        viewModelScope.launch {
+            liveTvDataStore.customChannelIds.collect { ids ->
+                _uiState.update { it.copy(customChannelIds = ids) }
             }
         }
         viewModelScope.launch {
@@ -240,9 +249,20 @@ class LiveTvViewModel @Inject constructor(
         _uiState.update { it.copy(showGuide = show) }
     }
 
-    fun setGuideLiveOnly(liveOnly: Boolean) {
-        _uiState.update { it.copy(guideLiveOnly = liveOnly) }
+    fun setGuideBrowse(browse: GuideBrowse) {
+        _uiState.update { it.copy(guideBrowse = browse) }
     }
+
+    /** Adds the channel to the Guide's "Custom" list, or takes it out. */
+    fun toggleCustomChannel(channel: LiveTvChannel) {
+        viewModelScope.launch { liveTvDataStore.toggleCustomChannel(channel.id) }
+    }
+
+    /** Sorts every channel into the Guide's categories from its programs, name and group. */
+    private fun categorize(channels: List<LiveTvChannel>, epg: Map<String, List<EpgProgram>>): Map<String, Set<GuideBrowse>> =
+        LiveTvGuideCategories.classify(channels) { channel ->
+            channel.epgChannelId?.let { epg[it] }.orEmpty()
+        }
 
     fun setGuideCountry(country: String?) {
         _uiState.update { it.copy(guideCountry = country) }
@@ -344,18 +364,25 @@ class LiveTvViewModel @Inject constructor(
                 logoUrl = channel.iconUrl,
                 epgChannelId = key,
                 // The sample feed is EPGTalk's US guide.
-                country = "US"
+                country = "US",
+                number = channel.number
             )
         }
-        // Keep the feed's lineup order; just drop channels with nothing in the guide's window.
-        val withPrograms = channels.filter { !epg[it.id].isNullOrEmpty() }
+        // Keep the feed's lineup order; drop channels with nothing in the guide's window, and
+        // the sample feed's adult-only channels.
+        val withPrograms = channels.filter { channel ->
+            val programs = epg[channel.id]
+            !programs.isNullOrEmpty() && !LiveTvGuideCategories.isAdultChannel(programs)
+        }
+        val shown = withPrograms.ifEmpty { channels }
         _uiState.update {
             it.copy(
                 isLoading = false,
                 error = if (channels.isEmpty()) "No channels found in the sample guide." else null,
                 previewError = null,
                 isPreviewGuide = true,
-                channels = withPrograms.ifEmpty { channels },
+                channels = shown,
+                channelCategories = categorize(shown, epg),
                 groups = emptyList(),
                 selectedGroup = null,
                 epgByChannel = epg,
@@ -420,7 +447,9 @@ class LiveTvViewModel @Inject constructor(
                 channels = channels,
                 groups = groups,
                 selectedGroup = it.selectedGroup?.takeIf { g -> g in groups },
-                guideCountry = it.guideCountry?.takeIf { c -> channels.any { ch -> ch.country == c } }
+                guideCountry = it.guideCountry?.takeIf { c -> channels.any { ch -> ch.country == c } },
+                // Name/group hints for now; the guide's programs refine this once the EPG loads.
+                channelCategories = categorize(channels, emptyMap())
             )
         }
         if (channels.isNotEmpty()) loadEpg(sources)
@@ -479,6 +508,7 @@ class LiveTvViewModel @Inject constructor(
                 isEpgLoading = false,
                 epgByChannel = merged,
                 nowMs = System.currentTimeMillis(),
+                channelCategories = categorize(it.channels, merged),
                 showGuide = if (merged.isNotEmpty() && !it.hasEpg) true else it.showGuide
             )
         }

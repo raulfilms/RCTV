@@ -15,7 +15,9 @@ import java.util.zip.GZIPInputStream
 data class XmltvChannel(
     val id: String,
     val displayName: String,
-    val iconUrl: String?
+    val iconUrl: String?,
+    /** A display name that is just the channel number ("7.1", "602"), if any. */
+    val number: String? = null
 )
 
 /** Channels and programs read from one XMLTV feed. */
@@ -34,6 +36,7 @@ object XmltvParser {
     private val GZIP_MAGIC_1 = 0x1f
     private val GZIP_MAGIC_2 = 0x8b
 
+    private val CHANNEL_NUMBER = Regex("""\d{1,5}(\.\d{1,3})?""")
     private val LIVE_TAG = Regex("""\[\s*live\s*]""", RegexOption.IGNORE_CASE)
     private val NEW_TAG = Regex("""\[\s*new\s*]""", RegexOption.IGNORE_CASE)
 
@@ -164,6 +167,7 @@ object XmltvParser {
         var channelDeclId: String? = null
         var channelName: String? = null
         var channelIcon: String? = null
+        var channelNumber: String? = null
 
         // <programme>
         var inProgramme = false
@@ -178,6 +182,8 @@ object XmltvParser {
         var markedLive = false
         var markedNew = false
         val categories = ArrayList<String>(4)
+        // The same few category names repeat thousands of times: keep one copy of each.
+        val categoryNames = HashMap<String, String>()
 
         var currentTag: String? = null
         var seen = 0
@@ -194,6 +200,7 @@ object XmltvParser {
                                 channelDeclId = parser.getAttributeValue(null, "id")
                                 channelName = null
                                 channelIcon = null
+                                channelNumber = null
                             } else {
                                 try { skipElement(parser) } catch (_: Exception) { break }
                             }
@@ -245,12 +252,17 @@ object XmltvParser {
                                 "desc" -> description = (description.orEmpty() + text).takeIf { it.isNotBlank() }
                                 "sub-title" -> subtitle = (subtitle.orEmpty() + text).takeIf { it.isNotBlank() }
                                 "category" -> {
-                                    if (category == null) category = text
-                                    categories += text
+                                    val name = categoryNames.getOrPut(text) { text }
+                                    if (category == null) category = name
+                                    categories += name
                                 }
                             }
-                        } else if (inChannel && currentTag == "display-name" && channelName == null) {
-                            channelName = text
+                        } else if (inChannel && currentTag == "display-name") {
+                            if (channelNumber == null && CHANNEL_NUMBER.matches(text)) {
+                                channelNumber = text
+                            } else if (channelName == null) {
+                                channelName = text
+                            }
                         }
                     }
                 }
@@ -262,8 +274,9 @@ object XmltvParser {
                             if (!id.isNullOrBlank()) {
                                 channels += XmltvChannel(
                                     id = id,
-                                    displayName = channelName ?: id,
-                                    iconUrl = channelIcon
+                                    displayName = channelName ?: channelNumber ?: id,
+                                    iconUrl = channelIcon,
+                                    number = channelNumber
                                 )
                             }
                             inChannel = false
@@ -286,7 +299,8 @@ object XmltvParser {
                                     subtitle = subtitle,
                                     imageUrl = imageUrl,
                                     isLive = markedLive || LIVE_TAG.containsMatchIn(programTitle) || (isNew && isSportsGame),
-                                    isNew = isNew
+                                    isNew = isNew,
+                                    categories = categories.toList()
                                 )
                             }
                             inProgramme = false

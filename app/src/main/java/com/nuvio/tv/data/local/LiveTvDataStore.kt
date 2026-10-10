@@ -3,6 +3,7 @@ package com.nuvio.tv.data.local
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.domain.model.LiveTvConnection
 import com.nuvio.tv.domain.model.LiveTvSource
@@ -51,6 +52,9 @@ class LiveTvDataStore @Inject constructor(
 
     private val sourcesJsonKey = stringPreferencesKey("live_tv_sources_json")
 
+    /** Channels the user put in the Guide's "Custom" list. */
+    private val customChannelsKey = stringSetPreferencesKey("live_tv_custom_channel_ids")
+
     // Legacy single-connection keys, from before this multi-source format existed. Only ever
     // read (to migrate a value saved by an older build) - new writes always go through
     // [sourcesJsonKey], and [clearConnection] wipes these too so a migrated-then-cleared profile
@@ -73,6 +77,19 @@ class LiveTvDataStore @Inject constructor(
     val connection: StateFlow<LiveTvConnection?> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs -> sourcesFromPrefs(prefs).firstOrNull { it.enabled }?.connection }
     }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** Ids of the channels in the Guide's "Custom" list. */
+    val customChannelIds: StateFlow<Set<String>> = profileManager.activeProfileId.flatMapLatest { pid ->
+        factory.get(pid, FEATURE).data.map { prefs -> prefs[customChannelsKey] ?: emptySet() }
+    }.stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    /** Adds the channel to the "Custom" list, or takes it out if it's already there. */
+    suspend fun toggleCustomChannel(channelId: String) {
+        store().edit { prefs ->
+            val current = prefs[customChannelsKey] ?: emptySet()
+            prefs[customChannelsKey] = if (channelId in current) current - channelId else current + channelId
+        }
+    }
 
     private fun sourcesFromPrefs(prefs: Preferences): List<LiveTvSource> =
         parseSources(prefs[sourcesJsonKey]) ?: legacySource(prefs)?.let { listOf(it) } ?: emptyList()

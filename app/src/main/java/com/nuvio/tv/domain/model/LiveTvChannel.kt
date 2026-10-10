@@ -12,5 +12,7 @@ data class LiveTvChannel(
     /** Which configured [LiveTvSource] this channel came from, when merged from multiple sources (phase 2). Null for a channel not yet attributed to a source. */
     val sourceId: String? = null,
     /** ISO 3166 two-letter country code ("US"), from the playlist or guessed from the channel's name or group. */
-    val country: String? = null
+    val country: String? = null,
+    /** Channel number from the playlist or guide ("7.1" is a broadcast sub-channel). */
+    val number: String? = null
 )

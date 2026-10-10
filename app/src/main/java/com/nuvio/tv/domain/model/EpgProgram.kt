@@ -15,7 +15,9 @@ data class EpgProgram(
     /** Broadcast live: marked `<live/>` or "[LIVE]", or a new airing of a sports event. */
     val isLive: Boolean = false,
     /** A new episode or first airing: marked `<new/>` or "[NEW]". */
-    val isNew: Boolean = false
+    val isNew: Boolean = false,
+    /** Every XMLTV category of the program ([category] is the first one). */
+    val categories: List<String> = emptyList()
 ) {
     fun isAiringAt(timeMs: Long): Boolean = timeMs in startMs until endMs
 

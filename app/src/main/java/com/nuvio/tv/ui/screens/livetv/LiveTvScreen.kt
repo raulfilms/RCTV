@@ -112,8 +112,9 @@ fun LiveTvScreen(
                 uiState = uiState,
                 // Below the floating "‹ Guide" pill when it's shown.
                 topInset = if (showBuiltInHeader) NuvioTheme.spacing.lg else 56.dp,
-                onSetLiveOnly = viewModel::setGuideLiveOnly,
+                onSetBrowse = viewModel::setGuideBrowse,
                 onSetCountry = viewModel::setGuideCountry,
+                onToggleCustom = viewModel::toggleCustomChannel,
                 onShowChannels = { viewModel.setShowGuide(false) },
                 onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else null,
                 onProgramClick = { channel, program ->

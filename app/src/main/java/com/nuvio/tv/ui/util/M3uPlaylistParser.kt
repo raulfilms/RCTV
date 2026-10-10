@@ -24,6 +24,7 @@ object M3uPlaylistParser {
         var pendingGroup: String? = null
         var pendingEpgId: String? = null
         var pendingCountry: String? = null
+        var pendingNumber: String? = null
         var index = 0
 
         playlistText.lineSequence().forEach { rawLine ->
@@ -43,6 +44,7 @@ object M3uPlaylistParser {
                     pendingGroup = attributes["group-title"]?.takeIf { it.isNotBlank() }
                     pendingEpgId = (attributes["tvg-id"] ?: attributes["tvg-chno"])?.takeIf { it.isNotBlank() }
                     pendingCountry = attributes["tvg-country"]?.takeIf { it.isNotBlank() }
+                    pendingNumber = attributes["tvg-chno"]?.takeIf { it.isNotBlank() }
                 }
                 line.startsWith("#") -> {
                     // Other directives (#EXTGRP, #EXTVLCOPT, #EXTM3U, ...) are not needed for playback.
@@ -60,7 +62,8 @@ object M3uPlaylistParser {
                             logoUrl = pendingLogo,
                             groupTitle = pendingGroup,
                             epgChannelId = pendingEpgId,
-                            country = pendingCountry
+                            country = pendingCountry,
+                            number = pendingNumber
                         )
                     }
                     pendingName = null
@@ -68,6 +71,7 @@ object M3uPlaylistParser {
                     pendingGroup = null
                     pendingEpgId = null
                     pendingCountry = null
+                    pendingNumber = null
                 }
             }
         }

@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -117,9 +118,10 @@ private val FocusEdge = Color.White.copy(alpha = 0.55f)
 private val NowLine = AppleTvColors.Destructive
 private val BadgeRed = Color(0xFFD42A20)
 
-private const val SECTION_SHOW = "show"
+private const val SECTION_LISTS = "lists"
+private const val SECTION_CATEGORIES = "categories"
 private const val SECTION_COUNTRY = "country"
-private const val VALUE_LIVE_ONLY = "live"
+private val CustomStar = Color(0xFFFFD60A)
 
 /** "1:00 – 2:00 PM" (the AM/PM once when both times share it), or "13:00 – 14:00". */
 private fun formatTimeRange(format: java.text.DateFormat, startMs: Long, endMs: Long): String {
@@ -158,8 +160,9 @@ internal fun cleanProgramTitle(raw: String): String {
 internal fun LiveTvTimelineGuide(
     uiState: LiveTvUiState,
     topInset: Dp,
-    onSetLiveOnly: (Boolean) -> Unit,
+    onSetBrowse: (GuideBrowse) -> Unit,
     onSetCountry: (String?) -> Unit,
+    onToggleCustom: (LiveTvChannel) -> Unit,
     onShowChannels: () -> Unit,
     onAddIptv: (() -> Unit)?,
     onProgramClick: (LiveTvChannel, EpgProgram?) -> Unit,
@@ -173,11 +176,23 @@ internal fun LiveTvTimelineGuide(
     fun programsOf(channel: LiveTvChannel): List<EpgProgram> =
         channel.epgChannelId?.let { uiState.epgByChannel[it] }.orEmpty()
 
-    // Filters: live right now, and country.
-    val channels = remember(uiState.channels, uiState.epgByChannel, uiState.guideLiveOnly, uiState.guideCountry, nowMinute) {
-        uiState.channels.filter { channel ->
-            (uiState.guideCountry == null || channel.country == uiState.guideCountry) &&
-                (!uiState.guideLiveOnly || uiState.currentProgram(channel)?.isLive == true)
+    // First menu (Live Now, A to Z, Custom or a category) and the country filter.
+    val channels = remember(
+        uiState.channels,
+        uiState.channelCategories,
+        uiState.guideBrowse,
+        uiState.guideCountry,
+        uiState.customChannelIds
+    ) {
+        val inCountry = uiState.channels.filter { uiState.guideCountry == null || it.country == uiState.guideCountry }
+        when (val browse = uiState.guideBrowse) {
+            GuideBrowse.LIVE_NOW -> inCountry
+            GuideBrowse.A_TO_Z -> {
+                val collator = java.text.Collator.getInstance(Locale.getDefault())
+                inCountry.sortedWith { a, b -> collator.compare(a.name, b.name) }
+            }
+            GuideBrowse.CUSTOM -> inCountry.filter { it.id in uiState.customChannelIds }
+            else -> inCountry.filter { browse in uiState.channelCategories[it.id].orEmpty() }
         }
     }
     val countryCounts = remember(uiState.channels) {
@@ -313,7 +328,7 @@ internal fun LiveTvTimelineGuide(
             GuideHeader(
                 uiState = uiState,
                 countryCounts = countryCounts,
-                onSetLiveOnly = onSetLiveOnly,
+                onSetBrowse = onSetBrowse,
                 onSetCountry = onSetCountry,
                 onShowChannels = onShowChannels,
                 onAddIptv = onAddIptv
@@ -338,10 +353,16 @@ internal fun LiveTvTimelineGuide(
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = stringResource(
-                                        if (uiState.guideLiveOnly) R.string.livetv_guide_no_live else R.string.livetv_no_channels_match
+                                        when {
+                                            uiState.guideBrowse == GuideBrowse.CUSTOM -> R.string.livetv_guide_custom_empty
+                                            uiState.guideBrowse.isCategory -> R.string.livetv_guide_category_empty
+                                            else -> R.string.livetv_no_channels_match
+                                        }
                                     ),
                                     style = AppleTvType.Body,
-                                    color = AppleTvColors.LabelSecondary
+                                    color = AppleTvColors.LabelSecondary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 40.dp)
                                 )
                             }
                         } else {
@@ -359,6 +380,7 @@ internal fun LiveTvTimelineGuide(
                                 itemsIndexed(channels, key = { _, channel -> channel.id }) { rowIndex, channel ->
                                     GuideRow(
                                         channel = channel,
+                                        isCustom = channel.id in uiState.customChannelIds,
                                         programs = programsOf(channel),
                                         viewStartMs = viewStartMs,
                                         viewEndMs = viewEndMs,
@@ -380,7 +402,19 @@ internal fun LiveTvTimelineGuide(
                                             previewChannel = channel
                                             previewProgram = program
                                         },
-                                        onBlockClick = { program -> onProgramClick(channel, program) }
+                                        onBlockClick = { program -> onProgramClick(channel, program) },
+                                        onBlockLongClick = {
+                                            val added = channel.id !in uiState.customChannelIds
+                                            onToggleCustom(channel)
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    if (added) R.string.livetv_guide_custom_added else R.string.livetv_guide_custom_removed,
+                                                    channel.name
+                                                ),
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
                                     )
                                 }
                             }
@@ -423,23 +457,51 @@ internal fun LiveTvTimelineGuide(
 private fun GuideHeader(
     uiState: LiveTvUiState,
     countryCounts: Map<String, Int>,
-    onSetLiveOnly: (Boolean) -> Unit,
+    onSetBrowse: (GuideBrowse) -> Unit,
     onSetCountry: (String?) -> Unit,
     onShowChannels: () -> Unit,
     onAddIptv: (() -> Unit)?
 ) {
-    val allChannels = stringResource(R.string.livetv_guide_show_all)
-    val liveOnly = stringResource(R.string.livetv_guide_live_only)
-    val showTitle = stringResource(R.string.livetv_guide_show_title)
+    val context = LocalContext.current
     val countryTitle = stringResource(R.string.livetv_guide_country)
     val allCountries = stringResource(R.string.livetv_guide_all_countries)
+    val categoriesTitle = stringResource(R.string.livetv_guide_categories)
 
-    val showSection = remember(uiState.guideLiveOnly, allChannels, liveOnly, showTitle) {
-        AppleFilterSection(
-            key = SECTION_SHOW,
-            title = showTitle,
-            options = listOf(AppleFilterOption(allChannels, null), AppleFilterOption(liveOnly, VALUE_LIVE_ONLY)),
-            selectedValue = if (uiState.guideLiveOnly) VALUE_LIVE_ONLY else null
+    // Live Now / A to Z / Custom, then the categories, each with its number of channels.
+    val browseSections = remember(
+        uiState.guideBrowse,
+        uiState.channels,
+        uiState.channelCategories,
+        uiState.customChannelIds,
+        categoriesTitle,
+        context
+    ) {
+        val categoryCounts = HashMap<GuideBrowse, Int>()
+        uiState.channels.forEach { channel ->
+            uiState.channelCategories[channel.id]?.forEach { categoryCounts[it] = (categoryCounts[it] ?: 0) + 1 }
+        }
+        val customCount = uiState.channels.count { it.id in uiState.customChannelIds }
+        fun option(browse: GuideBrowse, count: Int?) =
+            AppleFilterOption(context.getString(browse.labelRes), browse.name, count)
+        listOf(
+            AppleFilterSection(
+                key = SECTION_LISTS,
+                title = "",
+                options = listOf(
+                    option(GuideBrowse.LIVE_NOW, null),
+                    option(GuideBrowse.A_TO_Z, null),
+                    option(GuideBrowse.CUSTOM, customCount)
+                ),
+                selectedValue = uiState.guideBrowse.name
+            ),
+            AppleFilterSection(
+                key = SECTION_CATEGORIES,
+                title = categoriesTitle,
+                options = GuideBrowse.entries
+                    .filter { it.isCategory }
+                    .map { option(it, categoryCounts[it] ?: 0) },
+                selectedValue = uiState.guideBrowse.name
+            )
         )
     }
     val countrySection = remember(countryCounts, uiState.guideCountry, allCountries, countryTitle) {
@@ -468,11 +530,15 @@ private fun GuideHeader(
         )
         Spacer(modifier = Modifier.width(18.dp))
         AppleFilterMenuButton(
-            label = if (uiState.guideLiveOnly) liveOnly else allChannels,
-            sections = listOf(showSection),
+            label = stringResource(uiState.guideBrowse.labelRes),
+            sections = browseSections,
             hasActiveFilter = false,
             clearLabel = "",
-            onSelect = { _, option -> onSetLiveOnly(option.value == VALUE_LIVE_ONLY) },
+            onSelect = { _, option ->
+                option.value
+                    ?.let { value -> GuideBrowse.entries.firstOrNull { it.name == value } }
+                    ?.let(onSetBrowse)
+            },
             onClearAll = {},
             leadingIcon = null,
             closeOnSelect = true
@@ -538,17 +604,15 @@ private fun TimeRuler(
 ) {
     val todayLabel = stringResource(R.string.livetv_guide_today)
     val dateText = remember(viewStartMs / (60 * MINUTE_MS), todayLabel) {
-        val pattern = android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEdMMM")
-        val formatted = SimpleDateFormat(pattern, Locale.getDefault()).format(Date(viewStartMs))
         val view = Calendar.getInstance().apply { timeInMillis = viewStartMs }
         val today = Calendar.getInstance()
-        if (view.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+        val isToday = view.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
             view.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
-        ) {
-            "$todayLabel, $formatted"
-        } else {
-            formatted
-        }
+        // "Today, Oct 10" or "Sun, Oct 11": short enough for the logo column.
+        val skeleton = if (isToday) "MMMd" else "EEEMMMd"
+        val pattern = android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton)
+        val formatted = SimpleDateFormat(pattern, Locale.getDefault()).format(Date(viewStartMs))
+        if (isToday) "$todayLabel, $formatted" else formatted
     }
     val density = LocalDensity.current
     val nowX = MinuteWidth * ((nowMs - viewStartMs) / MINUTE_MS.toFloat())
@@ -581,7 +645,7 @@ private fun TimeRuler(
             while (slot < viewEndMs) {
                 val x = MinuteWidth * ((slot - viewStartMs) / MINUTE_MS.toFloat())
                 // Leave room for the "Now" pill.
-                val clearOfNow = !nowVisible || (x - nowX).value !in -70f..50f
+                val clearOfNow = !nowVisible || (x - nowX).value !in -72f..22f
                 if (slot >= viewStartMs && clearOfNow) {
                     Text(
                         text = timeFormat.format(Date(slot)),
@@ -621,6 +685,7 @@ private fun TimeRuler(
 @Composable
 private fun GuideRow(
     channel: LiveTvChannel,
+    isCustom: Boolean,
     programs: List<EpgProgram>,
     viewStartMs: Long,
     viewEndMs: Long,
@@ -631,7 +696,8 @@ private fun GuideRow(
     timeRange: (EpgProgram) -> String,
     requesterFor: (String) -> FocusRequester,
     onBlockFocused: (EpgProgram?) -> Unit,
-    onBlockClick: (EpgProgram?) -> Unit
+    onBlockClick: (EpgProgram?) -> Unit,
+    onBlockLongClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -640,6 +706,7 @@ private fun GuideRow(
     ) {
         ChannelLogoTile(
             channel = channel,
+            isCustom = isCustom,
             logoLooks = logoLooks,
             modifier = Modifier
                 .width(ChannelColumnWidth)
@@ -664,6 +731,7 @@ private fun GuideRow(
                     focusRequester = requesterFor(blockKey(channel, null)),
                     onFocused = { onBlockFocused(null) },
                     onClick = { onBlockClick(null) },
+                    onLongClick = onBlockLongClick,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -683,6 +751,7 @@ private fun GuideRow(
                             focusRequester = requesterFor(blockKey(channel, program)),
                             onFocused = { onBlockFocused(program) },
                             onClick = { onBlockClick(program) },
+                            onLongClick = onBlockLongClick,
                             modifier = Modifier
                                 .offset(x = x)
                                 .width(width)
@@ -706,10 +775,13 @@ private fun GuideBlock(
     focusRequester: FocusRequester,
     onFocused: () -> Unit,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         onClick = onClick,
+        // Press and hold: add the channel to (or take it out of) the Custom list.
+        onLongClick = onLongClick,
         modifier = modifier
             .focusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocused() },
@@ -779,6 +851,7 @@ private fun LiveBadge(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun ChannelLogoTile(
     channel: LiveTvChannel,
+    isCustom: Boolean,
     logoLooks: MutableMap<String, Boolean>,
     modifier: Modifier = Modifier
 ) {
@@ -824,6 +897,17 @@ private fun ChannelLogoTile(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
+            )
+        }
+        if (isCustom) {
+            Icon(
+                imageVector = Icons.Filled.Star,
+                contentDescription = null,
+                tint = CustomStar,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(11.dp)
             )
         }
     }

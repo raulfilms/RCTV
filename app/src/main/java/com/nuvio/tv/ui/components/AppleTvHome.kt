@@ -970,13 +970,15 @@ fun AppleFilterMenuButton(
         ) {
             sections.forEachIndexed { sectionIndex, section ->
                 if (sectionIndex > 0) AppleFilterMenuDivider()
-                Text(
-                    text = section.title,
-                    color = AppleTvColors.LabelSecondary,
-                    style = AppleTvType.Caption1,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 4.dp)
-                )
+                if (section.title.isNotBlank()) {
+                    Text(
+                        text = section.title,
+                        color = AppleTvColors.LabelSecondary,
+                        style = AppleTvType.Caption1,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 4.dp)
+                    )
+                }
                 section.options.forEachIndexed { optionIndex, option ->
                     androidx.compose.runtime.key(section.key, option.value) {
                         AppleFilterMenuRow(
