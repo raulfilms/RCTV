@@ -115,6 +115,8 @@ private val BlockFill = AppleTvColors.ContrastDim
 private val BlockFillAiring = AppleTvColors.Contrast
 private val BlockFocused = AppleTvColors.ContrastFocus
 private val LogoTileFill = AppleTvColors.Contrast
+// A focused logo grows a little (it fits in the gaps around it).
+private const val LogoFocusScale = 1.05f
 private val FocusEdge = Color.White.copy(alpha = 0.55f)
 // Bright red for the "Now" line; a deeper red behind white badge text so it reads (5:1).
 private val NowLine = AppleTvColors.Destructive
@@ -139,6 +141,8 @@ private fun ceilToSlot(timeMs: Long): Long = floorToSlot(timeMs + SLOT_MS - 1)
 
 private fun blockKey(channel: LiveTvChannel, program: EpgProgram?): String =
     "${channel.id}|${program?.startMs ?: "empty"}"
+
+private fun logoKey(channel: LiveTvChannel): String = "${channel.id}|logo"
 
 private val bracketTags = Regex("""\s*\[\s*(new|live)\s*]""", RegexOption.IGNORE_CASE)
 
@@ -168,6 +172,8 @@ internal fun LiveTvTimelineGuide(
     onShowChannels: () -> Unit,
     onAddIptv: (() -> Unit)?,
     onProgramClick: (LiveTvChannel, EpgProgram?) -> Unit,
+    /** A channel's logo was chosen. */
+    onChannelClick: (LiveTvChannel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -219,6 +225,8 @@ internal fun LiveTvTimelineGuide(
     fun requesterFor(key: String): FocusRequester = requesters.getOrPut(key) { FocusRequester() }
     var focusedRow by remember { mutableIntStateOf(-1) }
     var focusedStart by remember { mutableLongStateOf(Long.MIN_VALUE) }
+    // True while a channel logo (left column) has focus rather than a program.
+    var focusedOnLogo by remember { mutableStateOf(false) }
     var anchorMs by remember { mutableLongStateOf(nowMs) }
     var pendingKey by remember { mutableStateOf<String?>(null) }
     var pendingRow by remember { mutableIntStateOf(0) }
@@ -229,6 +237,13 @@ internal fun LiveTvTimelineGuide(
     fun focusBlock(row: Int, program: EpgProgram?) {
         val channel = channels.getOrNull(row) ?: return
         pendingKey = blockKey(channel, program)
+        pendingRow = row
+        pendingSerial++
+    }
+
+    fun focusLogo(row: Int) {
+        val channel = channels.getOrNull(row) ?: return
+        pendingKey = logoKey(channel)
         pendingRow = row
         pendingSerial++
     }
@@ -260,6 +275,33 @@ internal fun LiveTvTimelineGuide(
     fun onDirection(key: Key): Boolean {
         val row = focusedRow
         if (row !in channels.indices) return false
+        if (focusedOnLogo) {
+            return when (key) {
+                // Right: into the grid, on what's on now (or the first program shown).
+                Key.DirectionRight -> {
+                    val programs = programsOf(channels[row])
+                    val at = if (nowMs in viewStartMs until viewEndMs) nowMs else viewStartMs
+                    val target = programs.firstOrNull { it.startMs <= at && it.endMs > at }
+                        ?: programs.firstOrNull { it.endMs > viewStartMs && it.startMs < viewEndMs }
+                    anchorMs = maxOf(target?.startMs ?: viewStartMs, viewStartMs)
+                    focusBlock(row, target)
+                    true
+                }
+                // Up and down: logo to logo.
+                Key.DirectionDown, Key.DirectionUp -> {
+                    val target = if (key == Key.DirectionDown) row + 1 else row - 1
+                    if (target !in channels.indices) {
+                        // Up from the first channel goes to the filters above.
+                        key == Key.DirectionDown
+                    } else {
+                        focusLogo(target)
+                        true
+                    }
+                }
+                // Left: on to the menu.
+                else -> false
+            }
+        }
         val programs = programsOf(channels[row])
         val index = programs.indexOfFirst { it.startMs == focusedStart }
         return when (key) {
@@ -279,13 +321,13 @@ internal fun LiveTvTimelineGuide(
             Key.DirectionLeft -> {
                 val previous = if (index > 0) programs[index - 1] else if (index < 0) programs.lastOrNull { it.endMs <= viewStartMs } else null
                 if (previous == null || previous.endMs <= minViewStartMs) {
-                    // Nothing earlier: slide back to the start, then let focus leave (the menu opens).
+                    // Nothing earlier: slide back to the start, then on to the channel's logo.
                     if (viewStartMs > minViewStartMs) {
                         viewStartMs = maxOf(minViewStartMs, viewStartMs - SLOT_MS)
-                        true
                     } else {
-                        false
+                        focusLogo(row)
                     }
+                    true
                 } else {
                     if (previous.startMs < viewStartMs) {
                         viewStartMs = maxOf(minViewStartMs, floorToSlot(previous.startMs))
@@ -400,11 +442,22 @@ internal fun LiveTvTimelineGuide(
                                             }
                                             pendingKey = null
                                             focusedRow = rowIndex
+                                            focusedOnLogo = false
                                             focusedStart = program?.startMs ?: Long.MIN_VALUE
                                             previewChannel = channel
                                             previewProgram = program
                                         },
                                         onBlockClick = { program -> onProgramClick(channel, program) },
+                                        onLogoFocused = {
+                                            pendingKey = null
+                                            focusedRow = rowIndex
+                                            focusedOnLogo = true
+                                            focusedStart = Long.MIN_VALUE
+                                            // The panel on the right shows the channel and what's on now.
+                                            previewChannel = channel
+                                            previewProgram = programsOf(channel).firstOrNull { it.isAiringAt(nowMs) }
+                                        },
+                                        onLogoClick = { onChannelClick(channel) },
                                         onBlockLongClick = {
                                             val added = channel.id !in uiState.customChannelIds
                                             onToggleCustom(channel)
@@ -699,6 +752,8 @@ private fun GuideRow(
     requesterFor: (String) -> FocusRequester,
     onBlockFocused: (EpgProgram?) -> Unit,
     onBlockClick: (EpgProgram?) -> Unit,
+    onLogoFocused: () -> Unit,
+    onLogoClick: () -> Unit,
     onBlockLongClick: () -> Unit
 ) {
     Row(
@@ -710,6 +765,11 @@ private fun GuideRow(
             channel = channel,
             isCustom = isCustom,
             logoLooks = logoLooks,
+            focusRequester = requesterFor(logoKey(channel)),
+            onFocused = onLogoFocused,
+            onClick = onLogoClick,
+            // Press and hold, like on a program: add to (or take out of) Custom.
+            onLongClick = onBlockLongClick,
             modifier = Modifier
                 .width(ChannelColumnWidth)
                 .fillMaxHeight()
@@ -852,68 +912,90 @@ private fun LiveBadge(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Channel logo on a dark tile, no name. Dark one-color logos (meant for light backgrounds,
- * like many guide feeds' logos) are drawn white so they read on the dark guide.
+ * Channel logo on a tile, no name; it can be selected like a program (lighter with a white
+ * edge and a little bigger when focused). Dark one-color logos (meant for light backgrounds,
+ * like many guide feeds' logos) are drawn white so they read on the tile.
  */
 @Composable
 private fun ChannelLogoTile(
     channel: LiveTvChannel,
     isCustom: Boolean,
     logoLooks: MutableMap<String, Boolean>,
+    focusRequester: FocusRequester,
+    onFocused: () -> Unit,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val url = channel.logoUrl?.takeIf { it.isNotBlank() }
-    Box(
+    Surface(
+        onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier
-            .clip(BlockShape)
-            .background(LogoTileFill),
-        contentAlignment = Alignment.Center
+            .focusRequester(focusRequester)
+            .onFocusChanged { if (it.isFocused) onFocused() },
+        shape = ClickableSurfaceDefaults.shape(BlockShape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = LogoTileFill,
+            contentColor = AppleTvColors.Label,
+            focusedContainerColor = BlockFocused,
+            focusedContentColor = AppleTvColors.Label
+        ),
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = Border(border = BorderStroke(1.5.dp, FocusEdge), shape = BlockShape)
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = LogoFocusScale)
     ) {
-        if (url == null) {
-            // Logos only in the guide: a plain TV mark when a channel has none.
-            Icon(
-                imageVector = Icons.Filled.LiveTv,
-                contentDescription = channel.name,
-                tint = AppleTvColors.LabelOnContrast.copy(alpha = 0.5f),
-                modifier = Modifier.size(22.dp)
-            )
-        } else {
-            val context = LocalContext.current
-            val request = remember(url) {
-                ImageRequest.Builder(context)
-                    .data(url)
-                    .size(240, 120)
-                    .allowHardware(false) // to read its pixels once
-                    .crossfade(true)
-                    .build()
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (url == null) {
+                // Logos only in the guide: a plain TV mark when a channel has none.
+                Icon(
+                    imageVector = Icons.Filled.LiveTv,
+                    contentDescription = channel.name,
+                    tint = AppleTvColors.LabelOnContrast.copy(alpha = 0.5f),
+                    modifier = Modifier.size(22.dp)
+                )
+            } else {
+                val context = LocalContext.current
+                val request = remember(url) {
+                    ImageRequest.Builder(context)
+                        .data(url)
+                        .size(240, 120)
+                        .allowHardware(false) // to read its pixels once
+                        .crossfade(true)
+                        .build()
+                }
+                val tintWhite = logoLooks[url] == true
+                AsyncImage(
+                    model = request,
+                    contentDescription = channel.name,
+                    contentScale = ContentScale.Fit,
+                    colorFilter = if (tintWhite) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null,
+                    onSuccess = { state ->
+                        if (url !in logoLooks) {
+                            val bitmap = (state.result.image as? BitmapImage)?.bitmap
+                            logoLooks[url] = bitmap != null && isDarkOneColorLogo(bitmap)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                )
             }
-            val tintWhite = logoLooks[url] == true
-            AsyncImage(
-                model = request,
-                contentDescription = channel.name,
-                contentScale = ContentScale.Fit,
-                colorFilter = if (tintWhite) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null,
-                onSuccess = { state ->
-                    if (url !in logoLooks) {
-                        val bitmap = (state.result.image as? BitmapImage)?.bitmap
-                        logoLooks[url] = bitmap != null && isDarkOneColorLogo(bitmap)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            )
-        }
-        if (isCustom) {
-            Icon(
-                imageVector = Icons.Filled.Star,
-                contentDescription = null,
-                tint = CustomStar,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(11.dp)
-            )
+            if (isCustom) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = CustomStar,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(11.dp)
+                )
+            }
         }
     }
 }

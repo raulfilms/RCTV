@@ -124,7 +124,10 @@ fun LiveTvScreen(
                         !uiState.isPreviewGuide && airingNow -> resolvingPlayChannel(channel)
                         program != null -> viewModel.openProgramDetails(channel, program)
                     }
-                }
+                },
+                // For now a logo plays the channel (the sample guide shows what's on);
+                // it will open the channel's own page once that exists.
+                onChannelClick = onChannelChosen
             )
         } else Column(
             modifier = Modifier
