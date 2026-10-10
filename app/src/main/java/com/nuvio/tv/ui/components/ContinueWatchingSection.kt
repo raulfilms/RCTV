@@ -1350,7 +1350,7 @@ private fun AppleContinueWatchingCard(
         }
     }
     var logoFailed by remember(logoUrl) { mutableStateOf(false) }
-    val bgCardColor = NuvioTheme.colors.BackgroundCard
+    val bgCardColor = AppleTvColors.Surface1
     val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
 
     Card(
@@ -1458,9 +1458,8 @@ private fun AppleContinueWatchingCard(
                 } else {
                     Text(
                         text = titleText,
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        color = AppleTvColors.Label,
+                        style = AppleTvType.Caption1,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1475,18 +1474,19 @@ private fun AppleContinueWatchingCard(
                     )
                     if (progress != null && progressFraction > 0f) {
                         Spacer(modifier = Modifier.width(5.dp))
+                        // Progress in the sheet's accent (system blue) on a faint track.
                         Box(
                             modifier = Modifier
                                 .width(26.dp)
                                 .height(3.dp)
                                 .clip(RoundedCornerShape(2.dp))
-                                .background(Color.White.copy(alpha = 0.35f))
+                                .background(AppleTvColors.LabelTertiary)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .fillMaxWidth(progressFraction)
-                                    .background(Color.White)
+                                    .background(AppleTvColors.Accent)
                             )
                         }
                     }
@@ -1494,9 +1494,8 @@ private fun AppleContinueWatchingCard(
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = infoText,
-                            color = Color.White.copy(alpha = 0.92f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
+                            color = AppleTvColors.LabelSecondary,
+                            style = AppleTvType.Caption2,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

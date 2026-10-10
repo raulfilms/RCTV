@@ -543,6 +543,7 @@ fun ContentCard(
                         lineHeight = 48.sp,
                         fontWeight = FontWeight.Black,
                         style = TextStyle(
+                            fontFamily = AppleTvType.Family,
                             shadow = Shadow(
                                 color = Color.Black.copy(alpha = 0.6f),
                                 offset = Offset(0f, 2f),

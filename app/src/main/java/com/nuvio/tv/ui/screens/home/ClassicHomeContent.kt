@@ -71,6 +71,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleTvFocusScale
+import com.nuvio.tv.ui.components.AppleTvPosterHeight
+import com.nuvio.tv.ui.components.AppleTvPosterWidth
+import com.nuvio.tv.ui.components.AppleTvRadius
+import com.nuvio.tv.ui.components.AppleTvSpacing
 import androidx.compose.ui.platform.LocalConfiguration
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
@@ -91,9 +95,9 @@ private const val CLASSIC_SECONDARY_ROW_POSTER_SCALE = 1.2f
 private val CLASSIC_ROW_HEADER_FOCUS_INSET = 160.dp
 // Scroll distance over which the hero artwork shrinks back into its own slot.
 private val APPLE_HERO_FADE_DISTANCE = 200.dp
-// Apple TV "Continue Watching" cards are a little squarer than 16:9.
-private val APPLE_CW_CARD_WIDTH = 184.dp
-private val APPLE_CW_CARD_HEIGHT = 124.dp
+// Apple TV "Continue Watching" cards: the sheet's 4-column width, a little squarer than 16:9.
+private val APPLE_CW_CARD_WIDTH = AppleTvSpacing.Col4
+private val APPLE_CW_CARD_HEIGHT = 138.dp
 private const val STREAMING_SERVICES_ROW_KEY = "streaming_services"
 // Saved-focus row index for the services row; catalog rows use 0 and up, Continue Watching -1, the hero -2.
 private const val STREAMING_SERVICES_ROW_INDEX = -3
@@ -133,9 +137,13 @@ fun ClassicHomeContent(
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val density = LocalDensity.current
-    // Apple TV style: vertical posters at the user's poster size, no focus ring, they grow and lift instead.
+    // Apple TV style: 2:3 posters at the sheet's 6-column width and poster radius, no focus
+    // ring; they grow and lift instead.
     val classicCatalogPosterCardStyle = remember(posterCardStyle) {
         posterCardStyle.copy(
+            width = AppleTvPosterWidth,
+            height = AppleTvPosterHeight,
+            cornerRadius = AppleTvRadius.Poster,
             focusedBorderWidth = 0.dp,
             focusedScale = AppleTvFocusScale
         )
@@ -717,7 +725,7 @@ fun ClassicHomeContent(
                     cardWidth = APPLE_CW_CARD_WIDTH,
                     imageHeight = APPLE_CW_CARD_HEIGHT,
                     cardStyle = uiState.continueWatchingCardStyle,
-                    cornerRadius = posterCardStyle.cornerRadius,
+                    cornerRadius = AppleTvRadius.Poster,
                     posterTitleOverride = classicPosterTitleStyle,
                     listState = cwListState,
                     appleStyle = true
@@ -815,7 +823,7 @@ fun ClassicHomeContent(
                     cardWidth = APPLE_CW_CARD_WIDTH,
                     imageHeight = APPLE_CW_CARD_HEIGHT,
                     cardStyle = uiState.continueWatchingCardStyle,
-                    cornerRadius = posterCardStyle.cornerRadius,
+                    cornerRadius = AppleTvRadius.Poster,
                     posterTitleOverride = classicPosterTitleStyle,
                     listState = upcomingListState,
                     appleStyle = true

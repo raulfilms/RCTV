@@ -180,6 +180,8 @@ import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
 import com.nuvio.tv.ui.components.AppleHomeChrome
+import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.AppleTvType
 import com.nuvio.tv.ui.navigation.NuvioNavHost
 import com.nuvio.tv.ui.navigation.Screen
 import com.nuvio.tv.ui.membership.LocalMemberAccess
@@ -250,7 +252,7 @@ private data class MainUiPrefs(
     val addonSetupSkipped: Boolean = false,
     val sidebarCollapsed: Boolean = false,
     val modernSidebarEnabled: Boolean = false,
-    val modernSidebarBlurPref: Boolean = false,
+    val modernSidebarBlurPref: Boolean = true,
     val discoverLocation: DiscoverLocation? = null,
     val smoothBringIntoViewEnabled: Boolean = true,
     val fastHorizontalNavigationEnabled: Boolean = false,
@@ -2236,8 +2238,10 @@ private fun CollapsedSidebarPill(
 ) {
     // Apple TV style: a "‹" hint, then a small gray glass pill with the section icon in a circle.
     val pillShape = RoundedCornerShape(NuvioRadii.tokens.full)
-    val pillColor = remember(blurEnabled) {
-        Color(0xFF6E6E73).copy(alpha = if (blurEnabled) 0.55f else 0.82f)
+    // With blur: Liquid Glass (dark layer + the sheet's white glass). Without: solid gray.
+    val glassActive = blurEnabled && hazeState != null
+    val pillColor = remember(glassActive) {
+        if (glassActive) AppleTvColors.GlassOnGray else Color(0xFF6E6E73).copy(alpha = 0.82f)
     }
 
     Row(
@@ -2307,9 +2311,8 @@ private fun CollapsedSidebarPill(
                 ) {
                     Text(
                         text = label,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        color = AppleTvColors.Label,
+                        style = AppleTvType.Callout,
                         modifier = Modifier.padding(start = 7.dp, end = 8.dp),
                         maxLines = 1
                     )

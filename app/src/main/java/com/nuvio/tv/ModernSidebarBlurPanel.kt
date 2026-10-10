@@ -52,6 +52,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
+import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.AppleTvRadius
+import com.nuvio.tv.ui.components.AppleTvType
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
 import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -62,9 +65,10 @@ import kotlinx.coroutines.delay
 import java.util.Date
 
 /*
- * The side menu, drawn like the Apple TV app (tvOS 26):
- *  - a floating, neutral gray "glass" card with big rounded corners that ends
- *    after its last item (it does not run to the bottom of the screen);
+ * The side menu, drawn like the Apple TV app (tvOS 26, "Apple TV 2026 Style" sheet):
+ *  - a floating Liquid Glass card (the content behind, strongly blurred, with a
+ *    light glass layer) that ends after its last item; on TVs without blur it is
+ *    a solid smoky gray so the labels always read;
  *  - the profile photo and name at the top, the time on the right;
  *  - every item is a light round badge with a white glyph and a white label;
  *  - the focused item becomes a full-width white pill with dark text, and its
@@ -73,25 +77,27 @@ import java.util.Date
 
 // Sizes measured against the Apple TV (tvOS 26) menu at 1080p: a compact card
 // about 200dp wide, an item every ~41dp, small badges and 14sp labels.
-private val PanelShape = RoundedCornerShape(28.dp)
-private val PillShape = RoundedCornerShape(percent = 50)
+private val PanelShape = RoundedCornerShape(AppleTvRadius.Panel)
+private val PillShape = AppleTvRadius.Pill
 
 private val ItemHeight = 36.dp
 private val ItemSpacing = 5.dp
 private val BadgeSize = 24.dp
 private val GlyphSize = 14.dp
 private val AvatarSize = 26.dp
-private val LabelSize = 14.sp
 
-// Smoky mid gray like the Apple TV menu. Darker than a "light gray" so white
-// labels stay crisp on TVs that push grays toward blue/lilac.
+// Without blur: smoky mid gray like the Apple TV menu. Darker than a "light gray" so
+// white labels stay crisp on TVs that push grays toward blue/lilac.
 private val PanelTop = Color(0xFF58585C)
 private val PanelBottom = Color(0xFF6A6A6E)
+// Light rim of the glass (white, not a color).
 private val PanelEdge = Color.White.copy(alpha = 0.16f)
+// Blur strength of the Liquid Glass (the sheet's ~40 px at 1080p).
+private val GlassBlurRadius = 20.dp
 
-private val PillFocused = Color(0xFFF5F5F5)
-private val LabelOnGlass = Color.White
-private val LabelOnPill = Color(0xFF1C1C1E)
+private val PillFocused = AppleTvColors.FocusFill
+private val LabelOnGlass = AppleTvColors.Label
+private val LabelOnPill = AppleTvColors.FocusLabel
 private val BadgeOnGlass = Color.White.copy(alpha = 0.20f)
 private val BadgeOnPill = Color(0xFFDCDCE0)
 private val GlyphOnPill = Color(0xFF3A3A3C)
@@ -126,22 +132,18 @@ internal fun ModernSidebarBlurPanel(
         delayedBlurProgress > 0f
     val blurModifier = if (showPanelBlur) {
         Modifier.hazeEffect(state = sidebarHazeState) {
-            blurRadius = NuvioTheme.effects.blurPanel * 1.4f * delayedBlurProgress
+            blurRadius = GlassBlurRadius * delayedBlurProgress
             noiseFactor = 0f
             inputScale = HazeInputScale.Fixed(0.66f)
         }
     } else {
         Modifier
     }
-    // Fully opaque without blur, so nothing behind the menu shows through.
-    val panelAlpha = if (blurEnabled) 0.94f else 1f
-    val panelBrush = remember(panelAlpha) {
-        Brush.linearGradient(
-            colors = listOf(
-                PanelTop.copy(alpha = panelAlpha),
-                PanelBottom.copy(alpha = panelAlpha)
-            )
-        )
+    // Liquid Glass once the blur is on: the solid gray fades out as the blur fades in.
+    // Without blur the gray stays fully opaque, so nothing sharp shows through the menu.
+    val glassProgress = if (showPanelBlur) delayedBlurProgress else 0f
+    val panelBrush = remember {
+        Brush.linearGradient(colors = listOf(PanelTop, PanelBottom))
     }
 
     Column(
@@ -156,7 +158,17 @@ internal fun ModernSidebarBlurPanel(
             }
             .clip(PanelShape)
             .then(blurModifier)
-            .background(brush = panelBrush, shape = PanelShape)
+            .background(brush = panelBrush, shape = PanelShape, alpha = 1f - glassProgress)
+            // Glass: a dark layer so the white labels read on the gray backdrop and on
+            // artwork, then the sheet's white glass on top.
+            .background(
+                color = AppleTvColors.GlassShade.copy(alpha = AppleTvColors.GlassShade.alpha * glassProgress),
+                shape = PanelShape
+            )
+            .background(
+                color = AppleTvColors.Glass.copy(alpha = AppleTvColors.Glass.alpha * glassProgress),
+                shape = PanelShape
+            )
             .border(width = 1.dp, color = PanelEdge, shape = PanelShape)
             .padding(start = 10.dp, end = 10.dp, top = 14.dp, bottom = 12.dp)
     ) {
@@ -254,9 +266,8 @@ private fun SidebarClock(modifier: Modifier = Modifier) {
     }
     Text(
         text = timeFormat.format(now),
-        color = Color.White.copy(alpha = 0.92f),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
+        color = AppleTvColors.Label,
+        style = AppleTvType.Caption1,
         maxLines = 1,
         modifier = modifier
     )
@@ -369,8 +380,7 @@ private fun SidebarNavigationItem(
             Text(
                 text = label,
                 color = labelColor,
-                fontSize = LabelSize,
-                fontWeight = if (isFocused) FontWeight.Medium else FontWeight.SemiBold,
+                style = AppleTvType.Body,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -440,8 +450,7 @@ private fun SidebarProfileItem(
             Text(
                 text = profileName,
                 color = textColor,
-                fontSize = LabelSize,
-                fontWeight = FontWeight.SemiBold,
+                style = AppleTvType.Body,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier

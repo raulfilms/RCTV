@@ -131,18 +131,18 @@ import androidx.compose.ui.res.painterResource
  *  - AppleRowTitle and the shared measurements used by the rows.
  */
 
-/** Left edge shared by the hero text and every row, so everything lines up like on Apple TV. */
-val AppleTvContentStart: Dp = 40.dp
+/** Left edge shared by the hero text and every row (the sheet's safe-x margin). */
+val AppleTvContentStart: Dp = AppleTvSpacing.SafeX
 
-/** Space between cards in a row. */
-val AppleTvCardSpacing: Dp = 18.dp
+/** Space between cards in a row (the sheet's grid gap). */
+val AppleTvCardSpacing: Dp = AppleTvSpacing.GridGap
 
-/** How much a focused card or button grows. */
-const val AppleTvFocusScale: Float = 1.08f
+/** How much a focused card or button grows (the sheet's focus-scale). */
+const val AppleTvFocusScale: Float = 1.1f
 
-/** Soft drop shadow under a focused card. */
+/** Shadow under a focused card (the sheet's shadow-focus: black 55 %, 24 dp soft). */
 @OptIn(ExperimentalTvMaterial3Api::class)
-val AppleTvFocusGlow: Glow = Glow(elevationColor = Color.Black.copy(alpha = 0.55f), elevation = 18.dp)
+val AppleTvFocusGlow: Glow = Glow(elevationColor = Color.Black.copy(alpha = 0.55f), elevation = 24.dp)
 
 val AppleTvTextShadow: Shadow = Shadow(
     color = Color.Black.copy(alpha = 0.45f),
@@ -151,10 +151,9 @@ val AppleTvTextShadow: Shadow = Shadow(
 )
 
 private const val HERO_AUTO_ADVANCE_MS = 9_000L
-private val HeroPillShape = RoundedCornerShape(percent = 50)
-private val GlassFill = Color.Black.copy(alpha = 0.30f)
-private val GlassEdge = Color.White.copy(alpha = 0.32f)
-private val OnWhite = Color(0xFF1C1C1E)
+private val HeroPillShape = AppleTvRadius.Pill
+private val GlassFill = AppleTvColors.Glass
+private val OnWhite = AppleTvColors.FocusLabel
 
 /** Row header ("Continue Watching", "Top 10 …"). */
 @Composable
@@ -164,12 +163,10 @@ fun AppleRowTitle(
 ) {
     Text(
         text = text,
-        color = Color.White,
-        fontSize = 19.sp,
-        fontWeight = FontWeight.SemiBold,
+        color = AppleTvColors.Label,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        style = TextStyle(shadow = AppleTvTextShadow),
+        style = AppleTvType.Headline.copy(shadow = AppleTvTextShadow),
         modifier = modifier.padding(start = AppleTvContentStart, end = AppleTvContentStart, bottom = 10.dp)
     )
 }
@@ -312,7 +309,7 @@ fun AppleHeroCarousel(
                 modifier = Modifier
                     .focusRestorer { playRequester }
                     .focusGroup(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.Space3),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AppleGlassButton(
@@ -333,12 +330,11 @@ fun AppleHeroCarousel(
                             tint = color,
                             modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(AppleTvSpacing.Space1))
                         Text(
                             text = stringResource(R.string.hero_play),
                             color = color,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            style = AppleTvType.Callout,
                             maxLines = 1
                         )
                     }
@@ -497,7 +493,6 @@ private fun AppleHeroInfo(item: MetaPreview) {
         }.joinToString(separator = " · ")
     }
     val ageRating = item.ageRating?.trim()?.takeIf { it.isNotBlank() }
-    val shadowStyle = TextStyle(shadow = AppleTvTextShadow)
 
     Column(modifier = Modifier.widthIn(max = 400.dp)) {
         if (logoModel != null && !logoFailed) {
@@ -515,12 +510,10 @@ private fun AppleHeroInfo(item: MetaPreview) {
         } else {
             Text(
                 text = item.name,
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
+                color = AppleTvColors.Label,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                style = shadowStyle
+                style = AppleTvType.Title2.copy(shadow = AppleTvTextShadow)
             )
         }
 
@@ -530,12 +523,10 @@ private fun AppleHeroInfo(item: MetaPreview) {
                 if (metaText.isNotBlank()) {
                     Text(
                         text = metaText,
-                        color = Color.White.copy(alpha = 0.92f),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
+                        color = AppleTvColors.LabelSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = shadowStyle,
+                        style = AppleTvType.Caption2.copy(shadow = AppleTvTextShadow),
                         modifier = Modifier.weight(1f, fill = false)
                     )
                 }
@@ -544,16 +535,15 @@ private fun AppleHeroInfo(item: MetaPreview) {
                     Box(
                         modifier = Modifier
                             .border(
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.85f)),
+                                border = BorderStroke(1.dp, AppleTvColors.LabelSecondary),
                                 shape = RoundedCornerShape(3.dp)
                             )
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
                             text = ageRating,
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            color = AppleTvColors.LabelSecondary,
+                            style = AppleTvType.Caption2,
                             maxLines = 1
                         )
                     }
@@ -565,12 +555,10 @@ private fun AppleHeroInfo(item: MetaPreview) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = description,
-                color = Color.White.copy(alpha = 0.92f),
-                fontSize = 14.sp,
-                lineHeight = 19.sp,
+                color = AppleTvColors.LabelSecondary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                style = shadowStyle
+                style = AppleTvType.Body.copy(shadow = AppleTvTextShadow)
             )
         }
     }
@@ -585,8 +573,7 @@ private fun AppleHeroPageDots(
     Row(
         modifier = modifier
             .clip(HeroPillShape)
-            .background(Color.Black.copy(alpha = 0.28f))
-            .border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.18f)), HeroPillShape)
+            .background(GlassFill)
             .padding(horizontal = 8.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -609,8 +596,8 @@ private fun AppleHeroPageDots(
 }
 
 /**
- * Glass button: translucent with a thin light edge when idle, solid white with
- * dark content when focused (the tvOS focus look).
+ * Glass button (capsule or circle): Liquid Glass with white content when idle, solid white
+ * with black content when focused, growing with a soft shadow (the tvOS focus look).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -637,10 +624,7 @@ fun AppleGlassButton(
             containerColor = if (bare) Color.Transparent else GlassFill,
             focusedContainerColor = Color.White
         ),
-        border = CardDefaults.border(
-            border = if (bare) Border.None else Border(border = BorderStroke(1.dp, GlassEdge), shape = shape),
-            focusedBorder = Border.None
-        ),
+        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
@@ -764,6 +748,10 @@ fun AppleStreamingServicesRow(
     }
 }
 
+/** Streaming service tiles: the sheet's 5-column width, 16:9. */
+private val AppleStreamingTileWidth: Dp = AppleTvSpacing.Col5
+private val AppleStreamingTileHeight: Dp = AppleTvSpacing.Col5 * (9f / 16f)
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun AppleStreamingServiceTile(
@@ -771,14 +759,14 @@ private fun AppleStreamingServiceTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = remember { RoundedCornerShape(12.dp) }
+    val shape = remember { RoundedCornerShape(AppleTvRadius.Poster) }
     // Light tile for dark logos; dark tile for logos with white lettering (HBO Max).
     val tileColor = if (service.darkTile) Color(0xFF050507) else Color(0xFFF5F5F7)
     val edgeColor = if (service.darkTile) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.06f)
 
     Card(
         onClick = onClick,
-        modifier = modifier.size(width = 168.dp, height = 94.dp),
+        modifier = modifier.size(width = AppleStreamingTileWidth, height = AppleStreamingTileHeight),
         shape = CardDefaults.shape(shape = shape),
         colors = CardDefaults.colors(
             containerColor = tileColor,
@@ -795,7 +783,7 @@ private fun AppleStreamingServiceTile(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(shape)
-                .padding(horizontal = 20.dp, vertical = 20.dp),
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -839,14 +827,12 @@ fun AppleSeeAllCard(
             .size(width = width, height = height)
             .onFocusChanged { focused = it.isFocused || it.hasFocus },
         shape = CardDefaults.shape(shape = shape),
+        // Glass on the gray backdrop (kept dark enough for white text), white when focused.
         colors = CardDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.12f),
-            focusedContainerColor = Color.White
+            containerColor = AppleTvColors.GlassOnGray,
+            focusedContainerColor = AppleTvColors.FocusFill
         ),
-        border = CardDefaults.border(
-            border = Border(border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)), shape = shape),
-            focusedBorder = Border.None
-        ),
+        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
@@ -873,8 +859,7 @@ fun AppleSeeAllCard(
             Text(
                 text = label,
                 color = contentColor,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
+                style = AppleTvType.Callout,
                 textAlign = AppleTextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -897,9 +882,8 @@ data class AppleFilterSection(
     val selectedValue: String?
 )
 
-private val AppleMenuFill = Color(0xFF2C2C2E)
-private val AppleMenuEdge = Color.White.copy(alpha = 0.12f)
-private val AppleMenuDividerColor = Color.White.copy(alpha = 0.10f)
+private val AppleMenuFill = AppleTvColors.Surface2
+private val AppleMenuDividerColor = AppleTvColors.Separator
 
 /**
  * Glass pill for the top right of a See All page ("Filters  v", or the active choices such
@@ -951,8 +935,7 @@ fun AppleFilterMenuButton(
                 Text(
                     text = label,
                     color = color,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    style = AppleTvType.Callout,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 260.dp)
@@ -973,20 +956,18 @@ fun AppleFilterMenuButton(
             modifier = Modifier
                 .widthIn(min = 260.dp, max = 300.dp)
                 .heightIn(max = 420.dp),
-            // Dark glass like tvOS pop-up menus, so the white names read clearly.
-            shape = RoundedCornerShape(20.dp),
+            // Dark menu like tvOS pop-up menus (no colored edge), so the white names read clearly.
+            shape = RoundedCornerShape(AppleTvRadius.Panel),
             containerColor = AppleMenuFill,
             tonalElevation = 0.dp,
-            shadowElevation = 16.dp,
-            border = BorderStroke(1.dp, AppleMenuEdge)
+            shadowElevation = 16.dp
         ) {
             sections.forEachIndexed { sectionIndex, section ->
                 if (sectionIndex > 0) AppleFilterMenuDivider()
                 Text(
                     text = section.title,
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    color = AppleTvColors.LabelSecondary,
+                    style = AppleTvType.Caption1,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 4.dp)
                 )
@@ -1039,8 +1020,8 @@ private fun AppleFilterMenuRow(
     focusRequester: FocusRequester? = null
 ) {
     var rowFocused by remember { mutableStateOf(false) }
-    val textColor = if (rowFocused) OnWhite else Color.White
-    val countColor = if (rowFocused) OnWhite.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.5f)
+    val textColor = if (rowFocused) OnWhite else AppleTvColors.Label
+    val countColor = if (rowFocused) OnWhite.copy(alpha = 0.6f) else AppleTvColors.LabelSecondary
     DropdownMenuItem(
         modifier = Modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -1069,8 +1050,7 @@ private fun AppleFilterMenuRow(
                 Text(
                     text = label,
                     color = textColor,
-                    fontSize = 15.sp,
-                    fontWeight = if (rowFocused) FontWeight.Medium else FontWeight.SemiBold,
+                    style = AppleTvType.Body,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -1080,8 +1060,7 @@ private fun AppleFilterMenuRow(
                     Text(
                         text = count.toString(),
                         color = countColor,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
+                        style = AppleTvType.Caption1,
                         maxLines = 1
                     )
                 }
@@ -1097,8 +1076,8 @@ private fun AppleFilterMenuRow(
 }
 
 /** Size of the horizontal (16:9) cards used by landscape rows. */
-val AppleLandscapeCardWidth: Dp = 224.dp
-val AppleLandscapeCardHeight: Dp = 126.dp
+val AppleLandscapeCardWidth: Dp = AppleTvSpacing.Col4
+val AppleLandscapeCardHeight: Dp = AppleTvSpacing.Col4 * (9f / 16f)
 
 /**
  * Horizontal 16:9 card for landscape rows (e.g. Popular Series): wide artwork,
@@ -1112,7 +1091,7 @@ fun AppleLandscapeCard(
     modifier: Modifier = Modifier,
     width: Dp = AppleLandscapeCardWidth,
     height: Dp = AppleLandscapeCardHeight,
-    cornerRadius: Dp = 12.dp,
+    cornerRadius: Dp = AppleTvRadius.Poster,
     rankNumber: Int? = null,
     isWatched: Boolean = false,
     focusRequester: FocusRequester? = null,
@@ -1184,8 +1163,8 @@ fun AppleLandscapeCard(
             },
         shape = CardDefaults.shape(shape = shape),
         colors = CardDefaults.colors(
-            containerColor = Color(0xFF2C2C2E),
-            focusedContainerColor = Color(0xFF2C2C2E)
+            containerColor = AppleTvColors.Surface2,
+            focusedContainerColor = AppleTvColors.Surface2
         ),
         border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
@@ -1238,12 +1217,10 @@ fun AppleLandscapeCard(
                     } else {
                         Text(
                             text = item.name,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            color = AppleTvColors.Label,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            style = TextStyle(shadow = AppleTvTextShadow)
+                            style = AppleTvType.Caption1.copy(shadow = AppleTvTextShadow)
                         )
                     }
                 }
@@ -1256,6 +1233,7 @@ fun AppleLandscapeCard(
                     lineHeight = 40.sp,
                     fontWeight = FontWeight.Black,
                     style = TextStyle(
+                        fontFamily = AppleTvType.Family,
                         shadow = Shadow(
                             color = Color.Black.copy(alpha = 0.6f),
                             offset = Offset(0f, 2f),

@@ -58,6 +58,12 @@ import com.nuvio.tv.ui.components.AppleTvCardSpacing
 import com.nuvio.tv.ui.components.AppleTvContentStart
 import com.nuvio.tv.ui.components.AppleTvFocusScale
 import com.nuvio.tv.ui.components.AppleTvTextShadow
+import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.AppleTvPosterHeight
+import com.nuvio.tv.ui.components.AppleTvPosterWidth
+import com.nuvio.tv.ui.components.AppleTvRadius
+import com.nuvio.tv.ui.components.AppleTvSpacing
+import com.nuvio.tv.ui.components.AppleTvType
 import com.nuvio.tv.ui.components.ContentCard
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -108,11 +114,11 @@ fun CatalogSeeAllScreen(
     val posterOptionsController = searchViewModel?.posterOptions ?: posterOptionsViewModel.controller
     val uiState by viewModel.uiState.collectAsState()
     val fullCatalogRows by viewModel.fullCatalogRows.collectAsState()
-    val computedHeightDp = (uiState.posterCardWidthDp * 1.5f).roundToInt()
+    // Apple TV sheet: 2:3 posters at the 6-column width, poster radius, focus by scale and shadow.
     val posterCardStyle = PosterCardStyle(
-        width = uiState.posterCardWidthDp.dp,
-        height = computedHeightDp.dp,
-        cornerRadius = uiState.posterCardCornerRadiusDp.dp,
+        width = AppleTvPosterWidth,
+        height = AppleTvPosterHeight,
+        cornerRadius = AppleTvRadius.Poster,
         focusedBorderWidth = 0.dp,
         focusedScale = AppleTvFocusScale
     )
@@ -255,7 +261,7 @@ fun CatalogSeeAllScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 36.dp)
+            .padding(top = AppleTvSpacing.SafeY)
     ) {
         val hasRawItems = catalogRow?.items?.isNotEmpty() == true
 
@@ -269,19 +275,18 @@ fun CatalogSeeAllScreen(
                 Text(
                     text = catalogRow?.catalogName?.replaceFirstChar { it.uppercase() }
                         ?: stringResource(R.string.catalog_see_all_title_fallback),
-                    color = Color.White,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
+                    color = AppleTvColors.Label,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(shadow = AppleTvTextShadow)
+                    style = AppleTvType.Title2.copy(shadow = AppleTvTextShadow)
                 )
                 if (uiState.catalogAddonNameEnabled) {
                     catalogRow?.addonName?.let { addonName ->
+                        // White on the gray backdrop: a dimmer secondary gray would not read there.
                         Text(
                             text = stringResource(R.string.catalog_see_all_from, addonName),
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 14.sp,
+                            color = AppleTvColors.Label,
+                            style = AppleTvType.Caption1,
                             maxLines = 1
                         )
                     }
@@ -402,8 +407,8 @@ fun CatalogSeeAllScreen(
                         top = 14.dp,
                         bottom = 60.dp
                     ),
-                    horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing),
-                    verticalArrangement = Arrangement.spacedBy(30.dp)
+                    horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.GridGap),
+                    verticalArrangement = Arrangement.spacedBy(AppleTvSpacing.RowGap)
                 ) {
                     itemsIndexed(
                         items = filteredItems,

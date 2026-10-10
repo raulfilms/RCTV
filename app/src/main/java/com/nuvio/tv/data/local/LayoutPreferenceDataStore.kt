@@ -229,7 +229,8 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val modernSidebarBlurEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[modernSidebarBlurEnabledKey] ?: false
+        // On by default: the Apple TV menu is Liquid Glass (blur needs Android 12+).
+        prefs[modernSidebarBlurEnabledKey] ?: true
     }
 
     val modernLandscapePostersEnabled: Flow<Boolean> = profileFlow { prefs ->
