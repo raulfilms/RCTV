@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -845,8 +846,8 @@ private fun LiveBadge(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Channel logo on a dark tile. Dark one-color logos (meant for light backgrounds, like
- * many guide feeds' logos) are drawn white so they read on the dark guide.
+ * Channel logo on a dark tile, no name. Dark one-color logos (meant for light backgrounds,
+ * like many guide feeds' logos) are drawn white so they read on the dark guide.
  */
 @Composable
 private fun ChannelLogoTile(
@@ -863,14 +864,12 @@ private fun ChannelLogoTile(
         contentAlignment = Alignment.Center
     ) {
         if (url == null) {
-            Text(
-                text = channel.name,
-                style = AppleTvType.Caption1,
-                color = AppleTvColors.Label,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 6.dp)
+            // Logos only in the guide: a plain TV mark when a channel has none.
+            Icon(
+                imageVector = Icons.Filled.LiveTv,
+                contentDescription = channel.name,
+                tint = AppleTvColors.LabelTertiary,
+                modifier = Modifier.size(22.dp)
             )
         } else {
             val context = LocalContext.current

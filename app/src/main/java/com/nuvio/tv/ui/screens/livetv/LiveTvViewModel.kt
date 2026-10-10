@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.local.LiveTvDataStore
@@ -13,6 +14,7 @@ import com.nuvio.tv.ui.util.M3uPlaylistParser
 import com.nuvio.tv.ui.util.XmltvGuide
 import com.nuvio.tv.ui.util.XmltvParser
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -105,6 +107,7 @@ data class LiveTvUiState(
 
 @HiltViewModel
 class LiveTvViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val liveTvDataStore: LiveTvDataStore,
     private val xtreamClient: XtreamClient,
     private val stalkerClient: StalkerClient,
@@ -317,6 +320,8 @@ class LiveTvViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null, previewError = null, isPreviewGuide = true) }
             val nowMs = System.currentTimeMillis()
             val result = withContext(Dispatchers.IO) {
+                // The app's own channel logos (unpacked once).
+                ChannelLogoLibrary.ensureReady(appContext)
                 runCatching {
                     val request = Request.Builder().url(PREVIEW_EPG_URL).build()
                     okHttpClient.newCall(request).execute().use { response ->
@@ -356,12 +361,14 @@ class LiveTvViewModel @Inject constructor(
             .mapValues { (_, list) -> list.sortedBy { it.startMs } }
         val channels = guide.channels.map { channel ->
             val key = "$PREVIEW_SOURCE_ID:${channel.id}"
+            // "US - FOX News Detroit" -> "FOX News Detroit": the country tag adds nothing here.
+            val name = stripCountryTag(channel.displayName)
             LiveTvChannel(
                 id = key,
-                // "US - FOX News Detroit" -> "FOX News Detroit": the country tag adds nothing here.
-                name = channel.displayName.replaceFirst(COUNTRY_PREFIX, "").ifBlank { channel.displayName },
+                name = name,
                 streamUrl = "",
-                logoUrl = channel.iconUrl,
+                // The app's logo when it has one for this channel, else the guide's own.
+                logoUrl = ChannelLogoLibrary.logoUriFor(name, channel.number) ?: channel.iconUrl,
                 epgChannelId = key,
                 // The sample feed is EPGTalk's US guide.
                 country = "US",
@@ -424,12 +431,22 @@ class LiveTvViewModel @Inject constructor(
     private suspend fun loadChannels(sources: List<LiveTvSource>) {
         _uiState.update { it.copy(isLoading = true, error = null) }
         val results = withContext(Dispatchers.IO) {
+            ChannelLogoLibrary.ensureReady(appContext)
             sources.map { source -> source to loadSourceChannels(source) }
         }
         val channels = results
             .flatMap { (_, result) -> result.getOrDefault(emptyList()) }
-            // Country for the Guide's filter: the playlist's own, or guessed from group/name.
-            .map { channel -> channel.copy(country = LiveTvCountry.of(channel)) }
+            .map { channel ->
+                // Country for the Guide's filter: the playlist's own, or guessed from group/name.
+                val country = LiveTvCountry.of(channel)
+                // US channels get the app's own logo when it has one (they're made for dark screens).
+                val bundledLogo = if (country == null || country == "US") {
+                    ChannelLogoLibrary.logoUriFor(stripCountryTag(channel.name), channel.number)
+                } else {
+                    null
+                }
+                channel.copy(country = country, logoUrl = bundledLogo ?: channel.logoUrl)
+            }
         val failures = results.mapNotNull { (source, result) -> result.exceptionOrNull()?.let { source.name to it } }
 
         val groups = channels.mapNotNull { it.groupTitle }.distinct().sorted()
@@ -521,6 +538,13 @@ class LiveTvViewModel @Inject constructor(
         /** Programs kept per load: from 2 hours ago to 36 hours ahead. */
         private const val EPG_WINDOW_PAST_MS = 2L * 60 * 60 * 1000
         private const val EPG_WINDOW_AHEAD_MS = 36L * 60 * 60 * 1000
-        private val COUNTRY_PREFIX = Regex("^[A-Z]{2,3}\\s*[-:|]\\s+")
+        private val COUNTRY_PREFIX = Regex("^([A-Z]{2,3})\\s*[-:|]\\s+")
+
+        /** "US - FOX News Detroit" -> "FOX News Detroit"; "MTV - Music Television" stays (MTV isn't a country). */
+        fun stripCountryTag(name: String): String {
+            val match = COUNTRY_PREFIX.find(name) ?: return name
+            if (LiveTvCountry.normalize(match.groupValues[1]) == null) return name
+            return name.substring(match.range.last + 1).trim().ifBlank { name }
+        }
     }
 }
