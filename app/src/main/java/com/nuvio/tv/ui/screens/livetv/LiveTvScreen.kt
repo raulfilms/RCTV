@@ -99,8 +99,33 @@ fun LiveTvScreen(
         }
     }
 
+    // The timeline guide takes the whole page; everything else keeps the padded layout.
+    val showTimeline = !uiState.isLoading &&
+        uiState.showGuide &&
+        (uiState.connection != null || uiState.isPreviewGuide) &&
+        uiState.previewError == null &&
+        !(uiState.error != null && uiState.channels.isEmpty())
+
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+        if (showTimeline) {
+            LiveTvTimelineGuide(
+                uiState = uiState,
+                // Below the floating "‹ Guide" pill when it's shown.
+                topInset = if (showBuiltInHeader) NuvioTheme.spacing.lg else 56.dp,
+                onSetLiveOnly = viewModel::setGuideLiveOnly,
+                onSetCountry = viewModel::setGuideCountry,
+                onShowChannels = { viewModel.setShowGuide(false) },
+                onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else null,
+                onProgramClick = { channel, program ->
+                    val airingNow = program == null || program.isAiringAt(System.currentTimeMillis())
+                    when {
+                        // What's on now plays right away; later shows open their details.
+                        !uiState.isPreviewGuide && airingNow -> resolvingPlayChannel(channel)
+                        program != null -> viewModel.openProgramDetails(channel, program)
+                    }
+                }
+            )
+        } else Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = NuvioTheme.spacing.xl, vertical = NuvioTheme.spacing.lg)
@@ -129,12 +154,6 @@ fun LiveTvScreen(
                     message = uiState.error.orEmpty(),
                     onRetry = viewModel::retry,
                     onDisconnect = viewModel::disconnect
-                )
-                uiState.showGuide -> LiveTvGuide(
-                    uiState = uiState,
-                    onSelectProgram = viewModel::openProgramDetails,
-                    onToggleGuide = { viewModel.setShowGuide(false) },
-                    onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else null
                 )
                 else -> LiveTvChannelBrowser(
                     uiState = uiState,
@@ -817,147 +836,6 @@ private fun LiveTvProgramProgressBar(progress: Float) {
 private fun formatProgramTime(startMs: Long, endMs: Long): String {
     val formatter = SimpleDateFormat("h:mm a", Locale.getDefault())
     return "${formatter.format(Date(startMs))} – ${formatter.format(Date(endMs))}"
-}
-
-@Composable
-private fun LiveTvGuide(
-    uiState: LiveTvUiState,
-    onSelectProgram: (LiveTvChannel, EpgProgram) -> Unit,
-    onToggleGuide: () -> Unit,
-    onAddIptv: (() -> Unit)? = null
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (uiState.isPreviewGuide) LiveTvPreviewNote()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.livetv_guide_title),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = NuvioTheme.colors.TextPrimary
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-                if (onAddIptv != null) {
-                    LiveTvGroupChip(
-                        label = stringResource(R.string.livetv_preview_add_iptv),
-                        selected = false,
-                        onClick = onAddIptv
-                    )
-                }
-                LiveTvGroupChip(
-                    label = stringResource(R.string.livetv_channels_btn),
-                    selected = false,
-                    onClick = onToggleGuide,
-                    icon = Icons.Default.GridView
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-            items(uiState.channels, key = { it.id }) { channel ->
-                LiveTvGuideRow(
-                    channel = channel,
-                    currentProgram = uiState.currentProgram(channel),
-                    nextProgram = uiState.nextProgram(channel),
-                    nowMs = uiState.nowMs,
-                    onClickCurrent = { program -> onSelectProgram(channel, program) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveTvGuideRow(
-    channel: LiveTvChannel,
-    currentProgram: EpgProgram?,
-    nextProgram: EpgProgram?,
-    nowMs: Long,
-    onClickCurrent: (EpgProgram) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(NuvioTheme.colors.BackgroundCard, RoundedCornerShape(NuvioTheme.radii.md))
-            .padding(NuvioTheme.spacing.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(48.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!channel.logoUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = channel.logoUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Icon(imageVector = Icons.Default.LiveTv, contentDescription = null, tint = NuvioTheme.colors.TextTertiary)
-            }
-        }
-        Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
-        Text(
-            text = channel.name,
-            style = MaterialTheme.typography.labelLarge,
-            color = NuvioTheme.colors.TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 140.dp)
-        )
-        Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
-
-        if (currentProgram != null) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onClickCurrent(currentProgram) }
-            ) {
-                Text(
-                    text = currentProgram.title,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = NuvioTheme.colors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = formatProgramTime(currentProgram.startMs, currentProgram.endMs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NuvioTheme.colors.TextSecondary
-                )
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
-                LiveTvProgramProgressBar(progress = currentProgram.progressAt(nowMs))
-            }
-            if (nextProgram != null) {
-                Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.livetv_next_label),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NuvioTheme.colors.TextTertiary
-                    )
-                    Text(
-                        text = nextProgram.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NuvioTheme.colors.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        } else {
-            Text(
-                text = stringResource(R.string.livetv_no_epg_data),
-                style = MaterialTheme.typography.bodyMedium,
-                color = NuvioTheme.colors.TextTertiary,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
 }
 
 @Composable

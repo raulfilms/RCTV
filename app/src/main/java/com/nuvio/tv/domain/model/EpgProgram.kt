@@ -7,7 +7,15 @@ data class EpgProgram(
     val description: String? = null,
     val category: String? = null,
     val startMs: Long,
-    val endMs: Long
+    val endMs: Long,
+    /** Episode name or other secondary title (XMLTV `sub-title`). */
+    val subtitle: String? = null,
+    /** Program artwork (XMLTV `icon`), when the feed has one. */
+    val imageUrl: String? = null,
+    /** Broadcast live: marked `<live/>` or "[LIVE]", or a new airing of a sports event. */
+    val isLive: Boolean = false,
+    /** A new episode or first airing: marked `<new/>` or "[NEW]". */
+    val isNew: Boolean = false
 ) {
     fun isAiringAt(timeMs: Long): Boolean = timeMs in startMs until endMs
 

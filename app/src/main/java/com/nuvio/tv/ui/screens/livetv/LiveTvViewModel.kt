@@ -59,7 +59,11 @@ data class LiveTvUiState(
      */
     val isPreviewGuide: Boolean = false,
     /** Why the sample EPG couldn't load, if it failed. */
-    val previewError: String? = null
+    val previewError: String? = null,
+    /** Guide filter: only channels showing something live right now. */
+    val guideLiveOnly: Boolean = false,
+    /** Guide filter: ISO country code, or null for every country. */
+    val guideCountry: String? = null
 ) {
     val visibleChannels: List<LiveTvChannel>
         get() {
@@ -236,6 +240,14 @@ class LiveTvViewModel @Inject constructor(
         _uiState.update { it.copy(showGuide = show) }
     }
 
+    fun setGuideLiveOnly(liveOnly: Boolean) {
+        _uiState.update { it.copy(guideLiveOnly = liveOnly) }
+    }
+
+    fun setGuideCountry(country: String?) {
+        _uiState.update { it.copy(guideCountry = country) }
+    }
+
     fun openProgramDetails(channel: LiveTvChannel, program: EpgProgram) {
         _uiState.update { it.copy(selectedProgramChannel = channel, selectedProgram = program) }
     }
@@ -330,7 +342,9 @@ class LiveTvViewModel @Inject constructor(
                 name = channel.displayName.replaceFirst(COUNTRY_PREFIX, "").ifBlank { channel.displayName },
                 streamUrl = "",
                 logoUrl = channel.iconUrl,
-                epgChannelId = key
+                epgChannelId = key,
+                // The sample feed is EPGTalk's US guide.
+                country = "US"
             )
         }
         // Keep the feed's lineup order; just drop channels with nothing in the guide's window.
@@ -385,7 +399,10 @@ class LiveTvViewModel @Inject constructor(
         val results = withContext(Dispatchers.IO) {
             sources.map { source -> source to loadSourceChannels(source) }
         }
-        val channels = results.flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+        val channels = results
+            .flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+            // Country for the Guide's filter: the playlist's own, or guessed from group/name.
+            .map { channel -> channel.copy(country = LiveTvCountry.of(channel)) }
         val failures = results.mapNotNull { (source, result) -> result.exceptionOrNull()?.let { source.name to it } }
 
         val groups = channels.mapNotNull { it.groupTitle }.distinct().sorted()
@@ -402,7 +419,8 @@ class LiveTvViewModel @Inject constructor(
                 error = error,
                 channels = channels,
                 groups = groups,
-                selectedGroup = it.selectedGroup?.takeIf { g -> g in groups }
+                selectedGroup = it.selectedGroup?.takeIf { g -> g in groups },
+                guideCountry = it.guideCountry?.takeIf { c -> channels.any { ch -> ch.country == c } }
             )
         }
         if (channels.isNotEmpty()) loadEpg(sources)
@@ -455,7 +473,15 @@ class LiveTvViewModel @Inject constructor(
         }
         // EPG is a nice-to-have on top of channel playback; an empty result (whether every source
         // has none, or every fetch failed) never blocks watching live TV.
-        _uiState.update { it.copy(isEpgLoading = false, epgByChannel = merged, nowMs = System.currentTimeMillis()) }
+        // With a guide available, the Guide page opens on it.
+        _uiState.update {
+            it.copy(
+                isEpgLoading = false,
+                epgByChannel = merged,
+                nowMs = System.currentTimeMillis(),
+                showGuide = if (merged.isNotEmpty() && !it.hasEpg) true else it.showGuide
+            )
+        }
     }
 
     companion object {

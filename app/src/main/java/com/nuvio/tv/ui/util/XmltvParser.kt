@@ -34,6 +34,17 @@ object XmltvParser {
     private val GZIP_MAGIC_1 = 0x1f
     private val GZIP_MAGIC_2 = 0x8b
 
+    private val LIVE_TAG = Regex("""\[\s*live\s*]""", RegexOption.IGNORE_CASE)
+    private val NEW_TAG = Regex("""\[\s*new\s*]""", RegexOption.IGNORE_CASE)
+
+    /** Sports categories: a new airing of one of these is a live game or live sports show. */
+    private val LIVE_SPORT_CATEGORIES = setOf(
+        "sports", "football", "basketball", "soccer", "baseball", "hockey", "ice hockey", "sports event",
+        "playoff sports", "multi-sport event", "motorsports", "auto racing", "boxing", "mixed martial arts",
+        "mma", "tennis", "golf", "wrestling", "volleyball", "rugby", "cricket", "softball", "lacrosse",
+        "australian rules football", "3x3 basketball", "fútbol", "deportes"
+    )
+
     /**
      * Fast path for the usual XMLTV time, "yyyyMMddHHmmss +hhmm". Returns null when the value has
      * no zone offset (or isn't in that shape), so the caller falls back to [SimpleDateFormat].
@@ -162,6 +173,11 @@ object XmltvParser {
         var title: String? = null
         var description: String? = null
         var category: String? = null
+        var subtitle: String? = null
+        var imageUrl: String? = null
+        var markedLive = false
+        var markedNew = false
+        val categories = ArrayList<String>(4)
 
         var currentTag: String? = null
         var seen = 0
@@ -197,6 +213,11 @@ object XmltvParser {
                                 title = null
                                 description = null
                                 category = null
+                                subtitle = null
+                                imageUrl = null
+                                markedLive = false
+                                markedNew = false
+                                categories.clear()
                             }
                         }
                         inChannel && tag == "display-name" -> currentTag = tag
@@ -205,7 +226,14 @@ object XmltvParser {
                                 channelIcon = parser.getAttributeValue(null, "src")?.trim()?.takeIf { it.isNotBlank() }
                             }
                         }
-                        inProgramme && (tag == "title" || tag == "desc" || tag == "category") -> currentTag = tag
+                        inProgramme && (tag == "title" || tag == "desc" || tag == "category" || tag == "sub-title") -> currentTag = tag
+                        inProgramme && tag == "icon" -> {
+                            if (imageUrl == null) {
+                                imageUrl = parser.getAttributeValue(null, "src")?.trim()?.takeIf { it.isNotBlank() }
+                            }
+                        }
+                        inProgramme && tag == "live" -> markedLive = true
+                        inProgramme && tag == "new" -> markedNew = true
                     }
                 }
                 XmlPullParser.TEXT -> {
@@ -215,7 +243,11 @@ object XmltvParser {
                             when (currentTag) {
                                 "title" -> title = (title.orEmpty() + text).takeIf { it.isNotBlank() }
                                 "desc" -> description = (description.orEmpty() + text).takeIf { it.isNotBlank() }
-                                "category" -> if (category == null) category = text
+                                "sub-title" -> subtitle = (subtitle.orEmpty() + text).takeIf { it.isNotBlank() }
+                                "category" -> {
+                                    if (category == null) category = text
+                                    categories += text
+                                }
                             }
                         } else if (inChannel && currentTag == "display-name" && channelName == null) {
                             channelName = text
@@ -224,7 +256,7 @@ object XmltvParser {
                 }
                 XmlPullParser.END_TAG -> {
                     when (parser.name) {
-                        "title", "desc", "category", "display-name" -> currentTag = null
+                        "title", "desc", "category", "sub-title", "display-name" -> currentTag = null
                         "channel" -> if (inChannel) {
                             val id = channelDeclId
                             if (!id.isNullOrBlank()) {
@@ -242,13 +274,19 @@ object XmltvParser {
                             val end = endMs
                             val programTitle = title
                             if (!id.isNullOrBlank() && start != null && end != null && end > start && !programTitle.isNullOrBlank()) {
+                                val isNew = markedNew || NEW_TAG.containsMatchIn(programTitle)
+                                val isSportsGame = categories.any { it.lowercase(Locale.ROOT) in LIVE_SPORT_CATEGORIES }
                                 programs += EpgProgram(
                                     channelId = id,
                                     title = programTitle,
                                     description = description,
                                     category = category,
                                     startMs = start,
-                                    endMs = end
+                                    endMs = end,
+                                    subtitle = subtitle,
+                                    imageUrl = imageUrl,
+                                    isLive = markedLive || LIVE_TAG.containsMatchIn(programTitle) || (isNew && isSportsGame),
+                                    isNew = isNew
                                 )
                             }
                             inProgramme = false

@@ -900,7 +900,11 @@ fun AppleFilterMenuButton(
     clearLabel: String,
     onSelect: (sectionKey: String, option: AppleFilterOption) -> Unit,
     onClearAll: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Icon before the label; null for a plain "Label ⌄" pill. */
+    leadingIcon: ImageVector? = Icons.Filled.Tune,
+    /** Close the menu once a row is picked (single-choice menus). */
+    closeOnSelect: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
     val firstRowRequester = remember { FocusRequester() }
@@ -925,13 +929,15 @@ fun AppleFilterMenuButton(
                 modifier = Modifier.padding(start = 16.dp, end = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Tune,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+                if (leadingIcon != null) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
                 Text(
                     text = label,
                     color = color,
@@ -978,7 +984,10 @@ fun AppleFilterMenuButton(
                             count = option.count,
                             isSelected = option.value == section.selectedValue,
                             focusRequester = if (sectionIndex == 0 && optionIndex == 0) firstRowRequester else null,
-                            onClick = { onSelect(section.key, option) }
+                            onClick = {
+                                onSelect(section.key, option)
+                                if (closeOnSelect) expanded = false
+                            }
                         )
                     }
                 }

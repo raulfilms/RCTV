@@ -10,5 +10,7 @@ data class LiveTvChannel(
     /** Xtream Codes' internal channel identifier, used to correlate with EPG (Phase 2). */
     val epgChannelId: String? = null,
     /** Which configured [LiveTvSource] this channel came from, when merged from multiple sources (phase 2). Null for a channel not yet attributed to a source. */
-    val sourceId: String? = null
+    val sourceId: String? = null,
+    /** ISO 3166 two-letter country code ("US"), from the playlist or guessed from the channel's name or group. */
+    val country: String? = null
 )
