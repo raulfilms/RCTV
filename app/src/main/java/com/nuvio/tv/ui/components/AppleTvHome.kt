@@ -192,25 +192,17 @@ object AppleHomeChrome {
     }
 }
 
-// Apple TV's plain gray backdrop behind the rows (tvOS 26), slightly lighter at the top.
-private val AppleBackdropTop = Color(0xFF727277)
-private val AppleBackdropBottom = Color(0xFF5E5E63)
-
 /**
- * The page background behind the rows: Apple TV's plain gray. At the top of the
- * home page the featured artwork covers it; it shows as soon as the rows scroll up.
- * [imageUrl] is kept for callers but no longer tints the background.
+ * The page background behind the rows: the app's solid #1B1D29. At the top of the
+ * home page the featured artwork covers it and fades into it; it shows as soon as the
+ * rows scroll up. [imageUrl] is kept for callers but doesn't tint the background.
  */
 @Composable
 fun AppleAmbientBackdrop(
     @Suppress("UNUSED_PARAMETER") imageUrl: String?,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier.background(
-            Brush.verticalGradient(listOf(AppleBackdropTop, AppleBackdropBottom))
-        )
-    )
+    Box(modifier = modifier.background(AppleTvColors.Background))
 }
 
 /**

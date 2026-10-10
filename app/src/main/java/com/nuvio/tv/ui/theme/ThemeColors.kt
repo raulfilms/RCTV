@@ -87,7 +87,7 @@ object ThemeColors {
         onSecondary = NuvioPrimitives.neutral925,
         onSecondaryVariant = NuvioPrimitives.neutral925,
         focusRing = NuvioPrimitives.white,
-        focusBackground = Color(0xFF303030),
+        focusBackground = NuvioPrimitives.appFocus,
         backgroundCard = NuvioPrimitives.neutral850
     )
 

@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.tv.ui.theme.InterFamily
+import com.nuvio.tv.ui.theme.NuvioPrimitives
 
 /*
  * "Apple TV 2026 Style" design sheet (tvOS 26/27, Liquid Glass), applied to RCTV.
@@ -21,19 +22,19 @@ import com.nuvio.tv.ui.theme.InterFamily
 
 /** Colors from the sheet (tvOS dark system colors). */
 object AppleTvColors {
-    /** App background. Behind the home rows RCTV keeps Apple TV's gray instead (see AppleAmbientBackdrop). */
-    val Background = Color(0xFF000000)
-    /** Raised solid surface: cards without a poster, list backgrounds. */
-    val Surface1 = Color(0xFF1C1C1E)
-    /** Second elevation: rows inside a panel, pop-up menus. */
-    val Surface2 = Color(0xFF2C2C2E)
+    /** RCTV's app background, #1B1D29: Home, Movies & TV, See All, the Guide and every other page. */
+    val Background = NuvioPrimitives.appBackground
+    /** Raised solid surface: cards without a poster, list backgrounds (the background + 7% white). */
+    val Surface1 = Color(0xFF2B2D38)
+    /** Second elevation: rows inside a panel, pop-up menus (the background + 14% white). */
+    val Surface2 = Color(0xFF3B3D47)
     /** Liquid Glass: panels, menus and unfocused buttons, over blurred content. */
     val Glass = Color.White.copy(alpha = 0.16f)
     /** Stronger glass: player controls, overlays on bright video. */
     val GlassStrong = Color.White.copy(alpha = 0.26f)
     /**
-     * Dark layer laid under [Glass] on RCTV's gray backdrop, so white text on the glass keeps
-     * 4.5:1 (the sheet's glass value assumes a black background).
+     * Dark layer laid under [Glass], so white text on the glass keeps 4.5:1 over bright
+     * artwork too (the sheet's glass value assumes a dark background).
      */
     val GlassShade = Color.Black.copy(alpha = 0.30f)
     /** [GlassShade] and [Glass] stacked into one color, for surfaces that take a single fill. */

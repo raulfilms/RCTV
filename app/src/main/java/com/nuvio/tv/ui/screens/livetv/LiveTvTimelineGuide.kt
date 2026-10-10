@@ -44,7 +44,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.key.Key
@@ -109,11 +108,11 @@ private val BlockShape = RoundedCornerShape(AppleTvRadius.Poster)
 private const val SLOT_MS = 30L * 60_000L
 private const val MINUTE_MS = 60_000L
 
-private val GuideTop = Color(0xFF141416)
-private val GuideBottom = Color(0xFF0A0A0B)
+// The app background (#1B1D29); program blocks are lighter steps of the same blue gray.
+private val GuideBackground = AppleTvColors.Background
 private val BlockFill = AppleTvColors.Surface1
-private val BlockFillAiring = Color(0xFF242427)
-private val BlockFocused = Color(0xFF4A4A4F)
+private val BlockFillAiring = Color(0xFF343640)
+private val BlockFocused = Color(0xFF54565E)
 private val FocusEdge = Color.White.copy(alpha = 0.55f)
 // Bright red for the "Now" line; a deeper red behind white badge text so it reads (5:1).
 private val NowLine = AppleTvColors.Destructive
@@ -322,7 +321,7 @@ internal fun LiveTvTimelineGuide(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(GuideTop, GuideBottom)))
+            .background(GuideBackground)
             .padding(start = AppleTvSpacing.SafeX, end = AppleTvSpacing.SafeX, top = topInset)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {

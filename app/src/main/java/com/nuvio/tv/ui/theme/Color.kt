@@ -107,16 +107,18 @@ class NuvioColorScheme(
     private val pureBlack = NuvioPrimitives.black
     private val pureBlackSurfaces = amoledMode && amoledSurfacesMode
 
-    val Background = if (amoledMode) pureBlack else palette.background
-    val BackgroundElevated = if (pureBlackSurfaces) pureBlack else palette.backgroundElevated
-    val BackgroundCard = if (pureBlackSurfaces) pureBlack else palette.backgroundCard
-    val Surface = if (pureBlackSurfaces) pureBlack else palette.surface
-    val SurfaceVariant = if (pureBlackSurfaces) pureBlack else palette.surfaceVariant
-    val Panel = if (pureBlackSurfaces) pureBlack else palette.panel
+    // RCTV: one app background (#1B1D29) for every theme; the theme only changes the accent.
+    // Surfaces are lighter steps of the same blue gray, so none reads darker than the page.
+    val Background = if (amoledMode) pureBlack else NuvioPrimitives.appBackground
+    val BackgroundElevated = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaised
+    val BackgroundCard = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appCard
+    val Surface = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appCard
+    val SurfaceVariant = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaisedHigh
+    val Panel = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaised
     val Overlay = palette.overlay
-    val Field = if (pureBlackSurfaces) pureBlack else palette.field
-    val Menu = if (pureBlackSurfaces) pureBlack else palette.menu
-    val Modal = if (pureBlackSurfaces) pureBlack else palette.modal
+    val Field = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appField
+    val Menu = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appCard
+    val Modal = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaised
     val PlayerOverlay = palette.playerOverlay
     val Divider = NuvioPrimitives.neutral750
 

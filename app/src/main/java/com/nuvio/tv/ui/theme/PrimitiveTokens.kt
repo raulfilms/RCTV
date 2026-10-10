@@ -6,6 +6,15 @@ object NuvioPrimitives {
     val transparent = Color.Transparent
     val black = Color(0xFF000000)
     val white = Color(0xFFFFFFFF)
+    /** RCTV's app background (#1B1D29), on every screen and theme (except AMOLED black). */
+    val appBackground = Color(0xFF1B1D29)
+    // Raised surfaces on [appBackground]: the background with a little white on top
+    // (5%, 8%, 10%, 12%, 18%), so panels and cards stay a step lighter in the same blue gray.
+    val appRaised = Color(0xFF262834)
+    val appCard = Color(0xFF2D2F3A)
+    val appField = Color(0xFF32343E)
+    val appRaisedHigh = Color(0xFF363843)
+    val appFocus = Color(0xFF44464F)
     val neutral950 = Color(0xFF0D0D0D)
     val neutral925 = Color(0xFF111111)
     val neutral900 = Color(0xFF1A1A1A)
