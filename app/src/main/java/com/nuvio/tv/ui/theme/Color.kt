@@ -107,20 +107,22 @@ class NuvioColorScheme(
     private val pureBlack = NuvioPrimitives.black
     private val pureBlackSurfaces = amoledMode && amoledSurfacesMode
 
-    // RCTV: one app background (#1B1D29) for every theme; the theme only changes the accent.
-    // Surfaces are lighter steps of the same blue gray, so none reads darker than the page.
+    // RCTV: one app background (#1B1D29) for every theme, and one contrast color (#53597E)
+    // for everything on it — panels, menus, dialogs — with cards inside them a step lighter.
+    // The theme only changes the accent.
     val Background = if (amoledMode) pureBlack else NuvioPrimitives.appBackground
-    val BackgroundElevated = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaised
-    val BackgroundCard = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appCard
-    val Surface = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appCard
-    val SurfaceVariant = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaisedHigh
-    val Panel = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaised
+    val BackgroundElevated = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrast
+    val BackgroundCard = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrastHigh
+    val Surface = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrastHigh
+    val SurfaceVariant = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrastHigh
+    val Panel = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrast
     val Overlay = palette.overlay
-    val Field = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appField
-    val Menu = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appCard
-    val Modal = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appRaised
+    val Field = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrastHigh
+    val Menu = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrast
+    val Modal = if (pureBlackSurfaces) pureBlack else NuvioPrimitives.appContrast
     val PlayerOverlay = palette.playerOverlay
-    val Divider = NuvioPrimitives.neutral750
+    // Light lines, so they show on the contrast panels as well as on the background.
+    val Divider = NuvioPrimitives.white.copy(alpha = 0.16f)
 
     val Primary = NuvioPrimitives.neutral500
     val PrimaryVariant = NuvioPrimitives.neutral650
@@ -131,9 +133,9 @@ class NuvioColorScheme(
     val OnSecondaryVariant = palette.onSecondaryVariant
 
     val TextPrimary = NuvioPrimitives.white
-    val TextSecondary = NuvioPrimitives.neutral400
-    val TextTertiary = NuvioPrimitives.neutral600
-    val TextDisabled = NuvioPrimitives.neutral700
+    val TextSecondary = NuvioPrimitives.appTextSecondary
+    val TextTertiary = NuvioPrimitives.appTextTertiary
+    val TextDisabled = NuvioPrimitives.appTextDisabled
     val TextInverse = NuvioPrimitives.neutral925
 
     val FocusRing = palette.focusRing
@@ -152,9 +154,9 @@ class NuvioColorScheme(
     val Torrent = NuvioPrimitives.torrent
     val Premium = NuvioPrimitives.premium
 
-    val Border = NuvioPrimitives.neutral750
+    val Border = NuvioPrimitives.white.copy(alpha = 0.18f)
     val BorderFocused = FocusRing
-    val BorderMuted = NuvioPrimitives.neutral750.copy(alpha = 0.58f)
+    val BorderMuted = NuvioPrimitives.white.copy(alpha = 0.10f)
 
     val Scrim = NuvioPrimitives.black.copy(alpha = 0.62f)
     val ImageScrim = NuvioPrimitives.black.copy(alpha = 0.58f)
@@ -286,15 +288,15 @@ object NuvioColors {
     val PrimaryVariant = NuvioPrimitives.neutral650
     val OnPrimary = NuvioPrimitives.white
     val TextPrimary = NuvioPrimitives.white
-    val TextSecondary = NuvioPrimitives.neutral400
-    val TextTertiary = NuvioPrimitives.neutral600
-    val TextDisabled = NuvioPrimitives.neutral700
+    val TextSecondary = NuvioPrimitives.appTextSecondary
+    val TextTertiary = NuvioPrimitives.appTextTertiary
+    val TextDisabled = NuvioPrimitives.appTextDisabled
     val Rating = NuvioPrimitives.rating
     val Error = NuvioPrimitives.error
     val Success = NuvioPrimitives.success
     val Warning = NuvioPrimitives.warning
     val Info = NuvioPrimitives.info
-    val Border = NuvioPrimitives.neutral750
+    val Border = NuvioPrimitives.white.copy(alpha = 0.18f)
 
     val Secondary: Color
         @Composable

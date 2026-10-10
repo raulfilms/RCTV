@@ -24,25 +24,36 @@ import com.nuvio.tv.ui.theme.NuvioPrimitives
 object AppleTvColors {
     /** RCTV's app background, #1B1D29: Home, Movies & TV, See All, the Guide and every other page. */
     val Background = NuvioPrimitives.appBackground
-    /** Raised solid surface: cards without a poster, list backgrounds (the background + 7% white). */
-    val Surface1 = Color(0xFF2B2D38)
-    /** Second elevation: rows inside a panel, pop-up menus (the background + 14% white). */
-    val Surface2 = Color(0xFF3B3D47)
+    /**
+     * RCTV's contrast color, #53597E: everything that isn't the background — the menu, the
+     * top pill, buttons, filter pills and their menus, guide programs and logo tiles, cards.
+     * White text on it is 6.8:1.
+     */
+    val Contrast = NuvioPrimitives.appContrast
+    /** [Contrast] a step darker (mixed with the background): upcoming programs in the Guide. */
+    val ContrastDim = NuvioPrimitives.appContrastDim
+    /** [Contrast] a step lighter: cards and rows inside a [Contrast] panel. */
+    val ContrastHigh = NuvioPrimitives.appContrastHigh
+    /** A focused item that stays in the contrast family (not white): white text on it is 4.7:1. */
+    val ContrastFocus = NuvioPrimitives.appContrastFocus
+    /** [Contrast] over blurred content (Liquid Glass menu and pill): mostly the color, a hint of blur. */
+    val ContrastGlass = NuvioPrimitives.appContrast.copy(alpha = 0.9f)
+    /** Raised solid surface: cards without a poster, list backgrounds. */
+    val Surface1 = Contrast
+    /** Second elevation: poster placeholders, rows inside a panel. */
+    val Surface2 = ContrastHigh
     /** Liquid Glass: panels, menus and unfocused buttons, over blurred content. */
     val Glass = Color.White.copy(alpha = 0.16f)
     /** Stronger glass: player controls, overlays on bright video. */
     val GlassStrong = Color.White.copy(alpha = 0.26f)
-    /**
-     * Dark layer laid under [Glass], so white text on the glass keeps 4.5:1 over bright
-     * artwork too (the sheet's glass value assumes a dark background).
-     */
-    val GlassShade = Color.Black.copy(alpha = 0.30f)
-    /** [GlassShade] and [Glass] stacked into one color, for surfaces that take a single fill. */
-    val GlassOnGray = Color(red = 0x63, green = 0x63, blue = 0x63, alpha = 0x69)
     /** Primary text: titles, row names, unfocused button text. */
     val Label = Color.White
-    /** Secondary text on dark surfaces: year, genre, runtime, descriptions. */
+    /** Secondary text on the background: year, genre, runtime, descriptions (5.8:1 on #1B1D29). */
     val LabelSecondary = Color(red = 235, green = 235, blue = 245, alpha = 153)
+    /** Secondary text on [Contrast] surfaces (times, counts, section names): 4.9:1. */
+    val LabelOnContrast = Color.White.copy(alpha = 0.85f)
+    /** Thin dividers inside [Contrast] menus and panels. */
+    val DividerOnContrast = Color.White.copy(alpha = 0.18f)
     /** Tertiary and disabled text; large or non-essential text only (under 4.5:1). */
     val LabelTertiary = Color(red = 235, green = 235, blue = 245, alpha = 77)
     /** Fill of a focused button: solid white. */

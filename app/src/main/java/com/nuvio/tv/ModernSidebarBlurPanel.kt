@@ -35,7 +35,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -86,10 +85,10 @@ private val BadgeSize = 24.dp
 private val GlyphSize = 14.dp
 private val AvatarSize = 26.dp
 
-// Without blur: smoky mid gray like the Apple TV menu. Darker than a "light gray" so
-// white labels stay crisp on TVs that push grays toward blue/lilac.
-private val PanelTop = Color(0xFF58585C)
-private val PanelBottom = Color(0xFF6A6A6E)
+// The app's contrast color (#53597E): solid without blur, Liquid Glass (mostly the color,
+// a hint of the blurred page behind) with blur. White labels on it are 6.8:1.
+private val PanelSolid = AppleTvColors.Contrast
+private val PanelGlass = AppleTvColors.ContrastGlass
 // Light rim of the glass (white, not a color).
 private val PanelEdge = Color.White.copy(alpha = 0.16f)
 // Blur strength of the Liquid Glass (the sheet's ~40 px at 1080p).
@@ -139,12 +138,9 @@ internal fun ModernSidebarBlurPanel(
     } else {
         Modifier
     }
-    // Liquid Glass once the blur is on: the solid gray fades out as the blur fades in.
-    // Without blur the gray stays fully opaque, so nothing sharp shows through the menu.
+    // Liquid Glass once the blur is on: the solid color fades into the glass one as the blur
+    // fades in. Without blur it stays fully opaque, so nothing sharp shows through the menu.
     val glassProgress = if (showPanelBlur) delayedBlurProgress else 0f
-    val panelBrush = remember {
-        Brush.linearGradient(colors = listOf(PanelTop, PanelBottom))
-    }
 
     Column(
         modifier = Modifier
@@ -158,15 +154,9 @@ internal fun ModernSidebarBlurPanel(
             }
             .clip(PanelShape)
             .then(blurModifier)
-            .background(brush = panelBrush, shape = PanelShape, alpha = 1f - glassProgress)
-            // Glass: a dark layer so the white labels read on the gray backdrop and on
-            // artwork, then the sheet's white glass on top.
+            .background(color = PanelSolid.copy(alpha = 1f - glassProgress), shape = PanelShape)
             .background(
-                color = AppleTvColors.GlassShade.copy(alpha = AppleTvColors.GlassShade.alpha * glassProgress),
-                shape = PanelShape
-            )
-            .background(
-                color = AppleTvColors.Glass.copy(alpha = AppleTvColors.Glass.alpha * glassProgress),
+                color = PanelGlass.copy(alpha = PanelGlass.alpha * glassProgress),
                 shape = PanelShape
             )
             .border(width = 1.dp, color = PanelEdge, shape = PanelShape)

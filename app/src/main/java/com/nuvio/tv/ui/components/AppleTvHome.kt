@@ -152,7 +152,8 @@ val AppleTvTextShadow: Shadow = Shadow(
 
 private const val HERO_AUTO_ADVANCE_MS = 9_000L
 private val HeroPillShape = AppleTvRadius.Pill
-private val GlassFill = AppleTvColors.Glass
+// Unfocused buttons and pills: the app's contrast color (#53597E).
+private val GlassFill = AppleTvColors.Contrast
 private val OnWhite = AppleTvColors.FocusLabel
 
 /** Row header ("Continue Watching", "Top 10 …"). */
@@ -565,7 +566,7 @@ private fun AppleHeroPageDots(
     Row(
         modifier = modifier
             .clip(HeroPillShape)
-            .background(GlassFill)
+            .background(AppleTvColors.ContrastGlass)
             .padding(horizontal = 8.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -588,8 +589,8 @@ private fun AppleHeroPageDots(
 }
 
 /**
- * Glass button (capsule or circle): Liquid Glass with white content when idle, solid white
- * with black content when focused, growing with a soft shadow (the tvOS focus look).
+ * Button (capsule or circle): the app's contrast color with white content when idle, solid
+ * white with black content when focused, growing with a soft shadow (the tvOS focus look).
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -819,9 +820,9 @@ fun AppleSeeAllCard(
             .size(width = width, height = height)
             .onFocusChanged { focused = it.isFocused || it.hasFocus },
         shape = CardDefaults.shape(shape = shape),
-        // Glass on the gray backdrop (kept dark enough for white text), white when focused.
+        // The app's contrast color, white when focused.
         colors = CardDefaults.colors(
-            containerColor = AppleTvColors.GlassOnGray,
+            containerColor = AppleTvColors.Contrast,
             focusedContainerColor = AppleTvColors.FocusFill
         ),
         border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
@@ -874,8 +875,8 @@ data class AppleFilterSection(
     val selectedValue: String?
 )
 
-private val AppleMenuFill = AppleTvColors.Surface2
-private val AppleMenuDividerColor = AppleTvColors.Separator
+private val AppleMenuFill = AppleTvColors.Contrast
+private val AppleMenuDividerColor = AppleTvColors.DividerOnContrast
 
 /**
  * Glass pill for the top right of a See All page ("Filters  v", or the active choices such
@@ -954,7 +955,7 @@ fun AppleFilterMenuButton(
             modifier = Modifier
                 .widthIn(min = 260.dp, max = 300.dp)
                 .heightIn(max = 420.dp),
-            // Dark menu like tvOS pop-up menus (no colored edge), so the white names read clearly.
+            // Solid menu in the contrast color (no colored edge), so the white names read clearly.
             shape = RoundedCornerShape(AppleTvRadius.Panel),
             containerColor = AppleMenuFill,
             tonalElevation = 0.dp,
@@ -965,7 +966,7 @@ fun AppleFilterMenuButton(
                 if (section.title.isNotBlank()) {
                     Text(
                         text = section.title,
-                        color = AppleTvColors.LabelSecondary,
+                        color = AppleTvColors.LabelOnContrast,
                         style = AppleTvType.Caption1,
                         maxLines = 1,
                         modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 4.dp)
@@ -1024,7 +1025,7 @@ private fun AppleFilterMenuRow(
 ) {
     var rowFocused by remember { mutableStateOf(false) }
     val textColor = if (rowFocused) OnWhite else AppleTvColors.Label
-    val countColor = if (rowFocused) OnWhite.copy(alpha = 0.6f) else AppleTvColors.LabelSecondary
+    val countColor = if (rowFocused) OnWhite.copy(alpha = 0.6f) else AppleTvColors.LabelOnContrast
     DropdownMenuItem(
         modifier = Modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)

@@ -108,11 +108,13 @@ private val BlockShape = RoundedCornerShape(AppleTvRadius.Poster)
 private const val SLOT_MS = 30L * 60_000L
 private const val MINUTE_MS = 60_000L
 
-// The app background (#1B1D29); program blocks are lighter steps of the same blue gray.
+// The app background (#1B1D29) with the contrast color (#53597E) on the programs and logos:
+// what's on now in the full color, later programs a step darker, the focused one lighter.
 private val GuideBackground = AppleTvColors.Background
-private val BlockFill = AppleTvColors.Surface1
-private val BlockFillAiring = Color(0xFF343640)
-private val BlockFocused = Color(0xFF54565E)
+private val BlockFill = AppleTvColors.ContrastDim
+private val BlockFillAiring = AppleTvColors.Contrast
+private val BlockFocused = AppleTvColors.ContrastFocus
+private val LogoTileFill = AppleTvColors.Contrast
 private val FocusEdge = Color.White.copy(alpha = 0.55f)
 // Bright red for the "Now" line; a deeper red behind white badge text so it reads (5:1).
 private val NowLine = AppleTvColors.Destructive
@@ -778,13 +780,17 @@ private fun GuideBlock(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         // Press and hold: add the channel to (or take it out of) the Custom list.
         onLongClick = onLongClick,
         modifier = modifier
             .focusRequester(focusRequester)
-            .onFocusChanged { if (it.isFocused) onFocused() },
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            },
         shape = ClickableSurfaceDefaults.shape(BlockShape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isAiring) BlockFillAiring else BlockFill,
@@ -821,7 +827,8 @@ private fun GuideBlock(
                 Text(
                     text = timeText,
                     style = AppleTvType.Caption2,
-                    color = AppleTvColors.LabelSecondary,
+                    // Full white on the lighter focused block, so it keeps 4.5:1.
+                    color = if (focused) AppleTvColors.Label else AppleTvColors.LabelOnContrast,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -859,7 +866,7 @@ private fun ChannelLogoTile(
     Box(
         modifier = modifier
             .clip(BlockShape)
-            .background(AppleTvColors.Surface1),
+            .background(LogoTileFill),
         contentAlignment = Alignment.Center
     ) {
         if (url == null) {
@@ -867,7 +874,7 @@ private fun ChannelLogoTile(
             Icon(
                 imageVector = Icons.Filled.LiveTv,
                 contentDescription = channel.name,
-                tint = AppleTvColors.LabelTertiary,
+                tint = AppleTvColors.LabelOnContrast.copy(alpha = 0.5f),
                 modifier = Modifier.size(22.dp)
             )
         } else {

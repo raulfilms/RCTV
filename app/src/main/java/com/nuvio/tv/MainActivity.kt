@@ -2236,12 +2236,13 @@ private fun CollapsedSidebarPill(
     modifier: Modifier = Modifier,
     onExpand: () -> Unit
 ) {
-    // Apple TV style: a "‹" hint, then a small gray glass pill with the section icon in a circle.
+    // Apple TV style: a "‹" hint, then a small pill in the app's contrast color with the
+    // section icon in a circle.
     val pillShape = RoundedCornerShape(NuvioRadii.tokens.full)
-    // With blur: Liquid Glass (dark layer + the sheet's white glass). Without: solid gray.
+    // With blur: Liquid Glass in the contrast color. Without: the solid contrast color.
     val glassActive = blurEnabled && hazeState != null
     val pillColor = remember(glassActive) {
-        if (glassActive) AppleTvColors.GlassOnGray else Color(0xFF6E6E73).copy(alpha = 0.82f)
+        if (glassActive) AppleTvColors.ContrastGlass else AppleTvColors.Contrast
     }
 
     Row(

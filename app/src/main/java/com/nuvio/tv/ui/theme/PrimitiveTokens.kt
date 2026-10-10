@@ -8,13 +8,21 @@ object NuvioPrimitives {
     val white = Color(0xFFFFFFFF)
     /** RCTV's app background (#1B1D29), on every screen and theme (except AMOLED black). */
     val appBackground = Color(0xFF1B1D29)
-    // Raised surfaces on [appBackground]: the background with a little white on top
-    // (5%, 8%, 10%, 12%, 18%), so panels and cards stay a step lighter in the same blue gray.
-    val appRaised = Color(0xFF262834)
-    val appCard = Color(0xFF2D2F3A)
-    val appField = Color(0xFF32343E)
-    val appRaisedHigh = Color(0xFF363843)
-    val appFocus = Color(0xFF44464F)
+    /** RCTV's contrast color (#53597E): menus, buttons, pills, panels and cards on [appBackground]. */
+    val appContrast = Color(0xFF53597E)
+    /** [appContrast] mixed 80/20 with [appBackground]: a quieter step (upcoming guide programs). */
+    val appContrastDim = Color(0xFF484D6D)
+    /** [appContrast] + 6% white: cards and rows inside a contrast panel. */
+    val appContrastHigh = Color(0xFF5D6386)
+    /** [appContrast] + 15% white: focused rows and blocks (white text 4.7:1). */
+    val appContrastFocus = Color(0xFF6D7291)
+    // Text that reads on both the background and the contrast surfaces.
+    /** Secondary text: 4.5:1 on [appContrast], 11:1 on [appBackground]. */
+    val appTextSecondary = Color(0xFFD0D3E2)
+    /** Tertiary text (hints, minor labels). */
+    val appTextTertiary = Color(0xFF9EA2BC)
+    /** Disabled text. */
+    val appTextDisabled = Color(0xFF7A7F9E)
     val neutral950 = Color(0xFF0D0D0D)
     val neutral925 = Color(0xFF111111)
     val neutral900 = Color(0xFF1A1A1A)
