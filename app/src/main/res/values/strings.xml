@@ -265,6 +265,9 @@
     <string name="apple_filters">Filters</string>
     <string name="apple_filter_all">All</string>
     <string name="apple_filter_clear">Clear Filters</string>
+    <string name="livetv_preview_loading">Loading the sample guide…</string>
+    <string name="livetv_preview_note">Sample guide (EPGTalk, US) to try the layout. Add your IPTV to watch these channels.</string>
+    <string name="livetv_preview_add_iptv">Add IPTV</string>
     <string name="nav_guide">Guide</string>
     <string name="nav_movies_tv">Movies &amp; TV</string>
     <string name="streaming_service_unavailable">Couldn\'t load this service right now. Try again in a moment.</string>

@@ -265,6 +265,9 @@
     <string name="apple_filters">Filtros</string>
     <string name="apple_filter_all">Todos</string>
     <string name="apple_filter_clear">Borrar filtros</string>
+    <string name="livetv_preview_loading">Cargando la guía de prueba…</string>
+    <string name="livetv_preview_note">Guía de prueba (EPGTalk, EE. UU.) para ver el diseño. Añade tu IPTV para ver estos canales.</string>
+    <string name="livetv_preview_add_iptv">Añadir IPTV</string>
     <string name="catalog_filter_empty_title">Sin resultados</string>
     <string name="catalog_filter_empty_subtitle">Prueba con otro tipo, género o año</string>
     <string name="nav_guide">Guía</string>

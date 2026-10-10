@@ -10,10 +10,13 @@ import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.LiveTvConnection
 import com.nuvio.tv.domain.model.LiveTvSource
 import com.nuvio.tv.ui.util.M3uPlaylistParser
+import com.nuvio.tv.ui.util.XmltvGuide
 import com.nuvio.tv.ui.util.XmltvParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,7 +52,14 @@ data class LiveTvUiState(
     val xtreamPasswordInput: String = "",
     val stalkerPortalInput: String = "",
     val stalkerMacInput: String = "",
-    val channelSearchInput: String = ""
+    val channelSearchInput: String = "",
+    /**
+     * True while the guide shows the built-in sample EPG (no IPTV source added yet): its channels
+     * come from the EPG itself and have no stream, so they can't be played.
+     */
+    val isPreviewGuide: Boolean = false,
+    /** Why the sample EPG couldn't load, if it failed. */
+    val previewError: String? = null
 ) {
     val visibleChannels: List<LiveTvChannel>
         get() {
@@ -93,8 +103,13 @@ class LiveTvViewModel @Inject constructor(
     @Named("addonPermissive") private val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LiveTvUiState())
+    // Starts as loading: either the user's sources or the sample guide load right away.
+    private val _uiState = MutableStateFlow(LiveTvUiState(isLoading = true))
     val uiState: StateFlow<LiveTvUiState> = _uiState.asStateFlow()
+
+    /** The sample guide, kept once loaded so coming back to the Guide is instant. */
+    private var previewGuide: XmltvGuide? = null
+    private var previewJob: Job? = null
 
     /** Cached Stalker sessions, keyed by [LiveTvSource.id], so channel/EPG loads don't re-handshake a portal every time. */
     private val stalkerSessions = mutableMapOf<String, StalkerClient.Session>()
@@ -109,6 +124,9 @@ class LiveTvViewModel @Inject constructor(
                 val enabled = sources.filter { it.enabled }
                 _uiState.update { it.copy(connection = enabled.firstOrNull()?.connection) }
                 if (enabled.isNotEmpty()) {
+                    // Real sources replace the sample guide.
+                    previewJob?.cancel()
+                    _uiState.update { it.copy(isPreviewGuide = false, previewError = null) }
                     loadChannels(enabled)
                 } else {
                     stalkerSessions.clear()
@@ -122,6 +140,7 @@ class LiveTvViewModel @Inject constructor(
                             showGuide = false
                         )
                     }
+                    startPreviewGuide()
                 }
             }
         }
@@ -225,9 +244,110 @@ class LiveTvViewModel @Inject constructor(
         _uiState.update { it.copy(selectedProgramChannel = null, selectedProgram = null) }
     }
 
+    /** Leaves the sample guide for the IPTV setup form. */
+    fun showSetupForm() {
+        previewJob?.cancel()
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                isPreviewGuide = false,
+                previewError = null,
+                channels = emptyList(),
+                epgByChannel = emptyMap(),
+                showGuide = false,
+                selectedProgramChannel = null,
+                selectedProgram = null
+            )
+        }
+    }
+
     fun retry() {
-        currentSources.filter { it.enabled }.takeIf { it.isNotEmpty() }?.let { sources ->
-            viewModelScope.launch { loadChannels(sources) }
+        val enabled = currentSources.filter { it.enabled }
+        if (enabled.isEmpty()) {
+            startPreviewGuide()
+        } else {
+            viewModelScope.launch { loadChannels(enabled) }
+        }
+    }
+
+    /**
+     * Sample guide for trying the Guide's layout without an IPTV account: channels, logos and
+     * programs all come from a public XMLTV feed ([PREVIEW_EPG_URL]). Shown only while no IPTV
+     * source is added.
+     */
+    private fun startPreviewGuide() {
+        if (previewJob?.isActive == true) return
+        previewGuide?.let { cached ->
+            applyPreviewGuide(cached)
+            return
+        }
+        previewJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null, previewError = null, isPreviewGuide = true) }
+            val nowMs = System.currentTimeMillis()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val request = Request.Builder().url(PREVIEW_EPG_URL).build()
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) error("HTTP ${response.code}")
+                        val body = response.body ?: error("Empty response")
+                        XmltvParser.parseStream(
+                            input = body.byteStream(),
+                            fromMs = nowMs - EPG_WINDOW_PAST_MS,
+                            toMs = nowMs + EPG_WINDOW_AHEAD_MS,
+                            includeChannels = true,
+                            shouldContinue = { isActive }
+                        )
+                    }
+                }
+            }
+            if (!isActive) return@launch
+            result
+                .onSuccess { guide ->
+                    previewGuide = guide
+                    applyPreviewGuide(guide)
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isPreviewGuide = false,
+                            previewError = error.message ?: error.javaClass.simpleName
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun applyPreviewGuide(guide: XmltvGuide) {
+        val epg = guide.programs
+            .groupBy { "$PREVIEW_SOURCE_ID:${it.channelId}" }
+            .mapValues { (_, list) -> list.sortedBy { it.startMs } }
+        val channels = guide.channels.map { channel ->
+            val key = "$PREVIEW_SOURCE_ID:${channel.id}"
+            LiveTvChannel(
+                id = key,
+                // "US - FOX News Detroit" -> "FOX News Detroit": the country tag adds nothing here.
+                name = channel.displayName.replaceFirst(COUNTRY_PREFIX, "").ifBlank { channel.displayName },
+                streamUrl = "",
+                logoUrl = channel.iconUrl,
+                epgChannelId = key
+            )
+        }
+        // Keep the feed's lineup order; just drop channels with nothing in the guide's window.
+        val withPrograms = channels.filter { !epg[it.id].isNullOrEmpty() }
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                error = if (channels.isEmpty()) "No channels found in the sample guide." else null,
+                previewError = null,
+                isPreviewGuide = true,
+                channels = withPrograms.ifEmpty { channels },
+                groups = emptyList(),
+                selectedGroup = null,
+                epgByChannel = epg,
+                showGuide = true,
+                nowMs = System.currentTimeMillis()
+            )
         }
     }
 
@@ -302,11 +422,23 @@ class LiveTvViewModel @Inject constructor(
             val xmltvText = when (connection) {
                 is LiveTvConnection.Xtream -> xtreamClient.fetchXmltv(connection)
                 is LiveTvConnection.M3u -> {
+                    // Streamed, gzip-aware and limited to the guide's window, so a big national
+                    // guide (or an .xml.gz one) doesn't have to fit in memory as one string.
+                    val nowMs = System.currentTimeMillis()
                     val request = Request.Builder().url(requireNotNull(epgUrl)).build()
-                    okHttpClient.newCall(request).execute().use { response ->
+                    val programs = okHttpClient.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) error("HTTP ${response.code}")
-                        response.body?.string().orEmpty()
+                        val body = response.body ?: error("Empty response")
+                        XmltvParser.parseStream(
+                            input = body.byteStream(),
+                            fromMs = nowMs - EPG_WINDOW_PAST_MS,
+                            toMs = nowMs + EPG_WINDOW_AHEAD_MS,
+                            includeChannels = false
+                        ).programs
                     }
+                    return@runCatching programs
+                        .groupBy { "${source.id}:${it.channelId}" }
+                        .mapValues { (_, list) -> list.sortedBy { it.startMs } }
                 }
                 is LiveTvConnection.Stalker -> return emptyMap()
             }
@@ -324,5 +456,15 @@ class LiveTvViewModel @Inject constructor(
         // EPG is a nice-to-have on top of channel playback; an empty result (whether every source
         // has none, or every fetch failed) never blocks watching live TV.
         _uiState.update { it.copy(isEpgLoading = false, epgByChannel = merged, nowMs = System.currentTimeMillis()) }
+    }
+
+    companion object {
+        /** Public US guide (EPGTalk) used for the sample guide. */
+        const val PREVIEW_EPG_URL = "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/US_guide.xml.gz"
+        private const val PREVIEW_SOURCE_ID = "preview"
+        /** Programs kept per load: from 2 hours ago to 36 hours ahead. */
+        private const val EPG_WINDOW_PAST_MS = 2L * 60 * 60 * 1000
+        private const val EPG_WINDOW_AHEAD_MS = 36L * 60 * 60 * 1000
+        private val COUNTRY_PREFIX = Regex("^[A-Z]{2,3}\\s*[-:|]\\s+")
     }
 }

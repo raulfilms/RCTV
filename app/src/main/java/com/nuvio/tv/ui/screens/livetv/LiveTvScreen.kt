@@ -90,6 +90,14 @@ fun LiveTvScreen(
             onPlayChannel(channel.copy(streamUrl = resolvedUrl))
         }
     }
+    // Sample guide channels have no stream: choosing one shows what's on instead.
+    val onChannelChosen: (LiveTvChannel) -> Unit = { channel ->
+        if (uiState.isPreviewGuide) {
+            uiState.currentProgram(channel)?.let { program -> viewModel.openProgramDetails(channel, program) }
+        } else {
+            resolvingPlayChannel(channel)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -105,8 +113,15 @@ fun LiveTvScreen(
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             when {
-                uiState.connection == null -> LiveTvSetup(uiState = uiState, viewModel = viewModel, onManageSources = onManageSources)
-                uiState.isLoading -> LiveTvLoadingState()
+                uiState.isLoading -> LiveTvLoadingState(isPreviewGuide = uiState.isPreviewGuide)
+                uiState.connection == null && uiState.previewError != null -> LiveTvErrorState(
+                    message = uiState.previewError.orEmpty(),
+                    onRetry = viewModel::retry,
+                    onDisconnect = viewModel::showSetupForm,
+                    secondaryLabel = stringResource(R.string.livetv_preview_add_iptv)
+                )
+                uiState.connection == null && !uiState.isPreviewGuide ->
+                    LiveTvSetup(uiState = uiState, viewModel = viewModel, onManageSources = onManageSources)
                 // A source-loading error only blocks the whole screen when it left no channels at
                 // all to show; a partial failure (some sources loaded, others didn't) surfaces as
                 // a banner above the still-usable channel browser instead (see below).
@@ -118,14 +133,21 @@ fun LiveTvScreen(
                 uiState.showGuide -> LiveTvGuide(
                     uiState = uiState,
                     onSelectProgram = viewModel::openProgramDetails,
-                    onToggleGuide = { viewModel.setShowGuide(false) }
+                    onToggleGuide = { viewModel.setShowGuide(false) },
+                    onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else null
                 )
                 else -> LiveTvChannelBrowser(
                     uiState = uiState,
                     onSelectGroup = viewModel::selectGroup,
                     onSearchChange = viewModel::onChannelSearchChange,
-                    onPlayChannel = resolvingPlayChannel,
-                    onDisconnect = viewModel::disconnect,
+                    onPlayChannel = onChannelChosen,
+                    // In the sample guide the second button leads to the IPTV form instead.
+                    onDisconnect = if (uiState.isPreviewGuide) viewModel::showSetupForm else viewModel::disconnect,
+                    disconnectLabel = if (uiState.isPreviewGuide) {
+                        stringResource(R.string.livetv_preview_add_iptv)
+                    } else {
+                        stringResource(R.string.livetv_change_playlist_btn)
+                    },
                     onManageSources = onManageSources,
                     onToggleGuide = if (uiState.hasEpg) { { viewModel.setShowGuide(true) } } else null
                 )
@@ -139,9 +161,14 @@ fun LiveTvScreen(
                 channel = selectedChannel,
                 program = selectedProgram,
                 nowMs = uiState.nowMs,
-                onWatch = {
-                    viewModel.dismissProgramDetails()
-                    resolvingPlayChannel(selectedChannel)
+                // Sample guide channels can't be played.
+                onWatch = if (uiState.isPreviewGuide) {
+                    null
+                } else {
+                    {
+                        viewModel.dismissProgramDetails()
+                        resolvingPlayChannel(selectedChannel)
+                    }
                 },
                 onDismiss = viewModel::dismissProgramDetails
             )
@@ -349,11 +376,24 @@ private fun LiveTvTextField(
     }
 }
 
+/** One line over the sample guide saying where it comes from and that it can't play. */
 @Composable
-private fun LiveTvLoadingState() {
+private fun LiveTvPreviewNote() {
+    Text(
+        text = stringResource(R.string.livetv_preview_note),
+        style = MaterialTheme.typography.bodySmall,
+        color = NuvioTheme.colors.TextSecondary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
+    )
+}
+
+@Composable
+private fun LiveTvLoadingState(isPreviewGuide: Boolean = false) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            text = stringResource(R.string.livetv_loading),
+            text = stringResource(if (isPreviewGuide) R.string.livetv_preview_loading else R.string.livetv_loading),
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.TextSecondary
         )
@@ -364,7 +404,8 @@ private fun LiveTvLoadingState() {
 private fun LiveTvErrorState(
     message: String,
     onRetry: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    secondaryLabel: String = stringResource(R.string.livetv_change_playlist_btn)
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -415,7 +456,7 @@ private fun LiveTvErrorState(
                 ),
                 shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
             ) {
-                Text(text = stringResource(R.string.livetv_change_playlist_btn))
+                Text(text = secondaryLabel)
             }
         }
     }
@@ -428,10 +469,12 @@ private fun LiveTvChannelBrowser(
     onSearchChange: (String) -> Unit,
     onPlayChannel: (LiveTvChannel) -> Unit,
     onDisconnect: () -> Unit,
+    disconnectLabel: String,
     onManageSources: () -> Unit,
     onToggleGuide: (() -> Unit)?
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        if (uiState.isPreviewGuide) LiveTvPreviewNote()
         if (uiState.error != null) {
             Text(
                 text = uiState.error.orEmpty(),
@@ -454,7 +497,7 @@ private fun LiveTvChannelBrowser(
             )
             Spacer(modifier = Modifier.width(NuvioTheme.spacing.sm))
             LiveTvGroupChip(
-                label = stringResource(R.string.livetv_change_playlist_btn),
+                label = disconnectLabel,
                 selected = false,
                 onClick = onDisconnect
             )
@@ -780,9 +823,11 @@ private fun formatProgramTime(startMs: Long, endMs: Long): String {
 private fun LiveTvGuide(
     uiState: LiveTvUiState,
     onSelectProgram: (LiveTvChannel, EpgProgram) -> Unit,
-    onToggleGuide: () -> Unit
+    onToggleGuide: () -> Unit,
+    onAddIptv: (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        if (uiState.isPreviewGuide) LiveTvPreviewNote()
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -793,12 +838,21 @@ private fun LiveTvGuide(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = NuvioTheme.colors.TextPrimary
             )
-            LiveTvGroupChip(
-                label = stringResource(R.string.livetv_channels_btn),
-                selected = false,
-                onClick = onToggleGuide,
-                icon = Icons.Default.GridView
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
+                if (onAddIptv != null) {
+                    LiveTvGroupChip(
+                        label = stringResource(R.string.livetv_preview_add_iptv),
+                        selected = false,
+                        onClick = onAddIptv
+                    )
+                }
+                LiveTvGroupChip(
+                    label = stringResource(R.string.livetv_channels_btn),
+                    selected = false,
+                    onClick = onToggleGuide,
+                    icon = Icons.Default.GridView
+                )
+            }
         }
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
 
@@ -911,7 +965,7 @@ private fun LiveTvProgramDetailsOverlay(
     channel: LiveTvChannel,
     program: EpgProgram,
     nowMs: Long,
-    onWatch: () -> Unit,
+    onWatch: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
     Box(
@@ -959,7 +1013,7 @@ private fun LiveTvProgramDetailsOverlay(
             }
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
             Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-                Button(
+                if (onWatch != null) Button(
                     onClick = onWatch,
                     colors = ButtonDefaults.colors(
                         containerColor = NuvioTheme.colors.BackgroundElevated,
