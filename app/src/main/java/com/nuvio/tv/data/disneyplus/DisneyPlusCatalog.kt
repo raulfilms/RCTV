@@ -197,6 +197,56 @@ object DiscoveryPlusIds {
 }
 
 /**
+ * HBO Max ids. HBO 49, HBO Max 3186 and Cartoon Network 56 were checked on themoviedb.org; Adult Swim is
+ * found at runtime through its own shows, Crunchyroll's watch provider by name, and studios (DC, Warner
+ * Bros. Animation, Sesame Workshop...) through TMDB company search.
+ */
+object HboMaxIds {
+    /** HBO Max / Max (US), the same ids Home's HBO Max tile uses. */
+    const val PROVIDERS = "1899|384"
+
+    const val NET_HBO = "49"
+    const val NET_HBO_MAX = "3186"
+    const val NET_CARTOON_NETWORK = "56"
+
+    val ADULT_SWIM = NetworkLookup(
+        names = listOf("Adult Swim"),
+        probes = listOf(
+            CuratedTitle("Rick and Morty", 2013, TmdbCollectionMediaType.TV),
+            CuratedTitle("Robot Chicken", 2005, TmdbCollectionMediaType.TV),
+            CuratedTitle("Aqua Teen Hunger Force", 2000, TmdbCollectionMediaType.TV)
+        )
+    )
+
+    /** Watch provider looked up by name in TMDB's US provider list. */
+    const val CRUNCHYROLL = "Crunchyroll"
+
+    /** The three company names DC titles are credited to on TMDB. */
+    val DC_COMPANIES = listOf("DC Comics", "DC Entertainment", "DC Studios")
+
+    const val WB_ANIMATION = "Warner Bros. Animation"
+    const val SESAME_WORKSHOP = "Sesame Workshop"
+
+    // TMDB genre ids used on the HBO Max pages
+    const val G_DRAMA = "18"
+
+    /** Warner Bros. / HBO companies and networks, used to decide what counts as HBO Max content. */
+    val COMPANY_IDS: Set<Int> = emptySet()
+
+    val NETWORK_IDS: Set<Int> = setOf(49, 3186, 56)
+
+    val COMPANY_NAME_FRAGMENTS: List<String> = listOf(
+        "warner bros", "hbo", "dc comics", "dc entertainment", "dc studios", "new line cinema", "castle rock",
+        "cartoon network", "williams street", "hanna-barbera", "turner", "cinemax", "warner animation"
+    )
+
+    val NETWORK_NAMES: Set<String> = setOf(
+        "hbo", "hbo max", "max", "cinemax", "cartoon network", "adult swim", "[adult swim]", "tnt", "tbs", "trutv",
+        "tcm", "turner classic movies", "boomerang", "cartoonito", "the wb"
+    )
+}
+
+/**
  * A TV network found through one of its shows: the first probe whose TMDB networks include one of [names]
  * (e.g. "OWN" / "Oprah Winfrey Network").
  */
@@ -217,7 +267,8 @@ enum class HubService(
 ) {
     DISNEY(DisneyPlusIds.PROVIDER_DISNEY_PLUS),
     PARAMOUNT(ParamountPlusIds.PROVIDERS),
-    DISCOVERY(DiscoveryPlusIds.PROVIDERS);
+    DISCOVERY(DiscoveryPlusIds.PROVIDERS),
+    HBO_MAX(HboMaxIds.PROVIDERS);
 
     val ownership: HubOwnership
         get() = when (this) {
@@ -239,13 +290,19 @@ enum class HubService(
                 DiscoveryPlusIds.COMPANY_NAME_FRAGMENTS,
                 DiscoveryPlusIds.NETWORK_NAMES
             )
+            HBO_MAX -> HubOwnership(
+                HboMaxIds.COMPANY_IDS,
+                HboMaxIds.NETWORK_IDS,
+                HboMaxIds.COMPANY_NAME_FRAGMENTS,
+                HboMaxIds.NETWORK_NAMES
+            )
         }
 }
 
 /**
  * Every page of the app's own streaming sections: the Disney+ main page, its brand pages and
- * collections, and the Paramount+ and discovery+ main pages with their brand pages. [key] is used in
- * the navigation route.
+ * collections, and the Paramount+, discovery+ and HBO Max main pages with their brand pages. [key] is
+ * used in the navigation route.
  */
 enum class DisneyPlusHub(
     val key: String,
@@ -287,10 +344,21 @@ enum class DisneyPlusHub(
     D_ID("discovery_id", R.string.discovery_brand_id, HubService.DISCOVERY),
     D_OWN("discovery_own", R.string.discovery_brand_own, HubService.DISCOVERY),
     D_ANIMAL_PLANET("discovery_animal_planet", R.string.discovery_brand_animal_planet, HubService.DISCOVERY),
-    D_MAGNOLIA("discovery_magnolia", R.string.discovery_brand_magnolia, HubService.DISCOVERY);
+    D_MAGNOLIA("discovery_magnolia", R.string.discovery_brand_magnolia, HubService.DISCOVERY),
+
+    // HBO Max: its main page, then one page per brand tile.
+    HBOMAX_MAIN("hbomax", R.string.hbomax_title, HubService.HBO_MAX),
+    H_HBO("hbomax_hbo", R.string.hbomax_brand_hbo, HubService.HBO_MAX),
+    H_MAX_ORIGINALS("hbomax_max_originals", R.string.hbomax_brand_max_originals, HubService.HBO_MAX),
+    H_DC("hbomax_dc", R.string.hbomax_brand_dc, HubService.HBO_MAX),
+    H_LOONEY_TUNES("hbomax_looney_tunes", R.string.hbomax_brand_looney_tunes, HubService.HBO_MAX),
+    H_WB_ANIMATION("hbomax_wb_animation", R.string.hbomax_brand_wb_animation, HubService.HBO_MAX),
+    H_SESAME("hbomax_sesame_workshop", R.string.hbomax_brand_sesame_workshop, HubService.HBO_MAX),
+    H_CRUNCHYROLL("hbomax_crunchyroll", R.string.hbomax_brand_crunchyroll, HubService.HBO_MAX);
 
     /** A service's main page (hero, brand tiles, Continue Watching...), as opposed to a brand page. */
-    val isMain: Boolean get() = this == MAIN || this == PARAMOUNT_MAIN || this == DISCOVERY_MAIN
+    val isMain: Boolean
+        get() = this == MAIN || this == PARAMOUNT_MAIN || this == DISCOVERY_MAIN || this == HBOMAX_MAIN
 
     companion object {
         fun fromKey(key: String?): DisneyPlusHub =
@@ -302,6 +370,9 @@ enum class DisneyPlusHub(
             HubService.PARAMOUNT -> listOf(P_CBS, P_BET, P_COMEDY_CENTRAL, P_MTV, P_NICKELODEON, P_SMITHSONIAN)
             HubService.DISCOVERY -> listOf(
                 D_ORIGINALS, D_HGTV, D_FOOD_NETWORK, D_TLC, D_ID, D_OWN, D_ANIMAL_PLANET, D_MAGNOLIA
+            )
+            HubService.HBO_MAX -> listOf(
+                H_HBO, H_MAX_ORIGINALS, H_DC, H_LOONEY_TUNES, H_WB_ANIMATION, H_SESAME, H_CRUNCHYROLL
             )
         }
     }
@@ -329,6 +400,8 @@ sealed interface DisneyRowSource {
         val companyQuery: String? = null,
         /** A network found at runtime through one of its shows (combined with [networks] as OR). */
         val networkLookup: NetworkLookup? = null,
+        /** A watch provider looked up by name at runtime (combined with [providers] as OR). */
+        val providerQuery: String? = null,
         val releaseDateGte: String? = null,
         val releaseDateLte: String? = null,
         val voteCountGte: Int? = null,
@@ -1848,6 +1921,320 @@ object DisneyPlusCatalog {
         topRatedMinVotes = 5
     )
 
+    // ================================================================== HBO Max
+
+    private val GAME_OF_THRONES = listOf(
+        series("Game of Thrones", 2011),
+        series("House of the Dragon", 2022),
+        series("A Knight of the Seven Kingdoms", 2026)
+    )
+
+    private val WIZARDING_WORLD = listOf(
+        movie("Harry Potter and the Philosopher's Stone", 2001),
+        movie("Harry Potter and the Chamber of Secrets", 2002),
+        movie("Harry Potter and the Prisoner of Azkaban", 2004),
+        movie("Harry Potter and the Goblet of Fire", 2005),
+        movie("Harry Potter and the Order of the Phoenix", 2007),
+        movie("Harry Potter and the Half-Blood Prince", 2009),
+        movie("Harry Potter and the Deathly Hallows: Part 1", 2010),
+        movie("Harry Potter and the Deathly Hallows: Part 2", 2011),
+        movie("Fantastic Beasts and Where to Find Them", 2016),
+        movie("Fantastic Beasts: The Crimes of Grindelwald", 2018),
+        movie("Fantastic Beasts: The Secrets of Dumbledore", 2022)
+    )
+
+    private val LOONEY_TUNES = listOf(
+        series("Looney Tunes Cartoons", 2020),
+        movie("Space Jam", 1996),
+        movie("Space Jam: A New Legacy", 2021),
+        series("The Looney Tunes Show", 2011),
+        movie("Looney Tunes: Back in Action", 2003),
+        movie("The Day the Earth Blew Up: A Looney Tunes Movie", 2024),
+        series("Tiny Toons Looniversity", 2023),
+        series("Bugs Bunny Builders", 2022),
+        series("New Looney Tunes", 2015),
+        series("Baby Looney Tunes", 2001)
+    )
+
+    private fun onHboMax(
+        mediaType: TmdbCollectionMediaType,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        keywordQuery: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = mediaType,
+        sortBy = sortBy,
+        providers = HboMaxIds.PROVIDERS,
+        genres = genres,
+        keywordQuery = keywordQuery,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte
+    )
+
+    /** One source per DC company name (DC Comics, DC Entertainment, DC Studios); their results get interleaved. */
+    private fun dc(
+        mediaType: TmdbCollectionMediaType,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ): List<DisneyRowSource> = HboMaxIds.DC_COMPANIES.map { name ->
+        DisneyRowSource.Discover(
+            mediaType = mediaType,
+            sortBy = sortBy,
+            companyQuery = name,
+            genres = genres,
+            voteCountGte = voteCountGte,
+            releaseDateLte = releaseDateLte
+        )
+    }
+
+    private fun studio(
+        mediaType: TmdbCollectionMediaType,
+        companyName: String,
+        sortBy: String = POPULAR,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null,
+        runtimeGte: Int? = null,
+        runtimeLte: Int? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = mediaType,
+        sortBy = sortBy,
+        companyQuery = companyName,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte,
+        runtimeGte = runtimeGte,
+        runtimeLte = runtimeLte
+    )
+
+    private fun crunchyroll(
+        mediaType: TmdbCollectionMediaType,
+        sortBy: String = POPULAR,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = mediaType,
+        sortBy = sortBy,
+        providerQuery = HboMaxIds.CRUNCHYROLL,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte
+    )
+
+    private val hboMaxMain = DisneyHubSpec(
+        hub = DisneyPlusHub.HBOMAX_MAIN,
+        heroRowId = "hm_trending",
+        rows = listOf(
+            DisneyRowSpec("continue_watching", R.string.disney_row_continue_watching, kind = DisneyRowKind.CONTINUE_WATCHING),
+            DisneyRowSpec("recommended", R.string.disney_row_recommended, kind = DisneyRowKind.RECOMMENDED),
+            DisneyRowSpec(
+                "hm_new", R.string.hbomax_row_new,
+                listOf(
+                    onHboMax(MOVIE, sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY),
+                    onHboMax(TV, sortBy = RECENT_TV, voteCountGte = 5, releaseDateLte = TODAY)
+                )
+            ),
+            DisneyRowSpec("hm_trending", R.string.disney_row_trending, listOf(onHboMax(MOVIE), onHboMax(TV))),
+            DisneyRowSpec("hm_hbo", R.string.hbomax_row_hbo_originals, listOf(net(HboMaxIds.NET_HBO))),
+            DisneyRowSpec("hm_max_originals", R.string.hbomax_brand_max_originals, listOf(net(HboMaxIds.NET_HBO_MAX))),
+            DisneyRowSpec("hm_got", R.string.hbomax_row_game_of_thrones, listOf(curated(GAME_OF_THRONES))),
+            DisneyRowSpec("hm_dc", R.string.hbomax_brand_dc, dc(MOVIE, voteCountGte = 200) + dc(TV)),
+            DisneyRowSpec("hm_wizarding", R.string.hbomax_row_wizarding_world, listOf(curated(WIZARDING_WORLD))),
+            DisneyRowSpec(
+                "hm_wb_pictures", R.string.hbomax_row_wb_pictures,
+                listOf(studio(MOVIE, "Warner Bros. Pictures", voteCountGte = 300, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec("hm_looney_tunes", R.string.hbomax_brand_looney_tunes, listOf(curated(LOONEY_TUNES))),
+            DisneyRowSpec("hm_cartoon_network", R.string.hbomax_row_cartoon_network, listOf(net(HboMaxIds.NET_CARTOON_NETWORK))),
+            DisneyRowSpec("hm_adult_swim", R.string.hbomax_row_adult_swim, listOf(net(null, HboMaxIds.ADULT_SWIM))),
+            DisneyRowSpec("hm_sesame", R.string.hbomax_brand_sesame_workshop, listOf(studio(TV, HboMaxIds.SESAME_WORKSHOP))),
+            DisneyRowSpec(
+                "hm_anime", R.string.hbomax_row_anime,
+                listOf(onHboMax(TV, genres = DisneyPlusIds.G_ANIMATION, keywordQuery = "anime"))
+            ),
+            DisneyRowSpec("hm_movies", R.string.disney_row_movies, listOf(onHboMax(MOVIE, voteCountGte = 200))),
+            DisneyRowSpec("hm_series", R.string.disney_row_series, listOf(onHboMax(TV, voteCountGte = 50))),
+            DisneyRowSpec(
+                "hm_drama", R.string.hbomax_row_drama,
+                listOf(
+                    onHboMax(TV, genres = HboMaxIds.G_DRAMA, voteCountGte = 100),
+                    onHboMax(MOVIE, genres = HboMaxIds.G_DRAMA, voteCountGte = 300)
+                )
+            ),
+            DisneyRowSpec(
+                "hm_comedy", R.string.disney_row_comedy,
+                listOf(
+                    onHboMax(MOVIE, genres = DisneyPlusIds.G_COMEDY, voteCountGte = 100),
+                    onHboMax(TV, genres = DisneyPlusIds.G_COMEDY, voteCountGte = 50)
+                )
+            ),
+            DisneyRowSpec(
+                "hm_action", R.string.disney_row_action,
+                listOf(
+                    onHboMax(MOVIE, genres = "${DisneyPlusIds.G_ACTION}|${DisneyPlusIds.G_ADVENTURE}", voteCountGte = 100),
+                    onHboMax(TV, genres = DisneyPlusIds.G_TV_ACTION_ADVENTURE, voteCountGte = 50)
+                )
+            ),
+            DisneyRowSpec(
+                "hm_kids", R.string.paramount_row_kids,
+                listOf(
+                    onHboMax(TV, genres = DisneyPlusIds.G_TV_KIDS),
+                    onHboMax(MOVIE, genres = "${DisneyPlusIds.G_ANIMATION},${DisneyPlusIds.G_FAMILY}", voteCountGte = 100)
+                )
+            ),
+            DisneyRowSpec(
+                "hm_documentaries", R.string.disney_row_documentaries,
+                listOf(
+                    onHboMax(MOVIE, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 10),
+                    onHboMax(TV, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 5)
+                )
+            )
+        )
+    )
+
+    private val hboMaxHbo = networkPage(
+        hub = DisneyPlusHub.H_HBO,
+        prefix = "hbo",
+        networks = HboMaxIds.NET_HBO,
+        middleRows = listOf(
+            DisneyRowSpec("hbo_dramas", R.string.paramount_row_dramas, listOf(net(HboMaxIds.NET_HBO, genres = HboMaxIds.G_DRAMA))),
+            DisneyRowSpec("hbo_comedies", R.string.paramount_row_comedies, listOf(net(HboMaxIds.NET_HBO, genres = DisneyPlusIds.G_COMEDY))),
+            DisneyRowSpec("hbo_docuseries", R.string.discovery_row_docuseries, listOf(net(HboMaxIds.NET_HBO, genres = DisneyPlusIds.G_DOCUMENTARY))),
+            DisneyRowSpec("hbo_films", R.string.hbomax_row_hbo_films, listOf(moviesFrom("HBO Films")))
+        ),
+        classicUntil = "2007-12-31",
+        topRatedMinVotes = 200
+    )
+
+    private val hboMaxOriginals = networkPage(
+        hub = DisneyPlusHub.H_MAX_ORIGINALS,
+        prefix = "maxo",
+        networks = HboMaxIds.NET_HBO_MAX,
+        middleRows = listOf(
+            DisneyRowSpec("maxo_dramas", R.string.paramount_row_dramas, listOf(net(HboMaxIds.NET_HBO_MAX, genres = HboMaxIds.G_DRAMA))),
+            DisneyRowSpec("maxo_comedies", R.string.paramount_row_comedies, listOf(net(HboMaxIds.NET_HBO_MAX, genres = DisneyPlusIds.G_COMEDY))),
+            DisneyRowSpec(
+                "maxo_animated", R.string.disney_row_animated_series,
+                listOf(net(HboMaxIds.NET_HBO_MAX, genres = DisneyPlusIds.G_ANIMATION))
+            ),
+            DisneyRowSpec(
+                "maxo_docuseries", R.string.discovery_row_docuseries,
+                listOf(net(HboMaxIds.NET_HBO_MAX, genres = DisneyPlusIds.G_DOCUMENTARY))
+            )
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 50
+    )
+
+    private val hboMaxDc = DisneyHubSpec(
+        hub = DisneyPlusHub.H_DC,
+        heroRowId = "dc_movies",
+        rows = listOf(
+            DisneyRowSpec("dc_movies", R.string.hbomax_row_dc_movies, dc(MOVIE, voteCountGte = 200)),
+            DisneyRowSpec("dc_newest", R.string.disney_row_newest, dc(MOVIE, sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY)),
+            DisneyRowSpec("dc_series", R.string.hbomax_row_dc_series, dc(TV)),
+            DisneyRowSpec(
+                "dc_animated", R.string.hbomax_row_dc_animated,
+                dc(MOVIE, sortBy = MOST_VOTED, genres = DisneyPlusIds.G_ANIMATION)
+            ),
+            DisneyRowSpec(
+                "dc_batman", R.string.hbomax_row_batman,
+                listOf(
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "batman"),
+                    DisneyRowSource.Discover(TV, keywordQuery = "batman")
+                )
+            ),
+            DisneyRowSpec(
+                "dc_superman", R.string.hbomax_row_superman,
+                listOf(
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "superman"),
+                    DisneyRowSource.Discover(TV, keywordQuery = "superman")
+                )
+            ),
+            DisneyRowSpec("dc_top_rated", R.string.disney_row_top_rated, dc(MOVIE, sortBy = TOP_RATED, voteCountGte = 1000))
+        )
+    )
+
+    private val hboMaxLooneyTunes = DisneyHubSpec(
+        hub = DisneyPlusHub.H_LOONEY_TUNES,
+        heroRowId = "lt_featured",
+        rows = listOf(
+            DisneyRowSpec("lt_featured", R.string.disney_row_featured, listOf(curated(LOONEY_TUNES))),
+            DisneyRowSpec("lt_series", R.string.disney_row_series, listOf(DisneyRowSource.Discover(TV, keywordQuery = "looney tunes"))),
+            DisneyRowSpec(
+                "lt_movies", R.string.disney_row_movies,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "looney tunes", runtimeGte = 60))
+            ),
+            DisneyRowSpec(
+                "lt_shorts", R.string.hbomax_row_classic_shorts,
+                listOf(studio(MOVIE, "Warner Bros. Cartoons", sortBy = MOST_VOTED, runtimeLte = 20))
+            )
+        )
+    )
+
+    private val hboMaxWbAnimation = DisneyHubSpec(
+        hub = DisneyPlusHub.H_WB_ANIMATION,
+        heroRowId = "wba_series",
+        rows = listOf(
+            DisneyRowSpec("wba_series", R.string.disney_row_popular_shows, listOf(studio(TV, HboMaxIds.WB_ANIMATION))),
+            DisneyRowSpec(
+                "wba_new", R.string.disney_row_new_short,
+                listOf(studio(TV, HboMaxIds.WB_ANIMATION, sortBy = RECENT_TV, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec(
+                "wba_movies", R.string.disney_row_movies,
+                listOf(studio(MOVIE, HboMaxIds.WB_ANIMATION, sortBy = MOST_VOTED, runtimeGte = 60))
+            ),
+            DisneyRowSpec("wba_cartoon_network", R.string.hbomax_row_cartoon_network, listOf(net(HboMaxIds.NET_CARTOON_NETWORK))),
+            DisneyRowSpec("wba_adult_swim", R.string.hbomax_row_adult_swim, listOf(net(null, HboMaxIds.ADULT_SWIM))),
+            DisneyRowSpec(
+                "wba_hanna_barbera", R.string.hbomax_row_hanna_barbera,
+                listOf(studio(TV, "Hanna-Barbera Productions", sortBy = MOST_VOTED))
+            ),
+            DisneyRowSpec(
+                "wba_top_rated", R.string.disney_row_top_rated,
+                listOf(studio(TV, HboMaxIds.WB_ANIMATION, sortBy = TOP_RATED, voteCountGte = 50))
+            )
+        )
+    )
+
+    private val hboMaxSesame = DisneyHubSpec(
+        hub = DisneyPlusHub.H_SESAME,
+        heroRowId = "ses_series",
+        rows = listOf(
+            DisneyRowSpec("ses_series", R.string.disney_row_popular_shows, listOf(studio(TV, HboMaxIds.SESAME_WORKSHOP))),
+            DisneyRowSpec(
+                "ses_new", R.string.disney_row_new_short,
+                listOf(studio(TV, HboMaxIds.SESAME_WORKSHOP, sortBy = RECENT_TV, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec("ses_movies", R.string.disney_row_movies, listOf(studio(MOVIE, HboMaxIds.SESAME_WORKSHOP, sortBy = MOST_VOTED))),
+            DisneyRowSpec(
+                "ses_classic", R.string.disney_row_classic_series,
+                listOf(studio(TV, HboMaxIds.SESAME_WORKSHOP, sortBy = MOST_VOTED, releaseDateLte = "2005-12-31"))
+            )
+        )
+    )
+
+    private val hboMaxCrunchyroll = DisneyHubSpec(
+        hub = DisneyPlusHub.H_CRUNCHYROLL,
+        heroRowId = "cr_popular",
+        rows = listOf(
+            DisneyRowSpec("cr_popular", R.string.hbomax_row_popular_anime, listOf(crunchyroll(TV))),
+            DisneyRowSpec(
+                "cr_new", R.string.disney_row_new_short,
+                listOf(crunchyroll(TV, sortBy = RECENT_TV, voteCountGte = 1, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec("cr_originals", R.string.hbomax_row_crunchyroll_originals, listOf(studio(TV, "Crunchyroll"))),
+            DisneyRowSpec("cr_movies", R.string.hbomax_row_anime_movies, listOf(crunchyroll(MOVIE))),
+            DisneyRowSpec(
+                "cr_on_hbo_max", R.string.hbomax_row_anime_on_hbo_max,
+                listOf(onHboMax(TV, genres = DisneyPlusIds.G_ANIMATION, keywordQuery = "anime"))
+            ),
+            DisneyRowSpec("cr_top_rated", R.string.disney_row_top_rated, listOf(crunchyroll(TV, sortBy = TOP_RATED, voteCountGte = 300)))
+        )
+    )
+
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */
     const val TODAY = "__today__"
 
@@ -1882,5 +2269,13 @@ object DisneyPlusCatalog {
         DisneyPlusHub.D_OWN -> discoveryOwn
         DisneyPlusHub.D_ANIMAL_PLANET -> discoveryAnimalPlanet
         DisneyPlusHub.D_MAGNOLIA -> discoveryMagnolia
+        DisneyPlusHub.HBOMAX_MAIN -> hboMaxMain
+        DisneyPlusHub.H_HBO -> hboMaxHbo
+        DisneyPlusHub.H_MAX_ORIGINALS -> hboMaxOriginals
+        DisneyPlusHub.H_DC -> hboMaxDc
+        DisneyPlusHub.H_LOONEY_TUNES -> hboMaxLooneyTunes
+        DisneyPlusHub.H_WB_ANIMATION -> hboMaxWbAnimation
+        DisneyPlusHub.H_SESAME -> hboMaxSesame
+        DisneyPlusHub.H_CRUNCHYROLL -> hboMaxCrunchyroll
     }
 }

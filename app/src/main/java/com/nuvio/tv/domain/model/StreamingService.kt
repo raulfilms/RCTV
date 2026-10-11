@@ -16,7 +16,8 @@ data class StreamingService(
     val fullBleed: Boolean = false,
     /**
      * Key of the app's own section this tile opens instead of the generic service page
-     * ("main" = Disney+, "paramount" = Paramount+, "discovery" = discovery+); null for the generic page.
+     * ("main" = Disney+, "paramount" = Paramount+, "discovery" = discovery+, "hbomax" = HBO Max); null for
+     * the generic page.
      */
     val appHub: String? = null,
     /** Where the tile leads; filled in once TMDB has been asked, null until then. */

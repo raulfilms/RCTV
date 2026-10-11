@@ -91,7 +91,7 @@ import kotlinx.coroutines.delay
 private const val HERO_AUTO_ADVANCE_MS = 8_000L
 
 /**
- * Disney+, Paramount+ and discovery+ pages. The same screen renders a service's main page (hero, brand tiles,
+ * Disney+, Paramount+, discovery+ and HBO Max pages. The same screen renders a service's main page (hero, brand tiles,
  * Continue Watching and all rows) and each brand page reached from a tile (hero + that brand's rows).
  */
 @Composable
@@ -140,6 +140,7 @@ fun DisneyPlusScreen(
                                 HubService.DISNEY -> R.string.disney_empty_title
                                 HubService.PARAMOUNT -> R.string.paramount_empty_title
                                 HubService.DISCOVERY -> R.string.discovery_empty_title
+                                HubService.HBO_MAX -> R.string.hbomax_empty_title
                             }
                         ),
                         subtitle = stringResource(R.string.disney_empty_subtitle),
@@ -432,6 +433,7 @@ private fun DisneyHeroSlide(item: MetaPreview) {
  * color with each brand's logo centered on it. Disney+: Disney, Pixar, Marvel, Star Wars, National
  * Geographic, Hulu, ESPN. Paramount+: CBS, BET, Comedy Central, MTV, Nickelodeon, Smithsonian Channel.
  * discovery+: discovery+ Originals, HGTV, Food Network, TLC, ID, OWN, Animal Planet, Magnolia Network.
+ * HBO Max: HBO, Max Originals, DC, Looney Tunes, Warner Bros. Animation, Sesame Workshop, Crunchyroll.
  * Each opens that brand's page.
  */
 @Composable
@@ -481,6 +483,13 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     DisneyPlusHub.D_OWN -> R.drawable.discovery_brand_logo_own
     DisneyPlusHub.D_ANIMAL_PLANET -> R.drawable.discovery_brand_logo_animalplanet
     DisneyPlusHub.D_MAGNOLIA -> R.drawable.discovery_brand_logo_magnolia
+    DisneyPlusHub.H_HBO -> R.drawable.hbomax_brand_logo_hbo
+    DisneyPlusHub.H_MAX_ORIGINALS -> R.drawable.hbomax_brand_logo_maxoriginals
+    DisneyPlusHub.H_DC -> R.drawable.hbomax_brand_logo_dc
+    DisneyPlusHub.H_LOONEY_TUNES -> R.drawable.hbomax_brand_logo_looneytunes
+    DisneyPlusHub.H_WB_ANIMATION -> R.drawable.hbomax_brand_logo_wbanimation
+    DisneyPlusHub.H_SESAME -> R.drawable.hbomax_brand_logo_sesame
+    DisneyPlusHub.H_CRUNCHYROLL -> R.drawable.hbomax_brand_logo_crunchyroll
     else -> R.drawable.disney_brand_logo_disney
 }
 
@@ -515,6 +524,14 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.D_OWN -> Color(0xFFC9A227)
     DisneyPlusHub.D_ANIMAL_PLANET -> Color(0xFF0074FF)
     DisneyPlusHub.D_MAGNOLIA -> Color(0xFF3E4A3D)
+    DisneyPlusHub.HBOMAX_MAIN -> Color(0xFF5822B4)
+    DisneyPlusHub.H_HBO -> Color(0xFF3A3A3A)
+    DisneyPlusHub.H_MAX_ORIGINALS -> Color(0xFF002BE7)
+    DisneyPlusHub.H_DC -> Color(0xFF0376F2)
+    DisneyPlusHub.H_LOONEY_TUNES -> Color(0xFFD62B2F)
+    DisneyPlusHub.H_WB_ANIMATION -> Color(0xFFED1C24)
+    DisneyPlusHub.H_SESAME -> Color(0xFF00A651)
+    DisneyPlusHub.H_CRUNCHYROLL -> Color(0xFFF78C25)
 }
 
 /**

@@ -46,7 +46,7 @@ class StreamingServicesRepository @Inject constructor(
             providerIds = listOf(8), providerNames = listOf("Netflix")),
         Entry(StreamingService("prime", "Prime Video", R.drawable.streaming_logo_prime),
             providerIds = listOf(9, 119), providerNames = listOf("Amazon Prime Video", "Prime Video")),
-        Entry(StreamingService("hbomax", "HBO Max", R.drawable.streaming_logo_hbomax, darkTile = true),
+        Entry(StreamingService("hbomax", "HBO Max", R.drawable.streaming_logo_hbomax, darkTile = true, appHub = "hbomax"),
             providerIds = listOf(1899, 384), providerNames = listOf("HBO Max", "Max")),
         Entry(StreamingService("appletv", "Apple TV+", R.drawable.streaming_logo_appletv),
             providerIds = listOf(350), providerNames = listOf("Apple TV Plus", "Apple TV+", "Apple TV")),

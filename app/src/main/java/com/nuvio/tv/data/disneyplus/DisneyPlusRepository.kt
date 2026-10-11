@@ -7,6 +7,7 @@ import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbDetailsResponse
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
+import com.nuvio.tv.data.remote.api.TmdbWatchProviderEntry
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.MetaPreview
@@ -35,7 +36,7 @@ private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
 
-/** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery), and its genres. */
+/** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery, HBO Max), and its genres. */
 data class DisneyTitleInfo(
     val tmdbId: Int,
     val mediaType: TmdbCollectionMediaType,
@@ -44,7 +45,7 @@ data class DisneyTitleInfo(
 )
 
 /**
- * Builds the rows of the app's own streaming sections (Disney+, Paramount+, discovery+) from TMDB. Everything is cached in memory for the life of the app
+ * Builds the rows of the app's own streaming sections (Disney+, Paramount+, discovery+, HBO Max) from TMDB. Everything is cached in memory for the life of the app
  * process (curated title lookups, keyword ids, per-title ownership checks), so moving between the
  * main page and the brand pages, or coming back to them, doesn't re-run the same lookups.
  */
@@ -60,6 +61,8 @@ class DisneyPlusRepository @Inject constructor(
     private val keywordCache = ConcurrentHashMap<String, Optional<Int>>()
     private val companyCache = ConcurrentHashMap<String, Optional<Int>>()
     private val networkCache = ConcurrentHashMap<String, Optional<Int>>()
+    private val providerCache = ConcurrentHashMap<String, Int>()
+    private val providerLookupMutex = Mutex()
     private val networkLookupMutex = Mutex()
     private val titleInfoCache = ConcurrentHashMap<String, Optional<DisneyTitleInfo>>()
     private val logoCache = ConcurrentHashMap<String, Optional<String>>()
@@ -254,7 +257,11 @@ class DisneyPlusRepository @Inject constructor(
         val today = LocalDate.now().toString()
         val releaseLte = source.releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
         val releaseGte = source.releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
-        val usesProviders = !source.providers.isNullOrBlank()
+        val providers = source.providerQuery?.let { query ->
+            val resolved = providerId(query) ?: return emptyList()
+            listOfNotNull(source.providers, resolved.toString()).joinToString("|")
+        } ?: source.providers
+        val usesProviders = !providers.isNullOrBlank()
         val response = when (source.mediaType) {
             TmdbCollectionMediaType.MOVIE -> tmdbApi.discoverMovies(
                 apiKey = apiKey,
@@ -268,7 +275,7 @@ class DisneyPlusRepository @Inject constructor(
                 releaseDateGte = releaseGte,
                 withKeywords = resolvedKeywordId?.toString(),
                 watchRegion = if (usesProviders) "US" else null,
-                withWatchProviders = source.providers,
+                withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
                 withoutGenres = source.withoutGenres,
                 withRuntimeGte = source.runtimeGte,
@@ -287,7 +294,7 @@ class DisneyPlusRepository @Inject constructor(
                 firstAirDateGte = releaseGte,
                 withKeywords = resolvedKeywordId?.toString(),
                 watchRegion = if (usesProviders) "US" else null,
-                withWatchProviders = source.providers,
+                withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
                 withoutGenres = source.withoutGenres
             ).body()
@@ -339,6 +346,27 @@ class DisneyPlusRepository @Inject constructor(
                 ?.id
             if (match != null) {
                 networkCache[key] = Optional(match)
+                return@withLock match
+            }
+        }
+        null
+    }
+
+    /**
+     * Finds a watch provider's TMDB id by name (e.g. "Crunchyroll") in TMDB's US provider list (TV, then
+     * movies). Found ids are cached; a miss is retried next time.
+     */
+    private suspend fun providerId(name: String): Int? = providerLookupMutex.withLock {
+        val key = name.lowercase(Locale.US)
+        providerCache[key]?.let { return@withLock it }
+        for (isTv in listOf(true, false)) {
+            val list: List<TmdbWatchProviderEntry> = runCatching {
+                val response = if (isTv) tmdbApi.getTvWatchProviders(apiKey, "US") else tmdbApi.getMovieWatchProviders(apiKey, "US")
+                response.body()?.results.orEmpty()
+            }.onFailure { if (it is CancellationException) throw it }.getOrNull() ?: continue
+            val match = list.firstOrNull { it.providerName?.trim().equals(name, ignoreCase = true) }?.providerId
+            if (match != null) {
+                providerCache[key] = match
                 return@withLock match
             }
         }
