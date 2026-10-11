@@ -757,7 +757,8 @@ private fun AppleStreamingServiceTile(
 ) {
     val shape = remember { RoundedCornerShape(AppleTvRadius.Poster) }
     // Every tile in the app's contrast color (#2B2F37), the logo centered on it. The bundled logos
-    // are drawn for dark tiles: black lettering was made white, brand colors kept.
+    // are drawn for dark tiles: black lettering was made white, brand colors kept. A full-bleed tile
+    // (e.g. discovery+ Originals) is just its picture, edge to edge.
 
     Card(
         onClick = onClick,
@@ -775,13 +776,13 @@ private fun AppleStreamingServiceTile(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(shape)
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .then(if (service.fullBleed) Modifier else Modifier.padding(horizontal = 18.dp, vertical = 18.dp)),
             contentAlignment = Alignment.Center
         ) {
             Image(
                 painter = painterResource(id = service.logoRes),
                 contentDescription = service.name,
-                contentScale = ContentScale.Fit,
+                contentScale = if (service.fullBleed) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
         }

@@ -12,9 +12,11 @@ data class StreamingService(
     @DrawableRes val logoRes: Int,
     /** The logo was made for dark backgrounds (white lettering). Every tile is dark now, so unused. */
     val darkTile: Boolean = false,
+    /** [logoRes] is a full 16:9 picture that fills the whole tile (no gray tile, no padding around it). */
+    val fullBleed: Boolean = false,
     /**
      * Key of the app's own section this tile opens instead of the generic service page
-     * ("main" = Disney+, "paramount" = Paramount+); null for the generic page.
+     * ("main" = Disney+, "paramount" = Paramount+, "discovery" = discovery+); null for the generic page.
      */
     val appHub: String? = null,
     /** Where the tile leads; filled in once TMDB has been asked, null until then. */

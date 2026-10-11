@@ -35,7 +35,7 @@ private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
 
-/** What we learned about one watched title from TMDB: which services own it (Disney, Paramount), and its genres. */
+/** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery), and its genres. */
 data class DisneyTitleInfo(
     val tmdbId: Int,
     val mediaType: TmdbCollectionMediaType,
@@ -44,7 +44,7 @@ data class DisneyTitleInfo(
 )
 
 /**
- * Builds the rows of the app's own streaming sections (Disney+, Paramount+) from TMDB. Everything is cached in memory for the life of the app
+ * Builds the rows of the app's own streaming sections (Disney+, Paramount+, discovery+) from TMDB. Everything is cached in memory for the life of the app
  * process (curated title lookups, keyword ids, per-title ownership checks), so moving between the
  * main page and the brand pages, or coming back to them, doesn't re-run the same lookups.
  */
@@ -322,20 +322,20 @@ class DisneyPlusRepository @Inject constructor(
 
     /**
      * Finds a network's TMDB id through one of its shows (e.g. Smithsonian Channel through "Aerial America"):
-     * the first probe whose TMDB networks include one with the wanted name. Found ids are cached; a miss
+     * the first probe whose TMDB networks include one with a wanted name. Found ids are cached; a miss
      * (or a network error) is retried next time. One lookup at a time, so parallel rows share the answer.
      */
     private suspend fun networkId(lookup: NetworkLookup, language: String): Int? = networkLookupMutex.withLock {
-        val key = lookup.name.lowercase(Locale.US)
+        val key = lookup.names.first().lowercase(Locale.US)
         networkCache[key]?.let { return@withLock it.value }
-        val wanted = normalizeTitle(lookup.name)
+        val wanted = lookup.names.map { networkKey(it) }.toSet()
         for (probe in lookup.probes) {
             val tmdbId = resolveCurated(probe, language)?.id?.removePrefix("tmdb:")?.toIntOrNull() ?: continue
             val details = runCatching { tmdbApi.getTvDetails(tmdbId, apiKey).body() }
                 .onFailure { if (it is CancellationException) throw it }
                 .getOrNull() ?: continue
             val match = details.networks.orEmpty()
-                .firstOrNull { network -> normalizeTitle(network.name.orEmpty()) == wanted }
+                .firstOrNull { network -> networkKey(network.name.orEmpty()) in wanted }
                 ?.id
             if (match != null) {
                 networkCache[key] = Optional(match)
@@ -380,6 +380,13 @@ class DisneyPlusRepository @Inject constructor(
         if (preview != null) curatedCache[key] = Optional(preview)
         return preview
     }
+
+    /** Like [normalizeTitle] but keeps "+", so "discovery+" doesn't match "Discovery". */
+    private fun networkKey(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9+]+"), "")
 
     private fun normalizeTitle(value: String): String =
         Normalizer.normalize(value, Normalizer.Form.NFD)

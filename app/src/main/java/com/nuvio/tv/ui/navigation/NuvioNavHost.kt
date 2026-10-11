@@ -1748,7 +1748,7 @@ private fun HomeRouteContent(
         onOpenStreamingService = { service ->
             val appHub = service.appHub
             if (appHub != null) {
-                // The app's own Disney+ / Paramount+ section; Back returns to Home.
+                // The app's own Disney+ / Paramount+ / discovery+ section; Back returns to Home.
                 val route = if (appHub == "main") Screen.DisneyPlus.route else Screen.DisneyPlusBrand.createRoute(appHub)
                 navController.navigate(route) {
                     launchSingleTop = true

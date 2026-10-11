@@ -66,8 +66,8 @@ data class DisneyPlusUiState(
 }
 
 /**
- * Backs the main Disney+ and Paramount+ pages and each of their brand pages (Disney, Pixar, Marvel...,
- * CBS, BET, Comedy Central...) — which page it is comes from the "hub" navigation argument.
+ * Backs the main Disney+, Paramount+ and discovery+ pages and each of their brand pages (Disney, Pixar,
+ * Marvel..., CBS, BET..., HGTV, Food Network...) — which page it is comes from the "hub" navigation argument.
  *
  * Load order: the hero's source row first (so the banner shows up fast), then every other row in
  * parallel (a few at a time), each appearing as soon as it's ready.
@@ -220,7 +220,8 @@ class DisneyPlusViewModel @Inject constructor(
     /**
      * Continue Watching here only keeps titles TMDB credits to a studio or network the page's service owns
      * (Disney+: Disney, Pixar, Marvel, Lucasfilm, 20th Century, National Geographic, Hulu, FX, ABC...;
-     * Paramount+: Paramount, CBS, Showtime, Nickelodeon, MTV, Comedy Central, BET, Smithsonian...).
+     * Paramount+: Paramount, CBS, Showtime, Nickelodeon, MTV, Comedy Central, BET, Smithsonian...;
+     * discovery+: Discovery, HGTV, Food Network, TLC, ID, OWN, Animal Planet, Magnolia...).
      * Everything else stays only in the app's main Home continue watching.
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)

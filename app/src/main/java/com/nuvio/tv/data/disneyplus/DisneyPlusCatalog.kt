@@ -92,7 +92,7 @@ object ParamountPlusIds {
     const val NET_SHOWTIME = "67"
 
     val SMITHSONIAN_CHANNEL = NetworkLookup(
-        name = "Smithsonian Channel",
+        names = listOf("Smithsonian Channel"),
         probes = listOf(
             CuratedTitle("Aerial America", 2010, TmdbCollectionMediaType.TV),
             CuratedTitle("Air Disasters", 2011, TmdbCollectionMediaType.TV)
@@ -100,7 +100,7 @@ object ParamountPlusIds {
     )
 
     val NICK_JR = NetworkLookup(
-        name = "Nick Jr.",
+        names = listOf("Nick Jr."),
         probes = listOf(
             CuratedTitle("PAW Patrol", 2013, TmdbCollectionMediaType.TV),
             CuratedTitle("Bubble Guppies", 2011, TmdbCollectionMediaType.TV),
@@ -132,8 +132,75 @@ object ParamountPlusIds {
     )
 }
 
-/** A TV network found through one of its shows: the first probe whose TMDB networks include [name]. */
-data class NetworkLookup(val name: String, val probes: List<CuratedTitle>)
+/**
+ * Discovery+ ids. TLC 84, Investigation Discovery 244 and Animal Planet 91 were checked on themoviedb.org;
+ * discovery+, HGTV, Food Network, OWN and Magnolia Network are found at runtime through their own shows.
+ */
+object DiscoveryPlusIds {
+    /** discovery+ (US), the same id Home's discovery+ tile uses. */
+    const val PROVIDERS = "520"
+
+    const val NET_DISCOVERY = "64"
+    const val NET_TLC = "84"
+    const val NET_ID = "244"
+    const val NET_ANIMAL_PLANET = "91"
+
+    private fun show(title: String, year: Int) = CuratedTitle(title, year, TmdbCollectionMediaType.TV)
+
+    val DISCOVERY_PLUS = NetworkLookup(
+        names = listOf("discovery+"),
+        probes = listOf(show("Ghost Adventures: Cecil Hotel", 2021), show("90 Day Bares All", 2021), show("The Lost Kitchen", 2021))
+    )
+    val HGTV = NetworkLookup(
+        names = listOf("HGTV"),
+        probes = listOf(show("Fixer Upper", 2013), show("Property Brothers", 2011), show("Love It or List It", 2008))
+    )
+    val FOOD_NETWORK = NetworkLookup(
+        names = listOf("Food Network"),
+        probes = listOf(show("Chopped", 2009), show("Diners, Drive-Ins and Dives", 2007), show("Beat Bobby Flay", 2013))
+    )
+    val OWN = NetworkLookup(
+        names = listOf("OWN", "Oprah Winfrey Network"),
+        probes = listOf(show("Queen Sugar", 2016), show("Greenleaf", 2016), show("Iyanla: Fix My Life", 2012))
+    )
+    val MAGNOLIA = NetworkLookup(
+        names = listOf("Magnolia Network"),
+        probes = listOf(
+            show("Fixer Upper: Welcome Home", 2022),
+            show("Magnolia Table with Joanna Gaines", 2021),
+            show("Restoration Road with Clint Harp", 2021)
+        )
+    )
+
+    // TMDB genre ids used on the discovery+ pages
+    const val G_CRIME = "80"
+    const val G_DRAMA = "18"
+    const val G_TV_REALITY = "10764"
+    const val G_TV_TALK = "10767"
+
+    /** Discovery companies and networks, used to decide what counts as discovery+ content. */
+    val COMPANY_IDS: Set<Int> = emptySet()
+
+    val NETWORK_IDS: Set<Int> = setOf(64, 84, 244, 91)
+
+    val COMPANY_NAME_FRAGMENTS: List<String> = listOf(
+        "discovery", "scripps networks", "hgtv", "food network", "animal planet", "harpo", "magnolia network",
+        "magnolia studio"
+    )
+
+    val NETWORK_NAMES: Set<String> = setOf(
+        "discovery+", "discovery", "hgtv", "food network", "tlc", "investigation discovery", "id", "own",
+        "oprah winfrey network", "animal planet", "magnolia network", "science channel", "discovery science",
+        "travel channel", "cooking channel", "destination america", "american heroes channel", "ahc",
+        "discovery life", "discovery family", "motor trend", "motortrend", "diy network"
+    )
+}
+
+/**
+ * A TV network found through one of its shows: the first probe whose TMDB networks include one of [names]
+ * (e.g. "OWN" / "Oprah Winfrey Network").
+ */
+data class NetworkLookup(val names: List<String>, val probes: List<CuratedTitle>)
 
 /** Which titles count as a service's own (Continue Watching on its page only keeps those). */
 data class HubOwnership(
@@ -149,7 +216,8 @@ enum class HubService(
     val providers: String
 ) {
     DISNEY(DisneyPlusIds.PROVIDER_DISNEY_PLUS),
-    PARAMOUNT(ParamountPlusIds.PROVIDERS);
+    PARAMOUNT(ParamountPlusIds.PROVIDERS),
+    DISCOVERY(DiscoveryPlusIds.PROVIDERS);
 
     val ownership: HubOwnership
         get() = when (this) {
@@ -165,12 +233,19 @@ enum class HubService(
                 ParamountPlusIds.COMPANY_NAME_FRAGMENTS,
                 ParamountPlusIds.NETWORK_NAMES
             )
+            DISCOVERY -> HubOwnership(
+                DiscoveryPlusIds.COMPANY_IDS,
+                DiscoveryPlusIds.NETWORK_IDS,
+                DiscoveryPlusIds.COMPANY_NAME_FRAGMENTS,
+                DiscoveryPlusIds.NETWORK_NAMES
+            )
         }
 }
 
 /**
  * Every page of the app's own streaming sections: the Disney+ main page, its brand pages and
- * collections, and the Paramount+ main page with its brand pages. [key] is used in the navigation route.
+ * collections, and the Paramount+ and discovery+ main pages with their brand pages. [key] is used in
+ * the navigation route.
  */
 enum class DisneyPlusHub(
     val key: String,
@@ -201,10 +276,21 @@ enum class DisneyPlusHub(
     P_COMEDY_CENTRAL("paramount_comedy_central", R.string.paramount_brand_comedy_central, HubService.PARAMOUNT),
     P_MTV("paramount_mtv", R.string.paramount_brand_mtv, HubService.PARAMOUNT),
     P_NICKELODEON("paramount_nickelodeon", R.string.paramount_brand_nickelodeon, HubService.PARAMOUNT),
-    P_SMITHSONIAN("paramount_smithsonian", R.string.paramount_brand_smithsonian, HubService.PARAMOUNT);
+    P_SMITHSONIAN("paramount_smithsonian", R.string.paramount_brand_smithsonian, HubService.PARAMOUNT),
+
+    // discovery+: its main page, then one page per brand tile.
+    DISCOVERY_MAIN("discovery", R.string.discovery_plus_title, HubService.DISCOVERY),
+    D_ORIGINALS("discovery_originals", R.string.discovery_brand_originals, HubService.DISCOVERY),
+    D_HGTV("discovery_hgtv", R.string.discovery_brand_hgtv, HubService.DISCOVERY),
+    D_FOOD_NETWORK("discovery_food_network", R.string.discovery_brand_food_network, HubService.DISCOVERY),
+    D_TLC("discovery_tlc", R.string.discovery_brand_tlc, HubService.DISCOVERY),
+    D_ID("discovery_id", R.string.discovery_brand_id, HubService.DISCOVERY),
+    D_OWN("discovery_own", R.string.discovery_brand_own, HubService.DISCOVERY),
+    D_ANIMAL_PLANET("discovery_animal_planet", R.string.discovery_brand_animal_planet, HubService.DISCOVERY),
+    D_MAGNOLIA("discovery_magnolia", R.string.discovery_brand_magnolia, HubService.DISCOVERY);
 
     /** A service's main page (hero, brand tiles, Continue Watching...), as opposed to a brand page. */
-    val isMain: Boolean get() = this == MAIN || this == PARAMOUNT_MAIN
+    val isMain: Boolean get() = this == MAIN || this == PARAMOUNT_MAIN || this == DISCOVERY_MAIN
 
     companion object {
         fun fromKey(key: String?): DisneyPlusHub =
@@ -214,6 +300,9 @@ enum class DisneyPlusHub(
         fun brandTiles(service: HubService): List<DisneyPlusHub> = when (service) {
             HubService.DISNEY -> listOf(DISNEY, PIXAR, MARVEL, STAR_WARS, NAT_GEO, HULU, ESPN)
             HubService.PARAMOUNT -> listOf(P_CBS, P_BET, P_COMEDY_CENTRAL, P_MTV, P_NICKELODEON, P_SMITHSONIAN)
+            HubService.DISCOVERY -> listOf(
+                D_ORIGINALS, D_HGTV, D_FOOD_NETWORK, D_TLC, D_ID, D_OWN, D_ANIMAL_PLANET, D_MAGNOLIA
+            )
         }
     }
 }
@@ -1572,6 +1661,193 @@ object DisneyPlusCatalog {
         topRatedMinVotes = 5
     )
 
+    // ================================================================== discovery+
+
+    private val NINETY_DAY = listOf(
+        series("90 Day Fiancé", 2014),
+        series("90 Day Fiancé: Before the 90 Days", 2017),
+        series("90 Day Fiancé: Happily Ever After?", 2016),
+        series("90 Day Fiancé: The Other Way", 2019),
+        series("90 Day: The Single Life", 2021),
+        series("90 Day Fiancé: Love in Paradise", 2020),
+        series("90 Day Fiancé: Pillow Talk", 2019),
+        series("90 Day: The Last Resort", 2023)
+    )
+
+    private fun onDiscoveryPlus(
+        mediaType: TmdbCollectionMediaType,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        keywordQuery: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = mediaType,
+        sortBy = sortBy,
+        providers = DiscoveryPlusIds.PROVIDERS,
+        genres = genres,
+        keywordQuery = keywordQuery,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte
+    )
+
+    private val discoveryMain = DisneyHubSpec(
+        hub = DisneyPlusHub.DISCOVERY_MAIN,
+        heroRowId = "dp_trending",
+        rows = listOf(
+            DisneyRowSpec("continue_watching", R.string.disney_row_continue_watching, kind = DisneyRowKind.CONTINUE_WATCHING),
+            DisneyRowSpec("recommended", R.string.disney_row_recommended, kind = DisneyRowKind.RECOMMENDED),
+            DisneyRowSpec(
+                "dp_new", R.string.discovery_row_new,
+                listOf(
+                    onDiscoveryPlus(TV, sortBy = RECENT_TV, voteCountGte = 1, releaseDateLte = TODAY),
+                    onDiscoveryPlus(MOVIE, sortBy = RECENT, voteCountGte = 5, releaseDateLte = TODAY)
+                )
+            ),
+            DisneyRowSpec("dp_trending", R.string.disney_row_trending, listOf(onDiscoveryPlus(TV), onDiscoveryPlus(MOVIE))),
+            DisneyRowSpec("dp_originals", R.string.discovery_brand_originals, listOf(net(null, DiscoveryPlusIds.DISCOVERY_PLUS))),
+            DisneyRowSpec("dp_hgtv", R.string.discovery_brand_hgtv, listOf(net(null, DiscoveryPlusIds.HGTV))),
+            DisneyRowSpec("dp_food_network", R.string.discovery_brand_food_network, listOf(net(null, DiscoveryPlusIds.FOOD_NETWORK))),
+            DisneyRowSpec("dp_tlc", R.string.discovery_brand_tlc, listOf(net(DiscoveryPlusIds.NET_TLC))),
+            DisneyRowSpec("dp_id", R.string.discovery_brand_id, listOf(net(DiscoveryPlusIds.NET_ID))),
+            DisneyRowSpec("dp_discovery", R.string.discovery_row_discovery, listOf(net(DiscoveryPlusIds.NET_DISCOVERY))),
+            DisneyRowSpec("dp_own", R.string.discovery_brand_own, listOf(net(null, DiscoveryPlusIds.OWN))),
+            DisneyRowSpec("dp_animal_planet", R.string.discovery_brand_animal_planet, listOf(net(DiscoveryPlusIds.NET_ANIMAL_PLANET))),
+            DisneyRowSpec("dp_magnolia", R.string.discovery_brand_magnolia, listOf(net(null, DiscoveryPlusIds.MAGNOLIA))),
+            DisneyRowSpec("dp_true_crime", R.string.discovery_row_true_crime, listOf(onDiscoveryPlus(TV, genres = DiscoveryPlusIds.G_CRIME))),
+            DisneyRowSpec("dp_reality", R.string.paramount_row_reality, listOf(onDiscoveryPlus(TV, genres = DiscoveryPlusIds.G_TV_REALITY))),
+            DisneyRowSpec("dp_home", R.string.discovery_row_home, listOf(onDiscoveryPlus(TV, keywordQuery = "home renovation"))),
+            DisneyRowSpec("dp_cooking", R.string.discovery_row_food, listOf(onDiscoveryPlus(TV, keywordQuery = "cooking"))),
+            DisneyRowSpec("dp_paranormal", R.string.discovery_row_paranormal, listOf(onDiscoveryPlus(TV, keywordQuery = "paranormal"))),
+            DisneyRowSpec(
+                "dp_nature", R.string.discovery_row_nature_animals,
+                listOf(
+                    onDiscoveryPlus(TV, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "nature"),
+                    onDiscoveryPlus(TV, keywordQuery = "animal")
+                )
+            ),
+            DisneyRowSpec(
+                "dp_documentaries", R.string.disney_row_documentaries,
+                listOf(
+                    onDiscoveryPlus(TV, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 5),
+                    onDiscoveryPlus(MOVIE, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 5)
+                )
+            )
+        )
+    )
+
+    private val discoveryOriginals = networkPage(
+        hub = DisneyPlusHub.D_ORIGINALS,
+        prefix = "dpo",
+        networks = null,
+        lookup = DiscoveryPlusIds.DISCOVERY_PLUS,
+        middleRows = listOf(
+            DisneyRowSpec("dpo_true_crime", R.string.discovery_row_true_crime, listOf(net(null, DiscoveryPlusIds.DISCOVERY_PLUS, genres = DiscoveryPlusIds.G_CRIME))),
+            DisneyRowSpec("dpo_paranormal", R.string.discovery_row_paranormal, listOf(net(null, DiscoveryPlusIds.DISCOVERY_PLUS, keywordQuery = "paranormal"))),
+            DisneyRowSpec("dpo_reality", R.string.paramount_row_reality, listOf(net(null, DiscoveryPlusIds.DISCOVERY_PLUS, genres = DiscoveryPlusIds.G_TV_REALITY))),
+            DisneyRowSpec("dpo_docuseries", R.string.discovery_row_docuseries, listOf(net(null, DiscoveryPlusIds.DISCOVERY_PLUS, genres = DisneyPlusIds.G_DOCUMENTARY)))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 5
+    )
+
+    private val discoveryHgtv = networkPage(
+        hub = DisneyPlusHub.D_HGTV,
+        prefix = "hgtv",
+        networks = null,
+        lookup = DiscoveryPlusIds.HGTV,
+        middleRows = listOf(
+            DisneyRowSpec("hgtv_renovation", R.string.discovery_row_renovation, listOf(net(null, DiscoveryPlusIds.HGTV, keywordQuery = "home renovation"))),
+            DisneyRowSpec("hgtv_real_estate", R.string.discovery_row_house_hunting, listOf(net(null, DiscoveryPlusIds.HGTV, keywordQuery = "real estate"))),
+            DisneyRowSpec("hgtv_competition", R.string.discovery_row_competitions, listOf(net(null, DiscoveryPlusIds.HGTV, keywordQuery = "competition")))
+        ),
+        classicUntil = "2012-12-31",
+        topRatedMinVotes = 10
+    )
+
+    private val discoveryFood = networkPage(
+        hub = DisneyPlusHub.D_FOOD_NETWORK,
+        prefix = "food",
+        networks = null,
+        lookup = DiscoveryPlusIds.FOOD_NETWORK,
+        middleRows = listOf(
+            DisneyRowSpec(
+                "food_competitions", R.string.discovery_row_cooking_competitions,
+                listOf(net(null, DiscoveryPlusIds.FOOD_NETWORK, keywordQuery = "cooking competition"))
+            ),
+            DisneyRowSpec("food_baking", R.string.discovery_row_baking, listOf(net(null, DiscoveryPlusIds.FOOD_NETWORK, keywordQuery = "baking"))),
+            DisneyRowSpec("food_cooking", R.string.discovery_row_cooking_shows, listOf(net(null, DiscoveryPlusIds.FOOD_NETWORK, keywordQuery = "cooking")))
+        ),
+        classicUntil = "2012-12-31",
+        topRatedMinVotes = 10
+    )
+
+    private val discoveryTlc = networkPage(
+        hub = DisneyPlusHub.D_TLC,
+        prefix = "tlc",
+        networks = DiscoveryPlusIds.NET_TLC,
+        middleRows = listOf(
+            DisneyRowSpec("tlc_90_day", R.string.discovery_row_90_day, listOf(curated(NINETY_DAY))),
+            DisneyRowSpec("tlc_family", R.string.discovery_row_family, listOf(net(DiscoveryPlusIds.NET_TLC, keywordQuery = "family"))),
+            DisneyRowSpec("tlc_weddings", R.string.discovery_row_weddings, listOf(net(DiscoveryPlusIds.NET_TLC, keywordQuery = "wedding")))
+        ),
+        classicUntil = "2012-12-31",
+        topRatedMinVotes = 10
+    )
+
+    private val discoveryId = networkPage(
+        hub = DisneyPlusHub.D_ID,
+        prefix = "id",
+        networks = DiscoveryPlusIds.NET_ID,
+        middleRows = listOf(
+            DisneyRowSpec("id_murder", R.string.discovery_row_murder, listOf(net(DiscoveryPlusIds.NET_ID, keywordQuery = "murder"))),
+            DisneyRowSpec("id_cold_case", R.string.discovery_row_cold_cases, listOf(net(DiscoveryPlusIds.NET_ID, keywordQuery = "cold case"))),
+            DisneyRowSpec("id_docuseries", R.string.discovery_row_docuseries, listOf(net(DiscoveryPlusIds.NET_ID, genres = DisneyPlusIds.G_DOCUMENTARY)))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 10
+    )
+
+    private val discoveryOwn = networkPage(
+        hub = DisneyPlusHub.D_OWN,
+        prefix = "own",
+        networks = null,
+        lookup = DiscoveryPlusIds.OWN,
+        middleRows = listOf(
+            DisneyRowSpec("own_dramas", R.string.paramount_row_dramas, listOf(net(null, DiscoveryPlusIds.OWN, genres = DiscoveryPlusIds.G_DRAMA))),
+            DisneyRowSpec("own_reality", R.string.paramount_row_reality, listOf(net(null, DiscoveryPlusIds.OWN, genres = DiscoveryPlusIds.G_TV_REALITY))),
+            DisneyRowSpec("own_talk", R.string.discovery_row_talk, listOf(net(null, DiscoveryPlusIds.OWN, genres = DiscoveryPlusIds.G_TV_TALK)))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 10
+    )
+
+    private val discoveryAnimalPlanet = networkPage(
+        hub = DisneyPlusHub.D_ANIMAL_PLANET,
+        prefix = "ap",
+        networks = DiscoveryPlusIds.NET_ANIMAL_PLANET,
+        middleRows = listOf(
+            DisneyRowSpec("ap_wildlife", R.string.discovery_row_wildlife, listOf(net(DiscoveryPlusIds.NET_ANIMAL_PLANET, keywordQuery = "wildlife"))),
+            DisneyRowSpec("ap_pets", R.string.discovery_row_pets, listOf(net(DiscoveryPlusIds.NET_ANIMAL_PLANET, keywordQuery = "dog"))),
+            DisneyRowSpec("ap_vets", R.string.discovery_row_vets, listOf(net(DiscoveryPlusIds.NET_ANIMAL_PLANET, keywordQuery = "veterinarian")))
+        ),
+        classicUntil = "2009-12-31",
+        topRatedMinVotes = 10
+    )
+
+    private val discoveryMagnolia = networkPage(
+        hub = DisneyPlusHub.D_MAGNOLIA,
+        prefix = "mag",
+        networks = null,
+        lookup = DiscoveryPlusIds.MAGNOLIA,
+        middleRows = listOf(
+            DisneyRowSpec("mag_home", R.string.discovery_row_home, listOf(net(null, DiscoveryPlusIds.MAGNOLIA, keywordQuery = "home renovation"))),
+            DisneyRowSpec("mag_food", R.string.discovery_row_food, listOf(net(null, DiscoveryPlusIds.MAGNOLIA, keywordQuery = "cooking")))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 5
+    )
+
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */
     const val TODAY = "__today__"
 
@@ -1597,5 +1873,14 @@ object DisneyPlusCatalog {
         DisneyPlusHub.P_MTV -> paramountMtv
         DisneyPlusHub.P_NICKELODEON -> paramountNickelodeon
         DisneyPlusHub.P_SMITHSONIAN -> paramountSmithsonian
+        DisneyPlusHub.DISCOVERY_MAIN -> discoveryMain
+        DisneyPlusHub.D_ORIGINALS -> discoveryOriginals
+        DisneyPlusHub.D_HGTV -> discoveryHgtv
+        DisneyPlusHub.D_FOOD_NETWORK -> discoveryFood
+        DisneyPlusHub.D_TLC -> discoveryTlc
+        DisneyPlusHub.D_ID -> discoveryId
+        DisneyPlusHub.D_OWN -> discoveryOwn
+        DisneyPlusHub.D_ANIMAL_PLANET -> discoveryAnimalPlanet
+        DisneyPlusHub.D_MAGNOLIA -> discoveryMagnolia
     }
 }

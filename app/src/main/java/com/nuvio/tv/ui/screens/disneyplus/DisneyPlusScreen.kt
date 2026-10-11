@@ -91,7 +91,7 @@ import kotlinx.coroutines.delay
 private const val HERO_AUTO_ADVANCE_MS = 8_000L
 
 /**
- * Disney+ and Paramount+ pages. The same screen renders a service's main page (hero, brand tiles,
+ * Disney+, Paramount+ and discovery+ pages. The same screen renders a service's main page (hero, brand tiles,
  * Continue Watching and all rows) and each brand page reached from a tile (hero + that brand's rows).
  */
 @Composable
@@ -136,8 +136,11 @@ fun DisneyPlusScreen(
                 ) {
                     EmptyScreenState(
                         title = stringResource(
-                            if (uiState.hub.service == HubService.PARAMOUNT) R.string.paramount_empty_title
-                            else R.string.disney_empty_title
+                            when (uiState.hub.service) {
+                                HubService.DISNEY -> R.string.disney_empty_title
+                                HubService.PARAMOUNT -> R.string.paramount_empty_title
+                                HubService.DISCOVERY -> R.string.discovery_empty_title
+                            }
                         ),
                         subtitle = stringResource(R.string.disney_empty_subtitle),
                         icon = Icons.Default.Movie,
@@ -428,6 +431,7 @@ private fun DisneyHeroSlide(item: MetaPreview) {
  * The brand tiles under the hero, the same tiles as Home's streaming services: the app's contrast
  * color with each brand's logo centered on it. Disney+: Disney, Pixar, Marvel, Star Wars, National
  * Geographic, Hulu, ESPN. Paramount+: CBS, BET, Comedy Central, MTV, Nickelodeon, Smithsonian Channel.
+ * discovery+: discovery+ Originals, HGTV, Food Network, TLC, ID, OWN, Animal Planet, Magnolia Network.
  * Each opens that brand's page.
  */
 @Composable
@@ -439,7 +443,9 @@ private fun DisneyBrandTiles(service: HubService, onOpenHub: (DisneyPlusHub) -> 
             StreamingService(
                 key = hub.key,
                 name = context.getString(hub.titleRes),
-                logoRes = hub.brandLogoRes()
+                logoRes = hub.brandLogoRes(),
+                // discovery+ Originals is a full picture, not a logo on the gray tile.
+                fullBleed = hub == DisneyPlusHub.D_ORIGINALS
             )
         }
     }
@@ -467,6 +473,14 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     DisneyPlusHub.P_MTV -> R.drawable.paramount_brand_logo_mtv
     DisneyPlusHub.P_NICKELODEON -> R.drawable.paramount_brand_logo_nickelodeon
     DisneyPlusHub.P_SMITHSONIAN -> R.drawable.paramount_brand_logo_smithsonian
+    DisneyPlusHub.D_ORIGINALS -> R.drawable.discovery_brand_originals
+    DisneyPlusHub.D_HGTV -> R.drawable.discovery_brand_logo_hgtv
+    DisneyPlusHub.D_FOOD_NETWORK -> R.drawable.discovery_brand_logo_food
+    DisneyPlusHub.D_TLC -> R.drawable.discovery_brand_logo_tlc
+    DisneyPlusHub.D_ID -> R.drawable.discovery_brand_logo_id
+    DisneyPlusHub.D_OWN -> R.drawable.discovery_brand_logo_own
+    DisneyPlusHub.D_ANIMAL_PLANET -> R.drawable.discovery_brand_logo_animalplanet
+    DisneyPlusHub.D_MAGNOLIA -> R.drawable.discovery_brand_logo_magnolia
     else -> R.drawable.disney_brand_logo_disney
 }
 
@@ -492,6 +506,15 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.P_MTV -> Color(0xFFE5007E)
     DisneyPlusHub.P_NICKELODEON -> Color(0xFFFF6600)
     DisneyPlusHub.P_SMITHSONIAN -> Color(0xFFF2A900)
+    DisneyPlusHub.DISCOVERY_MAIN -> Color(0xFF0050FF)
+    DisneyPlusHub.D_ORIGINALS -> Color(0xFF0050FF)
+    DisneyPlusHub.D_HGTV -> Color(0xFF2E7D32)
+    DisneyPlusHub.D_FOOD_NETWORK -> Color(0xFFD32F2F)
+    DisneyPlusHub.D_TLC -> Color(0xFF6A1B9A)
+    DisneyPlusHub.D_ID -> Color(0xFFE53935)
+    DisneyPlusHub.D_OWN -> Color(0xFFC9A227)
+    DisneyPlusHub.D_ANIMAL_PLANET -> Color(0xFF0074FF)
+    DisneyPlusHub.D_MAGNOLIA -> Color(0xFF3E4A3D)
 }
 
 /**
