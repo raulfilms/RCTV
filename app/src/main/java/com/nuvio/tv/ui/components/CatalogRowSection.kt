@@ -127,7 +127,9 @@ fun CatalogRowSection(
     /** Apple TV look: "Top 10" style numbers on ranked rows ("Trending", "Popular"...). */
     appleRankNumbers: Boolean = true,
     /** Left margin of the row's title and first card; null = the style's default. */
-    contentStart: Dp? = null
+    contentStart: Dp? = null,
+    /** Apple TV look: bold row name with more space before the cards (the streaming hubs, like Disney+). */
+    appleSpaciousTitle: Boolean = false
 ) {
     val rowStartPadding = contentStart ?: if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     // Apple TV style rows show a handful of titles and then a "See All" card.
@@ -316,7 +318,12 @@ fun CatalogRowSection(
         } else Modifier
     )) {
         if (appleStyle) {
-            AppleRowTitle(text = catalogTitle.ifBlank { " " }, contentStart = rowStartPadding)
+            AppleRowTitle(
+                text = catalogTitle.ifBlank { " " },
+                contentStart = rowStartPadding,
+                bottomGap = if (appleSpaciousTitle) 18.dp else 10.dp,
+                bold = appleSpaciousTitle
+            )
         } else
         Row(
             modifier = Modifier

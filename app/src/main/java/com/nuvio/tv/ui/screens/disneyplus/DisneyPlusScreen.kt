@@ -74,6 +74,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.ui.components.HubHeroBanner
+import com.nuvio.tv.ui.components.AppleRowTitle
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.nuvio.tv.ui.components.ROW_MAX_ITEMS
@@ -99,6 +100,9 @@ import com.nuvio.tv.ui.components.posteroptions.PosterOptionsViewModel
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.theme.NuvioTheme
 import kotlinx.coroutines.delay
+
+/** Extra room above each row of a hub page (on top of the list's spacing), like Disney+. */
+private val HubRowExtraSpacing = 16.dp
 
 /**
  * Disney+, Paramount+, discovery+ and HBO Max pages. The same screen renders a service's main page (hero, brand tiles,
@@ -300,7 +304,8 @@ fun DisneyPlusScreen(
                                     DisneyCollectionsRow(
                                         title = rowState.title,
                                         tiles = rowState.collectionTiles,
-                                        onOpenHub = onOpenHub
+                                        onOpenHub = onOpenHub,
+                                        modifier = Modifier.padding(top = HubRowExtraSpacing)
                                     )
                                 }
                             }
@@ -321,6 +326,9 @@ fun DisneyPlusScreen(
                                 appleMaxItems = ROW_MAX_ITEMS,
                                 appleRankNumbers = false,
                                 contentStart = if (landscapeTitles) NuvioTheme.spacing.xxxl else null,
+                                appleSpaciousTitle = true,
+                                // Rows get more room between them, like Disney+.
+                                modifier = Modifier.padding(top = HubRowExtraSpacing),
                                 onSeeAll = { viewModel.openSeeAll(rowId) },
                                 rowFocusRequester = rowFocusRequesters.getOrPut(rowId) { FocusRequester() },
                                 showAddonName = false,
@@ -555,16 +563,17 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
 private fun DisneyCollectionsRow(
     title: String,
     tiles: List<DisneyCollectionTile>,
-    onOpenHub: (DisneyPlusHub) -> Unit
+    onOpenHub: (DisneyPlusHub) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Same row name as the title rows: bold, with room before the cards.
+        AppleRowTitle(
             text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = NuvioTheme.colors.TextPrimary,
-            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl)
+            contentStart = NuvioTheme.spacing.xxxl,
+            bottomGap = 10.dp,
+            bold = true
         )
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
         // Three cards across the screen, like Disney+.
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
         val cardWidth = ((screenWidth - NuvioTheme.spacing.xxxl * 2 - NuvioTheme.spacing.lg * 2) / 3).coerceIn(200.dp, 420.dp)

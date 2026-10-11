@@ -161,15 +161,23 @@ private val OnWhite = AppleTvColors.FocusLabel
 fun AppleRowTitle(
     text: String,
     modifier: Modifier = Modifier,
-    contentStart: Dp = AppleTvContentStart
+    contentStart: Dp = AppleTvContentStart,
+    /** Space between the name and the row's cards. */
+    bottomGap: Dp = 10.dp,
+    /** Bold names with more room around them (the streaming hubs, like Disney+). */
+    bold: Boolean = false
 ) {
     Text(
         text = text,
         color = AppleTvColors.Label,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        style = AppleTvType.Headline.copy(shadow = AppleTvTextShadow),
-        modifier = modifier.padding(start = contentStart, end = contentStart, bottom = 10.dp)
+        style = AppleTvType.Headline.copy(
+            shadow = AppleTvTextShadow,
+            fontWeight = if (bold) FontWeight.Bold else AppleTvType.Headline.fontWeight,
+            letterSpacing = if (bold) 0.2.sp else AppleTvType.Headline.letterSpacing
+        ),
+        modifier = modifier.padding(start = contentStart, end = contentStart, bottom = bottomGap)
     )
 }
 
