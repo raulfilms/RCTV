@@ -577,22 +577,22 @@ private fun LiveBroadcastCard(
                         modifier = Modifier.fillMaxSize()
                     )
                     if (logo != null) {
-                        // Which channel it is, on the art (big enough to read from the couch).
+                        // Which channel it is, on the art.
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .padding(7.dp)
-                                .clip(RoundedCornerShape(5.dp))
+                                .padding(6.dp)
+                                .clip(RoundedCornerShape(4.dp))
                                 .background(Color.Black.copy(alpha = 0.55f))
-                                .padding(horizontal = 7.dp, vertical = 4.dp)
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
                         ) {
                             AsyncImage(
                                 model = logo,
                                 contentDescription = channelName,
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier
-                                    .height(24.dp)
-                                    .widthIn(max = 84.dp)
+                                    .height(19.dp)
+                                    .widthIn(max = 66.dp)
                             )
                         }
                     }
