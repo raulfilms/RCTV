@@ -85,10 +85,10 @@ private val BadgeSize = 24.dp
 private val GlyphSize = 14.dp
 private val AvatarSize = 26.dp
 
-// The app's contrast color (#53597E): solid without blur, Liquid Glass (mostly the color,
-// a hint of the blurred page behind) with blur. White labels on it are 6.8:1.
+// The app's contrast color (#2B2F37), solid with or without blur, so the menu is always exactly
+// that color. White labels on it are 13.4:1.
 private val PanelSolid = AppleTvColors.Contrast
-private val PanelGlass = AppleTvColors.ContrastGlass
+private val PanelGlass = AppleTvColors.Contrast
 // Light rim of the glass (white, not a color).
 private val PanelEdge = Color.White.copy(alpha = 0.16f)
 // Blur strength of the Liquid Glass (the sheet's ~40 px at 1080p).

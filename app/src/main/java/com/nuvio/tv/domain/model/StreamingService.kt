@@ -10,7 +10,7 @@ data class StreamingService(
     val name: String,
     /** Logo bundled with the app. */
     @DrawableRes val logoRes: Int,
-    /** The logo is made for dark backgrounds (white lettering), so the tile is drawn dark. */
+    /** The logo was made for dark backgrounds (white lettering). Every tile is dark now, so unused. */
     val darkTile: Boolean = false,
     /** Disney+ opens the app's own Disney+ section instead of the generic service page. */
     val opensDisneyHub: Boolean = false,

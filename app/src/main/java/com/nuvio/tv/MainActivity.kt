@@ -2239,11 +2239,8 @@ private fun CollapsedSidebarPill(
     // Apple TV style: a "‹" hint, then a small pill in the app's contrast color with the
     // section icon in a circle.
     val pillShape = RoundedCornerShape(NuvioRadii.tokens.full)
-    // With blur: Liquid Glass in the contrast color. Without: the solid contrast color.
-    val glassActive = blurEnabled && hazeState != null
-    val pillColor = remember(glassActive) {
-        if (glassActive) AppleTvColors.ContrastGlass else AppleTvColors.Contrast
-    }
+    // The solid contrast color (#2B2F37), like the menu.
+    val pillColor = AppleTvColors.Contrast
 
     Row(
         modifier = modifier

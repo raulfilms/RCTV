@@ -657,8 +657,8 @@ internal fun AppleGlassIconButton(
 }
 
 /**
- * "Streaming Services" row: one tile per service with its logo on a soft wash of the
- * logo's own colors. Selecting a tile opens that service's page.
+ * "Streaming Services" row: one tile per service, the app's contrast color with the service's
+ * logo centered on it. Selecting a tile opens that service's page.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -753,22 +753,18 @@ private fun AppleStreamingServiceTile(
     modifier: Modifier = Modifier
 ) {
     val shape = remember { RoundedCornerShape(AppleTvRadius.Poster) }
-    // Light tile for dark logos; dark tile for logos with white lettering (HBO Max).
-    val tileColor = if (service.darkTile) Color(0xFF050507) else Color(0xFFF5F5F7)
-    val edgeColor = if (service.darkTile) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.06f)
+    // Every tile in the app's contrast color (#2B2F37), the logo centered on it. The bundled logos
+    // are drawn for dark tiles: black lettering was made white, brand colors kept.
 
     Card(
         onClick = onClick,
         modifier = modifier.size(width = AppleStreamingTileWidth, height = AppleStreamingTileHeight),
         shape = CardDefaults.shape(shape = shape),
         colors = CardDefaults.colors(
-            containerColor = tileColor,
-            focusedContainerColor = tileColor
+            containerColor = AppleTvColors.Contrast,
+            focusedContainerColor = AppleTvColors.ContrastHigh
         ),
-        border = CardDefaults.border(
-            border = Border(border = BorderStroke(0.5.dp, edgeColor), shape = shape),
-            focusedBorder = Border.None
-        ),
+        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
