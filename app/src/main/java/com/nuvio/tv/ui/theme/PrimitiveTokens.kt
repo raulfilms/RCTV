@@ -6,23 +6,23 @@ object NuvioPrimitives {
     val transparent = Color.Transparent
     val black = Color(0xFF000000)
     val white = Color(0xFFFFFFFF)
-    /** RCTV's app background (#1B1D29), on every screen and theme (except AMOLED black). */
-    val appBackground = Color(0xFF1B1D29)
-    /** RCTV's contrast color (#53597E): menus, buttons, pills, panels and cards on [appBackground]. */
-    val appContrast = Color(0xFF53597E)
-    /** [appContrast] mixed 80/20 with [appBackground]: a quieter step (upcoming guide programs). */
-    val appContrastDim = Color(0xFF484D6D)
-    /** [appContrast] + 6% white: cards and rows inside a contrast panel. */
-    val appContrastHigh = Color(0xFF5D6386)
-    /** [appContrast] + 15% white: focused rows and blocks (white text 4.7:1). */
-    val appContrastFocus = Color(0xFF6D7291)
+    /** RCTV's app background (#17161B), on every screen and theme (except AMOLED black). */
+    val appBackground = Color(0xFF17161B)
+    /** RCTV's contrast color (#2B2F37): menus, buttons, pills, panels and cards on [appBackground]. */
+    val appContrast = Color(0xFF2B2F37)
+    /** [appContrast] mixed 80/20 with [appBackground]: a quieter step (image placeholders). */
+    val appContrastDim = Color(0xFF272A31)
+    /** [appContrast] + 6% white: cards and rows inside a contrast panel, what's on now in the Guide. */
+    val appContrastHigh = Color(0xFF383B43)
+    /** [appContrast] + 15% white: focused rows and blocks (white text 8.3:1). */
+    val appContrastFocus = Color(0xFF4B4E55)
     // Text that reads on both the background and the contrast surfaces.
-    /** Secondary text: 4.5:1 on [appContrast], 11:1 on [appBackground]. */
-    val appTextSecondary = Color(0xFFD0D3E2)
-    /** Tertiary text (hints, minor labels). */
-    val appTextTertiary = Color(0xFF9EA2BC)
+    /** Secondary text: 6.9:1 on [appContrast], 9.3:1 on [appBackground]. */
+    val appTextSecondary = Color(0xFFB8BAC2)
+    /** Tertiary text (hints, minor labels): 4.1:1 on [appContrast]. */
+    val appTextTertiary = Color(0xFF8B8E97)
     /** Disabled text. */
-    val appTextDisabled = Color(0xFF7A7F9E)
+    val appTextDisabled = Color(0xFF6A6D75)
     val neutral950 = Color(0xFF0D0D0D)
     val neutral925 = Color(0xFF111111)
     val neutral900 = Color(0xFF1A1A1A)

@@ -22,19 +22,19 @@ import com.nuvio.tv.ui.theme.NuvioPrimitives
 
 /** Colors from the sheet (tvOS dark system colors). */
 object AppleTvColors {
-    /** RCTV's app background, #1B1D29: Home, Movies & TV, See All, the Guide and every other page. */
+    /** RCTV's app background, #17161B: Home, Movies & TV, See All, the Guide and every other page. */
     val Background = NuvioPrimitives.appBackground
     /**
-     * RCTV's contrast color, #53597E: everything that isn't the background — the menu, the
+     * RCTV's contrast color, #2B2F37: everything that isn't the background — the menu, the
      * top pill, buttons, filter pills and their menus, guide programs and logo tiles, cards.
-     * White text on it is 6.8:1.
+     * White text on it is 13.4:1.
      */
     val Contrast = NuvioPrimitives.appContrast
     /** [Contrast] a step darker (mixed with the background): upcoming programs in the Guide. */
     val ContrastDim = NuvioPrimitives.appContrastDim
     /** [Contrast] a step lighter: cards and rows inside a [Contrast] panel. */
     val ContrastHigh = NuvioPrimitives.appContrastHigh
-    /** A focused item that stays in the contrast family (not white): white text on it is 4.7:1. */
+    /** A focused item that stays in the contrast family (not white): white text on it is 8.3:1. */
     val ContrastFocus = NuvioPrimitives.appContrastFocus
     /** [Contrast] over blurred content (Liquid Glass menu and pill): mostly the color, a hint of blur. */
     val ContrastGlass = NuvioPrimitives.appContrast.copy(alpha = 0.9f)
@@ -48,9 +48,9 @@ object AppleTvColors {
     val GlassStrong = Color.White.copy(alpha = 0.26f)
     /** Primary text: titles, row names, unfocused button text. */
     val Label = Color.White
-    /** Secondary text on the background: year, genre, runtime, descriptions (5.8:1 on #1B1D29). */
+    /** Secondary text on the background: year, genre, runtime, descriptions (6.1:1 on #17161B). */
     val LabelSecondary = Color(red = 235, green = 235, blue = 245, alpha = 153)
-    /** Secondary text on [Contrast] surfaces (times, counts, section names): 4.9:1. */
+    /** Secondary text on [Contrast] surfaces (times, counts, section names): 10.2:1. */
     val LabelOnContrast = Color.White.copy(alpha = 0.85f)
     /** Thin dividers inside [Contrast] menus and panels. */
     val DividerOnContrast = Color.White.copy(alpha = 0.18f)

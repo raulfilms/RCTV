@@ -108,11 +108,11 @@ private val BlockShape = RoundedCornerShape(AppleTvRadius.Poster)
 private const val SLOT_MS = 30L * 60_000L
 private const val MINUTE_MS = 60_000L
 
-// The app background (#1B1D29) with the contrast color (#53597E) on the programs and logos:
-// what's on now in the full color, later programs a step darker, the focused one lighter.
+// The app background (#17161B) with the contrast color (#2B2F37) on the programs and logos:
+// what's on now a step lighter, the focused one lighter still with a white edge.
 private val GuideBackground = AppleTvColors.Background
-private val BlockFill = AppleTvColors.ContrastDim
-private val BlockFillAiring = AppleTvColors.Contrast
+private val BlockFill = AppleTvColors.Contrast
+private val BlockFillAiring = AppleTvColors.ContrastHigh
 private val BlockFocused = AppleTvColors.ContrastFocus
 private val LogoTileFill = AppleTvColors.Contrast
 // A focused logo grows a little (it fits in the gaps around it).

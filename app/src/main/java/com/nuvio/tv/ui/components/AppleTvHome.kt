@@ -194,7 +194,7 @@ object AppleHomeChrome {
 }
 
 /**
- * The page background behind the rows: the app's solid #1B1D29. At the top of the
+ * The page background behind the rows: the app's solid #17161B. At the top of the
  * home page the featured artwork covers it and fades into it; it shows as soon as the
  * rows scroll up. [imageUrl] is kept for callers but doesn't tint the background.
  */

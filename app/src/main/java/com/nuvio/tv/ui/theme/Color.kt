@@ -107,7 +107,7 @@ class NuvioColorScheme(
     private val pureBlack = NuvioPrimitives.black
     private val pureBlackSurfaces = amoledMode && amoledSurfacesMode
 
-    // RCTV: one app background (#1B1D29) for every theme, and one contrast color (#53597E)
+    // RCTV: one app background (#17161B) for every theme, and one contrast color (#2B2F37)
     // for everything on it — panels, menus, dialogs — with cards inside them a step lighter.
     // The theme only changes the accent.
     val Background = if (amoledMode) pureBlack else NuvioPrimitives.appBackground
