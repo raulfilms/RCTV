@@ -105,6 +105,9 @@ data class LiveTvUiState(
     }
 }
 
+/** Where the Guide puts focus when it shows again: a channel's logo, or what's on now on it. */
+data class GuideReturnFocus(val channelId: String, val onLogo: Boolean)
+
 @HiltViewModel
 class LiveTvViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
@@ -117,6 +120,12 @@ class LiveTvViewModel @Inject constructor(
     // Starts as loading: either the user's sources or the sample guide load right away.
     private val _uiState = MutableStateFlow(LiveTvUiState(isLoading = true))
     val uiState: StateFlow<LiveTvUiState> = _uiState.asStateFlow()
+
+    /**
+     * Set when the Guide is left for a channel page or the player, so coming back puts focus on
+     * that channel again instead of the first one. Read once by the Guide when it shows.
+     */
+    var guideReturnFocus: GuideReturnFocus? = null
 
     /** The sample guide, kept once loaded so coming back to the Guide is instant. */
     private var previewGuide: XmltvGuide? = null

@@ -116,15 +116,17 @@ fun CatalogRowSection(
     upFocusRequester: FocusRequester? = null,
     listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex),
     /** Apple TV look: plain row title, no focus rings, rank numbers on "Top"/"Trending" rows. */
-    appleStyle: Boolean = false
+    appleStyle: Boolean = false,
+    /** Apple TV look: how many titles before the "See All" card (a channel's page shows them all). */
+    appleMaxItems: Int = APPLE_ROW_MAX_ITEMS
 ) {
     val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     // Apple TV style rows show a handful of titles and then a "See All" card.
-    val displayItems = remember(catalogRow.items, appleStyle) {
-        if (appleStyle) catalogRow.items.take(APPLE_ROW_MAX_ITEMS) else catalogRow.items
+    val displayItems = remember(catalogRow.items, appleStyle, appleMaxItems) {
+        if (appleStyle) catalogRow.items.take(appleMaxItems) else catalogRow.items
     }
     val effectiveShowSeeAll = if (appleStyle) {
-        catalogRow.hasMore || catalogRow.items.size > APPLE_ROW_MAX_ITEMS
+        catalogRow.hasMore || catalogRow.items.size > appleMaxItems
     } else {
         showSeeAll
     }

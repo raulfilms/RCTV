@@ -174,6 +174,9 @@ internal fun LiveTvTimelineGuide(
     onProgramClick: (LiveTvChannel, EpgProgram?) -> Unit,
     /** A channel's logo was chosen. */
     onChannelClick: (LiveTvChannel) -> Unit,
+    /** Where to put focus when the guide shows again (after a channel page or the player). */
+    returnFocus: GuideReturnFocus? = null,
+    onReturnFocusUsed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -263,13 +266,23 @@ internal fun LiveTvTimelineGuide(
         }
     }
 
-    // Opening the guide: focus what's on now on the first channel.
+    // Opening the guide: focus what's on now on the first channel. Coming back from a channel's
+    // page (or the player), focus that channel again: its logo, or what's on now.
     LaunchedEffect(channels.isNotEmpty()) {
-        val first = channels.firstOrNull() ?: return@LaunchedEffect
-        val current = programsOf(first).firstOrNull { it.isAiringAt(nowMs) }
-        previewChannel = first
+        if (channels.isEmpty()) return@LaunchedEffect
+        val returnRow = returnFocus?.let { target -> channels.indexOfFirst { it.id == target.channelId } } ?: -1
+        val row = returnRow.coerceAtLeast(0)
+        val channel = channels[row]
+        val current = programsOf(channel).firstOrNull { it.isAiringAt(nowMs) }
+        previewChannel = channel
         previewProgram = current
-        focusBlock(0, current)
+        if (returnFocus != null) onReturnFocusUsed()
+        if (returnRow >= 0) {
+            runCatching { listState.scrollToItem((row - 2).coerceAtLeast(0)) }
+            if (returnFocus?.onLogo == true) focusLogo(row) else focusBlock(row, current)
+        } else {
+            focusBlock(0, current)
+        }
     }
 
     fun onDirection(key: Key): Boolean {

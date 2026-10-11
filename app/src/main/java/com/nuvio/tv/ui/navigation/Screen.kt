@@ -142,6 +142,11 @@ sealed class Screen(val route: String) {
     data object Library : Screen("library")
     data object LiveTv : Screen("live_tv")
     data object IptvSources : Screen("iptv_sources")
+    /** A channel's profile page, opened from its logo in the Live TV guide. */
+    data object ChannelProfile : Screen("channel_profile/{channelId}") {
+        fun createRoute(channelId: String): String =
+            "channel_profile/" + URLEncoder.encode(channelId, "UTF-8").replace("+", "%20")
+    }
     data object DisneyPlus : Screen("disney_plus")
     /** A Disney+ brand page (Disney, Pixar, Marvel, Star Wars, National Geographic, Hulu). [hub] is a DisneyPlusHub key. */
     data object DisneyPlusBrand : Screen("disney_plus/{hub}") {

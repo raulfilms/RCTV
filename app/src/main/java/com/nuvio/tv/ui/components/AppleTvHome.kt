@@ -634,7 +634,7 @@ fun AppleGlassButton(
 }
 
 @Composable
-private fun AppleGlassIconButton(
+internal fun AppleGlassIconButton(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

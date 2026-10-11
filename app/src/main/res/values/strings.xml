@@ -296,6 +296,16 @@
     <string name="livetv_guide_category_empty">No channels in this category.</string>
     <string name="livetv_guide_custom_added">%1$s added to Custom</string>
     <string name="livetv_guide_custom_removed">%1$s removed from Custom</string>
+    <!-- Channel profile page (opened from a channel's logo in the Guide) -->
+    <string name="channel_profile_live_broadcasts">LIVE BROADCASTS</string>
+    <string name="channel_profile_local_channels">LOCAL CHANNELS</string>
+    <string name="channel_profile_continue_watching">CONTINUE WATCHING</string>
+    <string name="channel_profile_tv_shows">TV SHOWS</string>
+    <string name="channel_profile_movies">MOVIES</string>
+    <string name="channel_profile_featured_show">FEATURED SHOW</string>
+    <string name="channel_profile_featured_movie">FEATURED MOVIE</string>
+    <string name="channel_profile_series">Series</string>
+    <string name="channel_profile_movie">Movie</string>
     <string name="nav_guide">Guide</string>
     <string name="nav_movies_tv">Movies &amp; TV</string>
     <string name="streaming_service_unavailable">Couldn\'t load this service right now. Try again in a moment.</string>

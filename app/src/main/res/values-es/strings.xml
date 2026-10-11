@@ -1103,6 +1103,16 @@
     <string name="livetv_guide_category_empty">No hay canales en esta categoría.</string>
     <string name="livetv_guide_custom_added">%1$s añadido a Personalizado</string>
     <string name="livetv_guide_custom_removed">%1$s quitado de Personalizado</string>
+    <!-- Perfil de canal (se abre desde el logo de un canal en la Guía) -->
+    <string name="channel_profile_live_broadcasts">EN VIVO</string>
+    <string name="channel_profile_local_channels">CANALES LOCALES</string>
+    <string name="channel_profile_continue_watching">CONTINUAR VIENDO</string>
+    <string name="channel_profile_tv_shows">SERIES</string>
+    <string name="channel_profile_movies">PELÍCULAS</string>
+    <string name="channel_profile_featured_show">SERIE DESTACADA</string>
+    <string name="channel_profile_featured_movie">PELÍCULA DESTACADA</string>
+    <string name="channel_profile_series">Serie</string>
+    <string name="channel_profile_movie">Película</string>
     <string name="library_filter_genre">Género</string>
     <string name="library_filter_year">Año</string>
     <string name="catalog_filter_empty_title">Sin resultados</string>

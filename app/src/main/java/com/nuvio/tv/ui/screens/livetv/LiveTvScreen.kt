@@ -76,6 +76,8 @@ fun LiveTvScreen(
     viewModel: LiveTvViewModel = hiltViewModel(),
     onPlayChannel: (LiveTvChannel) -> Unit,
     onManageSources: () -> Unit = {},
+    /** Opens a channel's profile page (from its logo in the guide). */
+    onOpenChannelProfile: (LiveTvChannel) -> Unit = {},
     showBuiltInHeader: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -121,13 +123,20 @@ fun LiveTvScreen(
                     val airingNow = program == null || program.isAiringAt(System.currentTimeMillis())
                     when {
                         // What's on now plays right away; later shows open their details.
-                        !uiState.isPreviewGuide && airingNow -> resolvingPlayChannel(channel)
+                        !uiState.isPreviewGuide && airingNow -> {
+                            viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
+                            resolvingPlayChannel(channel)
+                        }
                         program != null -> viewModel.openProgramDetails(channel, program)
                     }
                 },
-                // For now a logo plays the channel (the sample guide shows what's on);
-                // it will open the channel's own page once that exists.
-                onChannelClick = onChannelChosen
+                // A logo opens the channel's profile page; coming back puts focus on that logo.
+                onChannelClick = { channel ->
+                    viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = true)
+                    onOpenChannelProfile(channel)
+                },
+                returnFocus = viewModel.guideReturnFocus,
+                onReturnFocusUsed = { viewModel.guideReturnFocus = null }
             )
         } else Column(
             modifier = Modifier
@@ -843,7 +852,7 @@ private fun formatProgramTime(startMs: Long, endMs: Long): String {
 }
 
 @Composable
-private fun LiveTvProgramDetailsOverlay(
+internal fun LiveTvProgramDetailsOverlay(
     channel: LiveTvChannel,
     program: EpgProgram,
     nowMs: Long,

@@ -35,6 +35,8 @@ import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import com.nuvio.tv.ui.screens.library.LibraryScreen
 import com.nuvio.tv.ui.screens.livetv.IptvSourcesScreen
 import com.nuvio.tv.ui.screens.livetv.LiveTvScreen
+import com.nuvio.tv.ui.screens.livetv.LiveTvViewModel
+import com.nuvio.tv.ui.screens.channelprofile.ChannelProfileScreen
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.ui.screens.disneyplus.DisneyPlusScreen
 import com.nuvio.tv.ui.screens.sports.GameDetailScreen
@@ -1194,7 +1196,58 @@ private fun PlaybackNavHost(
                         )
                     )
                 },
-                onManageSources = { navController.navigate(Screen.IptvSources.route) }
+                onManageSources = { navController.navigate(Screen.IptvSources.route) },
+                onOpenChannelProfile = { channel ->
+                    navController.navigate(Screen.ChannelProfile.createRoute(channel.id))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.ChannelProfile.route,
+            arguments = listOf(navArgument("channelId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val channelId = backStackEntry.arguments?.getString("channelId").orEmpty()
+            // The page shows the Guide's own channels and programs: share its view model.
+            val liveTvEntry = androidx.compose.runtime.remember(backStackEntry) {
+                runCatching { navController.getBackStackEntry(Screen.LiveTv.route) }.getOrNull()
+            }
+            val liveTvViewModel: LiveTvViewModel = if (liveTvEntry != null) {
+                androidx.hilt.navigation.compose.hiltViewModel(liveTvEntry)
+            } else {
+                androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
+            }
+            ChannelProfileScreen(
+                channelId = channelId,
+                liveTvViewModel = liveTvViewModel,
+                onPlayChannel = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    )
+                },
+                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = addonBaseUrl)
+                    )
+                },
+                onPlayTitle = { item ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = item.id, itemType = item.apiType, addonBaseUrl = "", playOnLoad = true)
+                    )
+                },
+                onContinueWatchingClick = onContinueWatchingClick@{ item ->
+                    if (!playbackAvailability.canStream(item)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@onContinueWatchingClick
+                    }
+                    navController.navigate(disneyContinueWatchingRoute(item))
+                }
             )
         }
 
