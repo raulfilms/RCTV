@@ -83,7 +83,11 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.GridContentCard
+import com.nuvio.tv.ui.components.ClassicSeeAllCard
 import com.nuvio.tv.ui.components.HubHeroBanner
+import com.nuvio.tv.ui.components.ROW_MAX_ITEMS
+import com.nuvio.tv.ui.components.TitlesSeeAllPage
+import androidx.compose.ui.focus.focusRequester
 import com.nuvio.tv.ui.components.HubLogoHeader
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.PosterCardDefaults
@@ -101,6 +105,7 @@ fun TmdbEntityBrowseScreen(
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsStateWithLifecycle()
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsStateWithLifecycle()
     val heroItems by viewModel.heroItems.collectAsStateWithLifecycle()
+    val seeAllRailKey by viewModel.seeAllRailKey.collectAsStateWithLifecycle()
     val screenMode = when (uiState) {
         TmdbEntityBrowseUiState.Loading -> 0
         is TmdbEntityBrowseUiState.Error -> 1
@@ -108,6 +113,8 @@ fun TmdbEntityBrowseScreen(
     }
 
     BackHandler { onBackPress() }
+    // Back on a rail's See All page goes back to the rail.
+    BackHandler(enabled = seeAllRailKey != null) { viewModel.closeSeeAll() }
 
     Box(
         modifier = Modifier
@@ -140,6 +147,8 @@ fun TmdbEntityBrowseScreen(
                         sourceType = viewModel.sourceType,
                         platformLogoRes = viewModel.platformLogoRes,
                         heroItems = heroItems,
+                        seeAllRailKey = seeAllRailKey,
+                        onOpenSeeAll = viewModel::openSeeAll,
                         watchedMovieIds = watchedMovieIds,
                         watchedSeriesIds = watchedSeriesIds,
                         posterCardCornerRadiusDp = viewModel.posterCardCornerRadiusDp.collectAsStateWithLifecycle().value,
@@ -174,6 +183,9 @@ private fun TmdbEntityBrowseContent(
     /** Set when opened from a streaming tile: the page shows as a hub (logo on top, big hero banner). */
     platformLogoRes: Int? = null,
     heroItems: List<MetaPreview> = emptyList(),
+    /** The rail whose See All page is open, or null. */
+    seeAllRailKey: String? = null,
+    onOpenSeeAll: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit = { _, _ -> },
     watchedMovieIds: Set<String>,
     watchedSeriesIds: Set<String>,
     posterCardCornerRadiusDp: Int = 12,
@@ -217,6 +229,21 @@ private fun TmdbEntityBrowseContent(
     val heroFocusRequester = remember(data.header.id) { FocusRequester() }
     var heroFocused by remember { mutableStateOf(false) }
 
+    // Each rail's "See All" card, and the rail to go back to when its See All page closes.
+    val seeAllCardRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    var returnFocusRailKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(seeAllRailKey) {
+        if (seeAllRailKey != null) {
+            returnFocusRailKey = seeAllRailKey
+            return@LaunchedEffect
+        }
+        val railKey = returnFocusRailKey ?: return@LaunchedEffect
+        val railIndex = data.rails.indexOfFirst { "${it.mediaType.value}_${it.railType.value}" == railKey }
+        if (railIndex >= 0) runCatching { railsListState.scrollToItem(railIndex + headerItemCount) }
+        seeAllCardRequesters[railKey]?.requestFocusAfterFrames(frames = 3)
+        returnFocusRailKey = null
+    }
+
     // A hub opens with focus on its hero, like the other streaming hubs.
     LaunchedEffect(showHero) {
         if (!showHero || initialFocusRequested || pendingRestoreItemId != null) return@LaunchedEffect
@@ -255,7 +282,24 @@ private fun TmdbEntityBrowseContent(
             )
         }
 
-        if (data.rails.isEmpty()) {
+        val seeAllRail = seeAllRailKey?.let { key ->
+            data.rails.firstOrNull { "${it.mediaType.value}_${it.railType.value}" == key }
+        }
+        if (seeAllRail != null) {
+            // A rail's See All page: every title, more loading while scrolling.
+            TitlesSeeAllPage(
+                title = railTitle(seeAllRail),
+                stateKey = "entity_${data.header.id}_${seeAllRailKey}",
+                items = seeAllRail.items,
+                isLoadingMore = seeAllRail.isLoading,
+                onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, null) },
+                onItemLongPress = onItemLongPress,
+                onLoadMore = { onLoadMoreRail(seeAllRail.mediaType, seeAllRail.railType) },
+                logoRes = platformLogoRes,
+                logoUrl = data.header.logo,
+                logoDescription = data.header.name
+            )
+        } else if (data.rails.isEmpty()) {
             EmptyScreenState(
                 title = stringResource(R.string.tmdb_entity_empty_title),
                 subtitle = stringResource(R.string.tmdb_entity_empty_subtitle),
@@ -360,7 +404,9 @@ private fun TmdbEntityBrowseContent(
                                     onNavigateToDetail(item.id, item.apiType, null)
                                 },
                                 onItemLongPress = onItemLongPress,
-                                onLoadMore = onLoadMoreRail
+                                onLoadMore = onLoadMoreRail,
+                                seeAllFocusRequester = seeAllCardRequesters.getOrPut(railKey) { FocusRequester() },
+                                onSeeAll = { onOpenSeeAll(rail.mediaType, rail.railType) }
                             )
                         }
                     }
@@ -519,8 +565,13 @@ private fun EntityRailRow(
     onFocusedItemIndexChanged: (Int) -> Unit,
     onItemClick: (MetaPreview) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
-    onLoadMore: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit
+    onLoadMore: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit,
+    seeAllFocusRequester: FocusRequester? = null,
+    onSeeAll: () -> Unit = {}
 ) {
+    // Ten titles, then a "See All" card with the rest.
+    val displayItems = remember(rail.items) { rail.items.take(ROW_MAX_ITEMS) }
+    val showSeeAll = rail.items.size > ROW_MAX_ITEMS || rail.hasMore
     val restoreFocusRequester = remember(rail.mediaType, rail.railType) { FocusRequester() }
     var restorePending by remember(rail.mediaType, rail.railType) { mutableStateOf(false) }
     val firstItemFocusRequester = initialFocusRequester
@@ -543,7 +594,7 @@ private fun EntityRailRow(
             restorePending = false
             return@LaunchedEffect
         }
-        val targetIndex = rail.items.indexOfFirst { it.id == restoreItemId }
+        val targetIndex = displayItems.indexOfFirst { it.id == restoreItemId }
         if (targetIndex < 0) {
             restorePending = false
             return@LaunchedEffect
@@ -631,7 +682,7 @@ private fun EntityRailRow(
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
             ) {
                 itemsIndexed(
-                    items = rail.items,
+                    items = displayItems,
                     key = { _, item -> item.id }
                 ) { itemIndex, item ->
                     val isRestoreTarget = item.id == restoreItemId
@@ -660,6 +711,16 @@ private fun EntityRailRow(
                             }
                         }
                     )
+                }
+                if (showSeeAll) {
+                    item(key = "see_all") {
+                        ClassicSeeAllCard(
+                            posterCardStyle = posterCardStyle,
+                            label = stringResource(R.string.action_see_all),
+                            onClick = onSeeAll,
+                            modifier = if (seeAllFocusRequester != null) Modifier.focusRequester(seeAllFocusRequester) else Modifier
+                        )
+                    }
                 }
             }
         }

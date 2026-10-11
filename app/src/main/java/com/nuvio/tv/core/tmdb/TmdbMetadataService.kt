@@ -1107,6 +1107,7 @@ class TmdbMetadataService(
                 emptyMap()
             }
 
+            val genreNames = entityGenreNames(mediaType, language)
             val mappedItems = results
                 .filter { it.id > 0 }
                 .mapNotNull { discoverItem ->
@@ -1114,7 +1115,8 @@ class TmdbMetadataService(
                         result = discoverItem,
                         mediaType = mediaType,
                         preferredLanguage = language,
-                        englishTitlesById = englishTitlesById
+                        englishTitlesById = englishTitlesById,
+                        genreNames = genreNames
                     )
                 }
                 .take(ENTITY_RAIL_MAX_ITEMS)
@@ -1137,11 +1139,33 @@ class TmdbMetadataService(
         return result
     }
 
+    /** TMDB genre names by id, per media type and language (for the See All page's Genre filter). */
+    private val entityGenreNameCache = ConcurrentHashMap<String, Map<Int, String>>()
+
+    private suspend fun entityGenreNames(mediaType: TmdbEntityMediaType, language: String): Map<Int, String> {
+        val key = "${mediaType.value}:$language"
+        entityGenreNameCache[key]?.let { return it }
+        val map = try {
+            val response = when (mediaType) {
+                TmdbEntityMediaType.MOVIE -> tmdbApi.getMovieGenres(TMDB_API_KEY, language)
+                TmdbEntityMediaType.TV -> tmdbApi.getTvGenres(TMDB_API_KEY, language)
+            }
+            response.body()?.genres.orEmpty().associate { it.id to it.name }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyMap()
+        }
+        if (map.isNotEmpty()) entityGenreNameCache[key] = map
+        return map
+    }
+
     private fun mapEntityDiscoverResult(
         result: TmdbDiscoverResult,
         mediaType: TmdbEntityMediaType,
         preferredLanguage: String,
-        englishTitlesById: Map<Int, String>
+        englishTitlesById: Map<Int, String>,
+        genreNames: Map<Int, String> = emptyMap()
     ): MetaPreview? {
         val title = resolveDisplayLabel(
             localized = result.title ?: result.name,
@@ -1170,7 +1194,7 @@ class TmdbMetadataService(
             description = result.overview?.takeIf { it.isNotBlank() },
             releaseInfo = releaseInfo,
             imdbRating = result.voteAverage?.toFloat(),
-            genres = emptyList()
+            genres = result.genreIds.orEmpty().mapNotNull { genreNames[it] }
         )
     }
 

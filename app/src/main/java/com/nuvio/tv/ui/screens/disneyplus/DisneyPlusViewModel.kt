@@ -32,6 +32,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
+private const val SEE_ALL_MAX_PAGES = 15
+
 /** A wide collection card (e.g. "Disney Jr. — Collection"). [backdrops] fill in once loaded. */
 data class DisneyCollectionTile(
     val hub: DisneyPlusHub,
@@ -47,8 +49,21 @@ data class DisneyPlusRowState(
     val collectionTiles: List<DisneyCollectionTile> = emptyList()
 )
 
+/**
+ * A row's See All page: everything the row has, then further TMDB pages as the person scrolls.
+ * [nextPage] is null once there's nothing more to load.
+ */
+data class HubSeeAllState(
+    val rowId: String,
+    val title: String,
+    val items: List<MetaPreview>,
+    val isLoadingMore: Boolean = false,
+    val nextPage: Int? = 1
+)
+
 data class DisneyPlusUiState(
     val hub: DisneyPlusHub = DisneyPlusHub.MAIN,
+    val seeAll: HubSeeAllState? = null,
     val heroItems: List<MetaPreview> = emptyList(),
     val isHeroLoading: Boolean = true,
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
@@ -113,6 +128,76 @@ class DisneyPlusViewModel @Inject constructor(
     }
 
     fun retry() = load(forceRefresh = true)
+
+    // ------------------------------------------------------------------ See All
+
+    private var seeAllJob: Job? = null
+
+    /** Opens a row's See All page with what the row already has, then loads more right away. */
+    fun openSeeAll(rowId: String) {
+        val rowState = _uiState.value.rows.firstOrNull { it.spec.id == rowId } ?: return
+        val items = rowState.row?.items.orEmpty()
+        val hasMoreSources = rowState.spec.sources.any { it is com.nuvio.tv.data.disneyplus.DisneyRowSource.Discover }
+        _uiState.update {
+            it.copy(
+                seeAll = HubSeeAllState(
+                    rowId = rowId,
+                    title = rowState.title,
+                    items = items,
+                    nextPage = if (hasMoreSources) 1 else null
+                )
+            )
+        }
+        loadMoreSeeAll()
+    }
+
+    fun closeSeeAll() {
+        seeAllJob?.cancel()
+        _uiState.update { it.copy(seeAll = null) }
+    }
+
+    /**
+     * Next TMDB page(s) of the open See All row. A page that only repeats what's already shown (the row
+     * itself came from page 1) is skipped; loading stops when TMDB has nothing more (or after 15 pages).
+     */
+    fun loadMoreSeeAll() {
+        val current = _uiState.value.seeAll ?: return
+        val firstPage = current.nextPage ?: return
+        if (current.isLoadingMore) return
+        val spec = _uiState.value.rows.firstOrNull { it.spec.id == current.rowId }?.spec ?: return
+        _uiState.update { state -> state.copy(seeAll = state.seeAll?.copy(isLoadingMore = true)) }
+        seeAllJob = viewModelScope.launch {
+            val known = current.items.mapTo(HashSet()) { "${it.apiType}:${it.id}" }
+            var page = firstPage
+            var fresh: List<MetaPreview> = emptyList()
+            var nextPage: Int? = null
+            while (page <= SEE_ALL_MAX_PAGES) {
+                val pageItems = try {
+                    repository.resolveRowPage(spec, page)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                if (pageItems.isEmpty()) break
+                fresh = pageItems.filter { known.add("${it.apiType}:${it.id}") }
+                if (page < SEE_ALL_MAX_PAGES) nextPage = page + 1
+                if (fresh.isNotEmpty()) break
+                page++
+                nextPage = null
+            }
+            _uiState.update { state ->
+                val open = state.seeAll?.takeIf { it.rowId == current.rowId } ?: return@update state
+                state.copy(
+                    seeAll = open.copy(
+                        items = open.items + fresh,
+                        isLoadingMore = false,
+                        nextPage = if (fresh.isEmpty()) null else nextPage
+                    )
+                )
+            }
+        }
+    }
 
     private fun load(forceRefresh: Boolean) {
         loadJob?.cancel()

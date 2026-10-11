@@ -67,6 +67,7 @@ class DisneyPlusRepository @Inject constructor(
     private val titleInfoCache = ConcurrentHashMap<String, Optional<DisneyTitleInfo>>()
     private val logoCache = ConcurrentHashMap<String, Optional<String>>()
     private val rowCache = ConcurrentHashMap<String, List<MetaPreview>>()
+    private val genreNameCache = ConcurrentHashMap<String, Map<Int, String>>()
 
     /** Tiny nullable holder so "looked it up, found nothing" can be cached (ConcurrentHashMap rejects nulls). */
     private data class Optional<T>(val value: T?)
@@ -156,6 +157,47 @@ class DisneyPlusRepository @Inject constructor(
         val items = interleave(perSource)
             .filterNot { it.id in watchedTmdbIds || it.id in excludeIds }
         if (items.isEmpty()) null else buildRow("disney_${hub.key}_recommended", title, items)
+    }
+
+    /**
+     * One more page of a row for its See All page: page [page] of every TMDB discover source in the
+     * row, interleaved like the row itself. Hand-picked (curated) sources have no further pages, so a
+     * row made only of those has nothing more past what it already shows.
+     */
+    suspend fun resolveRowPage(spec: DisneyRowSpec, page: Int): List<MetaPreview> = withContext(Dispatchers.IO) {
+        val sources = spec.sources.filterIsInstance<DisneyRowSource.Discover>()
+        if (sources.isEmpty()) return@withContext emptyList()
+        val language = language()
+        val perSource = coroutineScope {
+            sources.map { source ->
+                async {
+                    try {
+                        discover(source, language, page)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Row ${spec.id} page $page: source failed", e)
+                        emptyList()
+                    }
+                }
+            }.awaitAll()
+        }
+        interleave(perSource, cap = Int.MAX_VALUE)
+    }
+
+    /** TMDB genre names by id, per media type and language (for the See All page's Genre filter). */
+    private suspend fun genreMap(mediaType: TmdbCollectionMediaType, language: String): Map<Int, String> {
+        val key = "${mediaType.value}:$language"
+        genreNameCache[key]?.let { return it }
+        val map = runCatching {
+            val response = when (mediaType) {
+                TmdbCollectionMediaType.MOVIE -> tmdbApi.getMovieGenres(apiKey, language)
+                TmdbCollectionMediaType.TV -> tmdbApi.getTvGenres(apiKey, language)
+            }
+            response.body()?.genres.orEmpty().associate { it.id to it.name }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull().orEmpty()
+        if (map.isNotEmpty()) genreNameCache[key] = map
+        return map
     }
 
     private fun topGenres(infos: List<DisneyTitleInfo>): List<Int> =
@@ -248,7 +290,7 @@ class DisneyPlusRepository @Inject constructor(
 
     // ------------------------------------------------------------------ sources
 
-    private suspend fun discover(source: DisneyRowSource.Discover, language: String): List<MetaPreview> {
+    private suspend fun discover(source: DisneyRowSource.Discover, language: String, page: Int = 1): List<MetaPreview> {
         val resolvedKeywordId = source.keywordQuery?.let { query ->
             keywordId(query) ?: return emptyList()
         }
@@ -272,7 +314,7 @@ class DisneyPlusRepository @Inject constructor(
             TmdbCollectionMediaType.MOVIE -> tmdbApi.discoverMovies(
                 apiKey = apiKey,
                 language = language,
-                page = 1,
+                page = page,
                 sortBy = source.sortBy,
                 withCompanies = companies,
                 releaseDateLte = releaseLte,
@@ -290,7 +332,7 @@ class DisneyPlusRepository @Inject constructor(
             TmdbCollectionMediaType.TV -> tmdbApi.discoverTv(
                 apiKey = apiKey,
                 language = language,
-                page = 1,
+                page = page,
                 sortBy = source.sortBy.replace("primary_release_date", "first_air_date"),
                 withCompanies = companies,
                 withNetworks = networks,
@@ -305,7 +347,8 @@ class DisneyPlusRepository @Inject constructor(
                 withoutGenres = source.withoutGenres
             ).body()
         }
-        return response?.results.orEmpty().mapNotNull { it.toPreview(source.mediaType) }
+        val genres = genreMap(source.mediaType, language)
+        return response?.results.orEmpty().mapNotNull { it.toPreview(source.mediaType, genres) }
     }
 
     private suspend fun keywordId(query: String): Int? {
@@ -430,7 +473,7 @@ class DisneyPlusRepository @Inject constructor(
 
     // ------------------------------------------------------------------ helpers
 
-    private fun interleave(lists: List<List<MetaPreview>>): List<MetaPreview> {
+    private fun interleave(lists: List<List<MetaPreview>>, cap: Int = ROW_ITEM_CAP): List<MetaPreview> {
         val seen = HashSet<String>()
         val out = ArrayList<MetaPreview>()
         val maxSize = lists.maxOfOrNull { it.size } ?: 0
@@ -438,7 +481,7 @@ class DisneyPlusRepository @Inject constructor(
             for (list in lists) {
                 val item = list.getOrNull(index) ?: continue
                 if (seen.add("${item.apiType}:${item.id}")) out += item
-                if (out.size >= ROW_ITEM_CAP) return out
+                if (out.size >= cap) return out
             }
         }
         return out
@@ -464,7 +507,10 @@ class DisneyPlusRepository @Inject constructor(
         )
     }
 
-    private fun TmdbDiscoverResult.toPreview(mediaType: TmdbCollectionMediaType): MetaPreview? {
+    private fun TmdbDiscoverResult.toPreview(
+        mediaType: TmdbCollectionMediaType,
+        genreNames: Map<Int, String> = emptyMap()
+    ): MetaPreview? {
         val name = title?.takeIf { it.isNotBlank() }
             ?: this.name?.takeIf { it.isNotBlank() }
             ?: originalTitle?.takeIf { it.isNotBlank() }
@@ -486,7 +532,8 @@ class DisneyPlusRepository @Inject constructor(
             released = date?.takeIf { it.isNotBlank() },
             imdbRating = voteAverage?.toFloat()?.takeIf { it > 0f },
             voteCount = voteCount,
-            genres = emptyList()
+            // Names for the See All page's Genre filter.
+            genres = genreIds.orEmpty().mapNotNull { genreNames[it] }
         )
     }
 

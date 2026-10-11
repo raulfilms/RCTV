@@ -119,13 +119,19 @@ fun CatalogRowSection(
     appleStyle: Boolean = false,
     /** Apple TV look: how many titles before the "See All" card. */
     appleMaxItems: Int = APPLE_ROW_MAX_ITEMS,
+    /** Classic look: how many titles to show at most (the rest are on the See All page); null = all. */
+    maxItems: Int? = null,
     /** Apple TV look: horizontal 16:9 cards for every title (a channel's TV Shows and Movies rows). */
     appleLandscape: Boolean = false
 ) {
     val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     // Apple TV style rows show a handful of titles and then a "See All" card.
-    val displayItems = remember(catalogRow.items, appleStyle, appleMaxItems) {
-        if (appleStyle) catalogRow.items.take(appleMaxItems) else catalogRow.items
+    val displayItems = remember(catalogRow.items, appleStyle, appleMaxItems, maxItems) {
+        when {
+            appleStyle -> catalogRow.items.take(appleMaxItems)
+            maxItems != null -> catalogRow.items.take(maxItems)
+            else -> catalogRow.items
+        }
     }
     val effectiveShowSeeAll = if (appleStyle) {
         catalogRow.hasMore || catalogRow.items.size > appleMaxItems
@@ -542,60 +548,12 @@ fun CatalogRowSection(
                 }
             } else if (effectiveShowSeeAll) {
                 item(key = "${catalogRow.type}_${catalogRow.catalogId}_see_all") {
-                    val cardDepthStyle = LocalCardDepthStyle.current
-                    Card(
+                    ClassicSeeAllCard(
+                        posterCardStyle = posterCardStyle,
+                        label = seeAllLabel ?: stringResource(R.string.action_see_all),
                         onClick = onSeeAll,
-                        modifier = Modifier
-                            .width(posterCardStyle.width)
-                            .height(posterCardStyle.height)
-                            .then(directionalFocusModifier),
-                        shape = CardDefaults.shape(shape = seeAllCardShape),
-                        colors = CardDefaults.colors(
-                            containerColor = NuvioTheme.colors.BackgroundCard,
-                            focusedContainerColor = NuvioTheme.colors.BackgroundCard
-                        ),
-                        border = CardDefaults.border(
-                            focusedBorder = if (posterCardStyle.focusedBorderWidth > 0.dp) {
-                                Border(
-                                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                                    shape = seeAllCardShape
-                                )
-                            } else {
-                                Border.None
-                            }
-                        ),
-                        scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(seeAllCardShape)
-                                .nuvioCardDepth(
-                                    shape = seeAllCardShape,
-                                    surface = CardDepthSurface.POSTERS,
-                                    style = cardDepthStyle
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = seeAllLabel ?: stringResource(R.string.action_see_all),
-                                    modifier = Modifier.size(NuvioTheme.spacing.xxl),
-                                    tint = NuvioTheme.colors.TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
-                                Text(
-                                    text = seeAllLabel ?: stringResource(R.string.action_see_all),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = NuvioTheme.colors.TextSecondary
-                                )
-                            }
-                        }
-                    }
+                        modifier = directionalFocusModifier
+                    )
                 }
             }
         }
@@ -612,7 +570,74 @@ private val RankedCatalogNameRegex = Regex(
 internal fun isRankedCatalogName(name: String): Boolean = RankedCatalogNameRegex.containsMatchIn(name)
 
 /** Titles shown in an Apple TV style row before its "See All" card. */
-const val APPLE_ROW_MAX_ITEMS = 5
+const val APPLE_ROW_MAX_ITEMS = 10
+
+/** Titles shown in any row before its "See All" card (streaming hubs, Netflix / Prime style pages...). */
+const val ROW_MAX_ITEMS = 10
+
+/** The classic (poster style) row's last card: an arrow and "See All", same size as the posters. */
+@Composable
+internal fun ClassicSeeAllCard(
+    posterCardStyle: PosterCardStyle,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val seeAllCardShape = RoundedCornerShape(posterCardStyle.cornerRadius)
+    val cardDepthStyle = LocalCardDepthStyle.current
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .width(posterCardStyle.width)
+            .height(posterCardStyle.height),
+        shape = CardDefaults.shape(shape = seeAllCardShape),
+        colors = CardDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            focusedContainerColor = NuvioTheme.colors.BackgroundCard
+        ),
+        border = CardDefaults.border(
+            focusedBorder = if (posterCardStyle.focusedBorderWidth > 0.dp) {
+                Border(
+                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
+                    shape = seeAllCardShape
+                )
+            } else {
+                Border.None
+            }
+        ),
+        scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(seeAllCardShape)
+                .nuvioCardDepth(
+                    shape = seeAllCardShape,
+                    surface = CardDepthSurface.POSTERS,
+                    style = cardDepthStyle
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = label,
+                    modifier = Modifier.size(NuvioTheme.spacing.xxl),
+                    tint = NuvioTheme.colors.TextSecondary
+                )
+                Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NuvioTheme.colors.TextSecondary
+                )
+            }
+        }
+    }
+}
 
 // Rows drawn with horizontal 16:9 cards instead of posters: popular series.
 private val LandscapeCatalogNameRegex = Regex("""\b(popular|populares?)\b""", RegexOption.IGNORE_CASE)

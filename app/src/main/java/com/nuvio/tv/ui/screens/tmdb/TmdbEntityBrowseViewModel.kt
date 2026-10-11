@@ -81,6 +81,21 @@ class TmdbEntityBrowseViewModel @Inject constructor(
         }
     }
 
+    private val _seeAllRailKey = MutableStateFlow<String?>(null)
+
+    /** The rail whose See All page is open ("tv_popular"...), or null. */
+    val seeAllRailKey: StateFlow<String?> = _seeAllRailKey.asStateFlow()
+
+    /** Opens a rail's See All page (every title, more loading while scrolling). */
+    fun openSeeAll(mediaType: TmdbEntityMediaType, railType: TmdbEntityRailType) {
+        _seeAllRailKey.value = "${mediaType.value}_${railType.value}"
+        loadMoreRail(mediaType, railType)
+    }
+
+    fun closeSeeAll() {
+        _seeAllRailKey.value = null
+    }
+
     fun retry() {
         _uiState.value = TmdbEntityBrowseUiState.Loading
         load()

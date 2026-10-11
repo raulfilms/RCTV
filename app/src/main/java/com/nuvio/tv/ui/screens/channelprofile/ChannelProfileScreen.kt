@@ -118,6 +118,7 @@ import com.nuvio.tv.ui.components.AppleTvRadius
 import com.nuvio.tv.ui.components.AppleTvSpacing
 import com.nuvio.tv.ui.components.AppleTvType
 import com.nuvio.tv.ui.components.CatalogRowSection
+import com.nuvio.tv.ui.components.TitlesSeeAllPage
 import com.nuvio.tv.ui.components.ContinueWatchingSection
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.PosterCardDefaults
@@ -1139,202 +1140,18 @@ private fun ChannelSeeAllPage(
     onItemLongPress: (MetaPreview) -> Unit,
     onLoadMore: () -> Unit
 ) {
-    val gridState = rememberLazyGridState()
-    val scope = rememberCoroutineScope()
-
-    // Genre / Year filter, kept while a title's page is open.
-    var selectedGenre by rememberSaveable(state.kind) { mutableStateOf<String?>(null) }
-    var selectedYear by rememberSaveable(state.kind) { mutableStateOf<String?>(null) }
-    val filter = remember(state.items, selectedGenre, selectedYear) {
-        buildMetaGenreYearFilter(
-            items = state.items,
-            selectedType = null,
-            selectedGenre = selectedGenre,
-            selectedYear = selectedYear
-        )
-    }
-    val items = filter.filteredItems
-
-    val currentItems by androidx.compose.runtime.rememberUpdatedState(items)
-    val currentOnLoadMore by androidx.compose.runtime.rememberUpdatedState(onLoadMore)
-    // The card that last had focus, kept while a title's page is open.
-    var focusIndex by rememberSaveable(state.kind) { mutableIntStateOf(0) }
-    val focusRequester = remember { FocusRequester() }
-    var logoFailed by remember(logoUrl) { mutableStateOf(false) }
-
-    LaunchedEffect(state.kind) {
-        val target = focusIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
-        repeat(12) { attempt ->
-            withFrameNanos { }
-            if (runCatching { focusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
-            if (attempt == 2 && gridState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
-                runCatching { gridState.scrollToItem(target) }
-            }
-        }
-    }
-    // Near the end of what's shown: ask for the next page (with a filter on, that finds more matches).
-    LaunchedEffect(gridState) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .collect { last -> if (last >= currentItems.size - 8) currentOnLoadMore() }
-    }
-    fun filterChanged() {
-        focusIndex = 0
-        scope.launch { runCatching { gridState.scrollToItem(0) } }
-        // Few matches on screen: look further.
-        onLoadMore()
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = AppleTvSpacing.SafeX, end = AppleTvSpacing.SafeX, top = AppleTvSpacing.SafeY),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (logoUrl != null && !logoFailed) {
-                AsyncImage(
-                    model = logoUrl,
-                    contentDescription = brandName,
-                    contentScale = ContentScale.Fit,
-                    onError = { logoFailed = true },
-                    modifier = Modifier
-                        .height(30.dp)
-                        .widthIn(max = 120.dp)
-                )
-                Spacer(modifier = Modifier.width(AppleTvSpacing.Space3 + 2.dp))
-            }
-            Text(
-                text = stringResource(
-                    if (state.kind == ChannelTitlesKind.TV_SHOWS) R.string.channel_profile_tv_shows
-                    else R.string.channel_profile_movies
-                ),
-                style = AppleTvType.Title2,
-                color = AppleTvColors.Label,
-                maxLines = 1,
-                modifier = Modifier.weight(1f)
-            )
-
-            // Genre / Year filter, top right: one menu with both sections and their counts.
-            if (filter.genreOptions.isNotEmpty() || filter.yearOptions.isNotEmpty()) {
-                val filterContext = LocalContext.current
-                val allLabel = stringResource(R.string.apple_filter_all)
-                val genreTitle = stringResource(R.string.library_filter_genre)
-                val yearTitle = stringResource(R.string.library_filter_year)
-                val sections = remember(filter, selectedGenre, selectedYear, allLabel, genreTitle, yearTitle, filterContext) {
-                    buildList {
-                        if (filter.genreOptions.isNotEmpty()) {
-                            add(
-                                AppleFilterSection(
-                                    key = SEE_ALL_FILTER_GENRE,
-                                    title = genreTitle,
-                                    selectedValue = selectedGenre,
-                                    options = listOf(AppleFilterOption(allLabel, null)) +
-                                        filter.genreOptions.map {
-                                            AppleFilterOption(localizedGenreLabel(filterContext, it.label), it.key, it.count)
-                                        }
-                                )
-                            )
-                        }
-                        if (filter.yearOptions.isNotEmpty()) {
-                            add(
-                                AppleFilterSection(
-                                    key = SEE_ALL_FILTER_YEAR,
-                                    title = yearTitle,
-                                    selectedValue = selectedYear,
-                                    options = listOf(AppleFilterOption(allLabel, null)) +
-                                        filter.yearOptions.map { AppleFilterOption(it.label, it.key, it.count) }
-                                )
-                            )
-                        }
-                    }
-                }
-                // The pill shows what is picked ("Comedy · 2024"), or "Filters" when nothing is.
-                val summary = listOfNotNull(
-                    selectedGenre?.let { localizedGenreLabel(filterContext, it) },
-                    selectedYear
-                ).joinToString(" · ")
-                AppleFilterMenuButton(
-                    label = summary.ifEmpty { stringResource(R.string.apple_filters) },
-                    sections = sections,
-                    hasActiveFilter = selectedGenre != null || selectedYear != null,
-                    clearLabel = stringResource(R.string.apple_filter_clear),
-                    onSelect = { sectionKey, option ->
-                        when (sectionKey) {
-                            SEE_ALL_FILTER_GENRE -> selectedGenre = option.value
-                            SEE_ALL_FILTER_YEAR -> selectedYear = option.value
-                        }
-                        filterChanged()
-                    },
-                    onClearAll = {
-                        selectedGenre = null
-                        selectedYear = null
-                        filterChanged()
-                    }
-                )
-            }
-        }
-
-        if (items.isEmpty() && state.items.isNotEmpty() && !state.isLoadingMore) {
-            // The filter matches nothing that's loaded.
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = AppleTvSpacing.SafeX),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.catalog_filter_empty_title),
-                    style = AppleTvType.Headline,
-                    color = AppleTvColors.Label
-                )
-                Spacer(modifier = Modifier.height(AppleTvSpacing.Space2))
-                Text(
-                    text = stringResource(R.string.catalog_filter_empty_subtitle),
-                    style = AppleTvType.Body,
-                    color = AppleTvColors.LabelSecondary
-                )
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                state = gridState,
-                contentPadding = PaddingValues(
-                    start = AppleTvSpacing.SafeX,
-                    end = AppleTvSpacing.SafeX,
-                    top = 20.dp,
-                    bottom = 48.dp
-                ),
-                horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.GridGap),
-                verticalArrangement = Arrangement.spacedBy(28.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                gridItemsIndexed(items, key = { _, item -> item.id }) { index, item ->
-                    AppleLandscapeCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        width = AppleLandscapeCardWidth,
-                        height = AppleLandscapeCardHeight,
-                        cornerRadius = AppleTvRadius.Poster,
-                        focusRequester = if (index == focusIndex) focusRequester else null,
-                        onFocus = { focusIndex = index },
-                        onLongPress = { onItemLongPress(item) }
-                    )
-                }
-                if (state.isLoadingMore) {
-                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(72.dp),
-                            contentAlignment = Alignment.Center
-                        ) { LoadingIndicator() }
-                    }
-                }
-            }
-        }
-    }
+    TitlesSeeAllPage(
+        title = stringResource(
+            if (state.kind == ChannelTitlesKind.TV_SHOWS) R.string.channel_profile_tv_shows
+            else R.string.channel_profile_movies
+        ),
+        stateKey = "channel_${state.kind.name}",
+        items = state.items,
+        isLoadingMore = state.isLoadingMore,
+        onItemClick = onItemClick,
+        onItemLongPress = onItemLongPress,
+        onLoadMore = onLoadMore,
+        logoUrl = logoUrl,
+        logoDescription = brandName
+    )
 }
-
-private const val SEE_ALL_FILTER_GENRE = "genre"
-private const val SEE_ALL_FILTER_YEAR = "year"

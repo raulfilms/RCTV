@@ -74,6 +74,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.ui.components.HubHeroBanner
+import com.nuvio.tv.ui.components.ROW_MAX_ITEMS
+import com.nuvio.tv.ui.components.TitlesSeeAllPage
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.withFrameNanos
 import com.nuvio.tv.ui.components.HubLogoHeader
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -122,8 +126,48 @@ fun DisneyPlusScreen(
         }
     }
 
+    // Kept out here so the page comes back where it was after a row's See All page closes.
+    val listState = rememberLazyListState()
+    var heroFocused by remember { mutableStateOf(false) }
+    val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    var returnFocusRowId by remember { mutableStateOf<String?>(null) }
+    val seeAll = uiState.seeAll
+
+    // Back on a See All page goes back to the row it came from.
+    BackHandler(enabled = seeAll != null) {
+        returnFocusRowId = seeAll?.rowId
+        viewModel.closeSeeAll()
+    }
+    LaunchedEffect(seeAll == null, returnFocusRowId) {
+        val rowId = returnFocusRowId ?: return@LaunchedEffect
+        if (seeAll != null) return@LaunchedEffect
+        repeat(12) {
+            withFrameNanos { }
+            val requester = rowFocusRequesters[rowId]
+            if (requester != null && runCatching { requester.requestFocus() }.getOrDefault(false)) {
+                returnFocusRowId = null
+                return@LaunchedEffect
+            }
+        }
+        returnFocusRowId = null
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
         when {
+            seeAll != null -> {
+                TitlesSeeAllPage(
+                    title = seeAll.title,
+                    stateKey = "hub_${uiState.hub.key}_${seeAll.rowId}",
+                    items = seeAll.items,
+                    isLoadingMore = seeAll.isLoadingMore,
+                    onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, "") },
+                    onItemLongPress = { item -> posterOptionsController.show(item, "") },
+                    onLoadMore = viewModel::loadMoreSeeAll,
+                    logoRes = uiState.hub.headerLogoRes(),
+                    logoDescription = stringResource(uiState.hub.titleRes)
+                )
+            }
+
             uiState.isInitialLoading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     LoadingIndicator()
@@ -161,10 +205,8 @@ fun DisneyPlusScreen(
             }
 
             else -> {
-                val listState = rememberLazyListState()
                 // While the hero has focus the page stays at the very top, so the platform logo above it
                 // stays in view; every other row scrolls the usual way.
-                var heroFocused by remember { mutableStateOf(false) }
                 LaunchedEffect(heroFocused) {
                     if (heroFocused) runCatching { listState.animateScrollToItem(0) }
                 }
@@ -261,11 +303,16 @@ fun DisneyPlusScreen(
                             return@forEach
                         }
                         val row = rowState.row ?: return@forEach
-                        item(key = "row_${rowState.spec.id}") {
+                        val rowId = rowState.spec.id
+                        item(key = "row_$rowId") {
+                            // Ten titles, then "See All" with the rest of the row.
                             CatalogRowSection(
                                 catalogRow = row,
                                 onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
-                                showSeeAll = false,
+                                showSeeAll = row.items.size > ROW_MAX_ITEMS,
+                                maxItems = ROW_MAX_ITEMS,
+                                onSeeAll = { viewModel.openSeeAll(rowId) },
+                                rowFocusRequester = rowFocusRequesters.getOrPut(rowId) { FocusRequester() },
                                 showAddonName = false,
                                 showCatalogTypeSuffix = false,
                                 onItemLongPress = { item, addonBaseUrl -> posterOptionsController.show(item, addonBaseUrl) }
