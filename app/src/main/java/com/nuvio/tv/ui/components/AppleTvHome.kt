@@ -663,13 +663,16 @@ internal fun AppleGlassIconButton(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun AppleStreamingServicesRow(
-    title: String,
+    /** Row name above the tiles; null for none (the Disney+ page's brand tiles). */
+    title: String?,
     services: List<StreamingService>,
     onServiceClick: (StreamingService) -> Unit,
     modifier: Modifier = Modifier,
     rowFocusRequester: FocusRequester? = null,
     initialFocusIndex: Int = -1,
-    onItemFocused: (Int) -> Unit = {}
+    onItemFocused: (Int) -> Unit = {},
+    /** Left margin of the first tile (and where a focused tile stops). */
+    contentStart: Dp = AppleTvContentStart
 ) {
     if (services.isEmpty()) return
 
@@ -692,7 +695,7 @@ fun AppleStreamingServicesRow(
     // Keep the focused tile at the row's left edge, like the other rows.
     val density = LocalDensity.current
     val parentSpec = LocalBringIntoViewSpec.current
-    val startPx = with(density) { AppleTvContentStart.toPx() }
+    val startPx = with(density) { contentStart.toPx() }
     val horizontalSpec = remember(parentSpec, startPx) {
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
         object : BringIntoViewSpec {
@@ -707,7 +710,7 @@ fun AppleStreamingServicesRow(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        AppleRowTitle(text = title)
+        if (title != null) AppleRowTitle(text = title)
         CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalSpec) {
             LazyRow(
                 state = listState,
@@ -716,7 +719,7 @@ fun AppleStreamingServicesRow(
                     .then(if (rowFocusRequester != null) Modifier.focusRequester(rowFocusRequester) else Modifier)
                     .focusRestorer { itemRequesters.getOrNull(lastFocusedIndex) ?: FocusRequester.Default }
                     .focusGroup(),
-                contentPadding = PaddingValues(start = AppleTvContentStart, end = AppleTvContentStart),
+                contentPadding = PaddingValues(start = contentStart, end = contentStart),
                 horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
             ) {
                 itemsIndexed(

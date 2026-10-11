@@ -69,6 +69,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import androidx.annotation.DrawableRes
+import androidx.compose.ui.platform.LocalContext
+import com.nuvio.tv.domain.model.StreamingService
+import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.R
 import com.nuvio.tv.data.disneyplus.DisneyPlusHub
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
@@ -416,82 +420,42 @@ private fun DisneyHeroSlide(item: MetaPreview) {
     }
 }
 
-/** The six brand tiles under the hero: Disney, Pixar, Marvel, Star Wars, National Geographic, Hulu. */
+/**
+ * The brand tiles under the hero, the same tiles as Home's streaming services: the app's contrast
+ * color with each brand's logo centered on it. Disney, Pixar, Marvel, Star Wars, National
+ * Geographic, Hulu, ESPN; each opens that brand's page.
+ */
 @Composable
 private fun DisneyBrandTiles(onOpenHub: (DisneyPlusHub) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = NuvioTheme.spacing.xxxl),
-        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-    ) {
-        DisneyPlusHub.brandTiles.forEach { hub ->
-            DisneyBrandTile(
-                hub = hub,
-                onClick = { onOpenHub(hub) },
-                modifier = Modifier.weight(1f)
+    val context = LocalContext.current
+    val tiles = remember(context) {
+        DisneyPlusHub.brandTiles.map { hub ->
+            StreamingService(
+                key = hub.key,
+                name = context.getString(hub.titleRes),
+                logoRes = hub.brandLogoRes()
             )
         }
     }
+    AppleStreamingServicesRow(
+        title = null,
+        services = tiles,
+        onServiceClick = { tile -> DisneyPlusHub.brandTiles.firstOrNull { it.key == tile.key }?.let(onOpenHub) },
+        // Lined up with the rest of the Disney+ page.
+        contentStart = NuvioTheme.spacing.xxxl
+    )
 }
 
-@Composable
-private fun DisneyBrandTile(
-    hub: DisneyPlusHub,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(NuvioTheme.radii.md)
-    var focused by remember { mutableStateOf(false) }
-    Surface(
-        onClick = onClick,
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = Color.Transparent
-        ),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)), shape = shape),
-            focusedBorder = Border(border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs), shape = shape)
-        ),
-        shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-        modifier = modifier
-            .height(76.dp)
-            .onFocusChanged { focused = it.isFocused || it.hasFocus }
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            if (focused) Color(0xFF3A4152) else Color(0xFF2E3340),
-                            if (focused) Color(0xFF232836) else Color(0xFF1C2029)
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(hub.titleRes),
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = if (hub == DisneyPlusHub.NAT_GEO) 13.sp else 18.sp,
-                letterSpacing = if (hub == DisneyPlusHub.PIXAR || hub == DisneyPlusHub.STAR_WARS) 2.sp else 0.5.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.sm)
-            )
-            // Thin brand-colored accent along the bottom edge.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth(0.4f)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(hub.accentColor().copy(alpha = if (focused) 1f else 0.6f))
-            )
-        }
-    }
+/** Each brand tile's logo (bundled, drawn for dark tiles). */
+@DrawableRes
+private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
+    DisneyPlusHub.PIXAR -> R.drawable.disney_brand_logo_pixar
+    DisneyPlusHub.MARVEL -> R.drawable.disney_brand_logo_marvel
+    DisneyPlusHub.STAR_WARS -> R.drawable.disney_brand_logo_starwars
+    DisneyPlusHub.NAT_GEO -> R.drawable.disney_brand_logo_natgeo
+    DisneyPlusHub.HULU -> R.drawable.disney_brand_logo_hulu
+    DisneyPlusHub.ESPN -> R.drawable.disney_brand_logo_espn
+    else -> R.drawable.disney_brand_logo_disney
 }
 
 private fun DisneyPlusHub.accentColor(): Color = when (this) {
@@ -501,6 +465,7 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.STAR_WARS -> Color(0xFFFFE81F)
     DisneyPlusHub.NAT_GEO -> Color(0xFFFFCE00)
     DisneyPlusHub.HULU -> Color(0xFF1CE783)
+    DisneyPlusHub.ESPN -> Color(0xFFE41E26)
     DisneyPlusHub.COL_WDAS -> Color(0xFF1E3A8A)
     DisneyPlusHub.COL_DISNEY_JR -> Color(0xFF0E7C86)
     DisneyPlusHub.COL_DISNEY_CHANNEL -> Color(0xFF4C1D95)

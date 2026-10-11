@@ -36,6 +36,7 @@ object DisneyPlusIds {
     const val NET_DISNEY_CHANNEL = "54"
     const val NET_DISNEY_JUNIOR = "281"
     const val NET_DISNEY_XD = "44"
+    const val NET_ESPN = "29"
 
     // TMDB genre ids
     const val G_ACTION = "28"
@@ -51,7 +52,7 @@ object DisneyPlusIds {
     val DISNEY_COMPANY_IDS: Set<Int> = setOf(2, 3, 1, 420, 13252, 6125, 7521, 189457, 3475)
 
     /** Network ids owned by The Walt Disney Company. */
-    val DISNEY_NETWORK_IDS: Set<Int> = setOf(2739, 453, 88, 2, 1267, 43, 54, 281, 44)
+    val DISNEY_NETWORK_IDS: Set<Int> = setOf(2739, 453, 88, 2, 1267, 43, 54, 281, 44, 29)
 
     /**
      * Name fragments for Disney-owned studios/labels that aren't in the id sets above (20th Century,
@@ -67,7 +68,7 @@ object DisneyPlusIds {
     /** Network names that are Disney-owned. Matched exactly (case-insensitive) to avoid e.g. "ABC (AU)". */
     val DISNEY_NETWORK_NAMES: Set<String> = setOf(
         "disney+", "disney channel", "disney junior", "disney xd", "hulu", "fx", "fxx", "fx on hulu",
-        "abc", "freeform", "abc family", "national geographic", "nat geo wild", "nat geo"
+        "abc", "freeform", "abc family", "national geographic", "nat geo wild", "nat geo", "espn"
     )
 }
 
@@ -80,6 +81,7 @@ enum class DisneyPlusHub(val key: String, @StringRes val titleRes: Int) {
     STAR_WARS("star_wars", R.string.disney_brand_star_wars),
     NAT_GEO("national_geographic", R.string.disney_brand_nat_geo),
     HULU("hulu", R.string.disney_brand_hulu),
+    ESPN("espn", R.string.disney_brand_espn),
 
     // Collection pages, opened from the "Collections" row on the Disney page.
     COL_WDAS("collection_wdas", R.string.disney_col_wdas),
@@ -93,8 +95,8 @@ enum class DisneyPlusHub(val key: String, @StringRes val titleRes: Int) {
         fun fromKey(key: String?): DisneyPlusHub =
             entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: MAIN
 
-        /** The six brand tiles shown under the hero on the main page, in order. */
-        val brandTiles: List<DisneyPlusHub> = listOf(DISNEY, PIXAR, MARVEL, STAR_WARS, NAT_GEO, HULU)
+        /** The seven brand tiles shown under the hero on the main page, in order. */
+        val brandTiles: List<DisneyPlusHub> = listOf(DISNEY, PIXAR, MARVEL, STAR_WARS, NAT_GEO, HULU, ESPN)
     }
 }
 
@@ -1033,6 +1035,30 @@ object DisneyPlusCatalog {
         )
     )
 
+    private val espn = DisneyHubSpec(
+        hub = DisneyPlusHub.ESPN,
+        heroRowId = "espn_originals",
+        rows = listOf(
+            DisneyRowSpec("espn_originals", R.string.disney_row_espn_originals, listOf(tvNetwork(DisneyPlusIds.NET_ESPN))),
+            DisneyRowSpec(
+                "espn_films", R.string.disney_row_espn_films,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companyQuery = "ESPN Films"))
+            ),
+            DisneyRowSpec(
+                "espn_docuseries", R.string.disney_row_sports_docuseries,
+                listOf(onDisneyPlus(TV, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "sports"))
+            ),
+            DisneyRowSpec(
+                "espn_sports_movies", R.string.disney_row_sports_movies,
+                listOf(onDisneyPlus(MOVIE, keywordQuery = "sports"))
+            ),
+            DisneyRowSpec(
+                "espn_top_rated", R.string.disney_row_top_rated,
+                listOf(tvNetwork(DisneyPlusIds.NET_ESPN, sortBy = TOP_RATED, voteCountGte = 20))
+            )
+        )
+    )
+
     private val wdas = "${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}"
 
     private val colWdas = DisneyHubSpec(
@@ -1148,6 +1174,7 @@ object DisneyPlusCatalog {
         DisneyPlusHub.STAR_WARS -> starWars
         DisneyPlusHub.NAT_GEO -> natGeo
         DisneyPlusHub.HULU -> hulu
+        DisneyPlusHub.ESPN -> espn
         DisneyPlusHub.COL_WDAS -> colWdas
         DisneyPlusHub.COL_DISNEY_JR -> colDisneyJr
         DisneyPlusHub.COL_DISNEY_CHANNEL -> colDisneyChannel
