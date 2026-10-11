@@ -168,8 +168,14 @@ class DisneyPlusRepository @Inject constructor(
             .map { it.key }
 
     /** Hero slides: the first few titles with a backdrop, each given a title logo when TMDB has one. */
-    suspend fun heroItems(row: CatalogRow?): List<MetaPreview> = withContext(Dispatchers.IO) {
-        val picks = row?.items.orEmpty().filter { !it.background.isNullOrBlank() }.take(HERO_ITEM_COUNT)
+    suspend fun heroItems(row: CatalogRow?): List<MetaPreview> = withLogos(heroPicks(row?.items.orEmpty()))
+
+    /** The first few titles that have a backdrop (hero slides, before their title logos are added). */
+    fun heroPicks(items: List<MetaPreview>): List<MetaPreview> =
+        items.filter { !it.background.isNullOrBlank() }.distinctBy { it.id }.take(HERO_ITEM_COUNT)
+
+    /** Gives each hero slide its title logo when TMDB has one. */
+    suspend fun withLogos(picks: List<MetaPreview>): List<MetaPreview> = withContext(Dispatchers.IO) {
         coroutineScope {
             picks.map { item ->
                 async { item.copy(logo = item.logo ?: logoFor(item)) }

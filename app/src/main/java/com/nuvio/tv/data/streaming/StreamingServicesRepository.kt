@@ -71,6 +71,9 @@ class StreamingServicesRepository @Inject constructor(
     /** The tiles, in order, before anything is looked up (so the row shows instantly). */
     val services: List<StreamingService> = entries.map { it.service }
 
+    /** A tile's bundled logo by its key (e.g. "netflix"), for the top of its hub page. */
+    fun logoRes(key: String?): Int? = entries.firstOrNull { it.service.key == key }?.service?.logoRes
+
     private val targetCache = ConcurrentHashMap<String, StreamingServiceTarget>()
 
     /** Looks up where each tile leads. Tiles TMDB can't place keep a null target. */

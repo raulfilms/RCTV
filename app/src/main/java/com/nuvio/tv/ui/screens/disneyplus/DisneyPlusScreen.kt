@@ -73,6 +73,12 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
+import com.nuvio.tv.ui.components.HubHeroBanner
+import com.nuvio.tv.ui.components.HubLogoHeader
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
 import com.nuvio.tv.R
 import com.nuvio.tv.data.disneyplus.DisneyPlusHub
 import com.nuvio.tv.data.disneyplus.HubService
@@ -87,8 +93,6 @@ import com.nuvio.tv.ui.components.posteroptions.PosterOptionsViewModel
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.theme.NuvioTheme
 import kotlinx.coroutines.delay
-
-private const val HERO_AUTO_ADVANCE_MS = 8_000L
 
 /**
  * Disney+, Paramount+, discovery+ and HBO Max pages. The same screen renders a service's main page (hero, brand tiles,
@@ -158,13 +162,39 @@ fun DisneyPlusScreen(
 
             else -> {
                 val listState = rememberLazyListState()
+                // While the hero has focus the page stays at the very top, so the platform logo above it
+                // stays in view; every other row scrolls the usual way.
+                var heroFocused by remember { mutableStateOf(false) }
+                LaunchedEffect(heroFocused) {
+                    if (heroFocused) runCatching { listState.animateScrollToItem(0) }
+                }
+                val parentSpec = LocalBringIntoViewSpec.current
+                val pageSpec = remember(parentSpec) {
+                    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                    object : BringIntoViewSpec {
+                        override val scrollAnimationSpec: AnimationSpec<Float> = parentSpec.scrollAnimationSpec
+                        override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                            if (heroFocused) 0f else parentSpec.calculateScrollDistance(offset, size, containerSize)
+                    }
+                }
+                val headerLogoRes = uiState.hub.headerLogoRes()
+                CompositionLocalProvider(LocalBringIntoViewSpec provides pageSpec) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = NuvioTheme.spacing.lg, bottom = NuvioTheme.spacing.xxxl),
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
                 ) {
-                    if (!isMain) {
+                    // The platform's (or brand's) logo centered above the hero; collection pages,
+                    // which have no logo, keep their name.
+                    if (headerLogoRes != null) {
+                        item(key = "hub_logo") {
+                            HubLogoHeader(
+                                logoRes = headerLogoRes,
+                                contentDescription = stringResource(uiState.hub.titleRes)
+                            )
+                        }
+                    } else if (!isMain) {
                         item(key = "hub_title") {
                             Text(
                                 text = stringResource(uiState.hub.titleRes),
@@ -177,10 +207,11 @@ fun DisneyPlusScreen(
 
                     if (uiState.heroItems.isNotEmpty()) {
                         item(key = "hero") {
-                            DisneyHeroBanner(
+                            HubHeroBanner(
                                 items = uiState.heroItems,
                                 focusRequester = heroFocusRequester,
-                                onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, "") }
+                                onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, "") },
+                                onFocusChange = { heroFocused = it }
                             )
                         }
                     }
@@ -253,6 +284,7 @@ fun DisneyPlusScreen(
                         }
                     }
                 }
+                }
             }
         }
 
@@ -262,169 +294,6 @@ fun DisneyPlusScreen(
             controller = posterOptionsController,
             onNavigateToDetail = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) }
         )
-    }
-}
-
-/**
- * Rounded, inset hero banner (like the Disney+ home): backdrop, title logo (or name), a short
- * description, and page dots underneath. Left/Right switch slides while focused, OK opens the title,
- * and it advances on its own every few seconds when not focused.
- */
-@Composable
-private fun DisneyHeroBanner(
-    items: List<MetaPreview>,
-    focusRequester: FocusRequester,
-    onItemClick: (MetaPreview) -> Unit
-) {
-    val currentOnItemClick by rememberUpdatedState(onItemClick)
-    var activeIndex by remember(items) { mutableIntStateOf(0) }
-    var isFocused by remember { mutableStateOf(false) }
-    val screenHeight = LocalConfiguration.current.screenHeightDp
-    val bannerHeight = (screenHeight * 0.46f).dp.coerceIn(220.dp, 420.dp)
-    val shape = RoundedCornerShape(NuvioTheme.radii.lg)
-
-    LaunchedEffect(isFocused, items.size) {
-        if (items.size <= 1 || isFocused) return@LaunchedEffect
-        while (true) {
-            delay(HERO_AUTO_ADVANCE_MS)
-            activeIndex = (activeIndex + 1) % items.size
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = NuvioTheme.spacing.xxxl),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(bannerHeight)
-                .focusRequester(focusRequester)
-                .onFocusChanged { isFocused = it.isFocused || it.hasFocus }
-                .focusable()
-                .onPreviewKeyEvent { event ->
-                    when {
-                        event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft ->
-                            if (activeIndex > 0) { activeIndex--; true } else false
-                        event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight ->
-                            if (activeIndex < items.size - 1) { activeIndex++; true } else false
-                        event.type == KeyEventType.KeyUp && (event.key == Key.DirectionCenter || event.key == Key.Enter) -> {
-                            items.getOrNull(activeIndex)?.let(currentOnItemClick)
-                            true
-                        }
-                        else -> false
-                    }
-                }
-                .clip(shape)
-                .then(
-                    if (isFocused) Modifier.border(NuvioTheme.focusRing.border(3.dp), shape)
-                    else Modifier.border(BorderStroke(1.dp, NuvioTheme.colors.Border), shape)
-                )
-                .background(NuvioTheme.colors.BackgroundCard)
-        ) {
-            Crossfade(targetState = activeIndex, animationSpec = tween(400), label = "disneyHero") { index ->
-                val item = items.getOrNull(index) ?: return@Crossfade
-                DisneyHeroSlide(item = item)
-            }
-        }
-
-        if (items.size > 1) {
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
-            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-                repeat(items.size) { index ->
-                    val active = index == activeIndex
-                    Box(
-                        modifier = Modifier
-                            .size(if (active) 8.dp else 6.dp)
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(if (active) Color.White else Color.White.copy(alpha = 0.35f))
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DisneyHeroSlide(item: MetaPreview) {
-    var logoFailed by remember(item.logo) { mutableStateOf(false) }
-    Box(modifier = Modifier.fillMaxSize()) {
-        AsyncImage(
-            model = item.backdropUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            alignment = Alignment.TopCenter,
-            modifier = Modifier.fillMaxSize()
-        )
-        // Darken the left side and bottom so the logo and text stay readable on any artwork.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.82f),
-                        0.45f to Color.Black.copy(alpha = 0.45f),
-                        0.75f to Color.Transparent
-                    )
-                )
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.55f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.6f)
-                    )
-                )
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxWidth(0.42f)
-                .padding(start = NuvioTheme.spacing.xxl),
-            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
-        ) {
-            if (!item.logo.isNullOrBlank() && !logoFailed) {
-                AsyncImage(
-                    model = item.logo,
-                    contentDescription = item.name,
-                    contentScale = ContentScale.Fit,
-                    alignment = Alignment.CenterStart,
-                    onError = { logoFailed = true },
-                    modifier = Modifier.height(88.dp).widthIn(max = 280.dp).fillMaxWidth()
-                )
-            } else {
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            val meta = listOfNotNull(
-                item.releaseInfo,
-                item.imdbRating?.let { String.format(java.util.Locale.US, "★ %.1f", it) }
-            ).joinToString("  •  ")
-            if (meta.isNotBlank()) {
-                Text(
-                    text = meta,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.8f),
-                    maxLines = 1
-                )
-            }
-            item.description?.let { description ->
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.9f),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
     }
 }
 
@@ -458,6 +327,24 @@ private fun DisneyBrandTiles(service: HubService, onOpenHub: (DisneyPlusHub) -> 
         // Lined up with the rest of the page.
         contentStart = NuvioTheme.spacing.xxxl
     )
+}
+
+/**
+ * The logo centered above the hero: the platform's own logo on a service's main page, the brand's logo
+ * on a brand page; null for collection pages (they keep their name as text).
+ */
+@DrawableRes
+private fun DisneyPlusHub.headerLogoRes(): Int? = when {
+    isMain -> when (service) {
+        HubService.DISNEY -> R.drawable.streaming_logo_disney
+        HubService.PARAMOUNT -> R.drawable.streaming_logo_paramount
+        HubService.DISCOVERY -> R.drawable.streaming_logo_discovery
+        HubService.HBO_MAX -> R.drawable.streaming_logo_hbomax
+    }
+    // Its tile is a full picture, so the page header uses the discovery+ logo.
+    this == DisneyPlusHub.D_ORIGINALS -> R.drawable.streaming_logo_discovery
+    this in DisneyPlusHub.brandTiles(service) -> brandLogoRes()
+    else -> null
 }
 
 /** Each brand tile's logo (bundled, drawn for dark tiles). */

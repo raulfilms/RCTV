@@ -1617,6 +1617,11 @@ private fun PlaybackNavHost(
                 navArgument("sourceType") {
                     type = NavType.StringType
                     defaultValue = "tv"
+                },
+                navArgument("hub") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) {
@@ -1762,7 +1767,9 @@ private fun HomeRouteContent(
                             entityId = target.entityId,
                             entityName = service.name,
                             // Studios (A24...) are mostly films; services lead with series.
-                            sourceType = if (target.entityKind == "company") "movie" else "tv"
+                            sourceType = if (target.entityKind == "company") "movie" else "tv",
+                            // Shown as a streaming hub: the platform's logo above a big hero banner.
+                            hub = service.key
                         )
                     )
                 }

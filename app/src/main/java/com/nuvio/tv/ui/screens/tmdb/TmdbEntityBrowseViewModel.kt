@@ -31,6 +31,8 @@ class TmdbEntityBrowseViewModel @Inject constructor(
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     private val layoutPreferenceDataStore: com.nuvio.tv.data.local.LayoutPreferenceDataStore,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
+    streamingServicesRepository: com.nuvio.tv.data.streaming.StreamingServicesRepository,
+    private val hubRepository: com.nuvio.tv.data.disneyplus.DisneyPlusRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -44,6 +46,17 @@ class TmdbEntityBrowseViewModel @Inject constructor(
         runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
     }
     val sourceType: String = savedStateHandle.get<String>("sourceType").orEmpty()
+
+    /**
+     * Set when the page was opened from one of Home's streaming tiles: the platform's bundled logo, shown
+     * centered above a big hero banner (the page then looks like the other streaming hubs).
+     */
+    val platformLogoRes: Int? = streamingServicesRepository.logoRes(savedStateHandle.get<String>("hub"))
+
+    private val _heroItems = MutableStateFlow<List<com.nuvio.tv.domain.model.MetaPreview>>(emptyList())
+
+    /** Hub hero slides: popular titles on the platform with a backdrop (title logos fill in shortly after). */
+    val heroItems: StateFlow<List<com.nuvio.tv.domain.model.MetaPreview>> = _heroItems.asStateFlow()
 
     private val _watchedMovieIds = MutableStateFlow<Set<String>>(emptySet())
     val watchedMovieIds: StateFlow<Set<String>> = _watchedMovieIds.asStateFlow()
@@ -137,6 +150,10 @@ class TmdbEntityBrowseViewModel @Inject constructor(
                     fallbackName = entityName,
                     language = language
                 )
+                if (browseData != null && platformLogoRes != null) {
+                    // Set before the page shows, so it opens with focus on the hero.
+                    _heroItems.value = hubRepository.heroPicks(heroSourceItems(browseData))
+                }
                 _uiState.value = if (browseData != null) {
                     val pattern = layoutPreferenceDataStore.customPosterUrlPattern.first()
                     TmdbEntityBrowseUiState.Success(browseData.withCustomPosterUrls(pattern))
@@ -154,7 +171,18 @@ class TmdbEntityBrowseViewModel @Inject constructor(
                     e.message ?: context.getString(R.string.tmdb_entity_error_load)
                 )
             }
+            val picks = _heroItems.value
+            if (picks.isNotEmpty()) {
+                runCatching { hubRepository.withLogos(picks) }.getOrNull()?.let { _heroItems.value = it }
+            }
         }
+    }
+
+    /** Hero candidates: the platform's leading rail (series for services, films for studios), then the rest. */
+    private fun heroSourceItems(data: TmdbEntityBrowseData): List<com.nuvio.tv.domain.model.MetaPreview> {
+        val leadType = if (sourceType.trim().equals("movie", ignoreCase = true)) TmdbEntityMediaType.MOVIE else TmdbEntityMediaType.TV
+        val (lead, rest) = data.rails.partition { it.mediaType == leadType }
+        return (lead + rest).flatMap { it.items }
     }
 
     private fun TmdbEntityBrowseData.withUpdatedRail(

@@ -83,6 +83,8 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.EmptyScreenState
 import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.GridContentCard
+import com.nuvio.tv.ui.components.HubHeroBanner
+import com.nuvio.tv.ui.components.HubLogoHeader
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.PosterCardDefaults
 import com.nuvio.tv.ui.components.PosterCardStyle
@@ -98,6 +100,7 @@ fun TmdbEntityBrowseScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsStateWithLifecycle()
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsStateWithLifecycle()
+    val heroItems by viewModel.heroItems.collectAsStateWithLifecycle()
     val screenMode = when (uiState) {
         TmdbEntityBrowseUiState.Loading -> 0
         is TmdbEntityBrowseUiState.Error -> 1
@@ -135,6 +138,8 @@ fun TmdbEntityBrowseScreen(
                     TmdbEntityBrowseContent(
                         data = successState.data,
                         sourceType = viewModel.sourceType,
+                        platformLogoRes = viewModel.platformLogoRes,
+                        heroItems = heroItems,
                         watchedMovieIds = watchedMovieIds,
                         watchedSeriesIds = watchedSeriesIds,
                         posterCardCornerRadiusDp = viewModel.posterCardCornerRadiusDp.collectAsStateWithLifecycle().value,
@@ -166,6 +171,9 @@ fun TmdbEntityBrowseScreen(
 private fun TmdbEntityBrowseContent(
     data: TmdbEntityBrowseData,
     sourceType: String,
+    /** Set when opened from a streaming tile: the page shows as a hub (logo on top, big hero banner). */
+    platformLogoRes: Int? = null,
+    heroItems: List<MetaPreview> = emptyList(),
     watchedMovieIds: Set<String>,
     watchedSeriesIds: Set<String>,
     posterCardCornerRadiusDp: Int = 12,
@@ -202,6 +210,23 @@ private fun TmdbEntityBrowseContent(
     val firstCardFocusRequester = remember(data.header.id) { FocusRequester() }
     var initialFocusRequested by rememberSaveable(data.header.id) { mutableStateOf(false) }
 
+    // Streaming hub layout (Netflix, Prime...): the platform logo and the hero scroll with the rails.
+    val hubMode = platformLogoRes != null
+    val showHero = hubMode && heroItems.isNotEmpty()
+    val headerItemCount = if (hubMode) (if (showHero) 2 else 1) else 0
+    val heroFocusRequester = remember(data.header.id) { FocusRequester() }
+    var heroFocused by remember { mutableStateOf(false) }
+
+    // A hub opens with focus on its hero, like the other streaming hubs.
+    LaunchedEffect(showHero) {
+        if (!showHero || initialFocusRequested || pendingRestoreItemId != null) return@LaunchedEffect
+        if (heroFocusRequester.requestFocusAfterFrames(frames = 2)) initialFocusRequested = true
+    }
+    // While the hero has focus the page stays at the very top, so the logo above it stays in view.
+    LaunchedEffect(heroFocused) {
+        if (heroFocused) runCatching { railsListState.animateScrollToItem(0) }
+    }
+
     // Bring the rail that owns the restored card into the column viewport before the row restore runs.
     LaunchedEffect(restoreFocusToken, pendingRestoreRailKey, data.rails) {
         if (restoreFocusToken <= 0 || pendingRestoreItemId == null) return@LaunchedEffect
@@ -210,7 +235,7 @@ private fun TmdbEntityBrowseContent(
             "${it.mediaType.value}_${it.railType.value}" == railKey
         }
         if (railIndex < 0) return@LaunchedEffect
-        runCatching { railsListState.scrollToItem(railIndex) }
+        runCatching { railsListState.scrollToItem(railIndex + headerItemCount) }
     }
 
     val backgroundRequest = rememberBackgroundRequest(
@@ -251,21 +276,23 @@ private fun TmdbEntityBrowseContent(
                         offset: Float,
                         size: Float,
                         containerSize: Float
-                    ): Float = offset - topInsetPx
+                    ): Float = if (heroFocused) 0f else offset - topInsetPx
                 }
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = NuvioTheme.spacing.xl)
+                    .padding(top = if (hubMode) NuvioTheme.spacing.none else NuvioTheme.spacing.xl)
             ) {
-                TmdbEntityHero(
-                    data = data,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = NuvioTheme.spacing.md)
-                )
+                if (!hubMode) {
+                    TmdbEntityHero(
+                        data = data,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = NuvioTheme.spacing.md)
+                    )
+                }
 
                 CompositionLocalProvider(LocalBringIntoViewSpec provides railsBringIntoViewSpec) {
                     LazyColumn(
@@ -273,9 +300,27 @@ private fun TmdbEntityBrowseContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
-                        contentPadding = PaddingValues(top = NuvioTheme.spacing.sm, bottom = railsTailPadding),
+                        contentPadding = PaddingValues(
+                            top = if (hubMode) NuvioTheme.spacing.lg else NuvioTheme.spacing.sm,
+                            bottom = railsTailPadding
+                        ),
                         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)
                     ) {
+                        if (platformLogoRes != null) {
+                            item(key = "hub_logo") {
+                                HubLogoHeader(logoRes = platformLogoRes, contentDescription = data.header.name)
+                            }
+                        }
+                        if (showHero) {
+                            item(key = "hub_hero") {
+                                HubHeroBanner(
+                                    items = heroItems,
+                                    focusRequester = heroFocusRequester,
+                                    onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, null) },
+                                    onFocusChange = { heroFocused = it }
+                                )
+                            }
+                        }
                         itemsIndexed(
                             items = data.rails,
                             key = { _, rail -> "${rail.mediaType.value}_${rail.railType.value}" }
@@ -286,7 +331,8 @@ private fun TmdbEntityBrowseContent(
                             EntityRailRow(
                                 rail = rail,
                                 initialFocusRequester = if (railIndex == 0) firstCardFocusRequester else null,
-                                shouldRequestInitialFocus = railIndex == 0 && !initialFocusRequested && pendingRestoreItemId == null,
+                                // A hub with a hero opens on the hero instead.
+                                shouldRequestInitialFocus = railIndex == 0 && !showHero && !initialFocusRequested && pendingRestoreItemId == null,
                                 rowListState = railListStates.getOrPut(railKey) {
                                     LazyListState(
                                         firstVisibleItemIndex = rememberedFocusedIndex,

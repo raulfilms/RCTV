@@ -271,8 +271,13 @@ sealed class Screen(val route: String) {
         }
     }
 
+    /**
+     * A TMDB provider / company / network page. [hub] is set when it was opened from one of Home's
+     * streaming tiles (the tile's key, e.g. "netflix"): the page then shows as a streaming hub, with the
+     * platform's logo above a big hero banner.
+     */
     data object TmdbEntityBrowse : Screen(
-        "tmdb_entity_browse/{entityKind}/{entityId}/{entityName}?sourceType={sourceType}"
+        "tmdb_entity_browse/{entityKind}/{entityId}/{entityName}?sourceType={sourceType}&hub={hub}"
     ) {
         private fun encode(value: String): String =
             URLEncoder.encode(value, "UTF-8").replace("+", "%20")
@@ -281,9 +286,11 @@ sealed class Screen(val route: String) {
             entityKind: String,
             entityId: Int,
             entityName: String,
-            sourceType: String
+            sourceType: String,
+            hub: String? = null
         ): String {
-            return "tmdb_entity_browse/${encode(entityKind)}/$entityId/${encode(entityName)}?sourceType=${encode(sourceType)}"
+            val hubArg = hub?.let { "&hub=${encode(it)}" }.orEmpty()
+            return "tmdb_entity_browse/${encode(entityKind)}/$entityId/${encode(entityName)}?sourceType=${encode(sourceType)}$hubArg"
         }
     }
 }
