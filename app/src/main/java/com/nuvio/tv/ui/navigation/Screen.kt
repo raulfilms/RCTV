@@ -148,7 +148,7 @@ sealed class Screen(val route: String) {
             "channel_profile/" + URLEncoder.encode(channelId, "UTF-8").replace("+", "%20")
     }
     data object DisneyPlus : Screen("disney_plus")
-    /** A Disney+ brand page (Disney, Pixar, Marvel, Star Wars, National Geographic, Hulu). [hub] is a DisneyPlusHub key. */
+    /** A Disney+ brand page (Disney, Pixar, Marvel...) or a Paramount+ page (main, CBS, BET...). [hub] is a DisneyPlusHub key. */
     data object DisneyPlusBrand : Screen("disney_plus/{hub}") {
         fun createRoute(hub: String): String = "disney_plus/$hub"
     }

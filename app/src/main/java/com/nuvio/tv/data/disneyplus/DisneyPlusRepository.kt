@@ -19,7 +19,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
@@ -33,16 +35,16 @@ private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
 
-/** What we learned about one watched title from TMDB: whether Disney owns it, and its genres. */
+/** What we learned about one watched title from TMDB: which services own it (Disney, Paramount), and its genres. */
 data class DisneyTitleInfo(
     val tmdbId: Int,
     val mediaType: TmdbCollectionMediaType,
-    val isDisneyOwned: Boolean,
+    val owners: Set<HubService>,
     val genreIds: List<Int>
 )
 
 /**
- * Builds the Disney+ hub rows from TMDB. Everything is cached in memory for the life of the app
+ * Builds the rows of the app's own streaming sections (Disney+, Paramount+) from TMDB. Everything is cached in memory for the life of the app
  * process (curated title lookups, keyword ids, per-title ownership checks), so moving between the
  * main page and the brand pages, or coming back to them, doesn't re-run the same lookups.
  */
@@ -57,6 +59,8 @@ class DisneyPlusRepository @Inject constructor(
     private val curatedCache = ConcurrentHashMap<String, Optional<MetaPreview>>()
     private val keywordCache = ConcurrentHashMap<String, Optional<Int>>()
     private val companyCache = ConcurrentHashMap<String, Optional<Int>>()
+    private val networkCache = ConcurrentHashMap<String, Optional<Int>>()
+    private val networkLookupMutex = Mutex()
     private val titleInfoCache = ConcurrentHashMap<String, Optional<DisneyTitleInfo>>()
     private val logoCache = ConcurrentHashMap<String, Optional<String>>()
     private val rowCache = ConcurrentHashMap<String, List<MetaPreview>>()
@@ -103,7 +107,7 @@ class DisneyPlusRepository @Inject constructor(
             if (items.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, items)
         }
 
-    /** Disney+ titles in the genres the person watches most. Falls back to Disney+'s best-rated titles. */
+    /** The service's titles in the genres the person watches most. Falls back to its best-rated titles. */
     suspend fun resolveRecommendedRow(
         hub: DisneyPlusHub,
         title: String,
@@ -122,18 +126,19 @@ class DisneyPlusRepository @Inject constructor(
         val movieGenres = topGenres(infos.filter { it.mediaType == TmdbCollectionMediaType.MOVIE })
         val tvGenres = topGenres(infos.filter { it.mediaType == TmdbCollectionMediaType.TV })
         val watchedTmdbIds = infos.map { "tmdb:${it.tmdbId}" }.toSet()
+        val providers = hub.service.providers
 
         val sources = buildList {
             if (movieGenres.isNotEmpty() || tvGenres.isNotEmpty()) {
                 if (movieGenres.isNotEmpty()) {
-                    add(DisneyRowSource.Discover(TmdbCollectionMediaType.MOVIE, providers = DisneyPlusIds.PROVIDER_DISNEY_PLUS, genres = movieGenres.joinToString("|"), voteCountGte = 150))
+                    add(DisneyRowSource.Discover(TmdbCollectionMediaType.MOVIE, providers = providers, genres = movieGenres.joinToString("|"), voteCountGte = 150))
                 }
                 if (tvGenres.isNotEmpty()) {
-                    add(DisneyRowSource.Discover(TmdbCollectionMediaType.TV, providers = DisneyPlusIds.PROVIDER_DISNEY_PLUS, genres = tvGenres.joinToString("|"), voteCountGte = 50))
+                    add(DisneyRowSource.Discover(TmdbCollectionMediaType.TV, providers = providers, genres = tvGenres.joinToString("|"), voteCountGte = 50))
                 }
             } else {
-                add(DisneyRowSource.Discover(TmdbCollectionMediaType.MOVIE, sortBy = "vote_average.desc", providers = DisneyPlusIds.PROVIDER_DISNEY_PLUS, voteCountGte = 3000))
-                add(DisneyRowSource.Discover(TmdbCollectionMediaType.TV, sortBy = "vote_average.desc", providers = DisneyPlusIds.PROVIDER_DISNEY_PLUS, voteCountGte = 800))
+                add(DisneyRowSource.Discover(TmdbCollectionMediaType.MOVIE, sortBy = "vote_average.desc", providers = providers, voteCountGte = 3000))
+                add(DisneyRowSource.Discover(TmdbCollectionMediaType.TV, sortBy = "vote_average.desc", providers = providers, voteCountGte = 800))
             }
         }
         val perSource = coroutineScope {
@@ -188,9 +193,9 @@ class DisneyPlusRepository @Inject constructor(
 
     // ------------------------------------------------------------------ ownership (continue watching)
 
-    /** True when TMDB credits the title to a Disney-owned studio or network. Unknown titles count as not Disney. */
-    suspend fun isDisneyOwned(contentId: String, contentType: String): Boolean =
-        titleInfo(contentId, contentType)?.isDisneyOwned == true
+    /** True when TMDB credits the title to a studio or network the service owns. Unknown titles count as not owned. */
+    suspend fun isOwnedBy(service: HubService, contentId: String, contentType: String): Boolean =
+        titleInfo(contentId, contentType)?.owners?.contains(service) == true
 
     suspend fun titleInfo(contentId: String, contentType: String): DisneyTitleInfo? = withContext(Dispatchers.IO) {
         val isTv = contentType.equals("series", true) || contentType.equals("tv", true)
@@ -205,7 +210,7 @@ class DisneyPlusRepository @Inject constructor(
                     DisneyTitleInfo(
                         tmdbId = tmdbId,
                         mediaType = if (isTv) TmdbCollectionMediaType.TV else TmdbCollectionMediaType.MOVIE,
-                        isDisneyOwned = it.isDisneyOwned(),
+                        owners = HubService.entries.filter { service -> it.isOwnedBy(service.ownership) }.toSet(),
                         genreIds = it.genres.orEmpty().map { genre -> genre.id }
                     )
                 }
@@ -217,18 +222,18 @@ class DisneyPlusRepository @Inject constructor(
         info
     }
 
-    private fun TmdbDetailsResponse.isDisneyOwned(): Boolean {
+    private fun TmdbDetailsResponse.isOwnedBy(ownership: HubOwnership): Boolean {
         val companies = productionCompanies.orEmpty()
-        if (companies.any { company -> company.id?.let { id -> id in DisneyPlusIds.DISNEY_COMPANY_IDS } == true }) return true
+        if (companies.any { company -> company.id?.let { id -> id in ownership.companyIds } == true }) return true
         val networkList = networks.orEmpty()
-        if (networkList.any { network -> network.id?.let { id -> id in DisneyPlusIds.DISNEY_NETWORK_IDS } == true }) return true
+        if (networkList.any { network -> network.id?.let { id -> id in ownership.networkIds } == true }) return true
         if (companies.any { company ->
                 val name = company.name?.lowercase(Locale.US).orEmpty()
-                name.isNotBlank() && DisneyPlusIds.DISNEY_COMPANY_NAME_FRAGMENTS.any { name.contains(it) }
+                name.isNotBlank() && ownership.companyNameFragments.any { name.contains(it) }
             }
         ) return true
         return networkList.any { network ->
-            network.name?.trim()?.lowercase(Locale.US)?.let { name -> name in DisneyPlusIds.DISNEY_NETWORK_NAMES } == true
+            network.name?.trim()?.lowercase(Locale.US)?.let { name -> name in ownership.networkNames } == true
         }
     }
 
@@ -242,6 +247,10 @@ class DisneyPlusRepository @Inject constructor(
             val resolved = companyId(query) ?: return emptyList()
             listOfNotNull(source.companies, resolved.toString()).joinToString("|")
         } ?: source.companies
+        val networks = source.networkLookup?.let { lookup ->
+            val resolved = networkId(lookup, language) ?: return emptyList()
+            listOfNotNull(source.networks, resolved.toString()).joinToString("|")
+        } ?: source.networks
         val today = LocalDate.now().toString()
         val releaseLte = source.releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
         val releaseGte = source.releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
@@ -271,7 +280,7 @@ class DisneyPlusRepository @Inject constructor(
                 page = 1,
                 sortBy = source.sortBy.replace("primary_release_date", "first_air_date"),
                 withCompanies = companies,
-                withNetworks = source.networks,
+                withNetworks = networks,
                 firstAirDateLte = releaseLte,
                 voteCountGte = source.voteCountGte,
                 withGenres = source.genres,
@@ -309,6 +318,31 @@ class DisneyPlusRepository @Inject constructor(
         }.onFailure { if (it is CancellationException) throw it }.getOrNull()
         if (id != null) companyCache[key] = Optional(id)
         return id
+    }
+
+    /**
+     * Finds a network's TMDB id through one of its shows (e.g. Smithsonian Channel through "Aerial America"):
+     * the first probe whose TMDB networks include one with the wanted name. Found ids are cached; a miss
+     * (or a network error) is retried next time. One lookup at a time, so parallel rows share the answer.
+     */
+    private suspend fun networkId(lookup: NetworkLookup, language: String): Int? = networkLookupMutex.withLock {
+        val key = lookup.name.lowercase(Locale.US)
+        networkCache[key]?.let { return@withLock it.value }
+        val wanted = normalizeTitle(lookup.name)
+        for (probe in lookup.probes) {
+            val tmdbId = resolveCurated(probe, language)?.id?.removePrefix("tmdb:")?.toIntOrNull() ?: continue
+            val details = runCatching { tmdbApi.getTvDetails(tmdbId, apiKey).body() }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull() ?: continue
+            val match = details.networks.orEmpty()
+                .firstOrNull { network -> normalizeTitle(network.name.orEmpty()) == wanted }
+                ?.id
+            if (match != null) {
+                networkCache[key] = Optional(match)
+                return@withLock match
+            }
+        }
+        null
     }
 
     /** Backdrop images for a collection tile, taken from the collection's art titles. */

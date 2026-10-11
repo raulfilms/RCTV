@@ -75,6 +75,7 @@ import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.R
 import com.nuvio.tv.data.disneyplus.DisneyPlusHub
+import com.nuvio.tv.data.disneyplus.HubService
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.CatalogRowSection
@@ -90,8 +91,8 @@ import kotlinx.coroutines.delay
 private const val HERO_AUTO_ADVANCE_MS = 8_000L
 
 /**
- * Disney+ page. The same screen renders the main page (hero, brand tiles, Continue Watching and
- * all rows) and each brand page reached from a tile (hero + that brand's rows).
+ * Disney+ and Paramount+ pages. The same screen renders a service's main page (hero, brand tiles,
+ * Continue Watching and all rows) and each brand page reached from a tile (hero + that brand's rows).
  */
 @Composable
 fun DisneyPlusScreen(
@@ -103,14 +104,14 @@ fun DisneyPlusScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val posterOptionsController = posterOptionsViewModel.controller
-    val isMain = uiState.hub == DisneyPlusHub.MAIN
+    val isMain = uiState.hub.isMain
     val heroFocusRequester = remember { FocusRequester() }
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
 
-    // Brand pages are opened from a tile, so put focus on their hero once it's there.
-    // The main page is reached from the sidebar, which keeps focus where the person left it.
+    // Every page is opened from a tile (Home's streaming tiles or a brand tile), so put focus on
+    // the hero once it's there. Coming back to the page keeps focus where the person left it.
     LaunchedEffect(uiState.heroItems.isNotEmpty()) {
-        if (!isMain && !initialFocusDone && uiState.heroItems.isNotEmpty()) {
+        if (!initialFocusDone && uiState.heroItems.isNotEmpty()) {
             delay(50)
             runCatching { heroFocusRequester.requestFocus() }
             initialFocusDone = true
@@ -134,7 +135,10 @@ fun DisneyPlusScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     EmptyScreenState(
-                        title = stringResource(R.string.disney_empty_title),
+                        title = stringResource(
+                            if (uiState.hub.service == HubService.PARAMOUNT) R.string.paramount_empty_title
+                            else R.string.disney_empty_title
+                        ),
                         subtitle = stringResource(R.string.disney_empty_subtitle),
                         icon = Icons.Default.Movie,
                         height = 240.dp
@@ -179,7 +183,7 @@ fun DisneyPlusScreen(
 
                     if (isMain) {
                         item(key = "brand_tiles") {
-                            DisneyBrandTiles(onOpenHub = onOpenHub)
+                            DisneyBrandTiles(service = uiState.hub.service, onOpenHub = onOpenHub)
                         }
                     }
 
@@ -422,14 +426,16 @@ private fun DisneyHeroSlide(item: MetaPreview) {
 
 /**
  * The brand tiles under the hero, the same tiles as Home's streaming services: the app's contrast
- * color with each brand's logo centered on it. Disney, Pixar, Marvel, Star Wars, National
- * Geographic, Hulu, ESPN; each opens that brand's page.
+ * color with each brand's logo centered on it. Disney+: Disney, Pixar, Marvel, Star Wars, National
+ * Geographic, Hulu, ESPN. Paramount+: CBS, BET, Comedy Central, MTV, Nickelodeon, Smithsonian Channel.
+ * Each opens that brand's page.
  */
 @Composable
-private fun DisneyBrandTiles(onOpenHub: (DisneyPlusHub) -> Unit) {
+private fun DisneyBrandTiles(service: HubService, onOpenHub: (DisneyPlusHub) -> Unit) {
     val context = LocalContext.current
-    val tiles = remember(context) {
-        DisneyPlusHub.brandTiles.map { hub ->
+    val brandHubs = remember(service) { DisneyPlusHub.brandTiles(service) }
+    val tiles = remember(context, brandHubs) {
+        brandHubs.map { hub ->
             StreamingService(
                 key = hub.key,
                 name = context.getString(hub.titleRes),
@@ -440,8 +446,8 @@ private fun DisneyBrandTiles(onOpenHub: (DisneyPlusHub) -> Unit) {
     AppleStreamingServicesRow(
         title = null,
         services = tiles,
-        onServiceClick = { tile -> DisneyPlusHub.brandTiles.firstOrNull { it.key == tile.key }?.let(onOpenHub) },
-        // Lined up with the rest of the Disney+ page.
+        onServiceClick = { tile -> brandHubs.firstOrNull { it.key == tile.key }?.let(onOpenHub) },
+        // Lined up with the rest of the page.
         contentStart = NuvioTheme.spacing.xxxl
     )
 }
@@ -455,6 +461,12 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     DisneyPlusHub.NAT_GEO -> R.drawable.disney_brand_logo_natgeo
     DisneyPlusHub.HULU -> R.drawable.disney_brand_logo_hulu
     DisneyPlusHub.ESPN -> R.drawable.disney_brand_logo_espn
+    DisneyPlusHub.P_CBS -> R.drawable.paramount_brand_logo_cbs
+    DisneyPlusHub.P_BET -> R.drawable.paramount_brand_logo_bet
+    DisneyPlusHub.P_COMEDY_CENTRAL -> R.drawable.paramount_brand_logo_comedycentral
+    DisneyPlusHub.P_MTV -> R.drawable.paramount_brand_logo_mtv
+    DisneyPlusHub.P_NICKELODEON -> R.drawable.paramount_brand_logo_nickelodeon
+    DisneyPlusHub.P_SMITHSONIAN -> R.drawable.paramount_brand_logo_smithsonian
     else -> R.drawable.disney_brand_logo_disney
 }
 
@@ -473,6 +485,13 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.COL_DISNEYNATURE -> Color(0xFF0F2A33)
     DisneyPlusHub.COL_DCOM -> Color(0xFF1E1B6B)
     DisneyPlusHub.MAIN -> Color(0xFF4FA3FF)
+    DisneyPlusHub.PARAMOUNT_MAIN -> Color(0xFF0064FF)
+    DisneyPlusHub.P_CBS -> Color(0xFF1C3F94)
+    DisneyPlusHub.P_BET -> Color(0xFF6B1E8C)
+    DisneyPlusHub.P_COMEDY_CENTRAL -> Color(0xFFFFD100)
+    DisneyPlusHub.P_MTV -> Color(0xFFE5007E)
+    DisneyPlusHub.P_NICKELODEON -> Color(0xFFFF6600)
+    DisneyPlusHub.P_SMITHSONIAN -> Color(0xFFF2A900)
 }
 
 /**

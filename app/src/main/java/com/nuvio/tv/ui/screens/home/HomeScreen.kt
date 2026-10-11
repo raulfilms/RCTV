@@ -567,7 +567,7 @@ private fun ClassicHomeRoute(
         onHeroItemShown = { item -> viewModel.refreshPosterLibraryStatus(item) },
         streamingServices = streamingServices,
         onStreamingServiceClick = { service ->
-            if (service.opensDisneyHub || service.target != null) {
+            if (service.appHub != null || service.target != null) {
                 onOpenStreamingService(service)
             } else {
                 // Its page couldn't be looked up yet (no connection?): try again and let the viewer know.

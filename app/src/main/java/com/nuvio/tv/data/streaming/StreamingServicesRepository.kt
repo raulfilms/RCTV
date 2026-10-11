@@ -50,9 +50,9 @@ class StreamingServicesRepository @Inject constructor(
             providerIds = listOf(1899, 384), providerNames = listOf("HBO Max", "Max")),
         Entry(StreamingService("appletv", "Apple TV+", R.drawable.streaming_logo_appletv),
             providerIds = listOf(350), providerNames = listOf("Apple TV Plus", "Apple TV+", "Apple TV")),
-        Entry(StreamingService("disney", "Disney+", R.drawable.streaming_logo_disney, opensDisneyHub = true),
+        Entry(StreamingService("disney", "Disney+", R.drawable.streaming_logo_disney, appHub = "main"),
             providerIds = listOf(337), providerNames = listOf("Disney Plus", "Disney+")),
-        Entry(StreamingService("paramount", "Paramount+", R.drawable.streaming_logo_paramount),
+        Entry(StreamingService("paramount", "Paramount+", R.drawable.streaming_logo_paramount, appHub = "paramount"),
             providerIds = listOf(531, 2303), providerNames = listOf("Paramount Plus", "Paramount+", "Paramount Plus Premium")),
         Entry(StreamingService("peacock", "Peacock", R.drawable.streaming_logo_peacock),
             providerIds = listOf(386, 387), providerNames = listOf("Peacock Premium", "Peacock", "Peacock Premium Plus")),
@@ -76,7 +76,7 @@ class StreamingServicesRepository @Inject constructor(
     /** Looks up where each tile leads. Tiles TMDB can't place keep a null target. */
     suspend fun resolveTargets(region: String = STREAMING_PROVIDER_REGION): List<StreamingService> =
         withContext(Dispatchers.IO) {
-            if (entries.all { it.service.opensDisneyHub || targetCache.containsKey(it.service.key) }) {
+            if (entries.all { it.service.appHub != null || targetCache.containsKey(it.service.key) }) {
                 return@withContext withTargets()
             }
 
@@ -100,7 +100,7 @@ class StreamingServicesRepository @Inject constructor(
 
             for (entry in entries) {
                 val key = entry.service.key
-                if (entry.service.opensDisneyHub || targetCache.containsKey(key)) continue
+                if (entry.service.appHub != null || targetCache.containsKey(key)) continue
 
                 val provider = entry.providerIds.firstNotNullOfOrNull { providersById[it] }
                     ?: providers.firstOrNull { candidate ->

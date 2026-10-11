@@ -66,8 +66,8 @@ data class DisneyPlusUiState(
 }
 
 /**
- * Backs both the main Disney+ page and each brand page (Disney, Pixar, Marvel, Star Wars,
- * National Geographic, Hulu) — which page it is comes from the "hub" navigation argument.
+ * Backs the main Disney+ and Paramount+ pages and each of their brand pages (Disney, Pixar, Marvel...,
+ * CBS, BET, Comedy Central...) — which page it is comes from the "hub" navigation argument.
  *
  * Load order: the hero's source row first (so the banner shows up fast), then every other row in
  * parallel (a few at a time), each appearing as soon as it's ready.
@@ -218,9 +218,10 @@ class DisneyPlusViewModel @Inject constructor(
     }
 
     /**
-     * Continue Watching here only keeps titles TMDB credits to a Disney-owned studio or network
-     * (Disney, Pixar, Marvel, Lucasfilm, 20th Century, Searchlight, National Geographic, Hulu, FX, ABC...).
-     * Everything else (e.g. a Paramount movie) stays only in the app's main Home continue watching.
+     * Continue Watching here only keeps titles TMDB credits to a studio or network the page's service owns
+     * (Disney+: Disney, Pixar, Marvel, Lucasfilm, 20th Century, National Geographic, Hulu, FX, ABC...;
+     * Paramount+: Paramount, CBS, Showtime, Nickelodeon, MTV, Comedy Central, BET, Smithsonian...).
+     * Everything else stays only in the app's main Home continue watching.
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun observeContinueWatching() {
@@ -233,13 +234,13 @@ class DisneyPlusViewModel @Inject constructor(
                         .sortedByDescending { it.lastWatched }
                         .distinctBy { it.contentId }
                         .take(40)
-                    val disneyOnly = coroutineScope {
+                    val ownedOnly = coroutineScope {
                         latestPerTitle.map { progress ->
-                            async { progress.takeIf { repository.isDisneyOwned(it.contentId, it.contentType) } }
+                            async { progress.takeIf { repository.isOwnedBy(hub.service, it.contentId, it.contentType) } }
                         }.awaitAll()
                     }.filterNotNull()
                     _uiState.update { state ->
-                        state.copy(continueWatching = disneyOnly.map { ContinueWatchingItem.InProgress(progress = it) })
+                        state.copy(continueWatching = ownedOnly.map { ContinueWatchingItem.InProgress(progress = it) })
                     }
                 }
         }

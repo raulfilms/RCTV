@@ -72,8 +72,111 @@ object DisneyPlusIds {
     )
 }
 
-/** The main Disney+ page plus one page per brand tile. [key] is used in the navigation route. */
-enum class DisneyPlusHub(val key: String, @StringRes val titleRes: Int) {
+/**
+ * Paramount+ ids. Networks were checked on themoviedb.org (CBS 16, BET 24, Comedy Central 47, MTV 33,
+ * Nickelodeon 13, Showtime 67, Paramount+ 4330). Smithsonian Channel and Nick Jr. are found at runtime
+ * through one of their own shows ([NetworkLookup]), so no unchecked id is hardcoded.
+ */
+object ParamountPlusIds {
+    /** Paramount Plus / Paramount Plus Premium (US), the same ids Home's Paramount+ tile uses. */
+    const val PROVIDERS = "531|2303"
+
+    const val CO_PARAMOUNT_PICTURES = "4"
+
+    const val NET_PARAMOUNT_PLUS = "4330"
+    const val NET_CBS = "16"
+    const val NET_BET = "24"
+    const val NET_COMEDY_CENTRAL = "47"
+    const val NET_MTV = "33"
+    const val NET_NICKELODEON = "13"
+    const val NET_SHOWTIME = "67"
+
+    val SMITHSONIAN_CHANNEL = NetworkLookup(
+        name = "Smithsonian Channel",
+        probes = listOf(
+            CuratedTitle("Aerial America", 2010, TmdbCollectionMediaType.TV),
+            CuratedTitle("Air Disasters", 2011, TmdbCollectionMediaType.TV)
+        )
+    )
+
+    val NICK_JR = NetworkLookup(
+        name = "Nick Jr.",
+        probes = listOf(
+            CuratedTitle("PAW Patrol", 2013, TmdbCollectionMediaType.TV),
+            CuratedTitle("Bubble Guppies", 2011, TmdbCollectionMediaType.TV),
+            CuratedTitle("Blaze and the Monster Machines", 2014, TmdbCollectionMediaType.TV)
+        )
+    )
+
+    // TMDB genre ids used on the Paramount+ pages
+    const val G_CRIME = "80"
+    const val G_DRAMA = "18"
+    const val G_MYSTERY = "9648"
+    const val G_TV_REALITY = "10764"
+    const val G_TV_TALK = "10767"
+
+    /** Paramount Global companies, used to decide what counts as Paramount content. */
+    val COMPANY_IDS: Set<Int> = setOf(4)
+
+    val NETWORK_IDS: Set<Int> = setOf(4330, 16, 24, 47, 33, 13, 67)
+
+    val COMPANY_NAME_FRAGMENTS: List<String> = listOf(
+        "paramount", "cbs", "nickelodeon", "mtv", "comedy central", "bet films", "bet networks",
+        "black entertainment television", "showtime", "smithsonian", "viacom", "republic pictures"
+    )
+
+    val NETWORK_NAMES: Set<String> = setOf(
+        "paramount+", "paramount+ with showtime", "cbs all access", "cbs", "showtime", "nickelodeon",
+        "nick jr.", "nicktoons", "nick at nite", "teennick", "comedy central", "mtv", "mtv2", "vh1",
+        "bet", "bet+", "cmt", "tv land", "paramount network", "spike", "pop", "smithsonian channel"
+    )
+}
+
+/** A TV network found through one of its shows: the first probe whose TMDB networks include [name]. */
+data class NetworkLookup(val name: String, val probes: List<CuratedTitle>)
+
+/** Which titles count as a service's own (Continue Watching on its page only keeps those). */
+data class HubOwnership(
+    val companyIds: Set<Int>,
+    val networkIds: Set<Int>,
+    val companyNameFragments: List<String>,
+    val networkNames: Set<String>
+)
+
+/** The streaming service a hub page belongs to: its watch providers, main page and what it owns. */
+enum class HubService(
+    /** TMDB watch provider ids (US), "|"-separated. */
+    val providers: String
+) {
+    DISNEY(DisneyPlusIds.PROVIDER_DISNEY_PLUS),
+    PARAMOUNT(ParamountPlusIds.PROVIDERS);
+
+    val ownership: HubOwnership
+        get() = when (this) {
+            DISNEY -> HubOwnership(
+                DisneyPlusIds.DISNEY_COMPANY_IDS,
+                DisneyPlusIds.DISNEY_NETWORK_IDS,
+                DisneyPlusIds.DISNEY_COMPANY_NAME_FRAGMENTS,
+                DisneyPlusIds.DISNEY_NETWORK_NAMES
+            )
+            PARAMOUNT -> HubOwnership(
+                ParamountPlusIds.COMPANY_IDS,
+                ParamountPlusIds.NETWORK_IDS,
+                ParamountPlusIds.COMPANY_NAME_FRAGMENTS,
+                ParamountPlusIds.NETWORK_NAMES
+            )
+        }
+}
+
+/**
+ * Every page of the app's own streaming sections: the Disney+ main page, its brand pages and
+ * collections, and the Paramount+ main page with its brand pages. [key] is used in the navigation route.
+ */
+enum class DisneyPlusHub(
+    val key: String,
+    @StringRes val titleRes: Int,
+    val service: HubService = HubService.DISNEY
+) {
     MAIN("main", R.string.disney_plus_title),
     DISNEY("disney", R.string.disney_brand_disney),
     PIXAR("pixar", R.string.disney_brand_pixar),
@@ -89,14 +192,29 @@ enum class DisneyPlusHub(val key: String, @StringRes val titleRes: Int) {
     COL_DISNEY_CHANNEL("collection_disney_channel", R.string.disney_col_disney_channel),
     COL_DISNEY_XD("collection_disney_xd", R.string.disney_col_disney_xd),
     COL_DISNEYNATURE("collection_disneynature", R.string.disney_col_disneynature),
-    COL_DCOM("collection_dcom", R.string.disney_col_dcom);
+    COL_DCOM("collection_dcom", R.string.disney_col_dcom),
+
+    // Paramount+: its main page, then one page per brand tile.
+    PARAMOUNT_MAIN("paramount", R.string.paramount_plus_title, HubService.PARAMOUNT),
+    P_CBS("paramount_cbs", R.string.paramount_brand_cbs, HubService.PARAMOUNT),
+    P_BET("paramount_bet", R.string.paramount_brand_bet, HubService.PARAMOUNT),
+    P_COMEDY_CENTRAL("paramount_comedy_central", R.string.paramount_brand_comedy_central, HubService.PARAMOUNT),
+    P_MTV("paramount_mtv", R.string.paramount_brand_mtv, HubService.PARAMOUNT),
+    P_NICKELODEON("paramount_nickelodeon", R.string.paramount_brand_nickelodeon, HubService.PARAMOUNT),
+    P_SMITHSONIAN("paramount_smithsonian", R.string.paramount_brand_smithsonian, HubService.PARAMOUNT);
+
+    /** A service's main page (hero, brand tiles, Continue Watching...), as opposed to a brand page. */
+    val isMain: Boolean get() = this == MAIN || this == PARAMOUNT_MAIN
 
     companion object {
         fun fromKey(key: String?): DisneyPlusHub =
             entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: MAIN
 
-        /** The seven brand tiles shown under the hero on the main page, in order. */
-        val brandTiles: List<DisneyPlusHub> = listOf(DISNEY, PIXAR, MARVEL, STAR_WARS, NAT_GEO, HULU, ESPN)
+        /** The brand tiles shown under the hero on a service's main page, in order. */
+        fun brandTiles(service: HubService): List<DisneyPlusHub> = when (service) {
+            HubService.DISNEY -> listOf(DISNEY, PIXAR, MARVEL, STAR_WARS, NAT_GEO, HULU, ESPN)
+            HubService.PARAMOUNT -> listOf(P_CBS, P_BET, P_COMEDY_CENTRAL, P_MTV, P_NICKELODEON, P_SMITHSONIAN)
+        }
     }
 }
 
@@ -120,6 +238,8 @@ sealed interface DisneyRowSource {
         val keywordQuery: String? = null,
         /** TMDB company name, looked up through company search at runtime (combined with [companies] as OR). */
         val companyQuery: String? = null,
+        /** A network found at runtime through one of its shows (combined with [networks] as OR). */
+        val networkLookup: NetworkLookup? = null,
         val releaseDateGte: String? = null,
         val releaseDateLte: String? = null,
         val voteCountGte: Int? = null,
@@ -1163,6 +1283,295 @@ object DisneyPlusCatalog {
         )
     )
 
+    // ================================================================== Paramount+
+
+    private val STAR_TREK_SERIES = listOf(
+        series("Star Trek: Strange New Worlds", 2022),
+        series("Star Trek: Discovery", 2017),
+        series("Star Trek: Picard", 2020),
+        series("Star Trek: Lower Decks", 2020),
+        series("Star Trek: Prodigy", 2021),
+        series("Star Trek: The Next Generation", 1987),
+        series("Star Trek: Deep Space Nine", 1993),
+        series("Star Trek: Voyager", 1995),
+        series("Star Trek", 1966),
+        series("Star Trek: Enterprise", 2001)
+    )
+
+    private val STAR_TREK_MOVIES = listOf(
+        movie("Star Trek", 2009),
+        movie("Star Trek Into Darkness", 2013),
+        movie("Star Trek Beyond", 2016),
+        movie("Star Trek II: The Wrath of Khan", 1982),
+        movie("Star Trek: First Contact", 1996),
+        movie("Star Trek: Section 31", 2025)
+    )
+
+    private val TAYLOR_SHERIDAN = listOf(
+        series("1883", 2021),
+        series("1923", 2022),
+        series("Tulsa King", 2022),
+        series("Mayor of Kingstown", 2021),
+        series("Landman", 2024),
+        series("Lioness", 2023)
+    )
+
+    private fun onParamountPlus(
+        mediaType: TmdbCollectionMediaType,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = mediaType,
+        sortBy = sortBy,
+        providers = ParamountPlusIds.PROVIDERS,
+        genres = genres,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte
+    )
+
+    /** Series from a TV network, by id ([networks]) and/or found at runtime ([lookup]). */
+    private fun net(
+        networks: String?,
+        lookup: NetworkLookup? = null,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        withoutGenres: String? = null,
+        keywordQuery: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = TV,
+        sortBy = sortBy,
+        networks = networks,
+        networkLookup = lookup,
+        genres = genres,
+        withoutGenres = withoutGenres,
+        keywordQuery = keywordQuery,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte
+    )
+
+    private fun moviesFrom(companyName: String) =
+        DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companyQuery = companyName)
+
+    /** The rows every network page starts and ends with: popular, newest... top rated. */
+    private fun networkPage(
+        hub: DisneyPlusHub,
+        prefix: String,
+        networks: String?,
+        lookup: NetworkLookup? = null,
+        middleRows: List<DisneyRowSpec>,
+        classicUntil: String? = "2005-12-31",
+        topRatedMinVotes: Int = 20
+    ) = DisneyHubSpec(
+        hub = hub,
+        heroRowId = "${prefix}_popular",
+        rows = buildList {
+            add(DisneyRowSpec("${prefix}_popular", R.string.disney_row_popular_shows, listOf(net(networks, lookup))))
+            add(
+                DisneyRowSpec(
+                    "${prefix}_new", R.string.disney_row_new_short,
+                    listOf(net(networks, lookup, sortBy = RECENT_TV, voteCountGte = 1, releaseDateLte = TODAY))
+                )
+            )
+            addAll(middleRows)
+            if (classicUntil != null) {
+                add(
+                    DisneyRowSpec(
+                        "${prefix}_classic", R.string.disney_row_classic_series,
+                        listOf(net(networks, lookup, sortBy = MOST_VOTED, releaseDateLte = classicUntil))
+                    )
+                )
+            }
+            add(
+                DisneyRowSpec(
+                    "${prefix}_top_rated", R.string.disney_row_top_rated,
+                    listOf(net(networks, lookup, sortBy = TOP_RATED, voteCountGte = topRatedMinVotes))
+                )
+            )
+        }
+    )
+
+    private val paramountMain = DisneyHubSpec(
+        hub = DisneyPlusHub.PARAMOUNT_MAIN,
+        heroRowId = "p_trending",
+        rows = listOf(
+            DisneyRowSpec("continue_watching", R.string.disney_row_continue_watching, kind = DisneyRowKind.CONTINUE_WATCHING),
+            DisneyRowSpec("recommended", R.string.disney_row_recommended, kind = DisneyRowKind.RECOMMENDED),
+            DisneyRowSpec(
+                "p_new", R.string.paramount_row_new,
+                listOf(
+                    onParamountPlus(MOVIE, sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY),
+                    onParamountPlus(TV, sortBy = RECENT_TV, voteCountGte = 5, releaseDateLte = TODAY)
+                )
+            ),
+            DisneyRowSpec("p_trending", R.string.disney_row_trending, listOf(onParamountPlus(MOVIE), onParamountPlus(TV))),
+            DisneyRowSpec("p_originals", R.string.paramount_row_originals, listOf(net(ParamountPlusIds.NET_PARAMOUNT_PLUS))),
+            DisneyRowSpec("p_sheridan", R.string.paramount_row_sheridan, listOf(curated(TAYLOR_SHERIDAN))),
+            DisneyRowSpec("p_cbs", R.string.paramount_brand_cbs, listOf(net(ParamountPlusIds.NET_CBS))),
+            DisneyRowSpec("p_star_trek", R.string.paramount_row_star_trek, listOf(curated(STAR_TREK_SERIES), curated(STAR_TREK_MOVIES))),
+            DisneyRowSpec(
+                "p_paramount_pictures", R.string.paramount_row_paramount_pictures,
+                listOf(company(MOVIE, ParamountPlusIds.CO_PARAMOUNT_PICTURES, voteCountGte = 300, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec("p_showtime", R.string.paramount_row_showtime, listOf(net(ParamountPlusIds.NET_SHOWTIME))),
+            DisneyRowSpec(
+                "p_nickelodeon", R.string.paramount_brand_nickelodeon,
+                listOf(net(ParamountPlusIds.NET_NICKELODEON), moviesFrom("Nickelodeon Movies"))
+            ),
+            DisneyRowSpec("p_comedy_central", R.string.paramount_brand_comedy_central, listOf(net(ParamountPlusIds.NET_COMEDY_CENTRAL))),
+            DisneyRowSpec("p_mtv", R.string.paramount_brand_mtv, listOf(net(ParamountPlusIds.NET_MTV))),
+            DisneyRowSpec("p_bet", R.string.paramount_brand_bet, listOf(net(ParamountPlusIds.NET_BET))),
+            DisneyRowSpec("p_smithsonian", R.string.paramount_brand_smithsonian, listOf(net(null, ParamountPlusIds.SMITHSONIAN_CHANNEL))),
+            DisneyRowSpec("p_movies", R.string.disney_row_movies, listOf(onParamountPlus(MOVIE, voteCountGte = 200))),
+            DisneyRowSpec("p_series", R.string.disney_row_series, listOf(onParamountPlus(TV, voteCountGte = 50))),
+            DisneyRowSpec(
+                "p_reality", R.string.paramount_row_reality,
+                listOf(onParamountPlus(TV, genres = ParamountPlusIds.G_TV_REALITY, voteCountGte = 5))
+            ),
+            DisneyRowSpec(
+                "p_crime", R.string.paramount_row_crime,
+                listOf(
+                    onParamountPlus(TV, genres = "${ParamountPlusIds.G_CRIME}|${ParamountPlusIds.G_MYSTERY}", voteCountGte = 50),
+                    onParamountPlus(MOVIE, genres = "${ParamountPlusIds.G_CRIME}|${ParamountPlusIds.G_MYSTERY}", voteCountGte = 200)
+                )
+            ),
+            DisneyRowSpec(
+                "p_comedy", R.string.disney_row_comedy,
+                listOf(
+                    onParamountPlus(MOVIE, genres = DisneyPlusIds.G_COMEDY, voteCountGte = 100),
+                    onParamountPlus(TV, genres = DisneyPlusIds.G_COMEDY, voteCountGte = 50)
+                )
+            ),
+            DisneyRowSpec(
+                "p_action", R.string.disney_row_action,
+                listOf(
+                    onParamountPlus(MOVIE, genres = "${DisneyPlusIds.G_ACTION}|${DisneyPlusIds.G_ADVENTURE}", voteCountGte = 100),
+                    onParamountPlus(TV, genres = DisneyPlusIds.G_TV_ACTION_ADVENTURE, voteCountGte = 50)
+                )
+            ),
+            DisneyRowSpec(
+                "p_kids", R.string.paramount_row_kids,
+                listOf(
+                    onParamountPlus(TV, genres = DisneyPlusIds.G_TV_KIDS),
+                    onParamountPlus(MOVIE, genres = "${DisneyPlusIds.G_ANIMATION},${DisneyPlusIds.G_FAMILY}", voteCountGte = 100)
+                )
+            ),
+            DisneyRowSpec(
+                "p_documentaries", R.string.disney_row_documentaries,
+                listOf(
+                    onParamountPlus(MOVIE, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 10),
+                    onParamountPlus(TV, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 5)
+                )
+            )
+        )
+    )
+
+    private val paramountCbs = networkPage(
+        hub = DisneyPlusHub.P_CBS,
+        prefix = "cbs",
+        networks = ParamountPlusIds.NET_CBS,
+        middleRows = listOf(
+            DisneyRowSpec("cbs_crime", R.string.paramount_row_procedurals, listOf(net(ParamountPlusIds.NET_CBS, genres = ParamountPlusIds.G_CRIME))),
+            DisneyRowSpec("cbs_dramas", R.string.paramount_row_dramas, listOf(net(ParamountPlusIds.NET_CBS, genres = ParamountPlusIds.G_DRAMA))),
+            DisneyRowSpec("cbs_comedies", R.string.paramount_row_comedies, listOf(net(ParamountPlusIds.NET_CBS, genres = DisneyPlusIds.G_COMEDY))),
+            DisneyRowSpec(
+                "cbs_reality", R.string.paramount_row_reality_competition,
+                listOf(net(ParamountPlusIds.NET_CBS, genres = ParamountPlusIds.G_TV_REALITY))
+            )
+        ),
+        topRatedMinVotes = 50
+    )
+
+    private val paramountBet = networkPage(
+        hub = DisneyPlusHub.P_BET,
+        prefix = "bet",
+        networks = ParamountPlusIds.NET_BET,
+        middleRows = listOf(
+            DisneyRowSpec("bet_dramas", R.string.paramount_row_dramas, listOf(net(ParamountPlusIds.NET_BET, genres = ParamountPlusIds.G_DRAMA))),
+            DisneyRowSpec("bet_comedies", R.string.paramount_row_comedies, listOf(net(ParamountPlusIds.NET_BET, genres = DisneyPlusIds.G_COMEDY))),
+            DisneyRowSpec("bet_reality", R.string.paramount_row_reality, listOf(net(ParamountPlusIds.NET_BET, genres = ParamountPlusIds.G_TV_REALITY))),
+            DisneyRowSpec("bet_movies", R.string.paramount_row_bet_movies, listOf(moviesFrom("BET Films")))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 10
+    )
+
+    private val paramountComedyCentral = networkPage(
+        hub = DisneyPlusHub.P_COMEDY_CENTRAL,
+        prefix = "cc",
+        networks = ParamountPlusIds.NET_COMEDY_CENTRAL,
+        middleRows = listOf(
+            DisneyRowSpec(
+                "cc_animated", R.string.disney_row_animated_series,
+                listOf(net(ParamountPlusIds.NET_COMEDY_CENTRAL, genres = DisneyPlusIds.G_ANIMATION))
+            ),
+            DisneyRowSpec(
+                "cc_late_night", R.string.paramount_row_late_night,
+                listOf(net(ParamountPlusIds.NET_COMEDY_CENTRAL, genres = ParamountPlusIds.G_TV_TALK))
+            ),
+            DisneyRowSpec("cc_specials", R.string.paramount_row_stand_up, listOf(moviesFrom("Comedy Central")))
+        ),
+        classicUntil = "2009-12-31"
+    )
+
+    private val paramountMtv = networkPage(
+        hub = DisneyPlusHub.P_MTV,
+        prefix = "mtv",
+        networks = ParamountPlusIds.NET_MTV,
+        middleRows = listOf(
+            DisneyRowSpec("mtv_reality", R.string.paramount_row_reality, listOf(net(ParamountPlusIds.NET_MTV, genres = ParamountPlusIds.G_TV_REALITY))),
+            DisneyRowSpec("mtv_animated", R.string.disney_row_animated_series, listOf(net(ParamountPlusIds.NET_MTV, genres = DisneyPlusIds.G_ANIMATION))),
+            DisneyRowSpec("mtv_movies", R.string.paramount_row_mtv_films, listOf(moviesFrom("MTV Films")))
+        )
+    )
+
+    private val paramountNickelodeon = networkPage(
+        hub = DisneyPlusHub.P_NICKELODEON,
+        prefix = "nick",
+        networks = ParamountPlusIds.NET_NICKELODEON,
+        middleRows = listOf(
+            DisneyRowSpec("nick_toons", R.string.paramount_row_nicktoons, listOf(net(ParamountPlusIds.NET_NICKELODEON, genres = DisneyPlusIds.G_ANIMATION))),
+            DisneyRowSpec(
+                "nick_live_action", R.string.paramount_row_live_action,
+                listOf(net(ParamountPlusIds.NET_NICKELODEON, withoutGenres = DisneyPlusIds.G_ANIMATION))
+            ),
+            DisneyRowSpec("nick_jr", R.string.paramount_row_nick_jr, listOf(net(null, ParamountPlusIds.NICK_JR))),
+            DisneyRowSpec("nick_movies", R.string.paramount_row_nick_movies, listOf(moviesFrom("Nickelodeon Movies")))
+        ),
+        topRatedMinVotes = 50
+    )
+
+    private val paramountSmithsonian = networkPage(
+        hub = DisneyPlusHub.P_SMITHSONIAN,
+        prefix = "si",
+        networks = null,
+        lookup = ParamountPlusIds.SMITHSONIAN_CHANNEL,
+        middleRows = listOf(
+            DisneyRowSpec(
+                "si_history", R.string.disney_row_history,
+                listOf(net(null, ParamountPlusIds.SMITHSONIAN_CHANNEL, keywordQuery = "history"))
+            ),
+            DisneyRowSpec(
+                "si_ww2", R.string.paramount_row_world_war_ii,
+                listOf(net(null, ParamountPlusIds.SMITHSONIAN_CHANNEL, keywordQuery = "world war ii"))
+            ),
+            DisneyRowSpec(
+                "si_aviation", R.string.paramount_row_aviation,
+                listOf(net(null, ParamountPlusIds.SMITHSONIAN_CHANNEL, keywordQuery = "aviation"))
+            ),
+            DisneyRowSpec(
+                "si_nature", R.string.disney_row_nature,
+                listOf(net(null, ParamountPlusIds.SMITHSONIAN_CHANNEL, keywordQuery = "nature"))
+            ),
+            DisneyRowSpec("si_films", R.string.paramount_row_films_specials, listOf(moviesFrom("Smithsonian Channel")))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 5
+    )
+
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */
     const val TODAY = "__today__"
 
@@ -1181,5 +1590,12 @@ object DisneyPlusCatalog {
         DisneyPlusHub.COL_DISNEY_XD -> colDisneyXd
         DisneyPlusHub.COL_DISNEYNATURE -> colDisneynature
         DisneyPlusHub.COL_DCOM -> colDcom
+        DisneyPlusHub.PARAMOUNT_MAIN -> paramountMain
+        DisneyPlusHub.P_CBS -> paramountCbs
+        DisneyPlusHub.P_BET -> paramountBet
+        DisneyPlusHub.P_COMEDY_CENTRAL -> paramountComedyCentral
+        DisneyPlusHub.P_MTV -> paramountMtv
+        DisneyPlusHub.P_NICKELODEON -> paramountNickelodeon
+        DisneyPlusHub.P_SMITHSONIAN -> paramountSmithsonian
     }
 }
