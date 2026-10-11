@@ -117,8 +117,10 @@ fun CatalogRowSection(
     listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex),
     /** Apple TV look: plain row title, no focus rings, rank numbers on "Top"/"Trending" rows. */
     appleStyle: Boolean = false,
-    /** Apple TV look: how many titles before the "See All" card (a channel's page shows them all). */
-    appleMaxItems: Int = APPLE_ROW_MAX_ITEMS
+    /** Apple TV look: how many titles before the "See All" card. */
+    appleMaxItems: Int = APPLE_ROW_MAX_ITEMS,
+    /** Apple TV look: horizontal 16:9 cards for every title (a channel's TV Shows and Movies rows). */
+    appleLandscape: Boolean = false
 ) {
     val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     // Apple TV style rows show a handful of titles and then a "See All" card.
@@ -290,8 +292,8 @@ fun CatalogRowSection(
         appleStyle && isRankedCatalogName(catalogRow.catalogName)
     }
     // Popular series use horizontal 16:9 cards; every other row keeps vertical posters.
-    val useLandscapeCards = remember(appleStyle, catalogRow.catalogName, catalogRow.apiType) {
-        appleStyle && isLandscapeCatalog(catalogRow.catalogName, catalogRow.apiType)
+    val useLandscapeCards = remember(appleStyle, appleLandscape, catalogRow.catalogName, catalogRow.apiType) {
+        appleStyle && (appleLandscape || isLandscapeCatalog(catalogRow.catalogName, catalogRow.apiType))
     }
 
     Column(modifier = modifier.fillMaxWidth().then(

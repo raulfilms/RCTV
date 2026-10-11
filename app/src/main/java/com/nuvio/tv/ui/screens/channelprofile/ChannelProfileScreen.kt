@@ -26,6 +26,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -49,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,12 +85,16 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
+import com.nuvio.tv.data.channelprofile.CHANNEL_ROW_VISIBLE
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.AppleGlassButton
 import com.nuvio.tv.ui.components.AppleGlassIconButton
+import com.nuvio.tv.ui.components.AppleLandscapeCard
+import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
 import com.nuvio.tv.ui.components.AppleTvCardSpacing
 import com.nuvio.tv.ui.components.AppleTvColors
 import com.nuvio.tv.ui.components.AppleTvContentStart
@@ -163,7 +173,43 @@ fun ChannelProfileScreen(
         members?.let { ChannelGuideTitles.movies(it.all, epg, System.currentTimeMillis()) }.orEmpty()
     }
     LaunchedEffect(brand, epgSeries, epgMovies) {
-        brand?.let { viewModel.bind(it, epgSeries, epgMovies) }
+        val found = brand ?: return@LaunchedEffect
+        val channels = members?.all.orEmpty()
+        viewModel.bind(
+            brand = found,
+            epgSeries = epgSeries,
+            epgMovies = epgMovies,
+            // The channel list matched to TMDB knows these channels by guide id and by name.
+            channelGuideIds = channels.mapNotNull { it.epgChannelId }.distinct(),
+            channelNames = (channels.map { it.name } + found.name).distinct()
+        )
+    }
+
+    // The channel page keeps its place while a "See All" page is open.
+    val pageListState = rememberLazyListState()
+    val tvShowsEntry = remember { FocusRequester() }
+    val moviesEntry = remember { FocusRequester() }
+    val seeAll = uiState.seeAll
+    // Back from "See All": focus returns to the row it came from.
+    var returnFocusTo by remember { mutableStateOf<ChannelTitlesKind?>(null) }
+    BackHandler(enabled = seeAll != null) {
+        returnFocusTo = seeAll?.kind
+        viewModel.closeSeeAll()
+    }
+    // Set once the page has put focus somewhere, so coming back from "See All" doesn't redo it.
+    val initialFocusDone = rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(seeAll == null, returnFocusTo) {
+        val kind = returnFocusTo ?: return@LaunchedEffect
+        if (seeAll != null) return@LaunchedEffect
+        val requester = if (kind == ChannelTitlesKind.TV_SHOWS) tvShowsEntry else moviesEntry
+        repeat(12) {
+            withFrameNanos { }
+            if (runCatching { requester.requestFocus() }.getOrDefault(false)) {
+                returnFocusTo = null
+                return@LaunchedEffect
+            }
+        }
+        returnFocusTo = null
     }
 
     val logoUrl = remember(brand, selected) {
@@ -195,6 +241,15 @@ fun ChannelProfileScreen(
     ) {
         if (selected == null || brand == null || members == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+        } else if (seeAll != null) {
+            ChannelSeeAllPage(
+                state = seeAll,
+                brandName = brand.name,
+                logoUrl = logoUrl,
+                onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, "") },
+                onItemLongPress = { item -> posterOptionsController.show(item, "") },
+                onLoadMore = viewModel::loadMoreSeeAll
+            )
         } else {
             ChannelProfileContent(
                 brand = brand,
@@ -209,7 +264,12 @@ fun ChannelProfileScreen(
                 onToggleLibrary = viewModel::toggleLibrary,
                 onContinueWatchingClick = onContinueWatchingClick,
                 onRemoveContinueWatching = viewModel::removeContinueWatching,
-                onItemLongPress = { item, addonBaseUrl -> posterOptionsController.show(item, addonBaseUrl) }
+                onItemLongPress = { item, addonBaseUrl -> posterOptionsController.show(item, addonBaseUrl) },
+                onSeeAll = viewModel::openSeeAll,
+                listState = pageListState,
+                initialFocusDoneState = initialFocusDone,
+                tvShowsEntry = tvShowsEntry,
+                moviesEntry = moviesEntry
             )
         }
 
@@ -255,7 +315,12 @@ private fun ChannelProfileContent(
     onToggleLibrary: (MetaPreview) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     onRemoveContinueWatching: (ContinueWatchingItem) -> Unit,
-    onItemLongPress: (MetaPreview, String) -> Unit
+    onItemLongPress: (MetaPreview, String) -> Unit,
+    onSeeAll: (ChannelTitlesKind) -> Unit,
+    listState: LazyListState,
+    initialFocusDoneState: androidx.compose.runtime.MutableState<Boolean>,
+    tvShowsEntry: FocusRequester,
+    moviesEntry: FocusRequester
 ) {
     val context = LocalContext.current
     val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
@@ -265,7 +330,7 @@ private fun ChannelProfileContent(
     val heroPlayRequester = remember { FocusRequester() }
     val firstLiveRequester = remember { FocusRequester() }
     var pageHasFocus by remember { mutableStateOf(false) }
-    var initialFocusDone by rememberSaveable { mutableStateOf(false) }
+    var initialFocusDone by initialFocusDoneState
 
     suspend fun focusFirst(requester: FocusRequester): Boolean {
         repeat(10) {
@@ -298,7 +363,7 @@ private fun ChannelProfileContent(
     }
 
     LazyColumn(
-        state = rememberLazyListState(),
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .onFocusChanged { pageHasFocus = it.hasFocus },
@@ -402,8 +467,11 @@ private fun ChannelProfileContent(
                     showCatalogTypeSuffix = false,
                     onItemLongPress = onItemLongPress,
                     appleStyle = true,
-                    // Every title of the channel, no "See All" card.
-                    appleMaxItems = row.items.size
+                    // Ten horizontal cards, then "See All" with every show of the channel.
+                    appleMaxItems = CHANNEL_ROW_VISIBLE,
+                    appleLandscape = true,
+                    onSeeAll = { onSeeAll(ChannelTitlesKind.TV_SHOWS) },
+                    entryFocusRequester = tvShowsEntry
                 )
             }
         }
@@ -420,8 +488,11 @@ private fun ChannelProfileContent(
                     showCatalogTypeSuffix = false,
                     onItemLongPress = onItemLongPress,
                     appleStyle = true,
-                    // Every title of the channel, no "See All" card.
-                    appleMaxItems = row.items.size
+                    // Ten horizontal cards, then "See All" with every movie of the channel.
+                    appleMaxItems = CHANNEL_ROW_VISIBLE,
+                    appleLandscape = true,
+                    onSeeAll = { onSeeAll(ChannelTitlesKind.MOVIES) },
+                    entryFocusRequester = moviesEntry
                 )
             }
         }
@@ -904,6 +975,111 @@ private fun HeroDots(count: Int, activeIndex: Int, modifier: Modifier = Modifier
                     .clip(CircleShape)
                     .background(if (active) Color.White else Color.White.copy(alpha = 0.45f))
             )
+        }
+    }
+}
+
+/**
+ * "See All" for the channel's TV Shows or Movies: the channel's logo and the row's name on top,
+ * then every title as horizontal cards, four across. More load from TMDB while scrolling down;
+ * coming back from a title puts focus back on it.
+ */
+@Composable
+private fun ChannelSeeAllPage(
+    state: ChannelSeeAllState,
+    brandName: String,
+    logoUrl: String?,
+    onItemClick: (MetaPreview) -> Unit,
+    onItemLongPress: (MetaPreview) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+    val items = state.items
+    val currentItems by androidx.compose.runtime.rememberUpdatedState(items)
+    val currentOnLoadMore by androidx.compose.runtime.rememberUpdatedState(onLoadMore)
+    // The card that last had focus, kept while a title's page is open.
+    var focusIndex by rememberSaveable(state.kind) { mutableIntStateOf(0) }
+    val focusRequester = remember { FocusRequester() }
+    var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+
+    LaunchedEffect(state.kind) {
+        val target = focusIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+        repeat(12) { attempt ->
+            withFrameNanos { }
+            if (runCatching { focusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            if (attempt == 2 && gridState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                runCatching { gridState.scrollToItem(target) }
+            }
+        }
+    }
+    // Near the end of what's loaded: ask for the next page.
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { last -> if (last >= currentItems.size - 8) currentOnLoadMore() }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.padding(start = AppleTvSpacing.SafeX, end = AppleTvSpacing.SafeX, top = AppleTvSpacing.SafeY),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (logoUrl != null && !logoFailed) {
+                AsyncImage(
+                    model = logoUrl,
+                    contentDescription = brandName,
+                    contentScale = ContentScale.Fit,
+                    onError = { logoFailed = true },
+                    modifier = Modifier
+                        .height(30.dp)
+                        .widthIn(max = 120.dp)
+                )
+                Spacer(modifier = Modifier.width(AppleTvSpacing.Space3 + 2.dp))
+            }
+            Text(
+                text = stringResource(
+                    if (state.kind == ChannelTitlesKind.TV_SHOWS) R.string.channel_profile_tv_shows
+                    else R.string.channel_profile_movies
+                ),
+                style = AppleTvType.Title2,
+                color = AppleTvColors.Label,
+                maxLines = 1
+            )
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            state = gridState,
+            contentPadding = PaddingValues(
+                start = AppleTvSpacing.SafeX,
+                end = AppleTvSpacing.SafeX,
+                top = 20.dp,
+                bottom = 48.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.GridGap),
+            verticalArrangement = Arrangement.spacedBy(28.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            gridItemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+                AppleLandscapeCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    width = AppleLandscapeCardWidth,
+                    height = AppleLandscapeCardHeight,
+                    cornerRadius = AppleTvRadius.Poster,
+                    focusRequester = if (index == focusIndex) focusRequester else null,
+                    onFocus = { focusIndex = index },
+                    onLongPress = { onItemLongPress(item) }
+                )
+            }
+            if (state.isLoadingMore) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(72.dp),
+                        contentAlignment = Alignment.Center
+                    ) { LoadingIndicator() }
+                }
+            }
         }
     }
 }

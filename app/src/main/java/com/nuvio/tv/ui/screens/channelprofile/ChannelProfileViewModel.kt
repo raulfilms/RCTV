@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.R
 import com.nuvio.tv.data.channelprofile.ChannelBrandIds
 import com.nuvio.tv.data.channelprofile.ChannelProfileRepository
+import com.nuvio.tv.data.channelprofile.CHANNEL_ROW_VISIBLE
 import com.nuvio.tv.data.channelprofile.EpgMovieTitle
 import com.nuvio.tv.data.repository.parseContentIds
 import com.nuvio.tv.domain.model.CatalogRow
@@ -37,6 +38,18 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
+/** Which of the channel's two title rows a "See All" page shows. */
+enum class ChannelTitlesKind { TV_SHOWS, MOVIES }
+
+/** A channel's "See All" page: every title of one row, more loading as the person scrolls. */
+data class ChannelSeeAllState(
+    val kind: ChannelTitlesKind,
+    val items: List<MetaPreview> = emptyList(),
+    val isLoadingMore: Boolean = false,
+    /** Next TMDB page to load, or null once everything is in. */
+    val nextPage: Int? = null
+)
+
 data class ChannelProfileUiState(
     val brandKey: String? = null,
     /** Featured shows (or movies) for the banner under the logo. */
@@ -48,7 +61,9 @@ data class ChannelProfileUiState(
     /** The person's in-progress titles that belong to this channel. */
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
     /** Whether each featured title is in My List, by id. */
-    val heroInLibrary: Map<String, Boolean> = emptyMap()
+    val heroInLibrary: Map<String, Boolean> = emptyMap(),
+    /** The open "See All" page, or null on the channel page itself. */
+    val seeAll: ChannelSeeAllState? = null
 )
 
 /**
@@ -68,7 +83,9 @@ class ChannelProfileViewModel @Inject constructor(
     val uiState: StateFlow<ChannelProfileUiState> = _uiState.asStateFlow()
 
     private var boundKey: String? = null
+    private var boundIds: ChannelBrandIds = ChannelBrandIds(emptyList(), emptyList())
     private var loadJob: Job? = null
+    private var seeAllJob: Job? = null
     private var continueWatchingJob: Job? = null
     private var libraryJob: Job? = null
 
@@ -76,7 +93,13 @@ class ChannelProfileViewModel @Inject constructor(
      * Loads the page for [brand]. Called again once the guide arrives (its shows and movies help
      * find the channel's content); the same brand with the same guide state is a no-op.
      */
-    fun bind(brand: ChannelBrand, epgSeries: List<String>, epgMovies: List<EpgMovieTitle>) {
+    fun bind(
+        brand: ChannelBrand,
+        epgSeries: List<String>,
+        epgMovies: List<EpgMovieTitle>,
+        channelGuideIds: List<String> = emptyList(),
+        channelNames: List<String> = emptyList()
+    ) {
         val key = "${brand.key}|${epgSeries.size}|${epgMovies.size}"
         if (key == boundKey) return
         boundKey = key
@@ -86,7 +109,9 @@ class ChannelProfileViewModel @Inject constructor(
             else ChannelProfileUiState(brandKey = brand.key)
         }
         loadJob = viewModelScope.launch {
-            val ids = safe { repository.brandIds(brand, epgSeries) } ?: ChannelBrandIds(emptyList(), emptyList())
+            val ids = safe { repository.brandIds(brand, epgSeries, channelGuideIds, channelNames) }
+                ?: ChannelBrandIds(emptyList(), emptyList())
+            boundIds = ids
             val showsTitle = context.getString(R.string.channel_profile_tv_shows)
             val moviesTitle = context.getString(R.string.channel_profile_movies)
             val (shows, movies) = coroutineScope {
@@ -95,6 +120,8 @@ class ChannelProfileViewModel @Inject constructor(
                 showsJob.await() to moviesJob.await()
             }
             _uiState.update { it.copy(tvShows = shows, movies = movies, isRowsLoading = false) }
+            // The horizontal cards show each title's logo: fill in the ones the rows show.
+            launch { addRowLogos() }
 
             val heroSource = shows?.items.orEmpty().ifEmpty { movies?.items.orEmpty() }
             val hero = safe { repository.heroItems(heroSource) }.orEmpty()
@@ -103,6 +130,99 @@ class ChannelProfileViewModel @Inject constructor(
 
             val rowIds = (shows?.items.orEmpty() + movies?.items.orEmpty()).map { it.id }.toSet()
             observeContinueWatching(brand, ids, rowIds)
+        }
+    }
+
+    private suspend fun addRowLogos() {
+        val state = _uiState.value
+        val shows = state.tvShows?.let { row ->
+            safe { repository.withLogos(row.items.take(CHANNEL_ROW_VISIBLE)) }?.let { withLogos ->
+                row.copy(items = withLogos + row.items.drop(CHANNEL_ROW_VISIBLE))
+            }
+        }
+        val movies = state.movies?.let { row ->
+            safe { repository.withLogos(row.items.take(CHANNEL_ROW_VISIBLE)) }?.let { withLogos ->
+                row.copy(items = withLogos + row.items.drop(CHANNEL_ROW_VISIBLE))
+            }
+        }
+        _uiState.update { current ->
+            current.copy(
+                tvShows = if (shows != null && current.tvShows?.catalogId == shows.catalogId) shows else current.tvShows,
+                movies = if (movies != null && current.movies?.catalogId == movies.catalogId) movies else current.movies
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------ See All
+
+    /** Opens "See All" for TV Shows or Movies: the row's titles first, then TMDB's next pages. */
+    fun openSeeAll(kind: ChannelTitlesKind) {
+        val row = when (kind) {
+            ChannelTitlesKind.TV_SHOWS -> _uiState.value.tvShows
+            ChannelTitlesKind.MOVIES -> _uiState.value.movies
+        } ?: return
+        seeAllJob?.cancel()
+        _uiState.update {
+            it.copy(seeAll = ChannelSeeAllState(kind = kind, items = row.items, nextPage = if (row.hasMore) 2 else null))
+        }
+        loadMoreSeeAll()
+    }
+
+    fun closeSeeAll() {
+        seeAllJob?.cancel()
+        _uiState.update { it.copy(seeAll = null) }
+    }
+
+    /** Loads the next page while the person scrolls down the "See All" grid. */
+    fun loadMoreSeeAll() {
+        val current = _uiState.value.seeAll ?: return
+        val page = current.nextPage ?: run {
+            fillSeeAllLogos(current.kind)
+            return
+        }
+        if (current.isLoadingMore) return
+        _uiState.update { state -> state.copy(seeAll = state.seeAll?.copy(isLoadingMore = true)) }
+        seeAllJob = viewModelScope.launch {
+            val result = safe {
+                repository.seeAllPage(
+                    isTv = current.kind == ChannelTitlesKind.TV_SHOWS,
+                    ids = boundIds,
+                    page = page,
+                    loadedCount = current.items.size
+                )
+            }
+            _uiState.update { state ->
+                val seeAll = state.seeAll?.takeIf { it.kind == current.kind } ?: return@update state
+                val known = seeAll.items.mapTo(HashSet()) { it.id }
+                state.copy(
+                    seeAll = seeAll.copy(
+                        items = seeAll.items + result?.items.orEmpty().filter { known.add(it.id) },
+                        isLoadingMore = false,
+                        // A failed page can be tried again by scrolling; an empty one ends the list.
+                        nextPage = if (result == null) page else result.nextPage
+                    )
+                )
+            }
+            fillSeeAllLogos(current.kind)
+        }
+    }
+
+    /** Title logos for the grid's cards, a page at a time. */
+    private fun fillSeeAllLogos(kind: ChannelTitlesKind) {
+        val items = _uiState.value.seeAll?.takeIf { it.kind == kind }?.items ?: return
+        val missing = items.filter { it.logo.isNullOrBlank() }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val found = safe { repository.withLogos(missing) }.orEmpty()
+                .filter { !it.logo.isNullOrBlank() }
+                .associate { it.id to it.logo }
+            if (found.isEmpty()) return@launch
+            _uiState.update { state ->
+                val seeAll = state.seeAll?.takeIf { it.kind == kind } ?: return@update state
+                state.copy(seeAll = seeAll.copy(items = seeAll.items.map { item ->
+                    found[item.id]?.let { logo -> item.copy(logo = logo) } ?: item
+                }))
+            }
         }
     }
 

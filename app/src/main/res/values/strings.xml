@@ -300,8 +300,8 @@
     <string name="channel_profile_live_broadcasts">LIVE BROADCASTS</string>
     <string name="channel_profile_local_channels">LOCAL CHANNELS</string>
     <string name="channel_profile_continue_watching">CONTINUE WATCHING</string>
-    <string name="channel_profile_tv_shows">TV SHOWS</string>
-    <string name="channel_profile_movies">MOVIES</string>
+    <string name="channel_profile_tv_shows">TV Shows</string>
+    <string name="channel_profile_movies">Movies</string>
     <string name="channel_profile_featured_show">FEATURED SHOW</string>
     <string name="channel_profile_featured_movie">FEATURED MOVIE</string>
     <string name="channel_profile_series">Series</string>

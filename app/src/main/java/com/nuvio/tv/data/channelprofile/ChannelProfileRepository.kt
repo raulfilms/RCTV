@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.channelprofile
 
+import android.content.Context
 import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.tmdb.TmdbService
@@ -12,6 +13,7 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.ui.screens.channelprofile.ChannelBrand
 import com.nuvio.tv.ui.screens.channelprofile.ChannelBrands
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -31,6 +33,10 @@ import javax.inject.Singleton
 
 private const val TAG = "ChannelProfileRepo"
 private const val ROW_ITEM_CAP = 30
+/** Titles a channel's TV Shows / Movies row shows before its "See All" card. */
+const val CHANNEL_ROW_VISIBLE = 10
+/** A "See All" page stops after this many titles. */
+private const val SEE_ALL_CAP = 200
 private const val HERO_ITEM_COUNT = 5
 /** EPG titles looked up to find a channel's TMDB network when it isn't a known one. */
 private const val NETWORK_LOOKUP_TITLES = 6
@@ -40,6 +46,9 @@ data class EpgMovieTitle(val title: String, val year: Int?)
 
 /** The brand's TMDB ids: networks (its shows) and production companies (its movies). */
 data class ChannelBrandIds(val networks: List<Int>, val companies: List<Int>)
+
+/** One page of a channel's "See All": its titles, and the next TMDB page (null when there's no more). */
+data class ChannelTitlesPage(val items: List<MetaPreview>, val nextPage: Int?)
 
 /** What TMDB says about one title: who aired it and who made it. */
 private data class TitleInfo(
@@ -58,6 +67,7 @@ private data class TitleInfo(
  */
 @Singleton
 class ChannelProfileRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val tmdbApi: TmdbApi,
     private val tmdbService: TmdbService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore
@@ -73,7 +83,10 @@ class ChannelProfileRepository @Inject constructor(
     private val searchCache = ConcurrentHashMap<String, Optional<MetaPreview>>()
     private val titleInfoCache = ConcurrentHashMap<String, Optional<TitleInfo>>()
     private val logoCache = ConcurrentHashMap<String, Optional<String>>()
-    private val rowCache = ConcurrentHashMap<String, List<MetaPreview>>()
+    /** A row's titles, and whether TMDB has more pages of them (for "See All"). */
+    private data class RowContent(val items: List<MetaPreview>, val morePages: Boolean)
+
+    private val rowCache = ConcurrentHashMap<String, RowContent>()
 
     private val lookupLimiter = Semaphore(6)
 
@@ -83,11 +96,16 @@ class ChannelProfileRepository @Inject constructor(
     // ------------------------------------------------------------------ brand ids
 
     /**
-     * The brand's TMDB networks and companies. Known network ids are used only when TMDB's name
-     * for them is the brand's; for any other channel the network is found through shows in its
-     * guide (a show whose TMDB network has the channel's name).
+     * The brand's TMDB networks and companies: those the channel list (assets/channel-tmdb.csv)
+     * gives its channels, plus known network ids TMDB confirms by name. With neither, the network
+     * is found through shows in its guide (a show whose TMDB network has the channel's name).
      */
-    suspend fun brandIds(brand: ChannelBrand, epgSeries: List<String>): ChannelBrandIds = withContext(Dispatchers.IO) {
+    suspend fun brandIds(
+        brand: ChannelBrand,
+        epgSeries: List<String>,
+        channelGuideIds: List<String> = emptyList(),
+        channelNames: List<String> = emptyList()
+    ): ChannelBrandIds = withContext(Dispatchers.IO) {
         idsCache[brand.key]?.let { return@withContext it }
         idsLocks.getOrPut(brand.key) { Mutex() }.withLock {
             idsCache[brand.key]?.let { return@withLock it }
@@ -96,8 +114,10 @@ class ChannelProfileRepository @Inject constructor(
                     .awaitAll()
                     .filterNotNull()
             }
-            val networks = verified.ifEmpty { networksFromGuide(brand, epgSeries) }
-            val companies = coroutineScope {
+            ChannelTmdbMap.ensureLoaded(context)
+            val listed = ChannelTmdbMap.idsFor(channelGuideIds, channelNames)
+            val networks = (listed.networks + verified).distinct().ifEmpty { networksFromGuide(brand, epgSeries) }
+            val companies = listed.companies + coroutineScope {
                 brand.companyQueries.map { query -> async { companyId(query) } }.awaitAll().filterNotNull()
             }
             val ids = ChannelBrandIds(networks.distinct(), companies.distinct())
@@ -157,30 +177,32 @@ class ChannelProfileRepository @Inject constructor(
     suspend fun tvShows(brand: ChannelBrand, ids: ChannelBrandIds, epgSeries: List<String>, title: String): CatalogRow? =
         withContext(Dispatchers.IO) {
             val cacheKey = "${brand.key}:tv:${ids.networks.joinToString(",")}:${epgSeries.size}"
-            val items = rowCache[cacheKey] ?: run {
+            val content = rowCache[cacheKey] ?: run {
                 val language = language()
                 val fromNetwork = if (ids.networks.isNotEmpty()) {
-                    discover(isTv = true, networks = ids.networks.joinToString("|"), companies = null, language = language)
+                    discover(isTv = true, networks = ids.networks.joinToString("|"), companies = null, language = language, page = 1)
                 } else {
-                    emptyList()
+                    DiscoverResult(emptyList(), 0)
                 }
-                val list = fromNetwork.ifEmpty {
+                val list = fromNetwork.items.ifEmpty {
                     coroutineScope {
                         epgSeries.map { show -> async { searchExact(show, year = null, isTv = true, language = language) } }
                             .awaitAll()
                             .filterNotNull()
                     }
                 }.distinctBy { it.id }.take(ROW_ITEM_CAP)
-                list.also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
+                RowContent(list, morePages = fromNetwork.items.isNotEmpty() && fromNetwork.totalPages > 1)
+                    .also { if (it.items.isNotEmpty()) rowCache[cacheKey] = it }
             }
-            if (items.isEmpty()) null else buildRow("channel_${brand.key}_tv", title, items)
+            if (content.items.isEmpty()) null
+            else buildRow("channel_${brand.key}_tv", title, content.items, hasMore = content.morePages)
         }
 
     /** The brand's movies: what its channels show in the guide, then its studio's films. */
     suspend fun movies(brand: ChannelBrand, ids: ChannelBrandIds, epgMovies: List<EpgMovieTitle>, title: String): CatalogRow? =
         withContext(Dispatchers.IO) {
             val cacheKey = "${brand.key}:movies:${ids.companies.joinToString(",")}:${epgMovies.size}"
-            val items = rowCache[cacheKey] ?: run {
+            val content = rowCache[cacheKey] ?: run {
                 val language = language()
                 val (fromGuide, fromCompanies) = coroutineScope {
                     val guide = async {
@@ -189,23 +211,63 @@ class ChannelProfileRepository @Inject constructor(
                             .filterNotNull()
                     }
                     val studio = async {
-                        if (ids.companies.isEmpty()) emptyList()
-                        else discover(isTv = false, networks = null, companies = ids.companies.joinToString("|"), language = language)
+                        if (ids.companies.isEmpty()) DiscoverResult(emptyList(), 0)
+                        else discover(isTv = false, networks = null, companies = ids.companies.joinToString("|"), language = language, page = 1)
                     }
                     guide.await() to studio.await()
                 }
-                interleave(listOf(fromGuide, fromCompanies)).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
+                RowContent(
+                    items = interleave(listOf(fromGuide, fromCompanies.items)),
+                    morePages = fromCompanies.totalPages > 1
+                ).also { if (it.items.isNotEmpty()) rowCache[cacheKey] = it }
             }
-            if (items.isEmpty()) null else buildRow("channel_${brand.key}_movies", title, items)
+            if (content.items.isEmpty()) null
+            else buildRow("channel_${brand.key}_movies", title, content.items, hasMore = content.morePages)
         }
 
-    private suspend fun discover(isTv: Boolean, networks: String?, companies: String?, language: String): List<MetaPreview> =
+    /**
+     * The next page of a channel's "See All" (TV shows or movies): TMDB page [page] of its network's
+     * (or studio's) titles. Page 1 comes from the row itself, so this starts at page 2.
+     */
+    suspend fun seeAllPage(isTv: Boolean, ids: ChannelBrandIds, page: Int, loadedCount: Int): ChannelTitlesPage =
+        withContext(Dispatchers.IO) {
+            val filter = if (isTv) ids.networks else ids.companies
+            if (filter.isEmpty() || loadedCount >= SEE_ALL_CAP) return@withContext ChannelTitlesPage(emptyList(), null)
+            val result = discover(
+                isTv = isTv,
+                networks = if (isTv) filter.joinToString("|") else null,
+                companies = if (isTv) null else filter.joinToString("|"),
+                language = language(),
+                page = page
+            )
+            val next = if (page < result.totalPages && loadedCount + result.items.size < SEE_ALL_CAP) page + 1 else null
+            ChannelTitlesPage(result.items, next)
+        }
+
+    /** The same titles with their title logos (for the horizontal cards), when TMDB has one. */
+    suspend fun withLogos(items: List<MetaPreview>): List<MetaPreview> = withContext(Dispatchers.IO) {
+        coroutineScope {
+            items.map { item ->
+                async { if (!item.logo.isNullOrBlank()) item else item.copy(logo = lookupLimiter.withPermit { logoFor(item) }) }
+            }.awaitAll()
+        }
+    }
+
+    private data class DiscoverResult(val items: List<MetaPreview>, val totalPages: Int)
+
+    private suspend fun discover(
+        isTv: Boolean,
+        networks: String?,
+        companies: String?,
+        language: String,
+        page: Int
+    ): DiscoverResult =
         runCatching {
             val response = if (isTv) {
                 tmdbApi.discoverTv(
                     apiKey = apiKey,
                     language = language,
-                    page = 1,
+                    page = page,
                     sortBy = "popularity.desc",
                     withNetworks = networks,
                     withCompanies = companies,
@@ -215,17 +277,20 @@ class ChannelProfileRepository @Inject constructor(
                 tmdbApi.discoverMovies(
                     apiKey = apiKey,
                     language = language,
-                    page = 1,
+                    page = page,
                     sortBy = "popularity.desc",
                     withCompanies = companies,
                     voteCountGte = 10
                 ).body()
             }
-            response?.results.orEmpty().mapNotNull { it.toPreview(isTv) }
+            DiscoverResult(
+                items = response?.results.orEmpty().mapNotNull { it.toPreview(isTv) },
+                totalPages = response?.totalPages ?: 1
+            )
         }.onFailure {
             if (it is CancellationException) throw it
             Log.w(TAG, "Discover failed", it)
-        }.getOrDefault(emptyList())
+        }.getOrDefault(DiscoverResult(emptyList(), 0))
 
     /** A guide title to its TMDB entry, only when the names match (so "NBA Basketball" finds nothing). */
     private suspend fun searchExact(title: String, year: Int?, isTv: Boolean, language: String): MetaPreview? {
@@ -353,7 +418,7 @@ class ChannelProfileRepository @Inject constructor(
         return out
     }
 
-    private fun buildRow(catalogId: String, title: String, items: List<MetaPreview>): CatalogRow {
+    private fun buildRow(catalogId: String, title: String, items: List<MetaPreview>, hasMore: Boolean): CatalogRow {
         val allSeries = items.all { it.type == ContentType.SERIES }
         return CatalogRow(
             addonId = "tmdb",
@@ -365,7 +430,8 @@ class ChannelProfileRepository @Inject constructor(
             rawType = if (allSeries) "series" else "movie",
             items = items,
             isLoading = false,
-            hasMore = false,
+            // More titles on TMDB than the row holds: the row ends with "See All".
+            hasMore = hasMore || items.size > CHANNEL_ROW_VISIBLE,
             currentPage = 1,
             supportsSkip = false,
             skipStep = 20
@@ -387,6 +453,8 @@ class ChannelProfileRepository @Inject constructor(
             poster = imageUrl(posterPath, "w500") ?: imageUrl(backdropPath, "w780"),
             posterShape = PosterShape.POSTER,
             background = imageUrl(backdropPath, "w1280"),
+            // Horizontal cards on the channel page: a smaller backdrop is plenty.
+            landscapePoster = imageUrl(backdropPath, "w780"),
             logo = null,
             description = overview?.takeIf { it.isNotBlank() },
             releaseInfo = date?.take(4)?.takeIf { it.isNotBlank() },

@@ -1107,8 +1107,8 @@
     <string name="channel_profile_live_broadcasts">EN VIVO</string>
     <string name="channel_profile_local_channels">CANALES LOCALES</string>
     <string name="channel_profile_continue_watching">CONTINUAR VIENDO</string>
-    <string name="channel_profile_tv_shows">SERIES</string>
-    <string name="channel_profile_movies">PELÍCULAS</string>
+    <string name="channel_profile_tv_shows">Series</string>
+    <string name="channel_profile_movies">Películas</string>
     <string name="channel_profile_featured_show">SERIE DESTACADA</string>
     <string name="channel_profile_featured_movie">PELÍCULA DESTACADA</string>
     <string name="channel_profile_series">Serie</string>
