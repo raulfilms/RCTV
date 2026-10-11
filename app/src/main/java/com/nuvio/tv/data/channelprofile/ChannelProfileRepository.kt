@@ -90,6 +90,20 @@ class ChannelProfileRepository @Inject constructor(
 
     private val lookupLimiter = Semaphore(6)
 
+    /** TMDB genre names by id, per "tv"/"movie" and language (for the See All genre filter). */
+    private val genreNames = ConcurrentHashMap<String, Map<Int, String>>()
+
+    private suspend fun genreMap(isTv: Boolean, language: String): Map<Int, String> {
+        val key = "${if (isTv) "tv" else "movie"}:$language"
+        genreNames[key]?.let { return it }
+        val map = runCatching {
+            val response = if (isTv) tmdbApi.getTvGenres(apiKey, language) else tmdbApi.getMovieGenres(apiKey, language)
+            response.body()?.genres.orEmpty().associate { it.id to it.name }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull().orEmpty()
+        if (map.isNotEmpty()) genreNames[key] = map
+        return map
+    }
+
     private suspend fun language(): String =
         runCatching { tmdbSettingsDataStore.settings.first().language }.getOrNull()?.ifBlank { null } ?: "en"
 
@@ -283,8 +297,9 @@ class ChannelProfileRepository @Inject constructor(
                     voteCountGte = 10
                 ).body()
             }
+            val genres = genreMap(isTv, language)
             DiscoverResult(
-                items = response?.results.orEmpty().mapNotNull { it.toPreview(isTv) },
+                items = response?.results.orEmpty().mapNotNull { it.toPreview(isTv, genres) },
                 totalPages = response?.totalPages ?: 1
             )
         }.onFailure {
@@ -304,13 +319,14 @@ class ChannelProfileRepository @Inject constructor(
                     tmdbApi.searchMovies(apiKey, title, language, primaryReleaseYear = year).body()
                 }?.results.orEmpty()
                 val wanted = normalizeTitle(title)
+                val genres = genreMap(isTv, language)
                 results
                     .filter { result ->
                         normalizeTitle(result.title ?: result.name ?: "") == wanted ||
                             normalizeTitle(result.originalTitle ?: result.originalName ?: "") == wanted
                     }
                     .maxByOrNull { (it.voteCount ?: 0) }
-                    ?.toPreview(isTv)
+                    ?.toPreview(isTv, genres)
             }.onFailure { if (it is CancellationException) throw it }
         }
         if (result.isSuccess) searchCache[key] = Optional(result.getOrNull())
@@ -438,7 +454,7 @@ class ChannelProfileRepository @Inject constructor(
         )
     }
 
-    private fun TmdbDiscoverResult.toPreview(isTv: Boolean): MetaPreview? {
+    private fun TmdbDiscoverResult.toPreview(isTv: Boolean, genreNames: Map<Int, String> = emptyMap()): MetaPreview? {
         val name = title?.takeIf { it.isNotBlank() }
             ?: this.name?.takeIf { it.isNotBlank() }
             ?: originalTitle?.takeIf { it.isNotBlank() }
@@ -461,7 +477,8 @@ class ChannelProfileRepository @Inject constructor(
             released = date?.takeIf { it.isNotBlank() },
             imdbRating = voteAverage?.toFloat()?.takeIf { it > 0f },
             voteCount = voteCount,
-            genres = emptyList()
+            // Names for the See All genre filter ("Comedy", "Drama").
+            genres = genreIds.orEmpty().mapNotNull { genreNames[it] }
         )
     }
 

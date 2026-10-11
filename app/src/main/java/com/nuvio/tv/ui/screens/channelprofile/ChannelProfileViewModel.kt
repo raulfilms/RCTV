@@ -38,6 +38,9 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
+/** Titles a "See All" page loads before the person scrolls (so its filter has enough to sort). */
+private const val SEE_ALL_PRELOAD = 60
+
 /** Which of the channel's two title rows a "See All" page shows. */
 enum class ChannelTitlesKind { TV_SHOWS, MOVIES }
 
@@ -204,6 +207,13 @@ class ChannelProfileViewModel @Inject constructor(
                 )
             }
             fillSeeAllLogos(current.kind)
+            // Load a few pages up front, so the genre and year filter has titles to work with.
+            val after = _uiState.value.seeAll
+            if (result != null && after != null && after.kind == current.kind &&
+                after.nextPage != null && after.items.size < SEE_ALL_PRELOAD
+            ) {
+                loadMoreSeeAll()
+            }
         }
     }
 
