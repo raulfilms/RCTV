@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.tv.material3.ExperimentalTvMaterial3Api::class,
     androidx.compose.ui.ExperimentalComposeUiApi::class
 )
@@ -11,6 +12,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,8 +45,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,6 +78,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +89,8 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Icon
+import androidx.tv.material3.Surface
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
@@ -132,6 +141,11 @@ private val LiveCardArtHeight = AppleTvSpacing.Col4 * 9f / 16f
 private val LiveCardShape = RoundedCornerShape(10.dp)
 private val CwCardHeight = 138.dp
 private val RowGap = 22.dp
+/** Where a focused row's cards sit from the top of the screen (its name shows above them). */
+private val RowFocusTop = 120.dp
+private val FavoriteButtonSize = 30.dp
+private val FavoriteButtonGap = 14.dp
+private val FavoriteStarColor = Color(0xFFFFD60A)
 private val BadgeRed = Color(0xFFD42A20)
 private const val HERO_AUTO_ADVANCE_MS = 9_000L
 
@@ -229,6 +243,23 @@ fun ChannelProfileScreen(
         }
     }
 
+    // The star next to the logo: the chosen channel in (or out of) the Guide's Custom list.
+    val context = LocalContext.current
+    val isFavorite = selected != null && selected.id in liveState.customChannelIds
+    fun toggleFavorite() {
+        val channel = selected ?: return
+        val added = channel.id !in liveState.customChannelIds
+        liveTvViewModel.toggleCustomChannel(channel)
+        android.widget.Toast.makeText(
+            context,
+            context.getString(
+                if (added) R.string.livetv_guide_custom_added else R.string.livetv_guide_custom_removed,
+                ChannelBrands.displayName(channel.name)
+            ),
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+    }
+
     // A program opened here closes with Back, and never stays open on the Guide.
     val detailsOpen = liveState.selectedProgram != null && liveState.selectedProgramChannel != null
     BackHandler(enabled = detailsOpen) { liveTvViewModel.dismissProgramDetails() }
@@ -269,7 +300,9 @@ fun ChannelProfileScreen(
                 listState = pageListState,
                 initialFocusDoneState = initialFocusDone,
                 tvShowsEntry = tvShowsEntry,
-                moviesEntry = moviesEntry
+                moviesEntry = moviesEntry,
+                isFavorite = isFavorite,
+                onToggleFavorite = ::toggleFavorite
             )
         }
 
@@ -320,7 +353,9 @@ private fun ChannelProfileContent(
     listState: LazyListState,
     initialFocusDoneState: androidx.compose.runtime.MutableState<Boolean>,
     tvShowsEntry: FocusRequester,
-    moviesEntry: FocusRequester
+    moviesEntry: FocusRequester,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit
 ) {
     val context = LocalContext.current
     val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
@@ -362,165 +397,215 @@ private fun ChannelProfileContent(
         )
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .onFocusChanged { pageHasFocus = it.hasFocus },
-        contentPadding = PaddingValues(bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(RowGap)
-    ) {
-        item(key = "header") {
-            ProfileHeader(brand = brand, logoUrl = logoUrl)
+    // Scrolling: while the logo or the featured show has focus the page stays at the very top
+    // (the logo always shows); a focused row sits a little below the top, its name above it.
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val defaultSpec = LocalBringIntoViewSpec.current
+    // [0]: the logo's row (the star), [1]: the featured show.
+    val topFocus = remember { booleanArrayOf(false, false) }
+    val verticalSpec = remember(density, defaultSpec, listState) {
+        val rowTopPx = with(density) { RowFocusTop.toPx() }
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec = defaultSpec.scrollAnimationSpec
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                // The top of the page scrolls itself back (see onTopFocus).
+                if (topFocus[0] || topFocus[1]) return 0f
+                val distance = offset - rowTopPx
+                if (kotlin.math.abs(distance) < 1f) return 0f
+                if (distance < 0f && !listState.canScrollBackward) return 0f
+                return distance
+            }
         }
+    }
+    fun onTopFocus(part: Int, hasFocus: Boolean) {
+        topFocus[part] = hasFocus
+        if (hasFocus && (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)) {
+            scope.launch { listState.animateScrollToItem(0) }
+        }
+    }
 
-        if (uiState.heroItems.isNotEmpty()) {
-            item(key = "hero") {
-                ChannelHero(
-                    items = uiState.heroItems,
-                    inLibrary = uiState.heroInLibrary,
-                    playRequester = heroPlayRequester,
-                    onPlay = onPlayTitle,
-                    onDetails = { item -> onNavigateToDetail(item.id, item.apiType, "") },
-                    onToggleLibrary = onToggleLibrary
+    CompositionLocalProvider(LocalBringIntoViewSpec provides verticalSpec) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .onFocusChanged { pageHasFocus = it.hasFocus },
+            contentPadding = PaddingValues(bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(RowGap)
+        ) {
+            item(key = "header") {
+                ProfileHeader(
+                    brand = brand,
+                    logoUrl = logoUrl,
+                    isFavorite = isFavorite,
+                    onToggleFavorite = onToggleFavorite,
+                    modifier = Modifier.onFocusChanged { onTopFocus(0, it.hasFocus) }
                 )
             }
-        } else if (uiState.isHeroLoading) {
-            item(key = "hero_loading") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = AppleTvSpacing.SafeX)
-                        .height(HeroHeight)
-                        .clip(HeroShape)
-                        .background(AppleTvColors.ContrastDim),
-                    contentAlignment = Alignment.Center
-                ) { LoadingIndicator() }
-            }
-        }
 
-        if (members.live.isNotEmpty()) {
-            item(key = "live") {
-                LiveChannelsRow(
-                    title = stringResource(R.string.channel_profile_live_broadcasts),
-                    showLiveDot = true,
-                    channels = members.live,
-                    epg = epg,
-                    nowMs = nowMs,
-                    timeRange = ::timeRange,
-                    firstRequester = firstLiveRequester,
-                    onOpen = onOpenChannel
-                )
+            if (uiState.heroItems.isNotEmpty()) {
+                item(key = "hero") {
+                    ChannelHero(
+                        items = uiState.heroItems,
+                        inLibrary = uiState.heroInLibrary,
+                        playRequester = heroPlayRequester,
+                        onPlay = onPlayTitle,
+                        onDetails = { item -> onNavigateToDetail(item.id, item.apiType, "") },
+                        onToggleLibrary = onToggleLibrary,
+                        modifier = Modifier.onFocusChanged { onTopFocus(1, it.hasFocus) }
+                    )
+                }
+            } else if (uiState.isHeroLoading) {
+                item(key = "hero_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppleTvSpacing.SafeX)
+                            .height(HeroHeight)
+                            .clip(HeroShape)
+                            .background(AppleTvColors.ContrastDim),
+                        contentAlignment = Alignment.Center
+                    ) { LoadingIndicator() }
+                }
             }
-        }
 
-        if (brand.hasLocals && members.locals.isNotEmpty()) {
-            item(key = "locals") {
-                LiveChannelsRow(
-                    title = stringResource(R.string.channel_profile_local_channels),
-                    showLiveDot = false,
-                    channels = members.locals,
-                    epg = epg,
-                    nowMs = nowMs,
-                    timeRange = ::timeRange,
-                    // With no main channels here, the first local takes the page's first focus.
-                    firstRequester = if (members.live.isEmpty()) firstLiveRequester else null,
-                    onOpen = onOpenChannel
-                )
+            if (members.live.isNotEmpty()) {
+                item(key = "live") {
+                    LiveChannelsRow(
+                        title = stringResource(R.string.channel_profile_live_broadcasts),
+                        showLiveDot = true,
+                        channels = members.live,
+                        epg = epg,
+                        nowMs = nowMs,
+                        timeRange = ::timeRange,
+                        firstRequester = firstLiveRequester,
+                        onOpen = onOpenChannel
+                    )
+                }
             }
-        }
 
-        if (uiState.continueWatching.isNotEmpty()) {
-            item(key = "continue_watching") {
-                ContinueWatchingSection(
-                    items = uiState.continueWatching,
-                    title = stringResource(R.string.channel_profile_continue_watching),
-                    onItemClick = onContinueWatchingClick,
-                    onDetailsClick = { item ->
-                        when (item) {
-                            is ContinueWatchingItem.InProgress -> onNavigateToDetail(
-                                item.progress.contentId,
-                                item.progress.contentType,
-                                item.progress.addonBaseUrl.orEmpty()
-                            )
-                            is ContinueWatchingItem.NextUp -> onNavigateToDetail(item.info.contentId, item.info.contentType, "")
-                        }
-                    },
-                    onRemoveItem = onRemoveContinueWatching,
-                    cardWidth = AppleTvSpacing.Col4,
-                    imageHeight = CwCardHeight,
-                    cornerRadius = AppleTvRadius.Poster,
-                    appleStyle = true
-                )
+            if (brand.hasLocals && members.locals.isNotEmpty()) {
+                item(key = "locals") {
+                    LiveChannelsRow(
+                        title = stringResource(R.string.channel_profile_local_channels),
+                        showLiveDot = false,
+                        channels = members.locals,
+                        epg = epg,
+                        nowMs = nowMs,
+                        timeRange = ::timeRange,
+                        // With no main channels here, the first local takes the page's first focus.
+                        firstRequester = if (members.live.isEmpty()) firstLiveRequester else null,
+                        onOpen = onOpenChannel
+                    )
+                }
             }
-        }
 
-        uiState.tvShows?.let { row ->
-            item(key = "tv_shows") {
-                CatalogRowSection(
-                    catalogRow = row,
-                    onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
-                    showSeeAll = false,
-                    posterCardStyle = posterStyle,
-                    showPosterLabels = false,
-                    showAddonName = false,
-                    showCatalogTypeSuffix = false,
-                    onItemLongPress = onItemLongPress,
-                    appleStyle = true,
-                    // Ten horizontal cards, then "See All" with every show of the channel.
-                    appleMaxItems = CHANNEL_ROW_VISIBLE,
-                    appleLandscape = true,
-                    onSeeAll = { onSeeAll(ChannelTitlesKind.TV_SHOWS) },
-                    entryFocusRequester = tvShowsEntry
-                )
+            if (uiState.continueWatching.isNotEmpty()) {
+                item(key = "continue_watching") {
+                    ContinueWatchingSection(
+                        items = uiState.continueWatching,
+                        title = stringResource(R.string.channel_profile_continue_watching),
+                        onItemClick = onContinueWatchingClick,
+                        onDetailsClick = { item ->
+                            when (item) {
+                                is ContinueWatchingItem.InProgress -> onNavigateToDetail(
+                                    item.progress.contentId,
+                                    item.progress.contentType,
+                                    item.progress.addonBaseUrl.orEmpty()
+                                )
+                                is ContinueWatchingItem.NextUp -> onNavigateToDetail(item.info.contentId, item.info.contentType, "")
+                            }
+                        },
+                        onRemoveItem = onRemoveContinueWatching,
+                        cardWidth = AppleTvSpacing.Col4,
+                        imageHeight = CwCardHeight,
+                        cornerRadius = AppleTvRadius.Poster,
+                        appleStyle = true
+                    )
+                }
             }
-        }
 
-        uiState.movies?.let { row ->
-            item(key = "movies") {
-                CatalogRowSection(
-                    catalogRow = row,
-                    onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
-                    showSeeAll = false,
-                    posterCardStyle = posterStyle,
-                    showPosterLabels = false,
-                    showAddonName = false,
-                    showCatalogTypeSuffix = false,
-                    onItemLongPress = onItemLongPress,
-                    appleStyle = true,
-                    // Ten horizontal cards, then "See All" with every movie of the channel.
-                    appleMaxItems = CHANNEL_ROW_VISIBLE,
-                    appleLandscape = true,
-                    onSeeAll = { onSeeAll(ChannelTitlesKind.MOVIES) },
-                    entryFocusRequester = moviesEntry
-                )
+            uiState.tvShows?.let { row ->
+                item(key = "tv_shows") {
+                    CatalogRowSection(
+                        catalogRow = row,
+                        onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
+                        showSeeAll = false,
+                        posterCardStyle = posterStyle,
+                        showPosterLabels = false,
+                        showAddonName = false,
+                        showCatalogTypeSuffix = false,
+                        onItemLongPress = onItemLongPress,
+                        appleStyle = true,
+                        // Ten horizontal cards, then "See All" with every show of the channel.
+                        appleMaxItems = CHANNEL_ROW_VISIBLE,
+                        appleLandscape = true,
+                        onSeeAll = { onSeeAll(ChannelTitlesKind.TV_SHOWS) },
+                        entryFocusRequester = tvShowsEntry
+                    )
+                }
             }
-        }
 
-        if (uiState.isRowsLoading) {
-            item(key = "rows_loading") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(96.dp),
-                    contentAlignment = Alignment.Center
-                ) { LoadingIndicator() }
+            uiState.movies?.let { row ->
+                item(key = "movies") {
+                    CatalogRowSection(
+                        catalogRow = row,
+                        onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
+                        showSeeAll = false,
+                        posterCardStyle = posterStyle,
+                        showPosterLabels = false,
+                        showAddonName = false,
+                        showCatalogTypeSuffix = false,
+                        onItemLongPress = onItemLongPress,
+                        appleStyle = true,
+                        // Ten horizontal cards, then "See All" with every movie of the channel.
+                        appleMaxItems = CHANNEL_ROW_VISIBLE,
+                        appleLandscape = true,
+                        onSeeAll = { onSeeAll(ChannelTitlesKind.MOVIES) },
+                        entryFocusRequester = moviesEntry
+                    )
+                }
+            }
+
+            if (uiState.isRowsLoading) {
+                item(key = "rows_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(96.dp),
+                        contentAlignment = Alignment.Center
+                    ) { LoadingIndicator() }
+                }
             }
         }
     }
 }
 
-/** The channel's logo, centered at the top (its name when there's no logo). */
+/**
+ * The channel's logo, centered at the top (its name when there's no logo), with a small star
+ * beside it that adds the channel to the favorites (the Guide's Custom list) or takes it out.
+ */
 @Composable
-private fun ProfileHeader(brand: ChannelBrand, logoUrl: String?) {
+private fun ProfileHeader(
+    brand: ChannelBrand,
+    logoUrl: String?,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     var logoFailed by remember(logoUrl) { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
+    Row(
+        modifier = modifier
             .fillMaxWidth()
             .height(HeaderHeight)
             .padding(top = 14.dp),
-        contentAlignment = Alignment.Center
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        // As wide as the star and its gap, so the logo stays in the middle of the screen.
+        Spacer(modifier = Modifier.width(FavoriteButtonSize + FavoriteButtonGap))
         if (logoUrl != null && !logoFailed) {
             AsyncImage(
                 model = logoUrl,
@@ -538,6 +623,42 @@ private fun ProfileHeader(brand: ChannelBrand, logoUrl: String?) {
                 color = AppleTvColors.Label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(modifier = Modifier.width(FavoriteButtonGap))
+        FavoriteStarButton(isFavorite = isFavorite, onClick = onToggleFavorite)
+    }
+}
+
+/** Small round star: outline when not a favorite, filled yellow when it is; white when focused. */
+@Composable
+private fun FavoriteStarButton(isFavorite: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val tint = when {
+        focused -> AppleTvColors.FocusLabel
+        isFavorite -> FavoriteStarColor
+        else -> AppleTvColors.Label
+    }
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .size(FavoriteButtonSize)
+            .onFocusChanged { focused = it.isFocused || it.hasFocus },
+        shape = ClickableSurfaceDefaults.shape(CircleShape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = AppleTvColors.Contrast,
+            focusedContainerColor = AppleTvColors.FocusFill
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = AppleTvFocusScale)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                contentDescription = stringResource(
+                    if (isFavorite) R.string.channel_profile_favorite_remove else R.string.channel_profile_favorite_add
+                ),
+                tint = tint,
+                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -579,22 +700,40 @@ private fun LiveChannelsRow(
     firstRequester: FocusRequester?,
     onOpen: (LiveTvChannel, EpgProgram?) -> Unit
 ) {
+    // Sideways, the focused card stays at the row's left edge (like the other rows).
+    val density = LocalDensity.current
+    val parentSpec = LocalBringIntoViewSpec.current
+    val startPx = with(density) { AppleTvContentStart.toPx() }
+    val horizontalSpec = remember(parentSpec, startPx) {
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec = parentSpec.scrollAnimationSpec
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                val childSize = kotlin.math.abs(size)
+                val space = containerSize - startPx
+                val leading = if (childSize <= containerSize && space < childSize) containerSize - childSize else startPx
+                return offset - leading
+            }
+        }
+    }
     Column {
         ProfileRowHeader(text = title, showLiveDot = showLiveDot)
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = AppleTvContentStart, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
-        ) {
-            itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
-                val program = channel.epgChannelId?.let { epg[it] }?.firstOrNull { it.isAiringAt(nowMs) }
-                LiveBroadcastCard(
-                    channel = channel,
-                    program = program,
-                    nowMs = nowMs,
-                    timeText = program?.let(timeRange),
-                    onClick = { onOpen(channel, program) },
-                    modifier = if (index == 0 && firstRequester != null) Modifier.focusRequester(firstRequester) else Modifier
-                )
+        CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalSpec) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = AppleTvContentStart, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
+            ) {
+                itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
+                    val program = channel.epgChannelId?.let { epg[it] }?.firstOrNull { it.isAiringAt(nowMs) }
+                    LiveBroadcastCard(
+                        channel = channel,
+                        program = program,
+                        nowMs = nowMs,
+                        timeText = program?.let(timeRange),
+                        onClick = { onOpen(channel, program) },
+                        modifier = if (index == 0 && firstRequester != null) Modifier.focusRequester(firstRequester) else Modifier
+                    )
+                }
             }
         }
     }
@@ -750,7 +889,8 @@ private fun ChannelHero(
     playRequester: FocusRequester,
     onPlay: (MetaPreview) -> Unit,
     onDetails: (MetaPreview) -> Unit,
-    onToggleLibrary: (MetaPreview) -> Unit
+    onToggleLibrary: (MetaPreview) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var activeIndex by remember(items) { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
@@ -770,7 +910,7 @@ private fun ChannelHero(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = AppleTvSpacing.SafeX)
             .height(HeroHeight)

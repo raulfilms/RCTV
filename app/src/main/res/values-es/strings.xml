@@ -1113,6 +1113,8 @@
     <string name="channel_profile_featured_movie">PELÍCULA DESTACADA</string>
     <string name="channel_profile_series">Serie</string>
     <string name="channel_profile_movie">Película</string>
+    <string name="channel_profile_favorite_add">Añadir a favoritos</string>
+    <string name="channel_profile_favorite_remove">Quitar de favoritos</string>
     <string name="library_filter_genre">Género</string>
     <string name="library_filter_year">Año</string>
     <string name="catalog_filter_empty_title">Sin resultados</string>

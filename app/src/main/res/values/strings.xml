@@ -306,6 +306,8 @@
     <string name="channel_profile_featured_movie">FEATURED MOVIE</string>
     <string name="channel_profile_series">Series</string>
     <string name="channel_profile_movie">Movie</string>
+    <string name="channel_profile_favorite_add">Add to favorites</string>
+    <string name="channel_profile_favorite_remove">Remove from favorites</string>
     <string name="nav_guide">Guide</string>
     <string name="nav_movies_tv">Movies &amp; TV</string>
     <string name="streaming_service_unavailable">Couldn\'t load this service right now. Try again in a moment.</string>
