@@ -106,7 +106,9 @@ class DisneyPlusRepository @Inject constructor(
                         }
                     }.awaitAll()
                 }
-                interleave(perSource).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
+                // A row made only of hand-picked titles (a saga, a timeline...) keeps all of them.
+                val cap = if (spec.sources.all { it is DisneyRowSource.Curated }) Int.MAX_VALUE else ROW_ITEM_CAP
+                interleave(perSource, cap).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
             }
             if (items.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, items)
         }

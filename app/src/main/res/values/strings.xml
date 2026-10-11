@@ -2461,7 +2461,7 @@
     <string name="disney_row_new_short">New</string>
     <string name="disney_row_collections">Collections</string>
     <string name="disney_row_throwbacks">Throwbacks</string>
-    <string name="disney_row_disneynature">Disney nature</string>
+    <string name="disney_row_disneynature">Disneynature</string>
     <string name="disney_row_playlist_halloween">Playlists: Halloween</string>
     <string name="disney_row_playlist_holiday">Playlists: Holiday Magic</string>
     <string name="disney_row_playlist_feel_good">Playlists: Feel-Good Favorites</string>
@@ -2495,6 +2495,48 @@
     <string name="disney_row_musicals">Musicals</string>
     <string name="disney_row_all_time_favorites">All-Time Favorites</string>
     <string name="disney_row_more_dcoms">More DCOMs</string>
+    <!-- Disney+ brand pages: row names as on Disney+ (en-us) -->
+    <string name="disney_row_dcom">Disney Channel Original Movies</string>
+    <string name="pixar_row_sparkshorts">SparkShorts</string>
+    <string name="pixar_row_forky">Forky Asks a Question</string>
+    <string name="pixar_row_beasts_and_monsters">Beasts and Monsters</string>
+    <string name="pixar_row_unlikely_heroes">Unlikely Heroes</string>
+    <string name="pixar_row_oscar_winners">Oscar Winners</string>
+    <string name="pixar_row_through_the_years">Pixar Through the Years</string>
+    <string name="marvel_row_avengers_countdown">Countdown to Avengers: Doomsday</string>
+    <string name="marvel_row_infinity_saga">MCU Infinity Saga</string>
+    <string name="marvel_row_multiverse_saga">MCU Multiverse Saga</string>
+    <string name="marvel_row_spider_verse">Spider-Verse</string>
+    <string name="marvel_row_movie_timeline">MCU Movie Timeline</string>
+    <string name="marvel_row_monsters">Marvel Monsters</string>
+    <string name="marvel_row_prepare_for_vision">Prepare for Vision</string>
+    <string name="marvel_row_mutant_legacy">Mutant Legacy</string>
+    <string name="marvel_row_fantastic_adventures">Fantastic Adventures</string>
+    <string name="marvel_row_origin_stories">Marvel Origin Stories</string>
+    <string name="marvel_row_defenders">The Defenders</string>
+    <string name="marvel_row_complete_timeline">MCU Complete Timeline</string>
+    <string name="marvel_row_sam_wilson">Sam Wilson: Captain America</string>
+    <string name="marvel_row_rivals_characters">Marvel Rivals Characters</string>
+    <string name="marvel_row_animation">Marvel Animation</string>
+    <string name="marvel_row_imax_enhanced">IMAX Enhanced</string>
+    <string name="marvel_row_unscripted">Marvel Unscripted</string>
+    <string name="sw_row_timeline">Star Wars in Timeline Order</string>
+    <string name="sw_row_series_and_specials">Series and Specials</string>
+    <string name="sw_row_references">Star Wars References</string>
+    <string name="sw_row_animation">Star Wars Animation</string>
+    <string name="sw_row_vintage">Star Wars Vintage</string>
+    <string name="sw_row_obi_wan">Obi-Wan Kenobi</string>
+    <string name="sw_row_darth_vader">Darth Vader</string>
+    <string name="natgeo_row_food_and_travel">Food and Travel</string>
+    <string name="natgeo_row_exploring_our_world">Exploring Our World</string>
+    <string name="natgeo_row_sharks">Sharks</string>
+    <string name="natgeo_row_animals_and_nature">Animals and Nature</string>
+    <string name="natgeo_row_wild_series">Wild Series and Specials</string>
+    <string name="natgeo_row_world_history">World History</string>
+    <string name="natgeo_row_vets_and_pets">Vets and Pets</string>
+    <string name="natgeo_row_science_and_innovation">Science and Innovation</string>
+    <string name="natgeo_row_ancient_mysteries">Ancient Mysteries</string>
+    <string name="natgeo_row_kids">Nat Geo Kids</string>
     <string name="disney_empty_subtitle">Check your connection and TMDB settings, then try again</string>
 
     <!-- Paramount+ section (same screens as Disney+) -->
