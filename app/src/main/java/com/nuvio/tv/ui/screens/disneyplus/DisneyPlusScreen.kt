@@ -115,6 +115,8 @@ fun DisneyPlusScreen(
     val uiState by viewModel.uiState.collectAsState()
     val posterOptionsController = posterOptionsViewModel.controller
     val isMain = uiState.hub.isMain
+    // Disney+ (and its brand and collection pages): horizontal cards with the title's name on them.
+    val landscapeTitles = uiState.hub.service == HubService.DISNEY
     val heroFocusRequester = remember { FocusRequester() }
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
 
@@ -307,12 +309,18 @@ fun DisneyPlusScreen(
                         val row = rowState.row ?: return@forEach
                         val rowId = rowState.spec.id
                         item(key = "row_$rowId") {
-                            // Ten titles, then "See All" with the rest of the row.
+                            // Ten titles, then "See All" with the rest of the row. Disney+ pages use
+                            // horizontal cards with each title's name (logo) on the artwork, like Disney+.
                             CatalogRowSection(
                                 catalogRow = row,
                                 onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
                                 showSeeAll = row.items.size > ROW_MAX_ITEMS,
                                 maxItems = ROW_MAX_ITEMS,
+                                appleStyle = landscapeTitles,
+                                appleLandscape = landscapeTitles,
+                                appleMaxItems = ROW_MAX_ITEMS,
+                                appleRankNumbers = false,
+                                contentStart = if (landscapeTitles) NuvioTheme.spacing.xxxl else null,
                                 onSeeAll = { viewModel.openSeeAll(rowId) },
                                 rowFocusRequester = rowFocusRequesters.getOrPut(rowId) { FocusRequester() },
                                 showAddonName = false,

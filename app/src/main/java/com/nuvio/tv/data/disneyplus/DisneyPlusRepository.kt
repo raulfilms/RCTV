@@ -36,6 +36,9 @@ private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
 
+/** Titles per row that get their title logo up front (the ones the row shows before "See All"). */
+private const val ROW_LOGO_COUNT = 10
+
 /** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery, HBO Max), and its genres. */
 data class DisneyTitleInfo(
     val tmdbId: Int,
@@ -73,6 +76,7 @@ class DisneyPlusRepository @Inject constructor(
     private data class Optional<T>(val value: T?)
 
     private val lookupLimiter = Semaphore(6)
+    private val logoLimiter = Semaphore(6)
 
     private suspend fun language(): String =
         runCatching { tmdbSettingsDataStore.settings.first().language }.getOrNull()?.ifBlank { null } ?: "en"
@@ -83,7 +87,14 @@ class DisneyPlusRepository @Inject constructor(
      * Resolves one catalog row: runs every source in parallel, then interleaves their results
      * (first of each, then second of each...) so a mixed movie/series row doesn't show all movies first.
      */
-    suspend fun resolveRow(hub: DisneyPlusHub, spec: DisneyRowSpec, title: String, forceRefresh: Boolean = false): CatalogRow? =
+    suspend fun resolveRow(
+        hub: DisneyPlusHub,
+        spec: DisneyRowSpec,
+        title: String,
+        forceRefresh: Boolean = false,
+        /** Give the first titles their title logo, for horizontal cards with the name on the artwork. */
+        titleLogos: Boolean = false
+    ): CatalogRow? =
         withContext(Dispatchers.IO) {
             val cacheKey = "${hub.key}:${spec.id}"
             val cached = if (forceRefresh) null else rowCache[cacheKey]
@@ -110,7 +121,12 @@ class DisneyPlusRepository @Inject constructor(
                 val cap = if (spec.sources.all { it is DisneyRowSource.Curated }) Int.MAX_VALUE else ROW_ITEM_CAP
                 interleave(perSource, cap).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
             }
-            if (items.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, items)
+            val shown = if (titleLogos && items.isNotEmpty()) {
+                withTitleLogos(items, ROW_LOGO_COUNT).also { rowCache[cacheKey] = it }
+            } else {
+                items
+            }
+            if (shown.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, shown)
         }
 
     /** The service's titles in the genres the person watches most. Falls back to its best-rated titles. */
@@ -118,7 +134,8 @@ class DisneyPlusRepository @Inject constructor(
         hub: DisneyPlusHub,
         title: String,
         history: List<WatchProgress>,
-        excludeIds: Set<String>
+        excludeIds: Set<String>,
+        titleLogos: Boolean = false
     ): CatalogRow? = withContext(Dispatchers.IO) {
         val language = language()
         val recent = history
@@ -158,6 +175,7 @@ class DisneyPlusRepository @Inject constructor(
         }
         val items = interleave(perSource)
             .filterNot { it.id in watchedTmdbIds || it.id in excludeIds }
+            .let { if (titleLogos) withTitleLogos(it, ROW_LOGO_COUNT) else it }
         if (items.isEmpty()) null else buildRow("disney_${hub.key}_recommended", title, items)
     }
 
@@ -217,6 +235,24 @@ class DisneyPlusRepository @Inject constructor(
     /** The first few titles that have a backdrop (hero slides, before their title logos are added). */
     fun heroPicks(items: List<MetaPreview>): List<MetaPreview> =
         items.filter { !it.background.isNullOrBlank() }.distinctBy { it.id }.take(HERO_ITEM_COUNT)
+
+    /**
+     * Gives the first [count] titles their title logo (TMDB, English first) for horizontal cards that show
+     * the name on the artwork, like Disney+. Titles without one show their name as text instead.
+     */
+    suspend fun withTitleLogos(items: List<MetaPreview>, count: Int = items.size): List<MetaPreview> =
+        withContext(Dispatchers.IO) {
+            val head = items.take(count)
+            val withLogos = coroutineScope {
+                head.map { item ->
+                    async {
+                        if (!item.logo.isNullOrBlank()) item
+                        else logoLimiter.withPermit { item.copy(logo = logoFor(item)) }
+                    }
+                }.awaitAll()
+            }
+            withLogos + items.drop(count)
+        }
 
     /** Gives each hero slide its title logo when TMDB has one. */
     suspend fun withLogos(picks: List<MetaPreview>): List<MetaPreview> = withContext(Dispatchers.IO) {

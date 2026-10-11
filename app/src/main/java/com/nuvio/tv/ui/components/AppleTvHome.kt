@@ -160,7 +160,8 @@ private val OnWhite = AppleTvColors.FocusLabel
 @Composable
 fun AppleRowTitle(
     text: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentStart: Dp = AppleTvContentStart
 ) {
     Text(
         text = text,
@@ -168,7 +169,7 @@ fun AppleRowTitle(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         style = AppleTvType.Headline.copy(shadow = AppleTvTextShadow),
-        modifier = modifier.padding(start = AppleTvContentStart, end = AppleTvContentStart, bottom = 10.dp)
+        modifier = modifier.padding(start = contentStart, end = contentStart, bottom = 10.dp)
     )
 }
 

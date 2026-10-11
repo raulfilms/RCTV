@@ -98,6 +98,9 @@ class DisneyPlusViewModel @Inject constructor(
     val hub: DisneyPlusHub = DisneyPlusHub.fromKey(savedStateHandle.get<String>("hub"))
     private val hubSpec = DisneyPlusCatalog.hub(hub)
 
+    /** Disney+ pages show horizontal cards with each title's name (logo) on the artwork. */
+    private val titleLogos: Boolean = hub.service == com.nuvio.tv.data.disneyplus.HubService.DISNEY
+
     private val _uiState = MutableStateFlow(
         DisneyPlusUiState(
             hub = hub,
@@ -149,6 +152,17 @@ class DisneyPlusViewModel @Inject constructor(
             )
         }
         loadMoreSeeAll()
+        // The row only carried logos for the titles it showed; the rest get theirs now.
+        if (titleLogos) {
+            viewModelScope.launch {
+                val withLogos = runCatching { repository.withTitleLogos(items) }.getOrNull() ?: return@launch
+                val byId = withLogos.associateBy { "${it.apiType}:${it.id}" }
+                _uiState.update { state ->
+                    val open = state.seeAll?.takeIf { it.rowId == rowId } ?: return@update state
+                    state.copy(seeAll = open.copy(items = open.items.map { byId["${it.apiType}:${it.id}"] ?: it }))
+                }
+            }
+        }
     }
 
     fun closeSeeAll() {
@@ -181,6 +195,9 @@ class DisneyPlusViewModel @Inject constructor(
                 }
                 if (pageItems.isEmpty()) break
                 fresh = pageItems.filter { known.add("${it.apiType}:${it.id}") }
+                if (titleLogos && fresh.isNotEmpty()) {
+                    fresh = runCatching { repository.withTitleLogos(fresh) }.getOrDefault(fresh)
+                }
                 if (page < SEE_ALL_MAX_PAGES) nextPage = page + 1
                 if (fresh.isNotEmpty()) break
                 page++
@@ -270,7 +287,7 @@ class DisneyPlusViewModel @Inject constructor(
 
     /** A failed row just stays hidden; it never leaves the page stuck in a loading state. */
     private suspend fun safeResolve(spec: DisneyRowSpec, forceRefresh: Boolean): CatalogRow? = try {
-        repository.resolveRow(hub, spec, context.getString(spec.titleRes), forceRefresh)
+        repository.resolveRow(hub, spec, context.getString(spec.titleRes), forceRefresh, titleLogos)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -287,7 +304,7 @@ class DisneyPlusViewModel @Inject constructor(
         }
         val heroIds = _uiState.value.heroItems.map { it.id }.toSet()
         val row = try {
-            repository.resolveRecommendedRow(hub, context.getString(spec.titleRes), history, heroIds)
+            repository.resolveRecommendedRow(hub, context.getString(spec.titleRes), history, heroIds, titleLogos)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

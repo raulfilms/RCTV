@@ -50,6 +50,7 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,9 +123,13 @@ fun CatalogRowSection(
     /** Classic look: how many titles to show at most (the rest are on the See All page); null = all. */
     maxItems: Int? = null,
     /** Apple TV look: horizontal 16:9 cards for every title (a channel's TV Shows and Movies rows). */
-    appleLandscape: Boolean = false
+    appleLandscape: Boolean = false,
+    /** Apple TV look: "Top 10" style numbers on ranked rows ("Trending", "Popular"...). */
+    appleRankNumbers: Boolean = true,
+    /** Left margin of the row's title and first card; null = the style's default. */
+    contentStart: Dp? = null
 ) {
-    val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
+    val rowStartPadding = contentStart ?: if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     // Apple TV style rows show a handful of titles and then a "See All" card.
     val displayItems = remember(catalogRow.items, appleStyle, appleMaxItems, maxItems) {
         when {
@@ -294,8 +299,8 @@ fun CatalogRowSection(
         else if (showCatalogTypeSuffix && typeLabel.isNotEmpty()) "$formattedName - $typeLabel" else formattedName
     }
 
-    val showRankNumbers = remember(appleStyle, catalogRow.catalogName) {
-        appleStyle && isRankedCatalogName(catalogRow.catalogName)
+    val showRankNumbers = remember(appleStyle, appleRankNumbers, catalogRow.catalogName) {
+        appleStyle && appleRankNumbers && isRankedCatalogName(catalogRow.catalogName)
     }
     // Popular series use horizontal 16:9 cards; every other row keeps vertical posters.
     val useLandscapeCards = remember(appleStyle, appleLandscape, catalogRow.catalogName, catalogRow.apiType) {
@@ -311,7 +316,7 @@ fun CatalogRowSection(
         } else Modifier
     )) {
         if (appleStyle) {
-            AppleRowTitle(text = catalogTitle.ifBlank { " " })
+            AppleRowTitle(text = catalogTitle.ifBlank { " " }, contentStart = rowStartPadding)
         } else
         Row(
             modifier = Modifier
