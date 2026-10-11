@@ -336,6 +336,64 @@ enum class DisneyPlusHub(
     COL_DISNEYNATURE("collection_disneynature", R.string.disney_col_disneynature),
     COL_DCOM("collection_dcom", R.string.disney_col_dcom),
 
+    // Collection pages from the Pixar, Marvel, Star Wars and National Geographic pages, and the
+    // "Explore Collections" row on the main Disney+ page.
+    COL_TOY_STORY("collection_toy_story", R.string.disney_col_toy_story),
+    COL_CARS("collection_cars", R.string.disney_col_cars),
+    COL_INCREDIBLES("collection_incredibles", R.string.disney_col_incredibles),
+    COL_INSIDE_OUT("collection_inside_out", R.string.disney_col_inside_out),
+    COL_PIXAR_SHORTS("collection_pixar_shorts", R.string.disney_col_pixar_shorts),
+    COL_SPARKSHORTS("collection_sparkshorts", R.string.disney_col_sparkshorts),
+    COL_FORKY("collection_forky", R.string.disney_col_forky),
+    COL_INFINITY_SAGA("collection_infinity_saga", R.string.disney_col_infinity_saga),
+    COL_AVENGERS("collection_avengers", R.string.disney_col_avengers),
+    COL_IRON_SUIT("collection_iron_suit", R.string.disney_col_iron_suit),
+    COL_SPIDER_MAN("collection_spider_man", R.string.disney_col_spider_man),
+    COL_THOR("collection_thor", R.string.disney_col_thor),
+    COL_BLACK_PANTHER("collection_black_panther", R.string.disney_col_black_panther),
+    COL_BLACK_WIDOW("collection_black_widow", R.string.disney_col_black_widow),
+    COL_ANT_MAN("collection_ant_man", R.string.disney_col_ant_man),
+    COL_DOCTOR_STRANGE("collection_doctor_strange", R.string.disney_col_doctor_strange),
+    COL_LOKI("collection_loki", R.string.disney_col_loki),
+    COL_WANDA_VISION("collection_wanda_vision", R.string.disney_col_wanda_vision),
+    COL_FALCON_WINTER_SOLDIER("collection_falcon_winter_soldier", R.string.disney_col_falcon_winter_soldier),
+    COL_DAREDEVIL("collection_daredevil", R.string.disney_col_daredevil),
+    COL_SKYWALKER_SAGA("collection_skywalker_saga", R.string.disney_col_skywalker_saga),
+    COL_MANDALORIAN_GROGU("collection_mandalorian_grogu", R.string.disney_col_mandalorian_grogu),
+    COL_DARTH_VADER("collection_darth_vader", R.string.disney_col_darth_vader),
+    COL_OBI_WAN("collection_obi_wan", R.string.disney_col_obi_wan),
+    COL_STAR_WARS_TALES("collection_star_wars_tales", R.string.disney_col_star_wars_tales),
+    COL_LUCASFILM_ANIMATION("collection_lucasfilm_animation", R.string.disney_col_lucasfilm_animation),
+    COL_STAR_WARS_VINTAGE("collection_star_wars_vintage", R.string.disney_col_star_wars_vintage),
+    COL_NG_ANIMALS_NATURE("collection_ng_animals_nature", R.string.disney_col_ng_animals_nature),
+    COL_NG_EXPLORING("collection_ng_exploring", R.string.disney_col_ng_exploring),
+    COL_NG_SPACE("collection_ng_space", R.string.disney_col_ng_space),
+    COL_NG_EARTH_MONTH("collection_ng_earth_month", R.string.disney_col_ng_earth_month),
+    COL_NG_OUR_HOME("collection_ng_our_home", R.string.disney_col_ng_our_home),
+    COL_NG_VETS_PETS("collection_ng_vets_pets", R.string.disney_col_ng_vets_pets),
+    COL_NG_SHARKS("collection_ng_sharks", R.string.disney_col_ng_sharks),
+    COL_DISNEY100("collection_disney100", R.string.disney_col_disney100),
+    COL_AVATAR("collection_avatar", R.string.disney_col_avatar),
+    COL_BLUEY("collection_bluey", R.string.disney_col_bluey),
+    COL_SIMPSONS("collection_simpsons", R.string.disney_col_simpsons),
+    COL_TREEHOUSE_OF_HORROR("collection_treehouse_of_horror", R.string.disney_col_treehouse_of_horror),
+    COL_PHINEAS_FERB("collection_phineas_ferb", R.string.disney_col_phineas_ferb),
+    COL_LILO_STITCH("collection_lilo_stitch", R.string.disney_col_lilo_stitch),
+    COL_ZOOTOPIA("collection_zootopia", R.string.disney_col_zootopia),
+    COL_DESCENDANTS("collection_descendants", R.string.disney_col_descendants),
+    COL_CHIP_DALE("collection_chip_dale", R.string.disney_col_chip_dale),
+    COL_DISNEY_FAIRIES("collection_disney_fairies", R.string.disney_col_disney_fairies),
+    COL_TRON("collection_tron", R.string.disney_col_tron),
+    COL_AIR_BUD("collection_air_bud", R.string.disney_col_air_bud),
+    COL_PRINCESSES("collection_princesses", R.string.disney_col_princesses),
+    COL_THROWBACKS("collection_throwbacks", R.string.disney_col_throwbacks),
+    COL_MUSICALS("collection_musicals", R.string.disney_col_musicals),
+    COL_PRIDE("collection_pride", R.string.disney_col_pride),
+    COL_BLACK_STORIES("collection_black_stories", R.string.disney_col_black_stories),
+    COL_HALLOWEEN("collection_halloween", R.string.disney_col_halloween),
+    COL_DISNEY_PARKS("collection_disney_parks", R.string.disney_col_disney_parks),
+    COL_DISNEY_PLUS_INSIDER("collection_disney_plus_insider", R.string.disney_col_disney_plus_insider),
+
     // Paramount+: its main page, then one page per brand tile.
     PARAMOUNT_MAIN("paramount", R.string.paramount_plus_title, HubService.PARAMOUNT),
     P_CBS("paramount_cbs", R.string.paramount_brand_cbs, HubService.PARAMOUNT),
@@ -832,18 +890,10 @@ object DisneyPlusCatalog {
     )
 
     /**
-     * Titles whose backdrops make up each collection tile's artwork (a strip of 3-4 images, like the
-     * Disney+ collection cards). Only the TMDB backdrops of these titles are used.
+     * Titles whose backdrops would make up a collection tile's artwork. Every collection now has its own
+     * tile picture (bundled with the app), so none is needed.
      */
-    fun collectionArt(hub: DisneyPlusHub): List<CuratedTitle> = when (hub) {
-        DisneyPlusHub.COL_WDAS -> listOf(movie("Fantasia", 1940), movie("Moana", 2016), movie("Lilo & Stitch", 2002), movie("The Little Mermaid", 1989))
-        DisneyPlusHub.COL_DISNEY_JR -> listOf(series("Spidey and His Amazing Friends", 2021), series("Sofia the First", 2013), series("Mickey Mouse Clubhouse", 2006))
-        DisneyPlusHub.COL_DISNEY_CHANNEL -> listOf(series("Hannah Montana", 2006), series("Wizards of Waverly Place", 2007), series("Gravity Falls", 2012))
-        DisneyPlusHub.COL_DISNEY_XD -> listOf(series("Star vs. the Forces of Evil", 2015), series("DuckTales", 2017), series("Kickin' It", 2011))
-        DisneyPlusHub.COL_DISNEYNATURE -> listOf(movie("Polar Bear", 2022), movie("Tiger", 2024), movie("Dolphin Reef", 2018))
-        DisneyPlusHub.COL_DCOM -> listOf(movie("High School Musical", 2006), movie("Descendants", 2015), movie("Zombies", 2018))
-        else -> emptyList()
-    }
+    fun collectionArt(hub: DisneyPlusHub): List<CuratedTitle> = emptyList()
 
     // ================================================================== Disney+ brand pages
     // Row order and names follow each brand's page on Disney+ (en-us).
@@ -1630,6 +1680,34 @@ object DisneyPlusCatalog {
                 "trending", R.string.disney_row_trending,
                 listOf(onDisneyPlus(MOVIE), onDisneyPlus(TV))
             ),
+            // Every collection that isn't on a brand page (Disney, Pixar, Marvel, Star Wars, Nat Geo).
+            DisneyRowSpec(
+                "explore_collections", R.string.disney_row_explore_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(
+                    DisneyPlusHub.COL_DISNEY100,
+                    DisneyPlusHub.COL_AVATAR,
+                    DisneyPlusHub.COL_BLUEY,
+                    DisneyPlusHub.COL_SIMPSONS,
+                    DisneyPlusHub.COL_TREEHOUSE_OF_HORROR,
+                    DisneyPlusHub.COL_PHINEAS_FERB,
+                    DisneyPlusHub.COL_LILO_STITCH,
+                    DisneyPlusHub.COL_ZOOTOPIA,
+                    DisneyPlusHub.COL_DESCENDANTS,
+                    DisneyPlusHub.COL_CHIP_DALE,
+                    DisneyPlusHub.COL_DISNEY_FAIRIES,
+                    DisneyPlusHub.COL_TRON,
+                    DisneyPlusHub.COL_AIR_BUD,
+                    DisneyPlusHub.COL_PRINCESSES,
+                    DisneyPlusHub.COL_THROWBACKS,
+                    DisneyPlusHub.COL_MUSICALS,
+                    DisneyPlusHub.COL_PRIDE,
+                    DisneyPlusHub.COL_BLACK_STORIES,
+                    DisneyPlusHub.COL_HALLOWEEN,
+                    DisneyPlusHub.COL_DISNEY_PARKS,
+                    DisneyPlusHub.COL_DISNEY_PLUS_INSIDER
+                )
+            ),
             rowOriginals,
             rowClassics,
             DisneyRowSpec(
@@ -1834,6 +1912,11 @@ object DisneyPlusCatalog {
             DisneyRowSpec(
                 "px_through_the_years", R.string.pixar_row_through_the_years,
                 listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = RELEASE_ORDER, runtimeGte = 60, voteCountGte = 50, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec(
+                "px_collections", R.string.disney_row_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(DisneyPlusHub.COL_TOY_STORY, DisneyPlusHub.COL_CARS, DisneyPlusHub.COL_INCREDIBLES, DisneyPlusHub.COL_INSIDE_OUT, DisneyPlusHub.COL_PIXAR_SHORTS, DisneyPlusHub.COL_SPARKSHORTS, DisneyPlusHub.COL_FORKY)
             )
         )
     )
@@ -1858,6 +1941,11 @@ object DisneyPlusCatalog {
             DisneyRowSpec("mv_sam_wilson", R.string.marvel_row_sam_wilson, listOf(curated(SAM_WILSON))),
             DisneyRowSpec("mv_rivals", R.string.marvel_row_rivals_characters, listOf(curated(MARVEL_RIVALS_CHARACTERS))),
             DisneyRowSpec(
+                "mv_character_collections", R.string.marvel_row_character_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(DisneyPlusHub.COL_INFINITY_SAGA, DisneyPlusHub.COL_AVENGERS, DisneyPlusHub.COL_IRON_SUIT, DisneyPlusHub.COL_SPIDER_MAN, DisneyPlusHub.COL_THOR, DisneyPlusHub.COL_BLACK_PANTHER, DisneyPlusHub.COL_BLACK_WIDOW, DisneyPlusHub.COL_ANT_MAN, DisneyPlusHub.COL_DOCTOR_STRANGE, DisneyPlusHub.COL_LOKI, DisneyPlusHub.COL_WANDA_VISION, DisneyPlusHub.COL_FALCON_WINTER_SOLDIER, DisneyPlusHub.COL_DAREDEVIL)
+            ),
+            DisneyRowSpec(
                 "mv_animation", R.string.marvel_row_animation,
                 listOf(curated(MARVEL_ANIMATION), company(TV, DisneyPlusIds.CO_MARVEL_ANIMATION))
             ),
@@ -1881,6 +1969,11 @@ object DisneyPlusCatalog {
             DisneyRowSpec("sw_timeline", R.string.sw_row_timeline, listOf(curated(STAR_WARS_TIMELINE))),
             DisneyRowSpec("sw_series_specials", R.string.sw_row_series_and_specials, listOf(curated(STAR_WARS_SERIES_AND_SPECIALS))),
             DisneyRowSpec("sw_references", R.string.sw_row_references, listOf(curated(STAR_WARS_REFERENCES))),
+            DisneyRowSpec(
+                "sw_collections", R.string.disney_row_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(DisneyPlusHub.COL_SKYWALKER_SAGA, DisneyPlusHub.COL_MANDALORIAN_GROGU, DisneyPlusHub.COL_DARTH_VADER, DisneyPlusHub.COL_OBI_WAN, DisneyPlusHub.COL_STAR_WARS_TALES, DisneyPlusHub.COL_LUCASFILM_ANIMATION, DisneyPlusHub.COL_STAR_WARS_VINTAGE)
+            ),
             DisneyRowSpec("sw_animation", R.string.sw_row_animation, listOf(curated(STAR_WARS_ANIMATION))),
             DisneyRowSpec(
                 "sw_documentaries", R.string.disney_row_documentaries,
@@ -1932,6 +2025,11 @@ object DisneyPlusCatalog {
             DisneyRowSpec(
                 "ng_exploring", R.string.natgeo_row_exploring_our_world,
                 listOf(curated(NAT_GEO_EXPLORING), net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "exploration"))
+            ),
+            DisneyRowSpec(
+                "ng_collections", R.string.disney_row_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(DisneyPlusHub.COL_NG_ANIMALS_NATURE, DisneyPlusHub.COL_NG_EXPLORING, DisneyPlusHub.COL_NG_SPACE, DisneyPlusHub.COL_NG_EARTH_MONTH, DisneyPlusHub.COL_NG_OUR_HOME, DisneyPlusHub.COL_NG_VETS_PETS, DisneyPlusHub.COL_NG_SHARKS)
             ),
             DisneyRowSpec(
                 "ng_sharks", R.string.natgeo_row_sharks,
@@ -2913,6 +3011,454 @@ object DisneyPlusCatalog {
         )
     )
 
+    // ================================================================== Collection pages
+
+    private val COLLECTION_TOY_STORY_EXTRAS = listOf(
+        movie("Toy Story of Terror!", 2013),
+        movie("Toy Story That Time Forgot", 2014),
+        series("Forky Asks a Question", 2019),
+        movie("Lamp Life", 2020)
+    )
+
+    private val COLLECTION_WINTER_SOLDIER_EXTRAS = listOf(
+        movie("Captain America: The First Avenger", 2011),
+        movie("Thunderbolts*", 2025)
+    )
+
+    private val COLLECTION_DAREDEVIL_EXTRAS = listOf(
+        series("Echo", 2024),
+        movie("Spider-Man: No Way Home", 2021),
+        movie("Daredevil", 2003)
+    )
+
+    private val COLLECTION_OUR_HOME = listOf(
+        movie("Earth", 2007),
+        movie("Oceans", 2009),
+        movie("Born in China", 2016),
+        movie("Penguins", 2019),
+        movie("Elephant", 2020),
+        movie("Polar Bear", 2022),
+        movie("Tiger", 2024),
+        series("Secrets of the Whales", 2021),
+        series("Welcome to Earth", 2021),
+        series("America the Beautiful", 2022),
+        series("One Strange Rock", 2018)
+    )
+
+    private val COLLECTION_SIMPSONS = listOf(
+        series("The Simpsons", 1989),
+        movie("The Simpsons Movie", 2007),
+        movie("The Longest Daycare", 2012),
+        movie("Playdate with Destiny", 2020),
+        movie("The Good, the Bart, and the Loki", 2021),
+        movie("The Force Awakens from Its Nap", 2021),
+        movie("Plusaversary", 2021),
+        movie("Welcome to the Club", 2022),
+        movie("The Simpsons Meet the Bocellis in Feliz Navidad", 2022),
+        movie("When Billie Met Lisa", 2023),
+        movie("Rogue Not Quite One", 2023),
+        movie("May the 12th Be with You", 2024)
+    )
+
+    private val COLLECTION_MUSICALS_EXTRAS = listOf(
+        movie("Hamilton", 2020),
+        movie("Into the Woods", 2014),
+        movie("Mary Poppins Returns", 2018),
+        movie("Newsies", 1992),
+        movie("Enchanted", 2007),
+        movie("The Greatest Showman", 2017),
+        movie("West Side Story", 2021)
+    )
+
+    private val COLTITLES_INCREDIBLES = listOf(
+        movie("The Incredibles", 2004),
+        movie("Incredibles 2", 2018),
+        movie("Jack-Jack Attack", 2005),
+        movie("Auntie Edna", 2018)
+    )
+
+    private val COLTITLES_INSIDE_OUT = listOf(
+        movie("Inside Out", 2015),
+        movie("Inside Out 2", 2024),
+        series("Dream Productions", 2024),
+        movie("Riley's First Date?", 2015)
+    )
+
+    private val COLTITLES_PIXAR_SHORTS = listOf(
+        movie("Bao", 2018),
+        movie("Piper", 2016),
+        movie("For the Birds", 2000),
+        movie("La Luna", 2011),
+        movie("Lava", 2014),
+        movie("Partly Cloudy", 2009),
+        movie("Presto", 2008),
+        movie("Geri's Game", 1997),
+        movie("Luxo Jr.", 1986)
+    )
+
+    private val COLTITLES_AVENGERS = listOf(
+        movie("The Avengers", 2012),
+        movie("Avengers: Age of Ultron", 2015),
+        movie("Captain America: Civil War", 2016),
+        movie("Avengers: Infinity War", 2018),
+        movie("Avengers: Endgame", 2019),
+        movie("Thunderbolts*", 2025)
+    )
+
+    private val COLTITLES_IRON_SUIT = listOf(
+        movie("Iron Man", 2008),
+        movie("Iron Man 2", 2010),
+        movie("Iron Man 3", 2013),
+        series("Ironheart", 2025),
+        movie("The Avengers", 2012),
+        movie("Captain America: Civil War", 2016),
+        movie("Spider-Man: Homecoming", 2017),
+        movie("Avengers: Endgame", 2019)
+    )
+
+    private val COLTITLES_THOR = listOf(
+        movie("Thor", 2011),
+        movie("Thor: The Dark World", 2013),
+        movie("Thor: Ragnarok", 2017),
+        movie("Thor: Love and Thunder", 2022),
+        series("Loki", 2021),
+        movie("The Avengers", 2012)
+    )
+
+    private val COLTITLES_BLACK_PANTHER = listOf(
+        movie("Black Panther", 2018),
+        movie("Black Panther: Wakanda Forever", 2022),
+        series("Eyes of Wakanda", 2025),
+        movie("Captain America: Civil War", 2016),
+        movie("Avengers: Infinity War", 2018)
+    )
+
+    private val COLTITLES_BLACK_WIDOW = listOf(
+        movie("Black Widow", 2021),
+        series("Hawkeye", 2021),
+        movie("Thunderbolts*", 2025),
+        movie("The Avengers", 2012),
+        movie("Captain America: The Winter Soldier", 2014),
+        movie("Avengers: Endgame", 2019)
+    )
+
+    private val COLTITLES_ANT_MAN = listOf(
+        movie("Ant-Man", 2015),
+        movie("Ant-Man and the Wasp", 2018),
+        movie("Ant-Man and the Wasp: Quantumania", 2023),
+        movie("Captain America: Civil War", 2016),
+        movie("Avengers: Endgame", 2019)
+    )
+
+    private val COLTITLES_DOCTOR_STRANGE = listOf(
+        movie("Doctor Strange", 2016),
+        movie("Doctor Strange in the Multiverse of Madness", 2022),
+        series("What If...?", 2021),
+        movie("Spider-Man: No Way Home", 2021),
+        movie("Thor: Ragnarok", 2017),
+        movie("Avengers: Infinity War", 2018)
+    )
+
+    private val COLTITLES_LOKI = listOf(
+        series("Loki", 2021),
+        movie("Thor", 2011),
+        movie("The Avengers", 2012),
+        movie("Thor: The Dark World", 2013),
+        movie("Thor: Ragnarok", 2017),
+        series("What If...?", 2021)
+    )
+
+    private val COLTITLES_SKYWALKER_SAGA = listOf(
+        movie("Star Wars: Episode I - The Phantom Menace", 1999),
+        movie("Star Wars: Episode II - Attack of the Clones", 2002),
+        movie("Star Wars: Episode III - Revenge of the Sith", 2005),
+        movie("Star Wars", 1977),
+        movie("The Empire Strikes Back", 1980),
+        movie("Return of the Jedi", 1983),
+        movie("Star Wars: The Force Awakens", 2015),
+        movie("Star Wars: The Last Jedi", 2017),
+        movie("Star Wars: The Rise of Skywalker", 2019)
+    )
+
+    private val COLTITLES_MANDALORIAN_GROGU = listOf(
+        series("The Mandalorian", 2019),
+        movie("The Mandalorian and Grogu", 2026),
+        series("The Book of Boba Fett", 2021),
+        series("Ahsoka", 2023),
+        series("Star Wars: Skeleton Crew", 2024),
+        series("Disney Gallery: Star Wars: The Mandalorian", 2020)
+    )
+
+    private val COLTITLES_STAR_WARS_TALES = listOf(
+        series("Star Wars: Tales of the Jedi", 2022),
+        series("Star Wars: Tales of the Empire", 2024),
+        series("Star Wars: Tales of the Underworld", 2025)
+    )
+
+    private val COLTITLES_NG_SPACE = listOf(
+        series("Cosmos: A Spacetime Odyssey", 2014),
+        series("Cosmos: Possible Worlds", 2020),
+        series("Mars", 2016),
+        series("One Strange Rock", 2018),
+        series("The Right Stuff", 2020),
+        movie("Apollo: Missions to the Moon", 2019),
+        series("Year Million", 2017),
+        movie("Hubble's Cosmic Journey", 2015)
+    )
+
+    private val COLTITLES_NG_EARTH_MONTH = listOf(
+        series("Welcome to Earth", 2021),
+        series("One Strange Rock", 2018),
+        series("Secrets of the Whales", 2021),
+        series("America the Beautiful", 2022),
+        movie("Before the Flood", 2016),
+        series("Hostile Planet", 2019),
+        series("Incredible Animal Journeys", 2024),
+        series("Pole to Pole with Will Smith", 2025)
+    )
+
+    private val COLTITLES_NG_SHARKS = listOf(
+        movie("Shark Beach with Chris Hemsworth", 2021),
+        series("Shark Week", 1988)
+    )
+
+    private val COLTITLES_DISNEY100 = listOf(
+        movie("Snow White and the Seven Dwarfs", 1937),
+        movie("Pinocchio", 1940),
+        movie("Fantasia", 1940),
+        movie("Cinderella", 1950),
+        movie("Mary Poppins", 1964),
+        movie("The Little Mermaid", 1989),
+        movie("Beauty and the Beast", 1991),
+        movie("Aladdin", 1992),
+        movie("The Lion King", 1994),
+        movie("Toy Story", 1995),
+        movie("Frozen", 2013),
+        movie("Encanto", 2021),
+        movie("Once Upon a Studio", 2023),
+        movie("Wish", 2023)
+    )
+
+    private val COLTITLES_AVATAR = listOf(
+        movie("Avatar", 2009),
+        movie("Avatar: The Way of Water", 2022),
+        movie("Avatar: Fire and Ash", 2025)
+    )
+
+    private val COLTITLES_BLUEY = listOf(
+        series("Bluey", 2018),
+        series("Bluey Minisodes", 2024)
+    )
+
+    private val COLTITLES_TREEHOUSE_OF_HORROR = listOf(
+        series("The Simpsons", 1989),
+        movie("The Simpsons Movie", 2007),
+        movie("The Simpsons: Treehouse of Horror Presents: Simpsons Wicked This Way Comes", 2024)
+    )
+
+    private val COLTITLES_PHINEAS_FERB = listOf(
+        series("Phineas and Ferb", 2007),
+        movie("Phineas and Ferb the Movie: Across the 2nd Dimension", 2011),
+        movie("Phineas and Ferb the Movie: Candace Against the Universe", 2020),
+        series("Milo Murphy's Law", 2016)
+    )
+
+    private val COLTITLES_ZOOTOPIA = listOf(
+        movie("Zootopia", 2016),
+        movie("Zootopia 2", 2025),
+        series("Zootopia+", 2022)
+    )
+
+    private val COLTITLES_DESCENDANTS = listOf(
+        movie("Descendants", 2015),
+        movie("Descendants 2", 2017),
+        movie("Descendants 3", 2019),
+        movie("Descendants: The Rise of Red", 2024),
+        series("Descendants: Wicked World", 2015),
+        movie("Descendants: The Royal Wedding", 2021)
+    )
+
+    private val COLTITLES_CHIP_DALE = listOf(
+        movie("Chip 'n Dale: Rescue Rangers", 2022),
+        series("Chip 'n' Dale: Park Life", 2021),
+        series("Chip 'n Dale Rescue Rangers", 1989)
+    )
+
+    private val COLTITLES_DISNEY_FAIRIES = listOf(
+        movie("Tinker Bell", 2008),
+        movie("Tinker Bell and the Lost Treasure", 2009),
+        movie("Tinker Bell and the Great Fairy Rescue", 2010),
+        movie("Secret of the Wings", 2012),
+        movie("The Pirate Fairy", 2014),
+        movie("Tinker Bell and the Legend of the NeverBeast", 2014),
+        movie("Pixie Hollow Games", 2011),
+        movie("Pixie Hollow Bake Off", 2013)
+    )
+
+    private val COLTITLES_TRON = listOf(
+        movie("TRON", 1982),
+        movie("TRON: Legacy", 2010),
+        movie("TRON: Ares", 2025),
+        series("TRON: Uprising", 2012)
+    )
+
+    private val COLTITLES_AIR_BUD = listOf(
+        movie("Air Bud", 1997),
+        movie("Air Bud: Golden Receiver", 1998),
+        movie("Air Bud: World Pup", 2000),
+        movie("Air Bud: Seventh Inning Fetch", 2002),
+        movie("Air Bud: Spikes Back", 2003),
+        movie("Air Buddies", 2006),
+        movie("Snow Buddies", 2008),
+        movie("Space Buddies", 2009),
+        movie("Santa Buddies", 2009),
+        movie("The Search for Santa Paws", 2010),
+        movie("Spooky Buddies", 2011),
+        movie("Treasure Buddies", 2012),
+        movie("Super Buddies", 2013)
+    )
+
+    private val COLTITLES_PRIDE = listOf(
+        movie("Love, Simon", 2018),
+        series("Love, Victor", 2020),
+        movie("Fire Island", 2022),
+        series("Pose", 2018),
+        movie("Better Nate Than Ever", 2022),
+        movie("Out", 2020),
+        movie("Strange World", 2022)
+    )
+
+    private val COLTITLES_BLACK_STORIES = listOf(
+        movie("Black Panther", 2018),
+        movie("Black Panther: Wakanda Forever", 2022),
+        movie("Soul", 2020),
+        movie("Black Is King", 2020),
+        movie("Summer of Soul (...Or, When the Revolution Could Not Be Televised)", 2021),
+        movie("Hidden Figures", 2016),
+        movie("Queen of Katwe", 2016),
+        movie("Remember the Titans", 2000),
+        movie("The Princess and the Frog", 2009),
+        series("The Proud Family: Louder and Prouder", 2022),
+        series("Ironheart", 2025),
+        series("Kizazi Moto: Generation Fire", 2023)
+    )
+
+    private val COLTITLES_HALLOWEEN = listOf(
+        movie("Hocus Pocus", 1993),
+        movie("Hocus Pocus 2", 2022),
+        movie("Halloweentown", 1998),
+        movie("The Nightmare Before Christmas", 1993),
+        movie("Twitches", 2005),
+        movie("Haunted Mansion", 2023),
+        movie("The Haunted Mansion", 2003),
+        movie("Frankenweenie", 2012),
+        movie("Under Wraps", 2021),
+        movie("Return to Halloweentown", 2006),
+        movie("Coco", 2017),
+        movie("Monsters, Inc.", 2001)
+    )
+
+    private val COLTITLES_DISNEY_PARKS = listOf(
+        series("Behind the Attraction", 2021),
+        series("The Imagineering Story", 2019),
+        series("Magic of Disney's Animal Kingdom", 2020),
+        movie("Jungle Cruise", 2021),
+        movie("Pirates of the Caribbean: The Curse of the Black Pearl", 2003),
+        movie("Haunted Mansion", 2023),
+        movie("Tomorrowland", 2015)
+    )
+
+    private val COLTITLES_DISNEY_PLUS_INSIDER = listOf(
+        series("One Day at Disney", 2019),
+        series("Disney Gallery: Star Wars: The Mandalorian", 2020),
+        series("Marvel Studios: Assembled", 2021),
+        series("The Imagineering Story", 2019),
+        series("Behind the Attraction", 2021)
+    )
+
+    /**
+     * A collection page: its titles as "Featured" (the hero comes from them), then split into Movies
+     * and Series when it has both.
+     */
+    private fun collectionPage(
+        hub: DisneyPlusHub,
+        titles: List<CuratedTitle>,
+        extraSources: List<DisneyRowSource> = emptyList()
+    ): DisneyHubSpec {
+        val distinct = titles.distinct()
+        val movies = distinct.filter { it.mediaType == MOVIE }
+        val shows = distinct.filter { it.mediaType == TV }
+        return DisneyHubSpec(
+            hub = hub,
+            heroRowId = "${hub.key}_featured",
+            rows = buildList {
+                add(DisneyRowSpec("${hub.key}_featured", R.string.disney_row_featured, listOf(curated(distinct)) + extraSources))
+                if (movies.isNotEmpty() && shows.isNotEmpty()) {
+                    add(DisneyRowSpec("${hub.key}_movies", R.string.disney_row_movies, listOf(curated(movies))))
+                    add(DisneyRowSpec("${hub.key}_series", R.string.disney_row_series, listOf(curated(shows))))
+                }
+            }
+        )
+    }
+
+    private val collectionPages: Map<DisneyPlusHub, DisneyHubSpec> = listOf(
+        collectionPage(DisneyPlusHub.COL_TOY_STORY, TOY_STORY + COLLECTION_TOY_STORY_EXTRAS),
+        collectionPage(DisneyPlusHub.COL_CARS, CARS),
+        collectionPage(DisneyPlusHub.COL_INCREDIBLES, COLTITLES_INCREDIBLES),
+        collectionPage(DisneyPlusHub.COL_INSIDE_OUT, COLTITLES_INSIDE_OUT),
+        collectionPage(DisneyPlusHub.COL_PIXAR_SHORTS, COLTITLES_PIXAR_SHORTS, extraSources = listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, runtimeLte = 30, voteCountGte = 10))),
+        collectionPage(DisneyPlusHub.COL_SPARKSHORTS, SPARKSHORTS, extraSources = listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = RELEASE_ORDER, runtimeLte = 25, releaseDateGte = "2019-01-01", releaseDateLte = "2021-12-31"))),
+        collectionPage(DisneyPlusHub.COL_FORKY, FORKY_AND_FRIENDS),
+        collectionPage(DisneyPlusHub.COL_INFINITY_SAGA, MCU_INFINITY_SAGA),
+        collectionPage(DisneyPlusHub.COL_AVENGERS, COLTITLES_AVENGERS),
+        collectionPage(DisneyPlusHub.COL_IRON_SUIT, COLTITLES_IRON_SUIT),
+        collectionPage(DisneyPlusHub.COL_SPIDER_MAN, SPIDER_VERSE),
+        collectionPage(DisneyPlusHub.COL_THOR, COLTITLES_THOR),
+        collectionPage(DisneyPlusHub.COL_BLACK_PANTHER, COLTITLES_BLACK_PANTHER),
+        collectionPage(DisneyPlusHub.COL_BLACK_WIDOW, COLTITLES_BLACK_WIDOW),
+        collectionPage(DisneyPlusHub.COL_ANT_MAN, COLTITLES_ANT_MAN),
+        collectionPage(DisneyPlusHub.COL_DOCTOR_STRANGE, COLTITLES_DOCTOR_STRANGE),
+        collectionPage(DisneyPlusHub.COL_LOKI, COLTITLES_LOKI),
+        collectionPage(DisneyPlusHub.COL_WANDA_VISION, PREPARE_FOR_VISION),
+        collectionPage(DisneyPlusHub.COL_FALCON_WINTER_SOLDIER, SAM_WILSON + COLLECTION_WINTER_SOLDIER_EXTRAS),
+        collectionPage(DisneyPlusHub.COL_DAREDEVIL, THE_DEFENDERS + COLLECTION_DAREDEVIL_EXTRAS),
+        collectionPage(DisneyPlusHub.COL_SKYWALKER_SAGA, COLTITLES_SKYWALKER_SAGA),
+        collectionPage(DisneyPlusHub.COL_MANDALORIAN_GROGU, COLTITLES_MANDALORIAN_GROGU),
+        collectionPage(DisneyPlusHub.COL_DARTH_VADER, DARTH_VADER),
+        collectionPage(DisneyPlusHub.COL_OBI_WAN, OBI_WAN_KENOBI),
+        collectionPage(DisneyPlusHub.COL_STAR_WARS_TALES, COLTITLES_STAR_WARS_TALES),
+        collectionPage(DisneyPlusHub.COL_LUCASFILM_ANIMATION, STAR_WARS_ANIMATION),
+        collectionPage(DisneyPlusHub.COL_STAR_WARS_VINTAGE, STAR_WARS_VINTAGE),
+        collectionPage(DisneyPlusHub.COL_NG_ANIMALS_NATURE, NAT_GEO_ANIMALS, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "nature"), net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "animal"))),
+        collectionPage(DisneyPlusHub.COL_NG_EXPLORING, NAT_GEO_EXPLORING, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "exploration"))),
+        collectionPage(DisneyPlusHub.COL_NG_SPACE, COLTITLES_NG_SPACE, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "space"))),
+        collectionPage(DisneyPlusHub.COL_NG_EARTH_MONTH, COLTITLES_NG_EARTH_MONTH),
+        collectionPage(DisneyPlusHub.COL_NG_OUR_HOME, COLLECTION_OUR_HOME),
+        collectionPage(DisneyPlusHub.COL_NG_VETS_PETS, NAT_GEO_VETS_AND_PETS, extraSources = listOf(net(null, DisneyPlusIds.NAT_GEO_WILD, keywordQuery = "veterinarian"))),
+        collectionPage(DisneyPlusHub.COL_NG_SHARKS, COLTITLES_NG_SHARKS, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "shark"), net(null, DisneyPlusIds.NAT_GEO_WILD, keywordQuery = "shark"), DisneyRowSource.Discover(MOVIE, companies = DisneyPlusIds.CO_NATIONAL_GEOGRAPHIC, keywordQuery = "shark"))),
+        collectionPage(DisneyPlusHub.COL_DISNEY100, COLTITLES_DISNEY100),
+        collectionPage(DisneyPlusHub.COL_AVATAR, COLTITLES_AVATAR),
+        collectionPage(DisneyPlusHub.COL_BLUEY, COLTITLES_BLUEY),
+        collectionPage(DisneyPlusHub.COL_SIMPSONS, COLLECTION_SIMPSONS),
+        collectionPage(DisneyPlusHub.COL_TREEHOUSE_OF_HORROR, COLTITLES_TREEHOUSE_OF_HORROR),
+        collectionPage(DisneyPlusHub.COL_PHINEAS_FERB, COLTITLES_PHINEAS_FERB),
+        collectionPage(DisneyPlusHub.COL_LILO_STITCH, LILO_AND_STITCH),
+        collectionPage(DisneyPlusHub.COL_ZOOTOPIA, COLTITLES_ZOOTOPIA),
+        collectionPage(DisneyPlusHub.COL_DESCENDANTS, COLTITLES_DESCENDANTS),
+        collectionPage(DisneyPlusHub.COL_CHIP_DALE, COLTITLES_CHIP_DALE),
+        collectionPage(DisneyPlusHub.COL_DISNEY_FAIRIES, COLTITLES_DISNEY_FAIRIES),
+        collectionPage(DisneyPlusHub.COL_TRON, COLTITLES_TRON),
+        collectionPage(DisneyPlusHub.COL_AIR_BUD, COLTITLES_AIR_BUD),
+        collectionPage(DisneyPlusHub.COL_PRINCESSES, PRINCESSES),
+        collectionPage(DisneyPlusHub.COL_THROWBACKS, DISNEY_CHANNEL_FEATURED + DCOM_CLASSICS),
+        collectionPage(DisneyPlusHub.COL_MUSICALS, SING_ALONGS + COLLECTION_MUSICALS_EXTRAS),
+        collectionPage(DisneyPlusHub.COL_PRIDE, COLTITLES_PRIDE),
+        collectionPage(DisneyPlusHub.COL_BLACK_STORIES, COLTITLES_BLACK_STORIES),
+        collectionPage(DisneyPlusHub.COL_HALLOWEEN, COLTITLES_HALLOWEEN),
+        collectionPage(DisneyPlusHub.COL_DISNEY_PARKS, COLTITLES_DISNEY_PARKS),
+        collectionPage(DisneyPlusHub.COL_DISNEY_PLUS_INSIDER, COLTITLES_DISNEY_PLUS_INSIDER)
+    ).associateBy { it.hub }
+
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */
     const val TODAY = "__today__"
 
@@ -2955,5 +3501,6 @@ object DisneyPlusCatalog {
         DisneyPlusHub.H_WB_ANIMATION -> hboMaxWbAnimation
         DisneyPlusHub.H_SESAME -> hboMaxSesame
         DisneyPlusHub.H_CRUNCHYROLL -> hboMaxCrunchyroll
+        else -> collectionPages[hub] ?: main
     }
 }

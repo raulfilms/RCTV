@@ -74,6 +74,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.domain.model.StreamingService
 import com.nuvio.tv.ui.components.AppleStreamingServicesRow
 import com.nuvio.tv.ui.components.HubHeroBanner
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import com.nuvio.tv.ui.components.ROW_MAX_ITEMS
 import com.nuvio.tv.ui.components.TitlesSeeAllPage
 import androidx.activity.compose.BackHandler
@@ -427,6 +429,73 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     else -> R.drawable.disney_brand_logo_disney
 }
 
+/** A collection's tile picture (bundled, as on Disney+); null draws the tinted backdrop card instead. */
+@DrawableRes
+private fun DisneyPlusHub.collectionArtRes(): Int? = when (this) {
+    DisneyPlusHub.COL_WDAS -> R.drawable.disney_collection_wdas
+    DisneyPlusHub.COL_DISNEY_JR -> R.drawable.disney_collection_disney_jr
+    DisneyPlusHub.COL_DISNEY_CHANNEL -> R.drawable.disney_collection_disney_channel
+    DisneyPlusHub.COL_DISNEY_XD -> R.drawable.disney_collection_disney_xd
+    DisneyPlusHub.COL_DISNEYNATURE -> R.drawable.disney_collection_disneynature
+    DisneyPlusHub.COL_DCOM -> R.drawable.disney_collection_dcom
+    DisneyPlusHub.COL_TOY_STORY -> R.drawable.disney_collection_toy_story
+    DisneyPlusHub.COL_CARS -> R.drawable.disney_collection_cars
+    DisneyPlusHub.COL_INCREDIBLES -> R.drawable.disney_collection_incredibles
+    DisneyPlusHub.COL_INSIDE_OUT -> R.drawable.disney_collection_inside_out
+    DisneyPlusHub.COL_PIXAR_SHORTS -> R.drawable.disney_collection_pixar_shorts
+    DisneyPlusHub.COL_SPARKSHORTS -> R.drawable.disney_collection_sparkshorts
+    DisneyPlusHub.COL_FORKY -> R.drawable.disney_collection_forky
+    DisneyPlusHub.COL_INFINITY_SAGA -> R.drawable.disney_collection_infinity_saga
+    DisneyPlusHub.COL_AVENGERS -> R.drawable.disney_collection_avengers
+    DisneyPlusHub.COL_IRON_SUIT -> R.drawable.disney_collection_iron_suit
+    DisneyPlusHub.COL_SPIDER_MAN -> R.drawable.disney_collection_spider_man
+    DisneyPlusHub.COL_THOR -> R.drawable.disney_collection_thor
+    DisneyPlusHub.COL_BLACK_PANTHER -> R.drawable.disney_collection_black_panther
+    DisneyPlusHub.COL_BLACK_WIDOW -> R.drawable.disney_collection_black_widow
+    DisneyPlusHub.COL_ANT_MAN -> R.drawable.disney_collection_ant_man
+    DisneyPlusHub.COL_DOCTOR_STRANGE -> R.drawable.disney_collection_doctor_strange
+    DisneyPlusHub.COL_LOKI -> R.drawable.disney_collection_loki
+    DisneyPlusHub.COL_WANDA_VISION -> R.drawable.disney_collection_wanda_vision
+    DisneyPlusHub.COL_FALCON_WINTER_SOLDIER -> R.drawable.disney_collection_falcon_winter_soldier
+    DisneyPlusHub.COL_DAREDEVIL -> R.drawable.disney_collection_daredevil
+    DisneyPlusHub.COL_SKYWALKER_SAGA -> R.drawable.disney_collection_skywalker_saga
+    DisneyPlusHub.COL_MANDALORIAN_GROGU -> R.drawable.disney_collection_mandalorian_grogu
+    DisneyPlusHub.COL_DARTH_VADER -> R.drawable.disney_collection_darth_vader
+    DisneyPlusHub.COL_OBI_WAN -> R.drawable.disney_collection_obi_wan
+    DisneyPlusHub.COL_STAR_WARS_TALES -> R.drawable.disney_collection_star_wars_tales
+    DisneyPlusHub.COL_LUCASFILM_ANIMATION -> R.drawable.disney_collection_lucasfilm_animation
+    DisneyPlusHub.COL_STAR_WARS_VINTAGE -> R.drawable.disney_collection_star_wars_vintage
+    DisneyPlusHub.COL_NG_ANIMALS_NATURE -> R.drawable.disney_collection_animals_nature
+    DisneyPlusHub.COL_NG_EXPLORING -> R.drawable.disney_collection_exploring_world
+    DisneyPlusHub.COL_NG_SPACE -> R.drawable.disney_collection_space_exploration
+    DisneyPlusHub.COL_NG_EARTH_MONTH -> R.drawable.disney_collection_earth_month
+    DisneyPlusHub.COL_NG_OUR_HOME -> R.drawable.disney_collection_our_home
+    DisneyPlusHub.COL_NG_VETS_PETS -> R.drawable.disney_collection_vets_pets
+    DisneyPlusHub.COL_NG_SHARKS -> R.drawable.disney_collection_sharks
+    DisneyPlusHub.COL_DISNEY100 -> R.drawable.disney_collection_disney100
+    DisneyPlusHub.COL_AVATAR -> R.drawable.disney_collection_avatar
+    DisneyPlusHub.COL_BLUEY -> R.drawable.disney_collection_bluey
+    DisneyPlusHub.COL_SIMPSONS -> R.drawable.disney_collection_simpsons
+    DisneyPlusHub.COL_TREEHOUSE_OF_HORROR -> R.drawable.disney_collection_treehouse_of_horror
+    DisneyPlusHub.COL_PHINEAS_FERB -> R.drawable.disney_collection_phineas_ferb
+    DisneyPlusHub.COL_LILO_STITCH -> R.drawable.disney_collection_lilo_stitch
+    DisneyPlusHub.COL_ZOOTOPIA -> R.drawable.disney_collection_zootopia
+    DisneyPlusHub.COL_DESCENDANTS -> R.drawable.disney_collection_descendants
+    DisneyPlusHub.COL_CHIP_DALE -> R.drawable.disney_collection_chip_dale
+    DisneyPlusHub.COL_DISNEY_FAIRIES -> R.drawable.disney_collection_disney_fairies
+    DisneyPlusHub.COL_TRON -> R.drawable.disney_collection_tron
+    DisneyPlusHub.COL_AIR_BUD -> R.drawable.disney_collection_air_bud
+    DisneyPlusHub.COL_PRINCESSES -> R.drawable.disney_collection_princesses
+    DisneyPlusHub.COL_THROWBACKS -> R.drawable.disney_collection_throwbacks
+    DisneyPlusHub.COL_MUSICALS -> R.drawable.disney_collection_musicals
+    DisneyPlusHub.COL_PRIDE -> R.drawable.disney_collection_pride
+    DisneyPlusHub.COL_BLACK_STORIES -> R.drawable.disney_collection_black_stories
+    DisneyPlusHub.COL_HALLOWEEN -> R.drawable.disney_collection_halloween
+    DisneyPlusHub.COL_DISNEY_PARKS -> R.drawable.disney_collection_disney_parks
+    DisneyPlusHub.COL_DISNEY_PLUS_INSIDER -> R.drawable.disney_collection_disney_plus_insider
+    else -> null
+}
+
 private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.DISNEY -> Color(0xFF4FA3FF)
     DisneyPlusHub.PIXAR -> Color(0xFFE8E8E8)
@@ -466,6 +535,7 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.H_WB_ANIMATION -> Color(0xFFED1C24)
     DisneyPlusHub.H_SESAME -> Color(0xFF00A651)
     DisneyPlusHub.H_CRUNCHYROLL -> Color(0xFFF78C25)
+    else -> Color(0xFF1E3A8A)
 }
 
 /**
@@ -527,7 +597,16 @@ private fun DisneyCollectionCard(
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
         modifier = modifier
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        val artRes = tile.hub.collectionArtRes()
+        if (artRes != null) {
+            // The collection's own tile picture, name and "COLLECTION" already on it.
+            Image(
+                painter = painterResource(id = artRes),
+                contentDescription = stringResource(tile.hub.titleRes),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else Box(modifier = Modifier.fillMaxSize()) {
             if (tile.backdrops.isNotEmpty()) {
                 Row(modifier = Modifier.fillMaxSize()) {
                     tile.backdrops.take(4).forEach { url ->
