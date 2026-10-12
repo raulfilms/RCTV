@@ -478,6 +478,20 @@ enum class DisneyPlusHub(
     P_NICKELODEON("paramount_nickelodeon", R.string.paramount_brand_nickelodeon, HubService.PARAMOUNT),
     P_SMITHSONIAN("paramount_smithsonian", R.string.paramount_brand_smithsonian, HubService.PARAMOUNT),
 
+    // Paramount+ "Universes": collection pages opened from the main page's Universes row.
+    PU_STAR_TREK("paramount_universe_star_trek", R.string.paramount_col_star_trek, HubService.PARAMOUNT),
+    PU_TAYLOR_SHERIDAN("paramount_universe_taylor_sheridan", R.string.paramount_col_taylor_sheridan, HubService.PARAMOUNT),
+    PU_MISSION_IMPOSSIBLE("paramount_universe_mission_impossible", R.string.paramount_col_mission_impossible, HubService.PARAMOUNT),
+    PU_TYLER_PERRY("paramount_universe_tyler_perry", R.string.paramount_col_tyler_perry, HubService.PARAMOUNT),
+    PU_QUIET_PLACE_SCREAM("paramount_universe_quiet_place_scream", R.string.paramount_col_quiet_place_scream, HubService.PARAMOUNT),
+    PU_DEXTER("paramount_universe_dexter", R.string.paramount_col_dexter, HubService.PARAMOUNT),
+    PU_NCIS("paramount_universe_ncis", R.string.paramount_col_ncis, HubService.PARAMOUNT),
+    PU_CSI("paramount_universe_csi", R.string.paramount_col_csi, HubService.PARAMOUNT),
+    PU_CRIMINAL_MINDS("paramount_universe_criminal_minds", R.string.paramount_col_criminal_minds, HubService.PARAMOUNT),
+    PU_SPONGEBOB("paramount_universe_spongebob", R.string.paramount_col_spongebob, HubService.PARAMOUNT),
+    PU_SOUTH_PARK("paramount_universe_south_park", R.string.paramount_col_south_park, HubService.PARAMOUNT),
+    PU_CHALLENGE("paramount_universe_challenge", R.string.paramount_col_challenge, HubService.PARAMOUNT),
+
     // discovery+: its main page, then one page per brand tile.
     DISCOVERY_MAIN("discovery", R.string.discovery_plus_title, HubService.DISCOVERY),
     D_ORIGINALS("discovery_originals", R.string.discovery_brand_originals, HubService.DISCOVERY),
@@ -2350,6 +2364,162 @@ object DisneyPlusCatalog {
         series("Lioness", 2023)
     )
 
+    // ------------------------------------------------------------------ Paramount+ Universes
+
+    private val STAR_TREK_UNIVERSE = listOf(
+        series("Star Trek", 1966),
+        series("Star Trek: The Animated Series", 1973),
+        series("Star Trek: The Next Generation", 1987),
+        series("Star Trek: Deep Space Nine", 1993),
+        series("Star Trek: Voyager", 1995),
+        series("Star Trek: Enterprise", 2001),
+        series("Star Trek: Discovery", 2017),
+        series("Star Trek: Short Treks", 2018),
+        series("Star Trek: Picard", 2020),
+        series("Star Trek: Lower Decks", 2020),
+        series("Star Trek: Prodigy", 2021),
+        series("Star Trek: Strange New Worlds", 2022),
+        CuratedTitle("Star Trek: Starfleet Academy", null, TV),
+        movie("Star Trek: The Motion Picture", 1979),
+        movie("Star Trek II: The Wrath of Khan", 1982),
+        movie("Star Trek III: The Search for Spock", 1984),
+        movie("Star Trek IV: The Voyage Home", 1986),
+        movie("Star Trek V: The Final Frontier", 1989),
+        movie("Star Trek VI: The Undiscovered Country", 1991),
+        movie("Star Trek: Generations", 1994),
+        movie("Star Trek: First Contact", 1996),
+        movie("Star Trek: Insurrection", 1998),
+        movie("Star Trek: Nemesis", 2002),
+        movie("Star Trek", 2009),
+        movie("Star Trek Into Darkness", 2013),
+        movie("Star Trek Beyond", 2016),
+        movie("Star Trek: Section 31", 2025)
+    )
+
+    private val TAYLOR_SHERIDAN_UNIVERSE = listOf(
+        series("Yellowstone", 2018),
+        series("1883", 2021),
+        series("1923", 2022),
+        series("Landman", 2024),
+        series("Mayor of Kingstown", 2021),
+        series("Tulsa King", 2022),
+        series("Lioness", 2023),
+        series("Lawmen: Bass Reeves", 2023)
+    )
+
+    private val MISSION_IMPOSSIBLE_UNIVERSE = listOf(
+        movie("Mission: Impossible", 1996),
+        movie("Mission: Impossible II", 2000),
+        movie("Mission: Impossible III", 2006),
+        movie("Mission: Impossible - Ghost Protocol", 2011),
+        movie("Mission: Impossible - Rogue Nation", 2015),
+        movie("Mission: Impossible - Fallout", 2018),
+        movie("Mission: Impossible - Dead Reckoning Part One", 2023),
+        movie("Mission: Impossible - The Final Reckoning", 2025),
+        // Tom Cruise at Paramount
+        movie("Top Gun", 1986),
+        movie("Top Gun: Maverick", 2022),
+        movie("Days of Thunder", 1990),
+        movie("War of the Worlds", 2005),
+        movie("Jack Reacher", 2012),
+        movie("Jack Reacher: Never Go Back", 2016),
+        series("Mission: Impossible", 1966)
+    )
+
+    private val TYLER_PERRY_TELEVISION = listOf(
+        series("Tyler Perry's Sistas", 2019),
+        series("Tyler Perry's The Oval", 2019),
+        series("All the Queen's Men", 2021),
+        CuratedTitle("Tyler Perry's Perimeter", null, TV),
+        series("Tyler Perry's Bruh", 2020),
+        series("Tyler Perry's Ruthless", 2020),
+        series("Tyler Perry's Zatima", 2022),
+        series("Tyler Perry's Assisted Living", 2020),
+        CuratedTitle("Tyler Perry's Divorced Sistas", null, TV),
+        series("Tyler Perry's Young Dylan", 2020),
+        CuratedTitle("Tyler Perry's House of Payne", null, TV)
+    )
+
+    private val QUIET_PLACE_SCREAM = listOf(
+        movie("A Quiet Place", 2018),
+        CuratedTitle("A Quiet Place Part II", null, MOVIE),
+        movie("A Quiet Place: Day One", 2024),
+        movie("Scream", 1996),
+        movie("Scream 2", 1997),
+        movie("Scream 3", 2000),
+        movie("Scream 4", 2011),
+        movie("Scream", 2022),
+        movie("Scream VI", 2023),
+        CuratedTitle("Scream 7", null, MOVIE),
+        series("Scream", 2015)
+    )
+
+    private val DEXTER_UNIVERSE = listOf(
+        series("Dexter", 2006),
+        series("Dexter: New Blood", 2021),
+        series("Dexter: Original Sin", 2024),
+        series("Dexter: Resurrection", 2025)
+    )
+
+    private val NCIS_UNIVERSE = listOf(
+        series("NCIS", 2003),
+        series("NCIS: Origins", 2024),
+        series("NCIS: Tony & Ziva", 2025),
+        series("NCIS: Los Angeles", 2009),
+        series("NCIS: New Orleans", 2014),
+        series("NCIS: Hawai'i", 2021),
+        series("NCIS: Sydney", 2023),
+        series("JAG", 1995)
+    )
+
+    private val CSI_UNIVERSE = listOf(
+        series("CSI: Crime Scene Investigation", 2000),
+        series("CSI: Miami", 2002),
+        series("CSI: NY", 2004),
+        series("CSI: Cyber", 2015),
+        series("CSI: Vegas", 2021)
+    )
+
+    private val CRIMINAL_MINDS_UNIVERSE = listOf(
+        series("Criminal Minds", 2005),
+        series("Criminal Minds: Suspect Behavior", 2011),
+        series("Criminal Minds: Beyond Borders", 2016)
+    )
+
+    private val SPONGEBOB_UNIVERSE = listOf(
+        series("SpongeBob SquarePants", 1999),
+        series("Kamp Koral: SpongeBob's Under Years", 2021),
+        series("The Patrick Star Show", 2021),
+        movie("The SpongeBob SquarePants Movie", 2004),
+        movie("The SpongeBob Movie: Sponge Out of Water", 2015),
+        movie("The SpongeBob Movie: Sponge on the Run", 2020),
+        movie("Saving Bikini Bottom: The Sandy Cheeks Movie", 2024),
+        movie("Plankton: The Movie", 2025),
+        CuratedTitle("The SpongeBob Movie: Search for SquarePants", null, MOVIE)
+    )
+
+    private val SOUTH_PARK_UNIVERSE = listOf(
+        series("South Park", 1997),
+        movie("South Park: Bigger, Longer & Uncut", 1999),
+        movie("South Park: Post COVID", 2021),
+        movie("South Park: Post COVID: The Return of COVID", 2021),
+        movie("South Park the Streaming Wars", 2022),
+        movie("South Park the Streaming Wars Part 2", 2022),
+        movie("South Park: Joining the Panderverse", 2023),
+        movie("South Park (Not Suitable for Children)", 2023),
+        movie("South Park: The End of Obesity", 2024)
+    )
+
+    private val CHALLENGE_UNIVERSE = listOf(
+        series("The Challenge", 1998),
+        series("The Challenge: USA", 2022),
+        series("The Challenge: UK", 2023),
+        series("The Challenge: Australia", 2022),
+        CuratedTitle("The Challenge: Argentina", null, TV),
+        series("The Challenge: All Stars", 2021),
+        series("The Challenge: World Championship", 2023)
+    )
+
     private fun onParamountPlus(
         mediaType: TmdbCollectionMediaType,
         sortBy: String = POPULAR,
@@ -2442,6 +2612,25 @@ object DisneyPlusCatalog {
                 )
             ),
             DisneyRowSpec("p_trending", R.string.disney_row_trending, listOf(onParamountPlus(MOVIE), onParamountPlus(TV))),
+            // The franchises Paramount+ is built around, as tiles that open each one's page.
+            DisneyRowSpec(
+                "p_universes", R.string.paramount_row_universes,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(
+                    DisneyPlusHub.PU_STAR_TREK,
+                    DisneyPlusHub.PU_TAYLOR_SHERIDAN,
+                    DisneyPlusHub.PU_MISSION_IMPOSSIBLE,
+                    DisneyPlusHub.PU_TYLER_PERRY,
+                    DisneyPlusHub.PU_QUIET_PLACE_SCREAM,
+                    DisneyPlusHub.PU_DEXTER,
+                    DisneyPlusHub.PU_NCIS,
+                    DisneyPlusHub.PU_CSI,
+                    DisneyPlusHub.PU_CRIMINAL_MINDS,
+                    DisneyPlusHub.PU_SPONGEBOB,
+                    DisneyPlusHub.PU_SOUTH_PARK,
+                    DisneyPlusHub.PU_CHALLENGE
+                )
+            ),
             DisneyRowSpec("p_originals", R.string.paramount_row_originals, listOf(net(ParamountPlusIds.NET_PARAMOUNT_PLUS))),
             DisneyRowSpec("p_sheridan", R.string.paramount_row_sheridan, listOf(curated(TAYLOR_SHERIDAN))),
             DisneyRowSpec("p_cbs", R.string.paramount_brand_cbs, listOf(net(ParamountPlusIds.NET_CBS))),
@@ -4156,7 +4345,19 @@ object DisneyPlusCatalog {
         collectionPage(DisneyPlusHub.COL_BLACK_STORIES, COLTITLES_BLACK_STORIES),
         collectionPage(DisneyPlusHub.COL_HALLOWEEN, COLTITLES_HALLOWEEN),
         collectionPage(DisneyPlusHub.COL_DISNEY_PARKS, COLTITLES_DISNEY_PARKS),
-        collectionPage(DisneyPlusHub.COL_DISNEY_PLUS_INSIDER, COLTITLES_DISNEY_PLUS_INSIDER)
+        collectionPage(DisneyPlusHub.COL_DISNEY_PLUS_INSIDER, COLTITLES_DISNEY_PLUS_INSIDER),
+        collectionPage(DisneyPlusHub.PU_STAR_TREK, STAR_TREK_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_TAYLOR_SHERIDAN, TAYLOR_SHERIDAN_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_MISSION_IMPOSSIBLE, MISSION_IMPOSSIBLE_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_TYLER_PERRY, TYLER_PERRY_TELEVISION),
+        collectionPage(DisneyPlusHub.PU_QUIET_PLACE_SCREAM, QUIET_PLACE_SCREAM),
+        collectionPage(DisneyPlusHub.PU_DEXTER, DEXTER_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_NCIS, NCIS_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_CSI, CSI_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_CRIMINAL_MINDS, CRIMINAL_MINDS_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_SPONGEBOB, SPONGEBOB_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_SOUTH_PARK, SOUTH_PARK_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_CHALLENGE, CHALLENGE_UNIVERSE)
     ).associateBy { it.hub }
 
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */

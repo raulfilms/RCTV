@@ -530,6 +530,18 @@ private fun DisneyPlusHub.collectionArtRes(): Int? = when (this) {
     DisneyPlusHub.COL_HALLOWEEN -> R.drawable.disney_collection_halloween
     DisneyPlusHub.COL_DISNEY_PARKS -> R.drawable.disney_collection_disney_parks
     DisneyPlusHub.COL_DISNEY_PLUS_INSIDER -> R.drawable.disney_collection_disney_plus_insider
+    DisneyPlusHub.PU_STAR_TREK -> R.drawable.paramount_collection_star_trek
+    DisneyPlusHub.PU_TAYLOR_SHERIDAN -> R.drawable.paramount_collection_taylor_sheridan
+    DisneyPlusHub.PU_MISSION_IMPOSSIBLE -> R.drawable.paramount_collection_mission_impossible
+    DisneyPlusHub.PU_TYLER_PERRY -> R.drawable.paramount_collection_tyler_perry
+    DisneyPlusHub.PU_QUIET_PLACE_SCREAM -> R.drawable.paramount_collection_quiet_place_scream
+    DisneyPlusHub.PU_DEXTER -> R.drawable.paramount_collection_dexter
+    DisneyPlusHub.PU_NCIS -> R.drawable.paramount_collection_ncis
+    DisneyPlusHub.PU_CSI -> R.drawable.paramount_collection_csi
+    DisneyPlusHub.PU_CRIMINAL_MINDS -> R.drawable.paramount_collection_criminal_minds
+    DisneyPlusHub.PU_SPONGEBOB -> R.drawable.paramount_collection_spongebob
+    DisneyPlusHub.PU_SOUTH_PARK -> R.drawable.paramount_collection_south_park
+    DisneyPlusHub.PU_CHALLENGE -> R.drawable.paramount_collection_challenge
     else -> null
 }
 
