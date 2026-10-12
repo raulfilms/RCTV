@@ -152,6 +152,10 @@ sealed class Screen(val route: String) {
     data object DisneyPlusBrand : Screen("disney_plus/{hub}") {
         fun createRoute(hub: String): String = "disney_plus/$hub"
     }
+    /** A page of studio tiles opened from a Home tile (e.g. Independent Film Company). */
+    data object StudioGroup : Screen("studio_group/{group}") {
+        fun createRoute(group: String): String = "studio_group/$group"
+    }
     data object Sports : Screen("sports")
     data object SportsFavorites : Screen("sports_favorites")
     data object SportsTeams : Screen("sports_teams")

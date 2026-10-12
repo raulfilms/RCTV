@@ -20,6 +20,11 @@ data class StreamingService(
      * "peacock" = Peacock); null for the generic page.
      */
     val appHub: String? = null,
+    /**
+     * Key of a page of studio tiles this tile opens instead (e.g. "ifc": Bleecker Street, IFC Films,
+     * Magnolia, NEON...); null for none.
+     */
+    val group: String? = null,
     /** Where the tile leads; filled in once TMDB has been asked, null until then. */
     val target: StreamingServiceTarget? = null
 )

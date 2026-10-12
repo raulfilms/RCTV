@@ -38,7 +38,9 @@ class StreamingServicesRepository @Inject constructor(
         /** TMDB company to open when the service isn't a watch provider (studios). */
         val companyId: Int? = null,
         /** Company name to look up as a last resort. */
-        val companyName: String? = null
+        val companyName: String? = null,
+        /** Other names the company may have on TMDB, tried in order after [companyName]. */
+        val altCompanyNames: List<String> = emptyList()
     )
 
     private val entries = listOf(
@@ -64,26 +66,81 @@ class StreamingServicesRepository @Inject constructor(
             providerNames = listOf("Angel Studios"), companyName = "Angel Studios"),
         Entry(StreamingService("blumhouse", "Blumhouse", R.drawable.streaming_logo_blumhouse),
             companyName = "Blumhouse Productions"),
-        Entry(StreamingService("ifc", "Independent Film Company", R.drawable.streaming_logo_ifc),
-            companyName = "IFC Films"),
+        // Opens a page of independent studios (see [groups]).
+        Entry(StreamingService("ifc", "Independent Film Company", R.drawable.streaming_logo_ifc, group = "ifc")),
         Entry(StreamingService("shudder", "Shudder", R.drawable.streaming_logo_shudder),
             providerIds = listOf(99), providerNames = listOf("Shudder"), companyName = "Shudder"),
         Entry(StreamingService("foxnation", "Fox Nation", R.drawable.streaming_logo_foxnation),
             providerNames = listOf("Fox Nation"), companyName = "Fox Nation")
     )
 
+    /**
+     * Pages of studio tiles opened from a Home tile, by its [StreamingService.group] key. "ifc"
+     * (Independent Film Company): eight independent studios, four on top and four below, each opening
+     * its TMDB company page.
+     */
+    private val groups: Map<String, List<Entry>> = mapOf(
+        "ifc" to listOf(
+            Entry(StreamingService("bleecker_street", "Bleecker Street", R.drawable.indie_brand_logo_bleecker),
+                companyName = "Bleecker Street"),
+            Entry(StreamingService("ifc_films", "IFC Films", R.drawable.indie_brand_logo_ifcfilms),
+                companyName = "IFC Films"),
+            Entry(StreamingService("magnolia_pictures", "Magnolia Pictures", R.drawable.indie_brand_logo_magnolia),
+                companyName = "Magnolia Pictures"),
+            Entry(StreamingService("annapurna_pictures", "Annapurna Pictures", R.drawable.indie_brand_logo_annapurna),
+                companyName = "Annapurna Pictures"),
+            Entry(StreamingService("millennium_media", "Millennium Media", R.drawable.indie_brand_logo_millennium),
+                companyName = "Millennium Media", altCompanyNames = listOf("Millennium Films")),
+            Entry(StreamingService("neon", "NEON", R.drawable.indie_brand_logo_neon),
+                companyName = "NEON"),
+            Entry(StreamingService("plan_b", "Plan B", R.drawable.indie_brand_logo_planb),
+                companyName = "Plan B Entertainment"),
+            Entry(StreamingService("roadside_attractions", "Roadside Attractions", R.drawable.indie_brand_logo_roadside),
+                companyName = "Roadside Attractions")
+        )
+    )
+
     /** The tiles, in order, before anything is looked up (so the row shows instantly). */
     val services: List<StreamingService> = entries.map { it.service }
 
-    /** A tile's bundled logo by its key (e.g. "netflix"), for the top of its hub page. */
-    fun logoRes(key: String?): Int? = entries.firstOrNull { it.service.key == key }?.service?.logoRes
+    /** A tile's bundled logo by its key (e.g. "netflix", or a studio on a group page), for the top of its page. */
+    fun logoRes(key: String?): Int? =
+        (entries + groups.values.flatten()).firstOrNull { it.service.key == key }?.service?.logoRes
+
+    /** The Home tile that opens group [key] (its name and logo head the group page). */
+    fun groupOwner(key: String?): StreamingService? = entries.firstOrNull { it.service.group == key }?.service
+
+    /** A group page's studio tiles, with the destinations already known. */
+    fun group(key: String?): List<StreamingService> =
+        groups[key].orEmpty().map { it.service.copy(target = targetCache[it.service.key]) }
+
+    /** Looks up each studio of group [key] on TMDB (by company name) that isn't known yet. */
+    suspend fun resolveGroup(key: String?): List<StreamingService> = withContext(Dispatchers.IO) {
+        val missing = groups[key].orEmpty().filter { !targetCache.containsKey(it.service.key) }
+        if (missing.isNotEmpty()) {
+            coroutineScope {
+                missing.map { entry ->
+                    async {
+                        companyTarget(entry)?.let { targetCache[entry.service.key] = it }
+                    }
+                }.forEach { it.await() }
+            }
+        }
+        group(key)
+    }
+
+    private suspend fun companyTarget(entry: Entry): StreamingServiceTarget? {
+        entry.companyId?.let { return StreamingServiceTarget("company", it) }
+        val id = (listOfNotNull(entry.companyName) + entry.altCompanyNames).firstNotNullOfOrNull { findCompanyId(it) }
+        return id?.let { StreamingServiceTarget("company", it) }
+    }
 
     private val targetCache = ConcurrentHashMap<String, StreamingServiceTarget>()
 
     /** Looks up where each tile leads. Tiles TMDB can't place keep a null target. */
     suspend fun resolveTargets(region: String = STREAMING_PROVIDER_REGION): List<StreamingService> =
         withContext(Dispatchers.IO) {
-            if (entries.all { it.service.appHub != null || targetCache.containsKey(it.service.key) }) {
+            if (entries.all { it.opensOwnPage || targetCache.containsKey(it.service.key) }) {
                 return@withContext withTargets()
             }
 
@@ -107,7 +164,7 @@ class StreamingServicesRepository @Inject constructor(
 
             for (entry in entries) {
                 val key = entry.service.key
-                if (entry.service.appHub != null || targetCache.containsKey(key)) continue
+                if (entry.opensOwnPage || targetCache.containsKey(key)) continue
 
                 val provider = entry.providerIds.firstNotNullOfOrNull { providersById[it] }
                     ?: providers.firstOrNull { candidate ->
@@ -116,15 +173,16 @@ class StreamingServicesRepository @Inject constructor(
                     }
                 val target = when {
                     provider != null -> StreamingServiceTarget("provider", provider.providerId)
-                    entry.companyId != null -> StreamingServiceTarget("company", entry.companyId)
-                    entry.companyName != null -> findCompanyId(entry.companyName)
-                        ?.let { StreamingServiceTarget("company", it) }
-                    else -> null
+                    else -> companyTarget(entry)
                 }
                 if (target != null) targetCache[key] = target
             }
             withTargets()
         }
+
+    /** Tiles that open the app's own page (a hub or a group of studios) need no TMDB lookup. */
+    private val Entry.opensOwnPage: Boolean
+        get() = service.appHub != null || service.group != null
 
     private fun withTargets(): List<StreamingService> =
         services.map { service -> service.copy(target = targetCache[service.key]) }

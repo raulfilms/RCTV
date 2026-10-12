@@ -761,7 +761,7 @@ private val AppleStreamingTileHeight: Dp = AppleTvSpacing.Col5 * (9f / 16f)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun AppleStreamingServiceTile(
+internal fun AppleStreamingServiceTile(
     service: StreamingService,
     onClick: () -> Unit,
     modifier: Modifier = Modifier

@@ -39,6 +39,7 @@ import com.nuvio.tv.ui.screens.livetv.LiveTvViewModel
 import com.nuvio.tv.ui.screens.channelprofile.ChannelProfileScreen
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.ui.screens.disneyplus.DisneyPlusScreen
+import com.nuvio.tv.ui.screens.studios.StudioGroupScreen
 import com.nuvio.tv.ui.screens.sports.GameDetailScreen
 import com.nuvio.tv.ui.screens.sports.LeagueDetailScreen
 import com.nuvio.tv.ui.screens.sports.SportsFavoritesScreen
@@ -1296,6 +1297,26 @@ private fun PlaybackNavHost(
             )
         }
 
+        composable(
+            route = Screen.StudioGroup.route,
+            arguments = listOf(navArgument("group") { type = NavType.StringType })
+        ) {
+            StudioGroupScreen(
+                onOpenStudio = { studio, target ->
+                    navController.navigate(
+                        Screen.TmdbEntityBrowse.createRoute(
+                            entityKind = target.entityKind,
+                            entityId = target.entityId,
+                            entityName = studio.name,
+                            sourceType = "movie",
+                            // Shown as a hub: the studio's logo above a big hero banner.
+                            hub = studio.key
+                        )
+                    )
+                }
+            )
+        }
+
         composable(Screen.Sports.route) {
             SportsScreen(
                 onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) },
@@ -1752,7 +1773,13 @@ private fun HomeRouteContent(
         },
         onOpenStreamingService = { service ->
             val appHub = service.appHub
-            if (appHub != null) {
+            val group = service.group
+            if (group != null) {
+                // A page of studio tiles (Independent Film Company: Bleecker Street, IFC Films, NEON...).
+                navController.navigate(Screen.StudioGroup.createRoute(group)) {
+                    launchSingleTop = true
+                }
+            } else if (appHub != null) {
                 // The app's own Disney+ / Paramount+ / discovery+ / HBO Max section; Back returns to Home.
                 val route = if (appHub == "main") Screen.DisneyPlus.route else Screen.DisneyPlusBrand.createRoute(appHub)
                 navController.navigate(route) {
