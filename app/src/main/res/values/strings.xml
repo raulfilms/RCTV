@@ -2675,6 +2675,7 @@
     <string name="hbomax_brand_looney_tunes">Looney Tunes</string>
     <string name="hbomax_brand_wb_animation">Warner Bros. Animation</string>
     <string name="hbomax_brand_sesame_workshop">Sesame Workshop</string>
+    <string name="hbomax_brand_tcm">TCM</string>
     <string name="hbomax_brand_crunchyroll">Crunchyroll</string>
     <string name="hbomax_row_new">New on HBO Max</string>
     <string name="hbomax_row_hbo_originals">HBO Originals</string>
@@ -2697,6 +2698,14 @@
     <string name="hbomax_row_crunchyroll_originals">Crunchyroll Originals</string>
     <string name="hbomax_row_anime_movies">Anime Movies</string>
     <string name="hbomax_row_anime_on_hbo_max">Anime on HBO Max</string>
+    <string name="hbomax_row_tcm_essentials">TCM Essentials</string>
+    <string name="hbomax_row_classics_on_hbo_max">Classics on HBO Max</string>
+    <string name="hbomax_row_golden_age">Hollywood\'s Golden Age</string>
+    <string name="hbomax_row_film_noir">Film Noir</string>
+    <string name="hbomax_row_classic_musicals">Classic Musicals</string>
+    <string name="hbomax_row_classic_westerns">Classic Westerns</string>
+    <string name="hbomax_row_silent_films">Silent Films</string>
+    <string name="hbomax_row_top_rated_classics">Top Rated Classics</string>
     <string name="peacock_title">Peacock</string>
     <string name="peacock_empty_title">Couldn\'t load Peacock</string>
     <string name="peacock_brand_originals">Peacock Originals</string>

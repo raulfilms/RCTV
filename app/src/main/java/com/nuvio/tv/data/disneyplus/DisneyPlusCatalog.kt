@@ -236,6 +236,12 @@ object HboMaxIds {
 
     const val WB_ANIMATION = "Warner Bros. Animation"
     const val SESAME_WORKSHOP = "Sesame Workshop"
+    const val WB_PICTURES = "Warner Bros. Pictures"
+    const val MGM = "Metro-Goldwyn-Mayer"
+
+    // TMDB movie genre ids used on the TCM page
+    const val G_MUSIC = "10402"
+    const val G_WESTERN = "37"
 
     // TMDB genre ids used on the HBO Max pages
     const val G_DRAMA = "18"
@@ -491,6 +497,7 @@ enum class DisneyPlusHub(
     H_LOONEY_TUNES("hbomax_looney_tunes", R.string.hbomax_brand_looney_tunes, HubService.HBO_MAX),
     H_WB_ANIMATION("hbomax_wb_animation", R.string.hbomax_brand_wb_animation, HubService.HBO_MAX),
     H_SESAME("hbomax_sesame_workshop", R.string.hbomax_brand_sesame_workshop, HubService.HBO_MAX),
+    H_TCM("hbomax_tcm", R.string.hbomax_brand_tcm, HubService.HBO_MAX),
     H_CRUNCHYROLL("hbomax_crunchyroll", R.string.hbomax_brand_crunchyroll, HubService.HBO_MAX),
 
     // Peacock: its main page, then one page per brand tile.
@@ -525,7 +532,7 @@ enum class DisneyPlusHub(
                 D_ORIGINALS, D_HGTV, D_FOOD_NETWORK, D_TLC, D_ID, D_OWN, D_ANIMAL_PLANET, D_MAGNOLIA
             )
             HubService.HBO_MAX -> listOf(
-                H_HBO, H_MAX_ORIGINALS, H_DC, H_LOONEY_TUNES, H_WB_ANIMATION, H_SESAME, H_CRUNCHYROLL
+                H_HBO, H_MAX_ORIGINALS, H_DC, H_LOONEY_TUNES, H_WB_ANIMATION, H_SESAME, H_TCM, H_CRUNCHYROLL
             )
             HubService.PEACOCK -> listOf(
                 PK_ORIGINALS, PK_NBC, PK_BRAVO, PK_TELEMUNDO, PK_WWE, PK_NBC_SPORTS,
@@ -3081,6 +3088,66 @@ object DisneyPlusCatalog {
         )
     )
 
+    private val TCM_ESSENTIALS = listOf(
+        movie("Casablanca", 1942),
+        movie("Citizen Kane", 1941),
+        movie("The Wizard of Oz", 1939),
+        movie("Singin' in the Rain", 1952),
+        movie("Gone with the Wind", 1939),
+        movie("North by Northwest", 1959),
+        movie("The Maltese Falcon", 1941),
+        movie("Ben-Hur", 1959),
+        movie("A Streetcar Named Desire", 1951),
+        movie("Rebel Without a Cause", 1955),
+        movie("The Treasure of the Sierra Madre", 1948),
+        movie("East of Eden", 1955),
+        movie("Doctor Zhivago", 1965),
+        movie("2001: A Space Odyssey", 1968)
+    )
+
+    /** Classic movies (up to [until]), from every studio. */
+    private fun classics(
+        until: String,
+        sortBy: String = MOST_VOTED,
+        genres: String? = null,
+        keywordQuery: String? = null,
+        voteCountGte: Int? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = MOVIE,
+        sortBy = sortBy,
+        genres = genres,
+        keywordQuery = keywordQuery,
+        voteCountGte = voteCountGte,
+        releaseDateLte = until
+    )
+
+    private val hboMaxTcm = DisneyHubSpec(
+        hub = DisneyPlusHub.H_TCM,
+        heroRowId = "tcm_essentials",
+        rows = listOf(
+            DisneyRowSpec("tcm_essentials", R.string.hbomax_row_tcm_essentials, listOf(curated(TCM_ESSENTIALS))),
+            DisneyRowSpec(
+                "tcm_on_hbo_max", R.string.hbomax_row_classics_on_hbo_max,
+                listOf(onHboMax(MOVIE, voteCountGte = 100, releaseDateLte = "1979-12-31"))
+            ),
+            DisneyRowSpec(
+                "tcm_golden_age", R.string.hbomax_row_golden_age,
+                listOf(
+                    studio(MOVIE, HboMaxIds.WB_PICTURES, sortBy = MOST_VOTED, releaseDateLte = "1959-12-31"),
+                    studio(MOVIE, HboMaxIds.MGM, sortBy = MOST_VOTED, releaseDateLte = "1959-12-31")
+                )
+            ),
+            DisneyRowSpec("tcm_noir", R.string.hbomax_row_film_noir, listOf(classics("1959-12-31", keywordQuery = "film noir"))),
+            DisneyRowSpec("tcm_musicals", R.string.hbomax_row_classic_musicals, listOf(classics("1969-12-31", genres = HboMaxIds.G_MUSIC))),
+            DisneyRowSpec("tcm_westerns", R.string.hbomax_row_classic_westerns, listOf(classics("1969-12-31", genres = HboMaxIds.G_WESTERN))),
+            DisneyRowSpec("tcm_silent", R.string.hbomax_row_silent_films, listOf(classics("1930-12-31", keywordQuery = "silent film"))),
+            DisneyRowSpec(
+                "tcm_top_rated", R.string.hbomax_row_top_rated_classics,
+                listOf(classics("1969-12-31", sortBy = TOP_RATED, voteCountGte = 1000))
+            )
+        )
+    )
+
     private val hboMaxCrunchyroll = DisneyHubSpec(
         hub = DisneyPlusHub.H_CRUNCHYROLL,
         heroRowId = "cr_popular",
@@ -4133,6 +4200,7 @@ object DisneyPlusCatalog {
         DisneyPlusHub.H_LOONEY_TUNES -> hboMaxLooneyTunes
         DisneyPlusHub.H_WB_ANIMATION -> hboMaxWbAnimation
         DisneyPlusHub.H_SESAME -> hboMaxSesame
+        DisneyPlusHub.H_TCM -> hboMaxTcm
         DisneyPlusHub.H_CRUNCHYROLL -> hboMaxCrunchyroll
         DisneyPlusHub.PEACOCK_MAIN -> peacockMain
         DisneyPlusHub.PK_ORIGINALS -> peacockOriginals

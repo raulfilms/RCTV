@@ -372,7 +372,7 @@ fun DisneyPlusScreen(
  * color with each brand's logo centered on it. Disney+: Disney, Pixar, Marvel, Star Wars, National
  * Geographic, Hulu, ESPN. Paramount+: CBS, BET, Comedy Central, MTV, Nickelodeon, Smithsonian Channel.
  * discovery+: discovery+ Originals, HGTV, Food Network, TLC, ID, OWN, Animal Planet, Magnolia Network.
- * HBO Max: HBO, Max Originals, DC, Looney Tunes, Warner Bros. Animation, Sesame Workshop, Crunchyroll.
+ * HBO Max: HBO, Max Originals, DC, Looney Tunes, Warner Bros. Animation, Sesame Workshop, TCM, Crunchyroll.
  * Peacock: Peacock Originals, NBC, Bravo, Telemundo, WWE, NBC Sports, Universal Pictures, Illumination,
  * DreamWorks Animation, Focus Features, Working Title Films, Amblin Partners.
  * Each opens that brand's page.
@@ -449,6 +449,7 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     DisneyPlusHub.H_LOONEY_TUNES -> R.drawable.hbomax_brand_logo_looneytunes
     DisneyPlusHub.H_WB_ANIMATION -> R.drawable.hbomax_brand_logo_wbanimation
     DisneyPlusHub.H_SESAME -> R.drawable.hbomax_brand_logo_sesame
+    DisneyPlusHub.H_TCM -> R.drawable.hbomax_brand_logo_tcm
     DisneyPlusHub.H_CRUNCHYROLL -> R.drawable.hbomax_brand_logo_crunchyroll
     DisneyPlusHub.PK_ORIGINALS -> R.drawable.peacock_brand_logo_originals
     DisneyPlusHub.PK_NBC -> R.drawable.peacock_brand_logo_nbc
@@ -570,6 +571,7 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.H_LOONEY_TUNES -> Color(0xFFD62B2F)
     DisneyPlusHub.H_WB_ANIMATION -> Color(0xFFED1C24)
     DisneyPlusHub.H_SESAME -> Color(0xFF00A651)
+    DisneyPlusHub.H_TCM -> Color(0xFF3A3A3A)
     DisneyPlusHub.H_CRUNCHYROLL -> Color(0xFFF78C25)
     DisneyPlusHub.PEACOCK_MAIN -> Color(0xFF6E55DC)
     DisneyPlusHub.PK_ORIGINALS -> Color(0xFF6E55DC)
