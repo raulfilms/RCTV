@@ -116,6 +116,8 @@ fun TmdbEntityBrowseScreen(
     // Back on a rail's See All page goes back to the rail.
     BackHandler(enabled = seeAllRailKey != null) { viewModel.closeSeeAll() }
 
+    // The See All page's horizontal cards find their title art as they appear.
+    CompositionLocalProvider(com.nuvio.tv.ui.components.LocalTitleArtResolver provides viewModel.titleArt) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -172,6 +174,7 @@ fun TmdbEntityBrowseScreen(
                 onNavigateToDetail(id, type, addonBaseUrl.takeIf { it.isNotBlank() })
             }
         )
+    }
     }
 }
 

@@ -271,6 +271,8 @@ fun ChannelProfileScreen(
     BackHandler(enabled = detailsOpen) { liveTvViewModel.dismissProgramDetails() }
     DisposableEffect(Unit) { onDispose { liveTvViewModel.dismissProgramDetails() } }
 
+    // The horizontal title cards (rows and See All) find their title art as they appear.
+    CompositionLocalProvider(com.nuvio.tv.ui.components.LocalTitleArtResolver provides viewModel.titleArt) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -337,6 +339,7 @@ fun ChannelProfileScreen(
             controller = posterOptionsController,
             onNavigateToDetail = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) }
         )
+    }
     }
 }
 

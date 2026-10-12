@@ -82,6 +82,9 @@ class ChannelProfileViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository
 ) : ViewModel() {
 
+    /** Title art for the horizontal cards (rows and See All), found as they appear. */
+    val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = repository.titleArtResolver
+
     private val _uiState = MutableStateFlow(ChannelProfileUiState())
     val uiState: StateFlow<ChannelProfileUiState> = _uiState.asStateFlow()
 
@@ -123,7 +126,7 @@ class ChannelProfileViewModel @Inject constructor(
                 showsJob.await() to moviesJob.await()
             }
             _uiState.update { it.copy(tvShows = shows, movies = movies, isRowsLoading = false) }
-            // The horizontal cards show each title's logo: fill in the ones the rows show.
+            // The horizontal cards show each title's art (name on the picture): fill in the ones the rows show.
             launch { addRowLogos() }
 
             val heroSource = shows?.items.orEmpty().ifEmpty { movies?.items.orEmpty() }
@@ -179,10 +182,7 @@ class ChannelProfileViewModel @Inject constructor(
     /** Loads the next page while the person scrolls down the "See All" grid. */
     fun loadMoreSeeAll() {
         val current = _uiState.value.seeAll ?: return
-        val page = current.nextPage ?: run {
-            fillSeeAllLogos(current.kind)
-            return
-        }
+        val page = current.nextPage ?: return
         if (current.isLoadingMore) return
         _uiState.update { state -> state.copy(seeAll = state.seeAll?.copy(isLoadingMore = true)) }
         seeAllJob = viewModelScope.launch {
@@ -206,32 +206,12 @@ class ChannelProfileViewModel @Inject constructor(
                     )
                 )
             }
-            fillSeeAllLogos(current.kind)
             // Load a few pages up front, so the genre and year filter has titles to work with.
             val after = _uiState.value.seeAll
             if (result != null && after != null && after.kind == current.kind &&
                 after.nextPage != null && after.items.size < SEE_ALL_PRELOAD
             ) {
                 loadMoreSeeAll()
-            }
-        }
-    }
-
-    /** Title logos for the grid's cards, a page at a time. */
-    private fun fillSeeAllLogos(kind: ChannelTitlesKind) {
-        val items = _uiState.value.seeAll?.takeIf { it.kind == kind }?.items ?: return
-        val missing = items.filter { it.logo.isNullOrBlank() }
-        if (missing.isEmpty()) return
-        viewModelScope.launch {
-            val found = safe { repository.withLogos(missing) }.orEmpty()
-                .filter { !it.logo.isNullOrBlank() }
-                .associate { it.id to it.logo }
-            if (found.isEmpty()) return@launch
-            _uiState.update { state ->
-                val seeAll = state.seeAll?.takeIf { it.kind == kind } ?: return@update state
-                state.copy(seeAll = seeAll.copy(items = seeAll.items.map { item ->
-                    found[item.id]?.let { logo -> item.copy(logo = logo) } ?: item
-                }))
             }
         }
     }

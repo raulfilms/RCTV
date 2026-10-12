@@ -3,6 +3,7 @@ package com.nuvio.tv.data.disneyplus
 import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.tmdb.TmdbService
+import com.nuvio.tv.core.tmdb.TmdbTitleArtService
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbDetailsResponse
@@ -14,6 +15,7 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.domain.model.TmdbCollectionMediaType
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.repository.TitleArtResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -36,7 +38,7 @@ private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
 
-/** Titles per row that get their title logo up front (the ones the row shows before "See All"). */
+/** Titles per row that get their title art up front (the ones the row shows before "See All"). */
 private const val ROW_LOGO_COUNT = 10
 
 /** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery, HBO Max), and its genres. */
@@ -56,7 +58,8 @@ data class DisneyTitleInfo(
 class DisneyPlusRepository @Inject constructor(
     private val tmdbApi: TmdbApi,
     private val tmdbService: TmdbService,
-    private val tmdbSettingsDataStore: TmdbSettingsDataStore
+    private val tmdbSettingsDataStore: TmdbSettingsDataStore,
+    private val titleArt: TmdbTitleArtService
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
 
@@ -68,7 +71,6 @@ class DisneyPlusRepository @Inject constructor(
     private val providerLookupMutex = Mutex()
     private val networkLookupMutex = Mutex()
     private val titleInfoCache = ConcurrentHashMap<String, Optional<DisneyTitleInfo>>()
-    private val logoCache = ConcurrentHashMap<String, Optional<String>>()
     private val rowCache = ConcurrentHashMap<String, List<MetaPreview>>()
     private val genreNameCache = ConcurrentHashMap<String, Map<Int, String>>()
 
@@ -76,7 +78,6 @@ class DisneyPlusRepository @Inject constructor(
     private data class Optional<T>(val value: T?)
 
     private val lookupLimiter = Semaphore(6)
-    private val logoLimiter = Semaphore(6)
 
     private suspend fun language(): String =
         runCatching { tmdbSettingsDataStore.settings.first().language }.getOrNull()?.ifBlank { null } ?: "en"
@@ -92,7 +93,7 @@ class DisneyPlusRepository @Inject constructor(
         spec: DisneyRowSpec,
         title: String,
         forceRefresh: Boolean = false,
-        /** Give the first titles their title logo, for horizontal cards with the name on the artwork. */
+        /** Give the first titles their title art, for horizontal cards with the name on the artwork. */
         titleLogos: Boolean = false
     ): CatalogRow? =
         withContext(Dispatchers.IO) {
@@ -122,7 +123,7 @@ class DisneyPlusRepository @Inject constructor(
                 interleave(perSource, cap).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
             }
             val shown = if (titleLogos && items.isNotEmpty()) {
-                withTitleLogos(items, ROW_LOGO_COUNT).also { rowCache[cacheKey] = it }
+                withTitleArt(items, ROW_LOGO_COUNT).also { rowCache[cacheKey] = it }
             } else {
                 items
             }
@@ -175,7 +176,7 @@ class DisneyPlusRepository @Inject constructor(
         }
         val items = interleave(perSource)
             .filterNot { it.id in watchedTmdbIds || it.id in excludeIds }
-            .let { if (titleLogos) withTitleLogos(it, ROW_LOGO_COUNT) else it }
+            .let { if (titleLogos) withTitleArt(it, ROW_LOGO_COUNT) else it }
         if (items.isEmpty()) null else buildRow("disney_${hub.key}_recommended", title, items)
     }
 
@@ -237,48 +238,18 @@ class DisneyPlusRepository @Inject constructor(
         items.filter { !it.background.isNullOrBlank() }.distinctBy { it.id }.take(HERO_ITEM_COUNT)
 
     /**
-     * Gives the first [count] titles their title logo (TMDB, English first) for horizontal cards that show
-     * the name on the artwork, like Disney+. Titles without one show their name as text instead.
+     * Gives the first [count] titles their title art for horizontal cards that show the name on the
+     * artwork, like Disney+: TMDB's backdrop with the title already on it when there is one, otherwise
+     * the title logo to lay over the plain backdrop. Titles with neither show their name as text.
      */
-    suspend fun withTitleLogos(items: List<MetaPreview>, count: Int = items.size): List<MetaPreview> =
-        withContext(Dispatchers.IO) {
-            val head = items.take(count)
-            val withLogos = coroutineScope {
-                head.map { item ->
-                    async {
-                        if (!item.logo.isNullOrBlank()) item
-                        else logoLimiter.withPermit { item.copy(logo = logoFor(item)) }
-                    }
-                }.awaitAll()
-            }
-            withLogos + items.drop(count)
-        }
+    suspend fun withTitleArt(items: List<MetaPreview>, count: Int = items.size): List<MetaPreview> =
+        titleArt.withTitleArt(items, count)
 
     /** Gives each hero slide its title logo when TMDB has one. */
-    suspend fun withLogos(picks: List<MetaPreview>): List<MetaPreview> = withContext(Dispatchers.IO) {
-        coroutineScope {
-            picks.map { item ->
-                async { item.copy(logo = item.logo ?: logoFor(item)) }
-            }.awaitAll()
-        }
-    }
+    suspend fun withLogos(picks: List<MetaPreview>): List<MetaPreview> = titleArt.withLogos(picks)
 
-    private suspend fun logoFor(item: MetaPreview): String? {
-        val tmdbId = item.id.removePrefix("tmdb:").toIntOrNull() ?: return null
-        val isTv = item.type == ContentType.SERIES
-        val key = "${if (isTv) "tv" else "movie"}:$tmdbId"
-        logoCache[key]?.let { return it.value }
-        val result = runCatching {
-            val response = if (isTv) tmdbApi.getTvImages(tmdbId, apiKey) else tmdbApi.getMovieImages(tmdbId, apiKey)
-            if (!response.isSuccessful) error("HTTP ${response.code()}")
-            val logos = response.body()?.logos.orEmpty().filter { !it.filePath.isNullOrBlank() }
-            val best = logos.firstOrNull { it.iso6391 == "en" } ?: logos.firstOrNull()
-            best?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
-        }.onFailure { if (it is CancellationException) throw it }
-        // Only remember real answers; a network failure gets retried next time.
-        if (result.isSuccess) logoCache[key] = Optional(result.getOrNull())
-        return result.getOrNull()
-    }
+    /** For cards that find their title art as they appear (See All pages). */
+    val titleArtResolver: TitleArtResolver get() = titleArt
 
     // ------------------------------------------------------------------ ownership (continue watching)
 

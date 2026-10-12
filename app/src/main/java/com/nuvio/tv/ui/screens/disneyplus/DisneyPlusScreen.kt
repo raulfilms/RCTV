@@ -79,6 +79,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.nuvio.tv.ui.components.ROW_MAX_ITEMS
 import com.nuvio.tv.ui.components.TitlesSeeAllPage
+import com.nuvio.tv.ui.components.LocalTitleArtResolver
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.withFrameNanos
 import com.nuvio.tv.ui.components.HubLogoHeader
@@ -160,6 +161,8 @@ fun DisneyPlusScreen(
         returnFocusRowId = null
     }
 
+    // Horizontal title cards (rows and See All) find their title art as they appear.
+    CompositionLocalProvider(LocalTitleArtResolver provides viewModel.titleArt) {
     Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
         when {
             seeAll != null -> {
@@ -359,6 +362,7 @@ fun DisneyPlusScreen(
             controller = posterOptionsController,
             onNavigateToDetail = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) }
         )
+    }
     }
 }
 

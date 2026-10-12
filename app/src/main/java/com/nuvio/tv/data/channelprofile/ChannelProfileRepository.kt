@@ -70,9 +70,13 @@ class ChannelProfileRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val tmdbApi: TmdbApi,
     private val tmdbService: TmdbService,
-    private val tmdbSettingsDataStore: TmdbSettingsDataStore
+    private val tmdbSettingsDataStore: TmdbSettingsDataStore,
+    private val titleArt: com.nuvio.tv.core.tmdb.TmdbTitleArtService
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
+
+    /** For cards that find their title art as they appear (rows and See All). */
+    val titleArtResolver: com.nuvio.tv.domain.repository.TitleArtResolver get() = titleArt
 
     private data class Optional<T>(val value: T?)
 
@@ -82,7 +86,6 @@ class ChannelProfileRepository @Inject constructor(
     private val companyCache = ConcurrentHashMap<String, Optional<Int>>()
     private val searchCache = ConcurrentHashMap<String, Optional<MetaPreview>>()
     private val titleInfoCache = ConcurrentHashMap<String, Optional<TitleInfo>>()
-    private val logoCache = ConcurrentHashMap<String, Optional<String>>()
     /** A row's titles, and whether TMDB has more pages of them (for "See All"). */
     private data class RowContent(val items: List<MetaPreview>, val morePages: Boolean)
 
@@ -258,14 +261,11 @@ class ChannelProfileRepository @Inject constructor(
             ChannelTitlesPage(result.items, next)
         }
 
-    /** The same titles with their title logos (for the horizontal cards), when TMDB has one. */
-    suspend fun withLogos(items: List<MetaPreview>): List<MetaPreview> = withContext(Dispatchers.IO) {
-        coroutineScope {
-            items.map { item ->
-                async { if (!item.logo.isNullOrBlank()) item else item.copy(logo = lookupLimiter.withPermit { logoFor(item) }) }
-            }.awaitAll()
-        }
-    }
+    /**
+     * The same titles with their title art for the horizontal cards: TMDB's backdrop with the title on
+     * it when there is one, otherwise the title logo.
+     */
+    suspend fun withLogos(items: List<MetaPreview>): List<MetaPreview> = titleArt.withTitleArt(items)
 
     private data class DiscoverResult(val items: List<MetaPreview>, val totalPages: Int)
 
@@ -390,26 +390,8 @@ class ChannelProfileRepository @Inject constructor(
     // ------------------------------------------------------------------ hero
 
     /** Featured slides: the first titles with a backdrop, each with its title logo when TMDB has one. */
-    suspend fun heroItems(items: List<MetaPreview>): List<MetaPreview> = withContext(Dispatchers.IO) {
-        val picks = items.filter { !it.background.isNullOrBlank() }.take(HERO_ITEM_COUNT)
-        coroutineScope { picks.map { item -> async { item.copy(logo = item.logo ?: logoFor(item)) } }.awaitAll() }
-    }
-
-    private suspend fun logoFor(item: MetaPreview): String? {
-        val tmdbId = item.id.removePrefix("tmdb:").toIntOrNull() ?: return null
-        val isTv = item.type == ContentType.SERIES
-        val key = "${if (isTv) "tv" else "movie"}:$tmdbId"
-        logoCache[key]?.let { return it.value }
-        val result = runCatching {
-            val response = if (isTv) tmdbApi.getTvImages(tmdbId, apiKey) else tmdbApi.getMovieImages(tmdbId, apiKey)
-            if (!response.isSuccessful) error("HTTP ${response.code()}")
-            val logos = response.body()?.logos.orEmpty().filter { !it.filePath.isNullOrBlank() }
-            val best = logos.firstOrNull { it.iso6391 == "en" } ?: logos.firstOrNull()
-            best?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
-        }.onFailure { if (it is CancellationException) throw it }
-        if (result.isSuccess) logoCache[key] = Optional(result.getOrNull())
-        return result.getOrNull()
-    }
+    suspend fun heroItems(items: List<MetaPreview>): List<MetaPreview> =
+        titleArt.withLogos(items.filter { !it.background.isNullOrBlank() }.take(HERO_ITEM_COUNT))
 
     // ------------------------------------------------------------------ helpers
 

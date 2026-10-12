@@ -94,7 +94,9 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.util.StableList
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.localizedGenreLabel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -1092,10 +1094,17 @@ private fun AppleFilterMenuRow(
 val AppleLandscapeCardWidth: Dp = AppleTvSpacing.Col4
 val AppleLandscapeCardHeight: Dp = AppleTvSpacing.Col4 * (9f / 16f)
 
+/** How long a card waits for its title art before showing the plain artwork meanwhile. */
+private const val TITLE_ART_WAIT_MS = 600L
+
 /**
  * Horizontal 16:9 card for landscape rows (e.g. Popular Series): wide artwork,
  * title logo (or the name) at the bottom left, optional rank number; grows with a
  * soft shadow when focused, like every other card.
+ *
+ * On screens that provide [LocalTitleArtResolver], the card looks up its title art as it appears:
+ * TMDB's backdrop with the title already on it (shown as is, like Disney+), or else the title logo
+ * over the plain backdrop, or else the name.
  */
 @Composable
 fun AppleLandscapeCard(
@@ -1115,9 +1124,41 @@ fun AppleLandscapeCard(
     val density = LocalDensity.current
     val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
     val isPlaceholder = item.poster == PLACEHOLDER_IMAGE_URL
-    val imageUrl = item.landscapePoster?.takeIf { it.isNotBlank() }
-        ?: item.background?.takeIf { it.isNotBlank() }
-        ?: item.poster
+
+    // Title art, when the screen looks it up (see LocalTitleArtResolver).
+    val titleArt = LocalTitleArtResolver.current
+    var resolvedItem by remember(item, titleArt) { mutableStateOf(titleArt?.cached(item)) }
+    var waitedForArt by remember(item, titleArt) { mutableStateOf(false) }
+    LaunchedEffect(item, titleArt) {
+        if (titleArt == null || isPlaceholder || resolvedItem != null) return@LaunchedEffect
+        val wait = launch {
+            delay(TITLE_ART_WAIT_MS)
+            waitedForArt = true
+        }
+        resolvedItem = try {
+            titleArt.resolve(item)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            item
+        }
+        wait.cancel()
+    }
+    val artPending = titleArt != null && !isPlaceholder && resolvedItem == null
+    val shown = resolvedItem ?: item
+    // A backdrop that already carries the title is shown as is, with nothing laid over it. If it
+    // doesn't load, the plain backdrop with the logo (or name) over it takes its place.
+    var titledArtFailed by remember(shown.landscapePoster) { mutableStateOf(false) }
+    val useTitledArt = shown.landscapeHasTitle && !titledArtFailed
+    val showTitleOverlay = !artPending && !useTitledArt
+
+    val imageUrl = when {
+        useTitledArt -> shown.landscapePoster
+        shown.landscapeHasTitle -> null
+        else -> shown.landscapePoster
+    }?.takeIf { it.isNotBlank() }
+        ?: shown.background?.takeIf { it.isNotBlank() }
+        ?: shown.poster
     val widthPx = remember(width, density) { with(density) { width.roundToPx() }.coerceAtLeast(1) }
     val heightPx = remember(height, density) { with(density) { height.roundToPx() }.coerceAtLeast(1) }
     val imageModel = remember(context, imageUrl, widthPx, heightPx) {
@@ -1127,8 +1168,8 @@ fun AppleLandscapeCard(
             .crossfade(true)
             .build()
     }
-    val logoModel = remember(context, item.logo, widthPx) {
-        item.logo?.takeIf { it.isNotBlank() }?.let {
+    val logoModel = remember(context, shown.logo, widthPx) {
+        shown.logo?.takeIf { it.isNotBlank() }?.let {
             ImageRequest.Builder(context)
                 .data(it)
                 .size(width = widthPx, height = with(density) { 40.dp.roundToPx() })
@@ -1136,7 +1177,7 @@ fun AppleLandscapeCard(
                 .build()
         }
     }
-    var logoFailed by remember(item.logo) { mutableStateOf(false) }
+    var logoFailed by remember(shown.logo) { mutableStateOf(false) }
     var longPressTriggered by remember { mutableStateOf(false) }
     val longPressKeyTracker = rememberLongPressKeyTracker()
 
@@ -1188,15 +1229,18 @@ fun AppleLandscapeCard(
                 .fillMaxSize()
                 .clip(shape)
         ) {
-            if (!isPlaceholder && !imageUrl.isNullOrBlank()) {
+            // While the title art is being looked up, hold the plain artwork back a moment so the
+            // card doesn't flash one picture and then another.
+            if (!isPlaceholder && !imageUrl.isNullOrBlank() && (!artPending || waitedForArt)) {
                 AsyncImage(
                     model = imageModel,
                     contentDescription = item.name,
                     contentScale = ContentScale.Crop,
+                    onError = { if (useTitledArt) titledArtFailed = true },
                     modifier = Modifier.fillMaxSize()
                 )
             }
-            if (!isPlaceholder) {
+            if (!isPlaceholder && showTitleOverlay) {
                 // Shade the lower part so the title reads on any artwork.
                 Box(
                     modifier = Modifier

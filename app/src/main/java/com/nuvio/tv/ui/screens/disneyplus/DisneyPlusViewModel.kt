@@ -101,6 +101,12 @@ class DisneyPlusViewModel @Inject constructor(
     /** Disney+ pages show horizontal cards with each title's name (logo) on the artwork. */
     private val titleLogos: Boolean = hub.service == com.nuvio.tv.data.disneyplus.HubService.DISNEY
 
+    /**
+     * Title art for cards that find it as they appear: the See All grid (every hub) and any row title
+     * whose art wasn't found up front.
+     */
+    val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = repository.titleArtResolver
+
     private val _uiState = MutableStateFlow(
         DisneyPlusUiState(
             hub = hub,
@@ -152,17 +158,6 @@ class DisneyPlusViewModel @Inject constructor(
             )
         }
         loadMoreSeeAll()
-        // The row only carried logos for the titles it showed; the rest get theirs now.
-        if (titleLogos) {
-            viewModelScope.launch {
-                val withLogos = runCatching { repository.withTitleLogos(items) }.getOrNull() ?: return@launch
-                val byId = withLogos.associateBy { "${it.apiType}:${it.id}" }
-                _uiState.update { state ->
-                    val open = state.seeAll?.takeIf { it.rowId == rowId } ?: return@update state
-                    state.copy(seeAll = open.copy(items = open.items.map { byId["${it.apiType}:${it.id}"] ?: it }))
-                }
-            }
-        }
     }
 
     fun closeSeeAll() {
@@ -195,9 +190,6 @@ class DisneyPlusViewModel @Inject constructor(
                 }
                 if (pageItems.isEmpty()) break
                 fresh = pageItems.filter { known.add("${it.apiType}:${it.id}") }
-                if (titleLogos && fresh.isNotEmpty()) {
-                    fresh = runCatching { repository.withTitleLogos(fresh) }.getOrDefault(fresh)
-                }
                 if (page < SEE_ALL_MAX_PAGES) nextPage = page + 1
                 if (fresh.isNotEmpty()) break
                 page++

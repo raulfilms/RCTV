@@ -34,7 +34,9 @@ data class MetaPreview(
     val trailerYtIds: List<String> = emptyList(),
     val seasonCount: Int? = null,
     val voteCount: Int? = null,
-    val sourceAddonBaseUrl: String? = null
+    val sourceAddonBaseUrl: String? = null,
+    /** True when [landscapePoster] already has the title's name on it (a TMDB "title card" backdrop). */
+    val landscapeHasTitle: Boolean = false
 ) {
     val apiType: String
         get() = type.toApiString(rawType)

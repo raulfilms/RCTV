@@ -36,6 +36,9 @@ class TmdbEntityBrowseViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
+    /** Title art for the See All page's horizontal cards, found as they appear. */
+    val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = hubRepository.titleArtResolver
+
     private val inFlightRailLoads = mutableSetOf<String>()
 
     val entityKind: TmdbEntityKind = TmdbEntityKind.fromRouteValue(
