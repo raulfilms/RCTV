@@ -214,13 +214,13 @@ object ChannelBrands {
                 "the movie channel.*", "tmc.*"
             ),
             networks = listOf(67),
-            names = setOf("showtime", "paramountpluswithshowtime")
+            names = setOf("showtime", "paramountpluswithshowtime", "themoviechannel")
         ),
         brand(
             "starz", "Starz",
             family = listOf("starz", "starz.*", "encore.*"),
             networks = listOf(318),
-            names = setOf("starz")
+            names = setOf("starz", "starzencore", "encore")
         ),
         brand(
             "mgm_plus", "MGM+",
@@ -248,20 +248,23 @@ object ChannelBrands {
                 "discovery( channel)?", "discovery.*", "science( channel)?", "investigation discovery.*", "destination america"
             ),
             networks = listOf(64),
-            names = setOf("discovery", "discoverychannel", "sciencechannel", "investigationdiscovery", "discoveryplus")
+            names = setOf(
+                "discovery", "discoverychannel", "science", "sciencechannel", "investigationdiscovery", "id",
+                "destinationamerica", "discoverylife", "discoveryfamily", "discoveryplus"
+            )
         ),
         brand(
             "history", "History",
             family = listOf("history( channel)?", "history.*", "h2( history)?"),
             networks = listOf(65),
-            names = setOf("history", "historychannel")
+            names = setOf("history", "historychannel", "h2")
         ),
         brand("ae", "A&E", family = listOf("a and e.*"), networks = listOf(129), names = setOf("aande", "ae")),
         brand(
             "lifetime", "Lifetime",
             family = listOf("lifetime.*", "lmn"),
             networks = listOf(34),
-            names = setOf("lifetime", "lifetimemovies", "lmn")
+            names = setOf("lifetime", "lifetimemovies", "lifetimemovienetwork", "lmn")
         ),
         brand("tlc", "TLC", family = listOf("tlc.*"), networks = listOf(84)),
         brand("bravo", "Bravo", family = listOf("bravo.*"), networks = listOf(74)),
@@ -290,7 +293,10 @@ object ChannelBrands {
             "hallmark", "Hallmark Channel",
             family = listOf("hallmark( channel)?", "hallmark.*"),
             networks = listOf(384),
-            names = setOf("hallmarkchannel", "hallmarkmoviesandmysteries", "hallmarkfamily", "hallmark")
+            names = setOf(
+                "hallmarkchannel", "hallmarkmoviesandmysteries", "hallmarkmystery", "hallmarkfamily", "hallmark",
+                "hallmarkdrama"
+            )
         ),
         brand("vh1", "VH1", family = listOf("vh1.*"), networks = listOf(158)),
         brand("pbs", "PBS", family = listOf("pbs.*"), networks = listOf(14)),

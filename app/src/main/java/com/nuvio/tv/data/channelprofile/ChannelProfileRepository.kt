@@ -35,11 +35,14 @@ private const val TAG = "ChannelProfileRepo"
 private const val ROW_ITEM_CAP = 30
 /** Titles a channel's TV Shows / Movies row shows before its "See All" card. */
 const val CHANNEL_ROW_VISIBLE = 10
-/** A "See All" page stops after this many titles. */
-private const val SEE_ALL_CAP = 200
+/** TMDB's discover stops at page 500, so a "See All" can go that far (every title TMDB lists). */
+private const val TMDB_MAX_PAGE = 500
 private const val HERO_ITEM_COUNT = 5
-/** EPG titles looked up to find a channel's TMDB network when it isn't a known one. */
-private const val NETWORK_LOOKUP_TITLES = 6
+/**
+ * Shows from a channel family's guide looked up to find more of its TMDB networks (a sister channel
+ * like Investigation Discovery or Nick Jr.), or the network itself when it isn't a known one.
+ */
+private const val NETWORK_LOOKUP_TITLES = 12
 
 /** A movie seen in a channel's guide: its title and, when the guide gives one, its year. */
 data class EpgMovieTitle(val title: String, val year: Int?)
@@ -114,8 +117,9 @@ class ChannelProfileRepository @Inject constructor(
 
     /**
      * The brand's TMDB networks and companies: those the channel list (assets/channel-tmdb.csv)
-     * gives its channels, plus known network ids TMDB confirms by name. With neither, the network
-     * is found through shows in its guide (a show whose TMDB network has the channel's name).
+     * gives its channels, known network ids TMDB confirms by name, and the networks of shows in its
+     * guide whose TMDB network has one of the family's names (so sister channels count too). Its
+     * movies come from its companies; a brand without any uses the TMDB company with its own name.
      */
     suspend fun brandIds(
         brand: ChannelBrand,
@@ -133,16 +137,15 @@ class ChannelProfileRepository @Inject constructor(
             }
             ChannelTmdbMap.ensureLoaded(context)
             val listed = ChannelTmdbMap.idsFor(channelGuideIds, channelNames)
-            val networks = (listed.networks + verified).distinct().ifEmpty { networksFromGuide(brand, epgSeries) }
+            val networks = (listed.networks + verified + networksFromGuide(brand, epgSeries)).distinct()
+            val companyQueries = brand.companyQueries.ifEmpty { listOf(brand.name) }
             val companies = listed.companies + coroutineScope {
-                brand.companyQueries.map { query -> async { companyId(query) } }.awaitAll().filterNotNull()
+                companyQueries.map { query -> async { companyId(query) } }.awaitAll().filterNotNull()
             }
             val ids = ChannelBrandIds(networks.distinct(), companies.distinct())
-            // Keep answers that found something, or a guide search that found nothing; anything else
-            // (a network hiccup, a guide that hadn't loaded yet) is tried again next time.
-            if (ids.networks.isNotEmpty() || ids.companies.isNotEmpty() ||
-                (brand.tmdbNetworks.isEmpty() && epgSeries.isNotEmpty())
-            ) {
+            // Keep the answer once the guide was part of it (it adds the sister channels' networks);
+            // before the guide has loaded, or after a network hiccup, it's worked out again next time.
+            if (epgSeries.isNotEmpty() && (ids.networks.isNotEmpty() || ids.companies.isNotEmpty() || brand.tmdbNetworks.isEmpty())) {
                 idsCache[brand.key] = ids
             }
             ids
@@ -249,7 +252,7 @@ class ChannelProfileRepository @Inject constructor(
     suspend fun seeAllPage(isTv: Boolean, ids: ChannelBrandIds, page: Int, loadedCount: Int): ChannelTitlesPage =
         withContext(Dispatchers.IO) {
             val filter = if (isTv) ids.networks else ids.companies
-            if (filter.isEmpty() || loadedCount >= SEE_ALL_CAP) return@withContext ChannelTitlesPage(emptyList(), null)
+            if (filter.isEmpty() || page > TMDB_MAX_PAGE) return@withContext ChannelTitlesPage(emptyList(), null)
             val result = discover(
                 isTv = isTv,
                 networks = if (isTv) filter.joinToString("|") else null,
@@ -257,7 +260,8 @@ class ChannelProfileRepository @Inject constructor(
                 language = language(),
                 page = page
             )
-            val next = if (page < result.totalPages && loadedCount + result.items.size < SEE_ALL_CAP) page + 1 else null
+            // Every page TMDB has (up to its own limit), so See All lists the whole network or studio.
+            val next = if (page < minOf(result.totalPages, TMDB_MAX_PAGE)) page + 1 else null
             ChannelTitlesPage(result.items, next)
         }
 
@@ -269,6 +273,11 @@ class ChannelProfileRepository @Inject constructor(
 
     private data class DiscoverResult(val items: List<MetaPreview>, val totalPages: Int)
 
+    /**
+     * One page of a network's shows or a studio's movies, most popular first. No minimum vote count:
+     * every title TMDB lists for the network or company is included (a 10-vote minimum used to cut
+     * Animal Planet's 158 shows down to about 20).
+     */
     private suspend fun discover(
         isTv: Boolean,
         networks: String?,
@@ -284,8 +293,7 @@ class ChannelProfileRepository @Inject constructor(
                     page = page,
                     sortBy = "popularity.desc",
                     withNetworks = networks,
-                    withCompanies = companies,
-                    voteCountGte = 10
+                    withCompanies = companies
                 ).body()
             } else {
                 tmdbApi.discoverMovies(
@@ -293,8 +301,7 @@ class ChannelProfileRepository @Inject constructor(
                     language = language,
                     page = page,
                     sortBy = "popularity.desc",
-                    withCompanies = companies,
-                    voteCountGte = 10
+                    withCompanies = companies
                 ).body()
             }
             val genres = genreMap(isTv, language)
