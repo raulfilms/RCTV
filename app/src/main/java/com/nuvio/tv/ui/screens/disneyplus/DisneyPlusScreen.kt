@@ -200,6 +200,7 @@ fun DisneyPlusScreen(
                                 HubService.PARAMOUNT -> R.string.paramount_empty_title
                                 HubService.DISCOVERY -> R.string.discovery_empty_title
                                 HubService.HBO_MAX -> R.string.hbomax_empty_title
+                                HubService.PEACOCK -> R.string.peacock_empty_title
                             }
                         ),
                         subtitle = stringResource(R.string.disney_empty_subtitle),
@@ -372,6 +373,8 @@ fun DisneyPlusScreen(
  * Geographic, Hulu, ESPN. Paramount+: CBS, BET, Comedy Central, MTV, Nickelodeon, Smithsonian Channel.
  * discovery+: discovery+ Originals, HGTV, Food Network, TLC, ID, OWN, Animal Planet, Magnolia Network.
  * HBO Max: HBO, Max Originals, DC, Looney Tunes, Warner Bros. Animation, Sesame Workshop, Crunchyroll.
+ * Peacock: Peacock Originals, NBC, Bravo, Telemundo, WWE, NBC Sports, Universal Pictures, Illumination,
+ * DreamWorks Animation, Focus Features, Working Title Films, Amblin Partners.
  * Each opens that brand's page.
  */
 @Composable
@@ -409,6 +412,7 @@ private fun DisneyPlusHub.headerLogoRes(): Int? = when {
         HubService.PARAMOUNT -> R.drawable.streaming_logo_paramount
         HubService.DISCOVERY -> R.drawable.streaming_logo_discovery
         HubService.HBO_MAX -> R.drawable.streaming_logo_hbomax
+        HubService.PEACOCK -> R.drawable.streaming_logo_peacock
     }
     // Its tile is a full picture, so the page header uses the discovery+ logo.
     this == DisneyPlusHub.D_ORIGINALS -> R.drawable.streaming_logo_discovery
@@ -446,6 +450,18 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     DisneyPlusHub.H_WB_ANIMATION -> R.drawable.hbomax_brand_logo_wbanimation
     DisneyPlusHub.H_SESAME -> R.drawable.hbomax_brand_logo_sesame
     DisneyPlusHub.H_CRUNCHYROLL -> R.drawable.hbomax_brand_logo_crunchyroll
+    DisneyPlusHub.PK_ORIGINALS -> R.drawable.peacock_brand_logo_originals
+    DisneyPlusHub.PK_NBC -> R.drawable.peacock_brand_logo_nbc
+    DisneyPlusHub.PK_BRAVO -> R.drawable.peacock_brand_logo_bravo
+    DisneyPlusHub.PK_TELEMUNDO -> R.drawable.peacock_brand_logo_telemundo
+    DisneyPlusHub.PK_WWE -> R.drawable.peacock_brand_logo_wwe
+    DisneyPlusHub.PK_NBC_SPORTS -> R.drawable.peacock_brand_logo_nbcsports
+    DisneyPlusHub.PK_UNIVERSAL -> R.drawable.peacock_brand_logo_universal
+    DisneyPlusHub.PK_ILLUMINATION -> R.drawable.peacock_brand_logo_illumination
+    DisneyPlusHub.PK_DREAMWORKS -> R.drawable.peacock_brand_logo_dreamworks
+    DisneyPlusHub.PK_FOCUS -> R.drawable.peacock_brand_logo_focus
+    DisneyPlusHub.PK_WORKING_TITLE -> R.drawable.peacock_brand_logo_workingtitle
+    DisneyPlusHub.PK_AMBLIN -> R.drawable.peacock_brand_logo_amblin
     else -> R.drawable.disney_brand_logo_disney
 }
 
@@ -555,6 +571,19 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.H_WB_ANIMATION -> Color(0xFFED1C24)
     DisneyPlusHub.H_SESAME -> Color(0xFF00A651)
     DisneyPlusHub.H_CRUNCHYROLL -> Color(0xFFF78C25)
+    DisneyPlusHub.PEACOCK_MAIN -> Color(0xFF6E55DC)
+    DisneyPlusHub.PK_ORIGINALS -> Color(0xFF6E55DC)
+    DisneyPlusHub.PK_NBC -> Color(0xFF069DE0)
+    DisneyPlusHub.PK_BRAVO -> Color(0xFF3A3A3A)
+    DisneyPlusHub.PK_TELEMUNDO -> Color(0xFFEB1010)
+    DisneyPlusHub.PK_WWE -> Color(0xFFD71920)
+    DisneyPlusHub.PK_NBC_SPORTS -> Color(0xFFFCCC12)
+    DisneyPlusHub.PK_UNIVERSAL -> Color(0xFF1B3A6B)
+    DisneyPlusHub.PK_ILLUMINATION -> Color(0xFFF5C400)
+    DisneyPlusHub.PK_DREAMWORKS -> Color(0xFF0B2E6E)
+    DisneyPlusHub.PK_FOCUS -> Color(0xFF3A3A3A)
+    DisneyPlusHub.PK_WORKING_TITLE -> Color(0xFF3A3A3A)
+    DisneyPlusHub.PK_AMBLIN -> Color(0xFF2B2B2B)
     else -> Color(0xFF1E3A8A)
 }
 

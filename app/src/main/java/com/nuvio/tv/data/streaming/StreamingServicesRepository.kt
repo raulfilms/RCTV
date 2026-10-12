@@ -54,7 +54,7 @@ class StreamingServicesRepository @Inject constructor(
             providerIds = listOf(337), providerNames = listOf("Disney Plus", "Disney+")),
         Entry(StreamingService("paramount", "Paramount+", R.drawable.streaming_logo_paramount, appHub = "paramount"),
             providerIds = listOf(531, 2303), providerNames = listOf("Paramount Plus", "Paramount+", "Paramount Plus Premium")),
-        Entry(StreamingService("peacock", "Peacock", R.drawable.streaming_logo_peacock),
+        Entry(StreamingService("peacock", "Peacock", R.drawable.streaming_logo_peacock, appHub = "peacock"),
             providerIds = listOf(386, 387), providerNames = listOf("Peacock Premium", "Peacock", "Peacock Premium Plus")),
         Entry(StreamingService("discovery", "Discovery+", R.drawable.streaming_logo_discovery, appHub = "discovery"),
             providerIds = listOf(520), providerNames = listOf("Discovery+", "Discovery Plus")),

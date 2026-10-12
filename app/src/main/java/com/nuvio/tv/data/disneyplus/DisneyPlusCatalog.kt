@@ -257,6 +257,68 @@ object HboMaxIds {
 }
 
 /**
+ * Peacock ids. Peacock 3353 and NBC 6 (networks) and Working Title Films 10163 (company) were checked on
+ * themoviedb.org; Universal Pictures 33, Illumination 6704, DreamWorks Animation 521, Focus Features 10146
+ * and Amblin Entertainment 56 are TMDB's long-standing studio ids. Bravo, Telemundo and WWE Network are
+ * found at runtime through their own shows, Amblin Partners through TMDB company search.
+ */
+object PeacockIds {
+    /** Peacock Premium / Premium Plus (US), the same ids Home's Peacock tile uses. */
+    const val PROVIDERS = "386|387"
+
+    const val NET_PEACOCK = "3353"
+    const val NET_NBC = "6"
+
+    const val CO_UNIVERSAL = "33"
+    const val CO_ILLUMINATION = "6704"
+    const val CO_DREAMWORKS_ANIMATION = "521"
+    const val CO_FOCUS_FEATURES = "10146"
+    const val CO_WORKING_TITLE = "10163"
+    const val CO_AMBLIN_ENTERTAINMENT = "56"
+
+    const val AMBLIN_PARTNERS = "Amblin Partners"
+    const val DREAMWORKS_TV = "DreamWorks Animation Television"
+    const val WWE_STUDIOS = "WWE Studios"
+
+    private fun show(title: String, year: Int) = CuratedTitle(title, year, TmdbCollectionMediaType.TV)
+
+    val BRAVO = NetworkLookup(
+        names = listOf("Bravo"),
+        probes = listOf(show("Top Chef", 2006), show("The Real Housewives of Beverly Hills", 2010), show("Below Deck", 2013))
+    )
+    val TELEMUNDO = NetworkLookup(
+        names = listOf("Telemundo"),
+        probes = listOf(show("El Señor de los Cielos", 2013), show("La Reina del Sur", 2011), show("Señora Acero", 2014))
+    )
+    val WWE_NETWORK = NetworkLookup(
+        names = listOf("WWE Network"),
+        probes = listOf(show("WWE 24", 2015), show("WWE Untold", 2018), show("Legends' House", 2014))
+    )
+
+    // TMDB genre ids used on the Peacock pages
+    const val G_CRIME = "80"
+    const val G_DRAMA = "18"
+    const val G_ROMANCE = "10749"
+    const val G_TV_REALITY = "10764"
+    const val G_TV_TALK = "10767"
+
+    /** NBCUniversal companies and networks, used to decide what counts as Peacock content. */
+    val COMPANY_IDS: Set<Int> = setOf(33, 6704, 521, 10146, 10163, 56)
+
+    val NETWORK_IDS: Set<Int> = setOf(3353, 6)
+
+    val COMPANY_NAME_FRAGMENTS: List<String> = listOf(
+        "universal", "nbcuniversal", "nbc studios", "illumination", "dreamworks", "focus features", "working title",
+        "amblin", "telemundo", "bravo", "wwe", "usa network", "syfy", "oxygen", "peacock"
+    )
+
+    val NETWORK_NAMES: Set<String> = setOf(
+        "peacock", "nbc", "bravo", "telemundo", "universo", "usa network", "syfy", "e!", "oxygen", "cnbc", "msnbc",
+        "nbc sports", "nbcsn", "golf channel", "wwe network", "universal kids", "sprout"
+    )
+}
+
+/**
  * A TV network found through one of its shows: the first probe whose TMDB networks include one of [names]
  * (e.g. "OWN" / "Oprah Winfrey Network").
  */
@@ -278,7 +340,8 @@ enum class HubService(
     DISNEY(DisneyPlusIds.PROVIDER_DISNEY_PLUS),
     PARAMOUNT(ParamountPlusIds.PROVIDERS),
     DISCOVERY(DiscoveryPlusIds.PROVIDERS),
-    HBO_MAX(HboMaxIds.PROVIDERS);
+    HBO_MAX(HboMaxIds.PROVIDERS),
+    PEACOCK(PeacockIds.PROVIDERS);
 
     val ownership: HubOwnership
         get() = when (this) {
@@ -306,12 +369,18 @@ enum class HubService(
                 HboMaxIds.COMPANY_NAME_FRAGMENTS,
                 HboMaxIds.NETWORK_NAMES
             )
+            PEACOCK -> HubOwnership(
+                PeacockIds.COMPANY_IDS,
+                PeacockIds.NETWORK_IDS,
+                PeacockIds.COMPANY_NAME_FRAGMENTS,
+                PeacockIds.NETWORK_NAMES
+            )
         }
 }
 
 /**
  * Every page of the app's own streaming sections: the Disney+ main page, its brand pages and
- * collections, and the Paramount+, discovery+ and HBO Max main pages with their brand pages. [key] is
+ * collections, and the Paramount+, discovery+, HBO Max and Peacock main pages with their brand pages. [key] is
  * used in the navigation route.
  */
 enum class DisneyPlusHub(
@@ -422,11 +491,27 @@ enum class DisneyPlusHub(
     H_LOONEY_TUNES("hbomax_looney_tunes", R.string.hbomax_brand_looney_tunes, HubService.HBO_MAX),
     H_WB_ANIMATION("hbomax_wb_animation", R.string.hbomax_brand_wb_animation, HubService.HBO_MAX),
     H_SESAME("hbomax_sesame_workshop", R.string.hbomax_brand_sesame_workshop, HubService.HBO_MAX),
-    H_CRUNCHYROLL("hbomax_crunchyroll", R.string.hbomax_brand_crunchyroll, HubService.HBO_MAX);
+    H_CRUNCHYROLL("hbomax_crunchyroll", R.string.hbomax_brand_crunchyroll, HubService.HBO_MAX),
+
+    // Peacock: its main page, then one page per brand tile.
+    PEACOCK_MAIN("peacock", R.string.peacock_title, HubService.PEACOCK),
+    PK_ORIGINALS("peacock_originals", R.string.peacock_brand_originals, HubService.PEACOCK),
+    PK_NBC("peacock_nbc", R.string.peacock_brand_nbc, HubService.PEACOCK),
+    PK_BRAVO("peacock_bravo", R.string.peacock_brand_bravo, HubService.PEACOCK),
+    PK_TELEMUNDO("peacock_telemundo", R.string.peacock_brand_telemundo, HubService.PEACOCK),
+    PK_WWE("peacock_wwe", R.string.peacock_brand_wwe, HubService.PEACOCK),
+    PK_NBC_SPORTS("peacock_nbc_sports", R.string.peacock_brand_nbc_sports, HubService.PEACOCK),
+    PK_UNIVERSAL("peacock_universal", R.string.peacock_brand_universal, HubService.PEACOCK),
+    PK_ILLUMINATION("peacock_illumination", R.string.peacock_brand_illumination, HubService.PEACOCK),
+    PK_DREAMWORKS("peacock_dreamworks", R.string.peacock_brand_dreamworks, HubService.PEACOCK),
+    PK_FOCUS("peacock_focus_features", R.string.peacock_brand_focus, HubService.PEACOCK),
+    PK_WORKING_TITLE("peacock_working_title", R.string.peacock_brand_working_title, HubService.PEACOCK),
+    PK_AMBLIN("peacock_amblin", R.string.peacock_brand_amblin, HubService.PEACOCK);
 
     /** A service's main page (hero, brand tiles, Continue Watching...), as opposed to a brand page. */
     val isMain: Boolean
-        get() = this == MAIN || this == PARAMOUNT_MAIN || this == DISCOVERY_MAIN || this == HBOMAX_MAIN
+        get() = this == MAIN || this == PARAMOUNT_MAIN || this == DISCOVERY_MAIN || this == HBOMAX_MAIN ||
+            this == PEACOCK_MAIN
 
     companion object {
         fun fromKey(key: String?): DisneyPlusHub =
@@ -441,6 +526,10 @@ enum class DisneyPlusHub(
             )
             HubService.HBO_MAX -> listOf(
                 H_HBO, H_MAX_ORIGINALS, H_DC, H_LOONEY_TUNES, H_WB_ANIMATION, H_SESAME, H_CRUNCHYROLL
+            )
+            HubService.PEACOCK -> listOf(
+                PK_ORIGINALS, PK_NBC, PK_BRAVO, PK_TELEMUNDO, PK_WWE, PK_NBC_SPORTS,
+                PK_UNIVERSAL, PK_ILLUMINATION, PK_DREAMWORKS, PK_FOCUS, PK_WORKING_TITLE, PK_AMBLIN
             )
         }
     }
@@ -3011,6 +3100,550 @@ object DisneyPlusCatalog {
         )
     )
 
+    // ================================================================== Peacock
+
+    private val ONE_CHICAGO_LAW_ORDER = listOf(
+        series("Chicago Fire", 2012),
+        series("Chicago P.D.", 2014),
+        series("Chicago Med", 2015),
+        series("Law & Order", 1990),
+        series("Law & Order: Special Victims Unit", 1999),
+        series("Law & Order: Organized Crime", 2021),
+        series("Chicago Justice", 2017)
+    )
+
+    private val REAL_HOUSEWIVES = listOf(
+        series("The Real Housewives of Beverly Hills", 2010),
+        series("The Real Housewives of Atlanta", 2008),
+        series("The Real Housewives of New Jersey", 2009),
+        series("The Real Housewives of Orange County", 2006),
+        series("The Real Housewives of New York City", 2008),
+        series("The Real Housewives of Potomac", 2016),
+        series("The Real Housewives of Salt Lake City", 2020),
+        series("The Real Housewives of Miami", 2011),
+        series("The Real Housewives of Dubai", 2022)
+    )
+
+    private val BELOW_DECK = listOf(
+        series("Below Deck", 2013),
+        series("Below Deck Mediterranean", 2016),
+        series("Below Deck Sailing Yacht", 2020),
+        series("Below Deck Down Under", 2022),
+        series("Below Deck Adventure", 2022)
+    )
+
+    private val JURASSIC = listOf(
+        movie("Jurassic Park", 1993),
+        movie("The Lost World: Jurassic Park", 1997),
+        movie("Jurassic Park III", 2001),
+        movie("Jurassic World", 2015),
+        movie("Jurassic World: Fallen Kingdom", 2018),
+        movie("Jurassic World Dominion", 2022),
+        movie("Jurassic World Rebirth", 2025)
+    )
+
+    private val FAST_FURIOUS = listOf(
+        movie("The Fast and the Furious", 2001),
+        movie("2 Fast 2 Furious", 2003),
+        movie("The Fast and the Furious: Tokyo Drift", 2006),
+        movie("Fast & Furious", 2009),
+        movie("Fast Five", 2011),
+        movie("Fast & Furious 6", 2013),
+        movie("Furious 7", 2015),
+        movie("The Fate of the Furious", 2017),
+        movie("Hobbs & Shaw", 2019),
+        movie("F9", 2021),
+        movie("Fast X", 2023)
+    )
+
+    private val UNIVERSAL_MONSTERS = listOf(
+        movie("Dracula", 1931),
+        movie("Frankenstein", 1931),
+        movie("The Mummy", 1932),
+        movie("The Invisible Man", 1933),
+        movie("Bride of Frankenstein", 1935),
+        movie("The Wolf Man", 1941),
+        movie("Creature from the Black Lagoon", 1954),
+        movie("The Invisible Man", 2020),
+        movie("Wolf Man", 2025)
+    )
+
+    private val DESPICABLE_ME = listOf(
+        movie("Despicable Me", 2010),
+        movie("Despicable Me 2", 2013),
+        movie("Minions", 2015),
+        movie("Despicable Me 3", 2017),
+        movie("Minions: The Rise of Gru", 2022),
+        movie("Despicable Me 4", 2024)
+    )
+
+    private val SHREK = listOf(
+        movie("Shrek", 2001),
+        movie("Shrek 2", 2004),
+        movie("Shrek the Third", 2007),
+        movie("Shrek Forever After", 2010),
+        movie("Puss in Boots", 2011),
+        movie("Puss in Boots: The Last Wish", 2022)
+    )
+
+    private val HOW_TO_TRAIN_YOUR_DRAGON = listOf(
+        movie("How to Train Your Dragon", 2010),
+        movie("How to Train Your Dragon 2", 2014),
+        movie("How to Train Your Dragon: The Hidden World", 2019),
+        movie("How to Train Your Dragon", 2025)
+    )
+
+    private val KUNG_FU_PANDA = listOf(
+        movie("Kung Fu Panda", 2008),
+        movie("Kung Fu Panda 2", 2011),
+        movie("Kung Fu Panda 3", 2016),
+        movie("Kung Fu Panda 4", 2024)
+    )
+
+    private val AMBLIN_CLASSICS = listOf(
+        movie("E.T. the Extra-Terrestrial", 1982),
+        movie("Back to the Future", 1985),
+        movie("The Goonies", 1985),
+        movie("Gremlins", 1984),
+        movie("Who Framed Roger Rabbit", 1988),
+        movie("An American Tail", 1986),
+        movie("The Land Before Time", 1988),
+        movie("Back to the Future Part II", 1989),
+        movie("Jurassic Park", 1993),
+        movie("Casper", 1995),
+        movie("Twister", 1996),
+        movie("Men in Black", 1997)
+    )
+
+    private fun onPeacock(
+        mediaType: TmdbCollectionMediaType,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        keywordQuery: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null
+    ) = DisneyRowSource.Discover(
+        mediaType = mediaType,
+        sortBy = sortBy,
+        providers = PeacockIds.PROVIDERS,
+        genres = genres,
+        keywordQuery = keywordQuery,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte
+    )
+
+    /** Movies from a studio by its TMDB company id(s). */
+    private fun studioMovies(
+        companies: String,
+        sortBy: String = POPULAR,
+        genres: String? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null,
+        onPeacock: Boolean = false
+    ) = DisneyRowSource.Discover(
+        mediaType = MOVIE,
+        sortBy = sortBy,
+        companies = companies,
+        genres = genres,
+        voteCountGte = voteCountGte,
+        releaseDateLte = releaseDateLte,
+        providers = if (onPeacock) PeacockIds.PROVIDERS else null
+    )
+
+    /**
+     * A movie studio's page: popular, new, on Peacock, its franchises ([middleRows]), classics and top
+     * rated. [extraSources] adds more sources to every row (e.g. Amblin Partners next to Amblin Entertainment).
+     */
+    private fun studioPage(
+        hub: DisneyPlusHub,
+        prefix: String,
+        companies: String,
+        middleRows: List<DisneyRowSpec> = emptyList(),
+        classicUntil: String? = "1999-12-31",
+        topRatedMinVotes: Int = 1000,
+        extraSources: (sortBy: String, voteCountGte: Int?, releaseDateLte: String?) -> List<DisneyRowSource> = { _, _, _ -> emptyList() }
+    ) = DisneyHubSpec(
+        hub = hub,
+        heroRowId = "${prefix}_popular",
+        rows = buildList {
+            add(
+                DisneyRowSpec(
+                    "${prefix}_popular", R.string.peacock_row_popular_movies,
+                    listOf(studioMovies(companies, voteCountGte = 50)) + extraSources(POPULAR, 50, null)
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "${prefix}_new", R.string.disney_row_new_short,
+                    listOf(studioMovies(companies, sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY)) +
+                        extraSources(RECENT, 10, TODAY)
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "${prefix}_on_peacock", R.string.peacock_row_on_peacock,
+                    listOf(studioMovies(companies, onPeacock = true))
+                )
+            )
+            addAll(middleRows)
+            if (classicUntil != null) {
+                add(
+                    DisneyRowSpec(
+                        "${prefix}_classics", R.string.peacock_row_classics,
+                        listOf(studioMovies(companies, sortBy = MOST_VOTED, releaseDateLte = classicUntil)) +
+                            extraSources(MOST_VOTED, null, classicUntil)
+                    )
+                )
+            }
+            add(
+                DisneyRowSpec(
+                    "${prefix}_top_rated", R.string.disney_row_top_rated,
+                    listOf(studioMovies(companies, sortBy = TOP_RATED, voteCountGte = topRatedMinVotes)) +
+                        extraSources(TOP_RATED, topRatedMinVotes, null)
+                )
+            )
+        }
+    )
+
+    private val peacockMain = DisneyHubSpec(
+        hub = DisneyPlusHub.PEACOCK_MAIN,
+        heroRowId = "pk_trending",
+        rows = listOf(
+            DisneyRowSpec("continue_watching", R.string.disney_row_continue_watching, kind = DisneyRowKind.CONTINUE_WATCHING),
+            DisneyRowSpec("recommended", R.string.disney_row_recommended, kind = DisneyRowKind.RECOMMENDED),
+            DisneyRowSpec(
+                "pk_new", R.string.peacock_row_new,
+                listOf(
+                    onPeacock(MOVIE, sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY),
+                    onPeacock(TV, sortBy = RECENT_TV, voteCountGte = 5, releaseDateLte = TODAY)
+                )
+            ),
+            DisneyRowSpec("pk_trending", R.string.disney_row_trending, listOf(onPeacock(MOVIE), onPeacock(TV))),
+            DisneyRowSpec("pk_originals", R.string.peacock_brand_originals, listOf(net(PeacockIds.NET_PEACOCK))),
+            DisneyRowSpec("pk_nbc", R.string.peacock_row_nbc_shows, listOf(net(PeacockIds.NET_NBC))),
+            DisneyRowSpec("pk_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))),
+            DisneyRowSpec("pk_bravo", R.string.peacock_brand_bravo, listOf(net(null, PeacockIds.BRAVO))),
+            DisneyRowSpec(
+                "pk_universal", R.string.peacock_brand_universal,
+                listOf(studioMovies(PeacockIds.CO_UNIVERSAL, voteCountGte = 300, releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec(
+                "pk_animation", R.string.peacock_row_animation,
+                listOf(
+                    studioMovies(PeacockIds.CO_DREAMWORKS_ANIMATION, voteCountGte = 300),
+                    studioMovies(PeacockIds.CO_ILLUMINATION, voteCountGte = 300)
+                )
+            ),
+            DisneyRowSpec("pk_wwe", R.string.peacock_brand_wwe, listOf(DisneyRowSource.Discover(TV, keywordQuery = "wwe"))),
+            DisneyRowSpec("pk_telemundo", R.string.peacock_brand_telemundo, listOf(net(null, PeacockIds.TELEMUNDO))),
+            DisneyRowSpec("pk_movies", R.string.disney_row_movies, listOf(onPeacock(MOVIE, voteCountGte = 200))),
+            DisneyRowSpec("pk_series", R.string.disney_row_series, listOf(onPeacock(TV, voteCountGte = 50))),
+            DisneyRowSpec(
+                "pk_drama", R.string.hbomax_row_drama,
+                listOf(
+                    onPeacock(TV, genres = PeacockIds.G_DRAMA, voteCountGte = 100),
+                    onPeacock(MOVIE, genres = PeacockIds.G_DRAMA, voteCountGte = 300)
+                )
+            ),
+            DisneyRowSpec(
+                "pk_comedy", R.string.disney_row_comedy,
+                listOf(
+                    onPeacock(MOVIE, genres = DisneyPlusIds.G_COMEDY, voteCountGte = 100),
+                    onPeacock(TV, genres = DisneyPlusIds.G_COMEDY, voteCountGte = 50)
+                )
+            ),
+            DisneyRowSpec(
+                "pk_action", R.string.disney_row_action,
+                listOf(
+                    onPeacock(MOVIE, genres = "${DisneyPlusIds.G_ACTION}|${DisneyPlusIds.G_ADVENTURE}", voteCountGte = 100),
+                    onPeacock(TV, genres = DisneyPlusIds.G_TV_ACTION_ADVENTURE, voteCountGte = 50)
+                )
+            ),
+            DisneyRowSpec(
+                "pk_kids", R.string.paramount_row_kids,
+                listOf(
+                    onPeacock(TV, genres = DisneyPlusIds.G_TV_KIDS),
+                    onPeacock(MOVIE, genres = "${DisneyPlusIds.G_ANIMATION},${DisneyPlusIds.G_FAMILY}", voteCountGte = 100)
+                )
+            ),
+            DisneyRowSpec(
+                "pk_documentaries", R.string.disney_row_documentaries,
+                listOf(
+                    onPeacock(MOVIE, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 10),
+                    onPeacock(TV, genres = DisneyPlusIds.G_DOCUMENTARY, voteCountGte = 5)
+                )
+            )
+        )
+    )
+
+    private val peacockOriginals = networkPage(
+        hub = DisneyPlusHub.PK_ORIGINALS,
+        prefix = "pko",
+        networks = PeacockIds.NET_PEACOCK,
+        middleRows = listOf(
+            DisneyRowSpec("pko_dramas", R.string.paramount_row_dramas, listOf(net(PeacockIds.NET_PEACOCK, genres = PeacockIds.G_DRAMA))),
+            DisneyRowSpec("pko_comedies", R.string.paramount_row_comedies, listOf(net(PeacockIds.NET_PEACOCK, genres = DisneyPlusIds.G_COMEDY))),
+            DisneyRowSpec("pko_crime", R.string.paramount_row_crime, listOf(net(PeacockIds.NET_PEACOCK, genres = PeacockIds.G_CRIME))),
+            DisneyRowSpec(
+                "pko_docuseries", R.string.discovery_row_docuseries,
+                listOf(net(PeacockIds.NET_PEACOCK, genres = DisneyPlusIds.G_DOCUMENTARY))
+            ),
+            DisneyRowSpec(
+                "pko_reality", R.string.paramount_row_reality_competition,
+                listOf(net(PeacockIds.NET_PEACOCK, genres = PeacockIds.G_TV_REALITY))
+            )
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 50
+    )
+
+    private val peacockNbc = networkPage(
+        hub = DisneyPlusHub.PK_NBC,
+        prefix = "nbc",
+        networks = PeacockIds.NET_NBC,
+        middleRows = listOf(
+            DisneyRowSpec("nbc_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))),
+            DisneyRowSpec("nbc_dramas", R.string.paramount_row_dramas, listOf(net(PeacockIds.NET_NBC, genres = PeacockIds.G_DRAMA))),
+            DisneyRowSpec("nbc_comedies", R.string.paramount_row_comedies, listOf(net(PeacockIds.NET_NBC, genres = DisneyPlusIds.G_COMEDY))),
+            DisneyRowSpec(
+                "nbc_reality", R.string.paramount_row_reality_competition,
+                listOf(net(PeacockIds.NET_NBC, genres = PeacockIds.G_TV_REALITY))
+            ),
+            DisneyRowSpec("nbc_late_night", R.string.paramount_row_late_night, listOf(net(PeacockIds.NET_NBC, genres = PeacockIds.G_TV_TALK)))
+        ),
+        topRatedMinVotes = 300
+    )
+
+    private val peacockBravo = networkPage(
+        hub = DisneyPlusHub.PK_BRAVO,
+        prefix = "bravo",
+        networks = null,
+        lookup = PeacockIds.BRAVO,
+        middleRows = listOf(
+            DisneyRowSpec("bravo_housewives", R.string.peacock_row_real_housewives, listOf(curated(REAL_HOUSEWIVES))),
+            DisneyRowSpec("bravo_below_deck", R.string.peacock_row_below_deck, listOf(curated(BELOW_DECK))),
+            DisneyRowSpec(
+                "bravo_reality", R.string.paramount_row_reality,
+                listOf(net(null, PeacockIds.BRAVO, genres = PeacockIds.G_TV_REALITY))
+            ),
+            DisneyRowSpec(
+                "bravo_talk", R.string.paramount_row_late_night,
+                listOf(net(null, PeacockIds.BRAVO, genres = PeacockIds.G_TV_TALK))
+            )
+        ),
+        classicUntil = "2010-12-31",
+        topRatedMinVotes = 20
+    )
+
+    private val peacockTelemundo = networkPage(
+        hub = DisneyPlusHub.PK_TELEMUNDO,
+        prefix = "tlmd",
+        networks = null,
+        lookup = PeacockIds.TELEMUNDO,
+        middleRows = listOf(
+            DisneyRowSpec(
+                "tlmd_telenovelas", R.string.peacock_row_telenovelas,
+                listOf(net(null, PeacockIds.TELEMUNDO, sortBy = MOST_VOTED, genres = PeacockIds.G_DRAMA))
+            ),
+            DisneyRowSpec(
+                "tlmd_crime", R.string.paramount_row_crime,
+                listOf(net(null, PeacockIds.TELEMUNDO, genres = PeacockIds.G_CRIME))
+            ),
+            DisneyRowSpec(
+                "tlmd_reality", R.string.paramount_row_reality_competition,
+                listOf(net(null, PeacockIds.TELEMUNDO, genres = PeacockIds.G_TV_REALITY))
+            )
+        ),
+        classicUntil = "2012-12-31",
+        topRatedMinVotes = 10
+    )
+
+    private val peacockWwe = DisneyHubSpec(
+        hub = DisneyPlusHub.PK_WWE,
+        heroRowId = "wwe_popular",
+        rows = listOf(
+            DisneyRowSpec("wwe_popular", R.string.peacock_row_wwe_shows, listOf(DisneyRowSource.Discover(TV, keywordQuery = "wwe"))),
+            DisneyRowSpec(
+                "wwe_events", R.string.peacock_row_wwe_events,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = RECENT, keywordQuery = "wwe", releaseDateLte = TODAY))
+            ),
+            DisneyRowSpec("wwe_network", R.string.peacock_row_wwe_network, listOf(net(null, PeacockIds.WWE_NETWORK))),
+            DisneyRowSpec(
+                "wwe_classic_events", R.string.peacock_row_wwe_classic_events,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "wwe"))
+            ),
+            DisneyRowSpec("wwe_studios", R.string.peacock_row_wwe_studios, listOf(studio(MOVIE, PeacockIds.WWE_STUDIOS, sortBy = MOST_VOTED))),
+            DisneyRowSpec(
+                "wwe_docs", R.string.peacock_row_wrestling_docs,
+                listOf(
+                    DisneyRowSource.Discover(TV, keywordQuery = "professional wrestling", genres = DisneyPlusIds.G_DOCUMENTARY),
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "professional wrestling", genres = DisneyPlusIds.G_DOCUMENTARY)
+                )
+            )
+        )
+    )
+
+    private val peacockNbcSports = DisneyHubSpec(
+        hub = DisneyPlusHub.PK_NBC_SPORTS,
+        heroRowId = "nbcs_sports",
+        rows = listOf(
+            DisneyRowSpec(
+                "nbcs_sports", R.string.peacock_row_sports_on_peacock,
+                listOf(onPeacock(TV, keywordQuery = "sport"), onPeacock(MOVIE, keywordQuery = "sport"))
+            ),
+            DisneyRowSpec("nbcs_nbc", R.string.peacock_row_sports_on_nbc, listOf(net(PeacockIds.NET_NBC, keywordQuery = "sport"))),
+            DisneyRowSpec(
+                "nbcs_football", R.string.peacock_row_football,
+                listOf(
+                    DisneyRowSource.Discover(TV, keywordQuery = "american football"),
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "american football")
+                )
+            ),
+            DisneyRowSpec(
+                "nbcs_soccer", R.string.peacock_row_soccer,
+                listOf(
+                    DisneyRowSource.Discover(TV, keywordQuery = "soccer"),
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "soccer")
+                )
+            ),
+            DisneyRowSpec(
+                "nbcs_olympics", R.string.peacock_row_olympics,
+                listOf(
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "olympic games"),
+                    DisneyRowSource.Discover(TV, keywordQuery = "olympic games")
+                )
+            ),
+            DisneyRowSpec(
+                "nbcs_golf", R.string.peacock_row_golf,
+                listOf(
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "golf"),
+                    DisneyRowSource.Discover(TV, keywordQuery = "golf")
+                )
+            ),
+            DisneyRowSpec(
+                "nbcs_docs", R.string.peacock_row_sports_docs,
+                listOf(
+                    DisneyRowSource.Discover(TV, keywordQuery = "sport", genres = DisneyPlusIds.G_DOCUMENTARY),
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "sport", genres = DisneyPlusIds.G_DOCUMENTARY)
+                )
+            ),
+            DisneyRowSpec(
+                "nbcs_movies", R.string.peacock_row_sports_movies,
+                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "sport", withoutGenres = DisneyPlusIds.G_DOCUMENTARY))
+            )
+        )
+    )
+
+    private val peacockUniversal = studioPage(
+        hub = DisneyPlusHub.PK_UNIVERSAL,
+        prefix = "uni",
+        companies = PeacockIds.CO_UNIVERSAL,
+        middleRows = listOf(
+            DisneyRowSpec("uni_jurassic", R.string.peacock_row_jurassic, listOf(curated(JURASSIC))),
+            DisneyRowSpec("uni_fast", R.string.peacock_row_fast_furious, listOf(curated(FAST_FURIOUS))),
+            DisneyRowSpec("uni_monsters", R.string.peacock_row_universal_monsters, listOf(curated(UNIVERSAL_MONSTERS))),
+            DisneyRowSpec(
+                "uni_animation", R.string.peacock_row_animation,
+                listOf(
+                    studioMovies(PeacockIds.CO_ILLUMINATION, voteCountGte = 300),
+                    studioMovies(PeacockIds.CO_DREAMWORKS_ANIMATION, voteCountGte = 300)
+                )
+            )
+        ),
+        classicUntil = "1989-12-31",
+        topRatedMinVotes = 3000
+    )
+
+    private val peacockIllumination = studioPage(
+        hub = DisneyPlusHub.PK_ILLUMINATION,
+        prefix = "illu",
+        companies = PeacockIds.CO_ILLUMINATION,
+        middleRows = listOf(
+            DisneyRowSpec("illu_despicable", R.string.peacock_row_despicable_me, listOf(curated(DESPICABLE_ME)))
+        ),
+        classicUntil = null,
+        topRatedMinVotes = 500
+    )
+
+    private val peacockDreamWorks = studioPage(
+        hub = DisneyPlusHub.PK_DREAMWORKS,
+        prefix = "dwa",
+        companies = PeacockIds.CO_DREAMWORKS_ANIMATION,
+        middleRows = listOf(
+            DisneyRowSpec("dwa_shrek", R.string.peacock_row_shrek, listOf(curated(SHREK))),
+            DisneyRowSpec("dwa_dragon", R.string.peacock_row_how_to_train_your_dragon, listOf(curated(HOW_TO_TRAIN_YOUR_DRAGON))),
+            DisneyRowSpec("dwa_kung_fu_panda", R.string.peacock_row_kung_fu_panda, listOf(curated(KUNG_FU_PANDA))),
+            DisneyRowSpec("dwa_series", R.string.peacock_row_dreamworks_series, listOf(studio(TV, PeacockIds.DREAMWORKS_TV)))
+        ),
+        classicUntil = "2005-12-31",
+        topRatedMinVotes = 1000
+    )
+
+    private val peacockFocus = studioPage(
+        hub = DisneyPlusHub.PK_FOCUS,
+        prefix = "focus",
+        companies = PeacockIds.CO_FOCUS_FEATURES,
+        middleRows = listOf(
+            DisneyRowSpec(
+                "focus_dramas", R.string.paramount_row_dramas,
+                listOf(studioMovies(PeacockIds.CO_FOCUS_FEATURES, sortBy = MOST_VOTED, genres = PeacockIds.G_DRAMA))
+            ),
+            DisneyRowSpec(
+                "focus_comedies", R.string.paramount_row_comedies,
+                listOf(studioMovies(PeacockIds.CO_FOCUS_FEATURES, sortBy = MOST_VOTED, genres = DisneyPlusIds.G_COMEDY))
+            )
+        ),
+        classicUntil = "2009-12-31",
+        topRatedMinVotes = 500
+    )
+
+    private val peacockWorkingTitle = studioPage(
+        hub = DisneyPlusHub.PK_WORKING_TITLE,
+        prefix = "wt",
+        companies = PeacockIds.CO_WORKING_TITLE,
+        middleRows = listOf(
+            DisneyRowSpec(
+                "wt_romcoms", R.string.peacock_row_romantic_comedies,
+                listOf(
+                    studioMovies(
+                        PeacockIds.CO_WORKING_TITLE,
+                        sortBy = MOST_VOTED,
+                        genres = "${PeacockIds.G_ROMANCE},${DisneyPlusIds.G_COMEDY}"
+                    )
+                )
+            ),
+            DisneyRowSpec(
+                "wt_dramas", R.string.paramount_row_dramas,
+                listOf(studioMovies(PeacockIds.CO_WORKING_TITLE, sortBy = MOST_VOTED, genres = PeacockIds.G_DRAMA))
+            )
+        ),
+        classicUntil = "2005-12-31",
+        topRatedMinVotes = 500
+    )
+
+    private val peacockAmblin = studioPage(
+        hub = DisneyPlusHub.PK_AMBLIN,
+        prefix = "amb",
+        companies = PeacockIds.CO_AMBLIN_ENTERTAINMENT,
+        middleRows = listOf(
+            DisneyRowSpec("amb_classics_80s", R.string.peacock_row_amblin_classics, listOf(curated(AMBLIN_CLASSICS)))
+        ),
+        classicUntil = "1999-12-31",
+        topRatedMinVotes = 1000,
+        // Amblin Partners (the company's newer films) next to Amblin Entertainment.
+        extraSources = { sortBy, voteCountGte, releaseDateLte ->
+            listOf(
+                DisneyRowSource.Discover(
+                    mediaType = MOVIE,
+                    sortBy = sortBy,
+                    companyQuery = PeacockIds.AMBLIN_PARTNERS,
+                    voteCountGte = voteCountGte,
+                    releaseDateLte = releaseDateLte
+                )
+            )
+        }
+    )
+
     // ================================================================== Collection pages
 
     private val COLLECTION_TOY_STORY_EXTRAS = listOf(
@@ -3501,6 +4134,19 @@ object DisneyPlusCatalog {
         DisneyPlusHub.H_WB_ANIMATION -> hboMaxWbAnimation
         DisneyPlusHub.H_SESAME -> hboMaxSesame
         DisneyPlusHub.H_CRUNCHYROLL -> hboMaxCrunchyroll
+        DisneyPlusHub.PEACOCK_MAIN -> peacockMain
+        DisneyPlusHub.PK_ORIGINALS -> peacockOriginals
+        DisneyPlusHub.PK_NBC -> peacockNbc
+        DisneyPlusHub.PK_BRAVO -> peacockBravo
+        DisneyPlusHub.PK_TELEMUNDO -> peacockTelemundo
+        DisneyPlusHub.PK_WWE -> peacockWwe
+        DisneyPlusHub.PK_NBC_SPORTS -> peacockNbcSports
+        DisneyPlusHub.PK_UNIVERSAL -> peacockUniversal
+        DisneyPlusHub.PK_ILLUMINATION -> peacockIllumination
+        DisneyPlusHub.PK_DREAMWORKS -> peacockDreamWorks
+        DisneyPlusHub.PK_FOCUS -> peacockFocus
+        DisneyPlusHub.PK_WORKING_TITLE -> peacockWorkingTitle
+        DisneyPlusHub.PK_AMBLIN -> peacockAmblin
         else -> collectionPages[hub] ?: main
     }
 }
