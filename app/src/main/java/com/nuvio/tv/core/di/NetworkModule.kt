@@ -313,7 +313,8 @@ object NetworkModule {
     fun provideTmdbRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
         Retrofit.Builder()
             .baseUrl("https://api.themoviedb.org/3/")
-            .client(okHttpClient)
+            // Same client, plus retries when TMDB is busy (429) so rows, heroes and cards don't go missing.
+            .client(okHttpClient.newBuilder().addInterceptor(com.nuvio.tv.core.network.TmdbRetryInterceptor()).build())
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
 

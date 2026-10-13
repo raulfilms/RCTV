@@ -55,7 +55,8 @@ class TmdbTitleArtService @Inject constructor(
     private val artCache = ConcurrentHashMap<String, TmdbTitleArt>()
     /** Non-TMDB ids (IMDb "tt...") already matched to their TMDB id. */
     private val tmdbIdCache = ConcurrentHashMap<String, Int>()
-    private val limiter = Semaphore(6)
+    /** Lookups at the same time; TMDB's "too many requests" answers are retried by the HTTP client. */
+    private val limiter = Semaphore(8)
 
     // ------------------------------------------------------------------ TitleArtResolver
 

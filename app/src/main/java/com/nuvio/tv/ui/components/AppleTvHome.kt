@@ -1094,8 +1094,11 @@ private fun AppleFilterMenuRow(
 val AppleLandscapeCardWidth: Dp = AppleTvSpacing.Col4
 val AppleLandscapeCardHeight: Dp = AppleTvSpacing.Col4 * (9f / 16f)
 
-/** How long a card waits for its title art before showing the plain artwork meanwhile. */
-private const val TITLE_ART_WAIT_MS = 600L
+/**
+ * How long a card waits for its title art before showing the plain artwork meanwhile. Short, so cards
+ * never look slow; art already looked up (most cards after the first visit) shows at once.
+ */
+private const val TITLE_ART_WAIT_MS = 300L
 
 /**
  * Horizontal 16:9 card for landscape rows (e.g. Popular Series): wide artwork,

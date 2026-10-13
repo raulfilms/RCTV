@@ -98,9 +98,6 @@ class DisneyPlusViewModel @Inject constructor(
     val hub: DisneyPlusHub = DisneyPlusHub.fromKey(savedStateHandle.get<String>("hub"))
     private val hubSpec = DisneyPlusCatalog.hub(hub)
 
-    /** Disney+ pages show horizontal cards with each title's name (logo) on the artwork. */
-    private val titleLogos: Boolean = hub.service == com.nuvio.tv.data.disneyplus.HubService.DISNEY
-
     /**
      * Title art for cards that find it as they appear: the See All grid (every hub) and any row title
      * whose art wasn't found up front.
@@ -127,7 +124,8 @@ class DisneyPlusViewModel @Inject constructor(
     val uiState: StateFlow<DisneyPlusUiState> = _uiState.asStateFlow()
 
     private var loadJob: Job? = null
-    private val rowLimiter = Semaphore(4)
+    /** Rows loading at the same time (TMDB copes fine; busy answers are retried). */
+    private val rowLimiter = Semaphore(6)
 
     init {
         load(forceRefresh = false)
@@ -223,11 +221,20 @@ class DisneyPlusViewModel @Inject constructor(
         }
         loadJob = viewModelScope.launch {
             launch { loadCollectionArt() }
-            val heroSpec = hubSpec.rows.firstOrNull { it.id == hubSpec.heroRowId }
-            val heroRow = heroSpec?.let { spec -> safeResolve(spec, forceRefresh) }
-            heroSpec?.let { setRow(it.id, heroRow) }
-            val heroItems = repository.heroItems(heroRow)
-            _uiState.update { it.copy(heroItems = heroItems, isHeroLoading = false) }
+            // The banner and every row load at the same time: nothing waits for the banner's logos.
+            launch {
+                val heroSpec = hubSpec.rows.firstOrNull { it.id == hubSpec.heroRowId }
+                val heroRow = heroSpec?.let { spec -> safeResolve(spec, forceRefresh) }
+                heroSpec?.let { setRow(it.id, heroRow) }
+                val heroItems = try {
+                    repository.heroItems(heroRow)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    repository.heroPicks(heroRow?.items.orEmpty())
+                }
+                _uiState.update { it.copy(heroItems = heroItems, isHeroLoading = false) }
+            }
 
             coroutineScope {
                 hubSpec.rows
@@ -279,7 +286,7 @@ class DisneyPlusViewModel @Inject constructor(
 
     /** A failed row just stays hidden; it never leaves the page stuck in a loading state. */
     private suspend fun safeResolve(spec: DisneyRowSpec, forceRefresh: Boolean): CatalogRow? = try {
-        repository.resolveRow(hub, spec, context.getString(spec.titleRes), forceRefresh, titleLogos)
+        repository.resolveRow(hub, spec, context.getString(spec.titleRes), forceRefresh)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -296,7 +303,7 @@ class DisneyPlusViewModel @Inject constructor(
         }
         val heroIds = _uiState.value.heroItems.map { it.id }.toSet()
         val row = try {
-            repository.resolveRecommendedRow(hub, context.getString(spec.titleRes), history, heroIds, titleLogos)
+            repository.resolveRecommendedRow(hub, context.getString(spec.titleRes), history, heroIds)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

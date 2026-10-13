@@ -8,6 +8,7 @@ import android.os.StrictMode
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import com.nuvio.tv.core.image.CustomPosterFallbackInterceptor
+import com.nuvio.tv.core.image.ImageRetryInterceptor
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.gif.GifDecoder
@@ -94,19 +95,21 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 maxRequests = 32
                 maxRequestsPerHost = 16
             }
+            // Generous enough for big backdrops on TV Wi-Fi while a page loads many images at once
+            // (the old 5 s read / 12 s total left some cards and heroes blank). Failed downloads are
+            // tried again by ImageRetryInterceptor.
             OkHttpClient.Builder()
                 .dispatcher(imageDispatcher)
                 .dns(IPv4FirstDns())
-                .connectTimeout(4, TimeUnit.SECONDS)
-                .readTimeout(5, TimeUnit.SECONDS)
-                .callTimeout(12, TimeUnit.SECONDS)
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(12, TimeUnit.SECONDS)
+                .callTimeout(30, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     try {
                         chain.proceed(chain.request())
                     } catch (e: java.net.SocketTimeoutException) {
-                        chain.withConnectTimeout(3, TimeUnit.SECONDS)
-                            .withReadTimeout(4, TimeUnit.SECONDS)
-                            .proceed(chain.request())
+                        // One more try right away, with the same limits.
+                        chain.proceed(chain.request())
                     }
                 }
                 .followRedirects(true)
@@ -119,6 +122,8 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         return ImageLoader.Builder(this)
             .components {
                 add(CustomPosterFallbackInterceptor())
+                // Network hiccups get another try, so no tile, poster or hero stays blank.
+                add(ImageRetryInterceptor())
                 if (Build.VERSION.SDK_INT >= 28) {
                     add(AnimatedImageDecoder.Factory())
                 } else {

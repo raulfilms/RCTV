@@ -125,24 +125,24 @@ class ChannelProfileRepository @Inject constructor(
         brand: ChannelBrand,
         epgSeries: List<String>,
         channelGuideIds: List<String> = emptyList(),
-        channelNames: List<String> = emptyList()
+        channelNames: List<String> = emptyList(),
+        /**
+         * False for a quick first answer (known and listed ids only, so the page shows right away); the
+         * full answer also searches the guide for sister channels' networks. A brand with no known ids
+         * always searches the guide.
+         */
+        withGuide: Boolean = true
     ): ChannelBrandIds = withContext(Dispatchers.IO) {
         idsCache[brand.key]?.let { return@withContext it }
+        if (!withGuide) {
+            val quick = knownIds(brand, channelGuideIds, channelNames)
+            if (quick.networks.isNotEmpty()) return@withContext quick
+        }
         idsLocks.getOrPut(brand.key) { Mutex() }.withLock {
             idsCache[brand.key]?.let { return@withLock it }
-            val verified = coroutineScope {
-                brand.tmdbNetworks.map { id -> async { id.takeIf { ChannelBrands.isBrandNetwork(brand, networkName(id)) } } }
-                    .awaitAll()
-                    .filterNotNull()
-            }
-            ChannelTmdbMap.ensureLoaded(context)
-            val listed = ChannelTmdbMap.idsFor(channelGuideIds, channelNames)
-            val networks = (listed.networks + verified + networksFromGuide(brand, epgSeries)).distinct()
-            val companyQueries = brand.companyQueries.ifEmpty { listOf(brand.name) }
-            val companies = listed.companies + coroutineScope {
-                companyQueries.map { query -> async { companyId(query) } }.awaitAll().filterNotNull()
-            }
-            val ids = ChannelBrandIds(networks.distinct(), companies.distinct())
+            val known = knownIds(brand, channelGuideIds, channelNames)
+            val networks = (known.networks + networksFromGuide(brand, epgSeries)).distinct()
+            val ids = ChannelBrandIds(networks, known.companies)
             // Keep the answer once the guide was part of it (it adds the sister channels' networks);
             // before the guide has loaded, or after a network hiccup, it's worked out again next time.
             if (epgSeries.isNotEmpty() && (ids.networks.isNotEmpty() || ids.companies.isNotEmpty() || brand.tmdbNetworks.isEmpty())) {
@@ -151,6 +151,26 @@ class ChannelProfileRepository @Inject constructor(
             ids
         }
     }
+
+    /** The ids known without searching the guide: confirmed network ids, the channel list's ids, studios. */
+    private suspend fun knownIds(brand: ChannelBrand, channelGuideIds: List<String>, channelNames: List<String>): ChannelBrandIds =
+        coroutineScope {
+            val verified = async {
+                brand.tmdbNetworks.map { id -> async { id.takeIf { ChannelBrands.isBrandNetwork(brand, networkName(id)) } } }
+                    .awaitAll()
+                    .filterNotNull()
+            }
+            val companies = async {
+                brand.companyQueries.ifEmpty { listOf(brand.name) }
+                    .map { query -> async { companyId(query) } }.awaitAll().filterNotNull()
+            }
+            ChannelTmdbMap.ensureLoaded(context)
+            val listed = ChannelTmdbMap.idsFor(channelGuideIds, channelNames)
+            ChannelBrandIds(
+                networks = (listed.networks + verified.await()).distinct(),
+                companies = (listed.companies + companies.await()).distinct()
+            )
+        }
 
     private suspend fun networkName(id: Int): String? {
         networkNameCache[id]?.let { return it.value }

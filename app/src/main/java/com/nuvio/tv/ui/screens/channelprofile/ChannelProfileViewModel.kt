@@ -115,7 +115,9 @@ class ChannelProfileViewModel @Inject constructor(
             else ChannelProfileUiState(brandKey = brand.key)
         }
         loadJob = viewModelScope.launch {
-            val ids = safe { repository.brandIds(brand, epgSeries, channelGuideIds, channelNames) }
+            // Known ids first so the page shows right away; sister channels found through the guide are
+            // added just after (below).
+            val ids = safe { repository.brandIds(brand, epgSeries, channelGuideIds, channelNames, withGuide = false) }
                 ?: ChannelBrandIds(emptyList(), emptyList())
             boundIds = ids
             val showsTitle = context.getString(R.string.channel_profile_tv_shows)
@@ -136,6 +138,25 @@ class ChannelProfileViewModel @Inject constructor(
 
             val rowIds = (shows?.items.orEmpty() + movies?.items.orEmpty()).map { it.id }.toSet()
             observeContinueWatching(brand, ids, rowIds)
+
+            // Sister channels (Investigation Discovery next to Discovery...): when the guide finds more
+            // networks, the TV Shows row (and its See All) include them too.
+            val fullIds = safe { repository.brandIds(brand, epgSeries, channelGuideIds, channelNames) } ?: return@launch
+            if (fullIds.networks.toSet() != ids.networks.toSet() || fullIds.companies.toSet() != ids.companies.toSet()) {
+                boundIds = fullIds
+                val fullShows = if (fullIds.networks.toSet() != ids.networks.toSet()) {
+                    safe { repository.tvShows(brand, fullIds, epgSeries, showsTitle) }
+                } else {
+                    shows
+                }
+                val fullMovies = if (fullIds.companies.toSet() != ids.companies.toSet()) {
+                    safe { repository.movies(brand, fullIds, epgMovies, moviesTitle) }
+                } else {
+                    movies
+                }
+                _uiState.update { it.copy(tvShows = fullShows ?: it.tvShows, movies = fullMovies ?: it.movies) }
+                launch { addRowLogos() }
+            }
         }
     }
 

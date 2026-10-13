@@ -38,8 +38,6 @@ private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
 
-/** Titles per row that get their title art up front (the ones the row shows before "See All"). */
-private const val ROW_LOGO_COUNT = 10
 
 /** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery, HBO Max), and its genres. */
 data class DisneyTitleInfo(
@@ -92,9 +90,7 @@ class DisneyPlusRepository @Inject constructor(
         hub: DisneyPlusHub,
         spec: DisneyRowSpec,
         title: String,
-        forceRefresh: Boolean = false,
-        /** Give the first titles their title art, for horizontal cards with the name on the artwork. */
-        titleLogos: Boolean = false
+        forceRefresh: Boolean = false
     ): CatalogRow? =
         withContext(Dispatchers.IO) {
             val cacheKey = "${hub.key}:${spec.id}"
@@ -122,12 +118,9 @@ class DisneyPlusRepository @Inject constructor(
                 val cap = if (spec.sources.all { it is DisneyRowSource.Curated }) Int.MAX_VALUE else ROW_ITEM_CAP
                 interleave(perSource, cap).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
             }
-            val shown = if (titleLogos && items.isNotEmpty()) {
-                withTitleArt(items, ROW_LOGO_COUNT).also { rowCache[cacheKey] = it }
-            } else {
-                items
-            }
-            if (shown.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, shown)
+            // The row shows as soon as its titles are known; each horizontal card finds its title art
+            // as it appears on screen (LocalTitleArtResolver), so nothing waits on those lookups.
+            if (items.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, items)
         }
 
     /** The service's titles in the genres the person watches most. Falls back to its best-rated titles. */
@@ -135,8 +128,7 @@ class DisneyPlusRepository @Inject constructor(
         hub: DisneyPlusHub,
         title: String,
         history: List<WatchProgress>,
-        excludeIds: Set<String>,
-        titleLogos: Boolean = false
+        excludeIds: Set<String>
     ): CatalogRow? = withContext(Dispatchers.IO) {
         val language = language()
         val recent = history
@@ -176,7 +168,6 @@ class DisneyPlusRepository @Inject constructor(
         }
         val items = interleave(perSource)
             .filterNot { it.id in watchedTmdbIds || it.id in excludeIds }
-            .let { if (titleLogos) withTitleArt(it, ROW_LOGO_COUNT) else it }
         if (items.isEmpty()) null else buildRow("disney_${hub.key}_recommended", title, items)
     }
 
@@ -535,6 +526,8 @@ class DisneyPlusRepository @Inject constructor(
             poster = imageUrl(posterPath, "w500") ?: imageUrl(backdropPath, "w780"),
             posterShape = PosterShape.POSTER,
             background = imageUrl(backdropPath, "w1280"),
+            // Horizontal cards: a 780px backdrop is plenty and downloads much faster than the 1280px one.
+            landscapePoster = imageUrl(backdropPath, "w780"),
             logo = null,
             description = overview?.takeIf { it.isNotBlank() },
             releaseInfo = date?.take(4)?.takeIf { it.isNotBlank() },

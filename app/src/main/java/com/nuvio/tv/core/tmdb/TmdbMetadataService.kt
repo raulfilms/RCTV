@@ -1190,6 +1190,8 @@ class TmdbMetadataService(
             poster = poster,
             posterShape = PosterShape.POSTER,
             background = background,
+            // Horizontal cards (See All): a 780px backdrop downloads much faster than the 1280px one.
+            landscapePoster = buildImageUrl(result.backdropPath, size = "w780"),
             logo = null,
             description = result.overview?.takeIf { it.isNotBlank() },
             releaseInfo = releaseInfo,
