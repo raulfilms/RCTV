@@ -32,7 +32,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
-private const val SEE_ALL_MAX_PAGES = 15
+/** TMDB's discover stops at page 500; See All goes as far as TMDB has titles. */
+private const val SEE_ALL_MAX_PAGES = 500
 
 /** A wide collection card (e.g. "Disney Jr. — Collection"). [backdrops] fill in once loaded. */
 data class DisneyCollectionTile(
@@ -144,7 +145,8 @@ class DisneyPlusViewModel @Inject constructor(
     fun openSeeAll(rowId: String) {
         val rowState = _uiState.value.rows.firstOrNull { it.spec.id == rowId } ?: return
         val items = rowState.row?.items.orEmpty()
-        val hasMoreSources = rowState.spec.sources.any { it is com.nuvio.tv.data.disneyplus.DisneyRowSource.Discover }
+        val hasMoreSources = rowState.spec.seeAll.isNotEmpty() ||
+            rowState.spec.sources.any { it is com.nuvio.tv.data.disneyplus.DisneyRowSource.Discover }
         _uiState.update {
             it.copy(
                 seeAll = HubSeeAllState(
@@ -165,7 +167,8 @@ class DisneyPlusViewModel @Inject constructor(
 
     /**
      * Next TMDB page(s) of the open See All row. A page that only repeats what's already shown (the row
-     * itself came from page 1) is skipped; loading stops when TMDB has nothing more (or after 15 pages).
+     * itself came from page 1) is skipped; loading stops only when TMDB has nothing more. A page that
+     * fails to load is tried again on the next scroll instead of ending the list.
      */
     fun loadMoreSeeAll() {
         val current = _uiState.value.seeAll ?: return
@@ -178,13 +181,15 @@ class DisneyPlusViewModel @Inject constructor(
             var page = firstPage
             var fresh: List<MetaPreview> = emptyList()
             var nextPage: Int? = null
+            var failedPage: Int? = null
             while (page <= SEE_ALL_MAX_PAGES) {
                 val pageItems = try {
                     repository.resolveRowPage(spec, page)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    emptyList()
+                    failedPage = page
+                    break
                 }
                 if (pageItems.isEmpty()) break
                 fresh = pageItems.filter { known.add("${it.apiType}:${it.id}") }
@@ -199,7 +204,7 @@ class DisneyPlusViewModel @Inject constructor(
                     seeAll = open.copy(
                         items = open.items + fresh,
                         isLoadingMore = false,
-                        nextPage = if (fresh.isEmpty()) null else nextPage
+                        nextPage = failedPage ?: if (fresh.isEmpty()) null else nextPage
                     )
                 )
             }

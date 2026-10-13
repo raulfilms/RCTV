@@ -177,9 +177,15 @@ class DisneyPlusRepository @Inject constructor(
      * row made only of those has nothing more past what it already shows.
      */
     suspend fun resolveRowPage(spec: DisneyRowSpec, page: Int): List<MetaPreview> = withContext(Dispatchers.IO) {
-        val sources = spec.sources.filterIsInstance<DisneyRowSource.Discover>()
+        // Everything the row stands for: its own TMDB queries plus its complete catalog, without the
+        // row's minimum vote counts (those only pick what the 10-title row shows first). Top-rated
+        // queries keep theirs, or a title with one 10/10 vote would lead the list.
+        val sources = (spec.sources.filterIsInstance<DisneyRowSource.Discover>() + spec.seeAll)
+            .map { source -> if (source.sortBy.startsWith("vote_average")) source else source.copy(voteCountGte = null) }
+            .distinct()
         if (sources.isEmpty()) return@withContext emptyList()
         val language = language()
+        var failures = 0
         val perSource = coroutineScope {
             sources.map { source ->
                 async {
@@ -189,11 +195,15 @@ class DisneyPlusRepository @Inject constructor(
                         throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "Row ${spec.id} page $page: source failed", e)
+                        synchronized(this@DisneyPlusRepository) { failures++ }
                         emptyList()
                     }
                 }
             }.awaitAll()
         }
+        // Nothing could be loaded (no connection): say so, so See All tries this page again on the next
+        // scroll instead of treating it as the end of the list.
+        if (failures == sources.size) throw java.io.IOException("Row ${spec.id} page $page could not be loaded")
         interleave(perSource, cap = Int.MAX_VALUE)
     }
 
@@ -328,7 +338,7 @@ class DisneyPlusRepository @Inject constructor(
                 withoutGenres = source.withoutGenres,
                 withRuntimeGte = source.runtimeGte,
                 withRuntimeLte = source.runtimeLte
-            ).body()
+            )
             TmdbCollectionMediaType.TV -> tmdbApi.discoverTv(
                 apiKey = apiKey,
                 language = language,
@@ -345,10 +355,12 @@ class DisneyPlusRepository @Inject constructor(
                 withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
                 withoutGenres = source.withoutGenres
-            ).body()
+            )
         }
+        // An error answer (TMDB still busy after retries) is a failure, not "no more titles".
+        if (!response.isSuccessful) throw java.io.IOException("TMDB discover HTTP ${response.code()}")
         val genres = genreMap(source.mediaType, language)
-        return response?.results.orEmpty().mapNotNull { it.toPreview(source.mediaType, genres) }
+        return response.body()?.results.orEmpty().mapNotNull { it.toPreview(source.mediaType, genres) }
     }
 
     private suspend fun keywordId(query: String): Int? {
