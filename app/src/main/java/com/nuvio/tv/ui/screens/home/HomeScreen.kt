@@ -635,7 +635,7 @@ private fun GridHomeRoute(
             { key: String? -> viewModel.setLiveFocusedRowKey(key) }
         },
         uiState = uiState,
-        posterCardStyle = posterCardStyle,
+        basePosterCardStyle = posterCardStyle,
         gridFocusState = gridFocusState,
         scrollToTopTrigger = scrollToTopTrigger,
         onNavigateToDetail = onNavigateToDetail,

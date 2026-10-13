@@ -604,7 +604,8 @@ private fun FilmographyRow(
                 else -> null
             }
 
-            GridContentCard(
+            // Horizontal 16:9 cards with the title on the picture, like every page.
+            com.nuvio.tv.ui.components.AppleLandscapeCard(
                 item = item,
                 onClick = { onItemClick(item) },
                 onLongPress = { onItemLongPress(item) },
@@ -619,10 +620,9 @@ private fun FilmographyRow(
                 } else {
                     Modifier
                 },
-                posterCardStyle = posterCardStyle,
-                showLabel = true,
+                cornerRadius = posterCardStyle.cornerRadius,
                 focusRequester = itemFocusRequester,
-                onFocused = {
+                onFocus = {
                     if (isRestoreTarget && restoreFocusToken > 0) {
                         onRestoreFocusHandled()
                         restorePending = false

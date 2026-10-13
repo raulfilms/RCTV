@@ -120,8 +120,9 @@ fun DisneyPlusScreen(
     val uiState by viewModel.uiState.collectAsState()
     val posterOptionsController = posterOptionsViewModel.controller
     val isMain = uiState.hub.isMain
-    // Disney+ (and its brand and collection pages): horizontal cards with the title's name on them.
-    val landscapeTitles = uiState.hub.service == HubService.DISNEY
+    // Every service's pages (Disney+, Paramount+, discovery+, HBO Max, Peacock): horizontal cards with
+    // the title's name on them.
+    val landscapeTitles = true
     val heroFocusRequester = remember { FocusRequester() }
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
 

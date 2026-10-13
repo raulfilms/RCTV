@@ -528,11 +528,11 @@ internal fun DiscoverGrid(
     val totalCells = items.size + if (actionType != DiscoverGridAction.None) 1 else 0
     val hasActionCell = actionType != DiscoverGridAction.None
 
+    // Horizontal 16:9 cards with the title on the picture, like every page.
     val adaptiveStyle = remember(posterCardStyle) {
-        val cardWidth = posterCardStyle.width
         posterCardStyle.copy(
-            width = cardWidth,
-            height = cardWidth * 1.5f
+            width = com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
+            height = com.nuvio.tv.ui.components.AppleLandscapeCardHeight
         )
     }
 
@@ -663,11 +663,11 @@ internal fun DiscoverGrid(
                 focusResults && index == 0 -> firstItemFocusRequester
                 else -> itemFocusReq
             }
-            GridContentCard(
+            com.nuvio.tv.ui.components.AppleLandscapeCard(
                 item = item,
                 onClick = { onItemClick(index, item) },
                 onLongPress = { onItemLongPress(item) },
-                posterCardStyle = adaptiveStyle,
+                cornerRadius = adaptiveStyle.cornerRadius,
                 isWatched = run {
                     val isSeries = item.apiType.equals("series", ignoreCase = true) || item.apiType.equals("tv", ignoreCase = true)
                     if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds
@@ -676,7 +676,7 @@ internal fun DiscoverGrid(
                     .padding(top = 3.dp)
                     .width(adaptiveStyle.width),
                 focusRequester = focusReq,
-                onFocused = {
+                onFocus = {
                     onItemFocused(index)
                 }
             )

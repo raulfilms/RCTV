@@ -399,7 +399,8 @@ fun CatalogSeeAllScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyVerticalGrid(
                     state = gridState,
-                    columns = GridCells.Adaptive(minSize = posterCardStyle.width),
+                    // Horizontal 16:9 cards with the title on the picture, like every page.
+                    columns = GridCells.Adaptive(minSize = com.nuvio.tv.ui.components.AppleLandscapeCardWidth),
                     modifier = Modifier.dpadRepeatThrottle(),
                     contentPadding = PaddingValues(
                         start = AppleTvContentStart,
@@ -425,12 +426,10 @@ fun CatalogSeeAllScreen(
                         }
                         val itemFocusKey = catalogItemFocusKey(item)
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                        ContentCard(
+                        com.nuvio.tv.ui.components.AppleLandscapeCard(
                             item = item,
-                            posterCardStyle = posterCardStyle,
-                            showLabels = false,
+                            cornerRadius = posterCardStyle.cornerRadius,
                             isWatched = isWatched,
-                            appleStyle = true,
                             focusRequester = if (index == focusedItemIndex) restoreFocusRequester else null,
                             onFocus = {
                                 // While restoring after Details/resume, ignore transient focus on the
@@ -466,13 +465,13 @@ fun CatalogSeeAllScreen(
                             val cardDepthStyle = com.nuvio.tv.ui.components.LocalCardDepthStyle.current
                             Column(
                                 modifier = Modifier
-                                    .width(posterCardStyle.width)
+                                    .width(com.nuvio.tv.ui.components.AppleLandscapeCardWidth)
                             ) {
                                 androidx.tv.material3.Card(
                                     onClick = {},
                                     modifier = Modifier
-                                        .width(posterCardStyle.width)
-                                        .height(posterCardStyle.height)
+                                        .width(com.nuvio.tv.ui.components.AppleLandscapeCardWidth)
+                                        .height(com.nuvio.tv.ui.components.AppleLandscapeCardHeight)
                                         .then(Modifier.focusProperties { canFocus = false }),
                                     shape = androidx.tv.material3.CardDefaults.shape(shape = cardShape),
                                     colors = androidx.tv.material3.CardDefaults.colors(

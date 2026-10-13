@@ -304,10 +304,8 @@ fun CatalogRowSection(
     val showRankNumbers = remember(appleStyle, appleRankNumbers, catalogRow.catalogName) {
         appleStyle && appleRankNumbers && isRankedCatalogName(catalogRow.catalogName)
     }
-    // Popular series use horizontal 16:9 cards; every other row keeps vertical posters.
-    val useLandscapeCards = remember(appleStyle, appleLandscape, catalogRow.catalogName, catalogRow.apiType) {
-        appleStyle && (appleLandscape || isLandscapeCatalog(catalogRow.catalogName, catalogRow.apiType))
-    }
+    // Every row in the app uses horizontal 16:9 cards (with the title on the picture), never vertical posters.
+    val useLandscapeCards = true
 
     Column(modifier = modifier.fillMaxWidth().then(
         if (blockingFocusExit.value) {
@@ -522,8 +520,8 @@ fun CatalogRowSection(
                     Card(
                         onClick = {},
                         modifier = Modifier
-                            .width(posterCardStyle.width)
-                            .height(posterCardStyle.height)
+                            .width(if (useLandscapeCards) AppleLandscapeCardWidth else posterCardStyle.width)
+                            .height(if (useLandscapeCards) AppleLandscapeCardHeight else posterCardStyle.height)
                             .focusProperties { canFocus = false },
                         shape = CardDefaults.shape(shape = seeAllCardShape),
                         colors = CardDefaults.colors(
@@ -561,7 +559,11 @@ fun CatalogRowSection(
             } else if (effectiveShowSeeAll) {
                 item(key = "${catalogRow.type}_${catalogRow.catalogId}_see_all") {
                     ClassicSeeAllCard(
-                        posterCardStyle = posterCardStyle,
+                        posterCardStyle = if (useLandscapeCards) {
+                            posterCardStyle.copy(width = AppleLandscapeCardWidth, height = AppleLandscapeCardHeight)
+                        } else {
+                            posterCardStyle
+                        },
                         label = seeAllLabel ?: stringResource(R.string.action_see_all),
                         onClick = onSeeAll,
                         modifier = directionalFocusModifier

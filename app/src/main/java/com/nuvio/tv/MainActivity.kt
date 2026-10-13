@@ -321,6 +321,9 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var deepLinkHandler: DeepLinkHandler
 
+    @Inject
+    lateinit var titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -387,6 +390,8 @@ open class MainActivity : ComponentActivity() {
         captureDeepLinkIntent(intent)
 
         setContent {
+            // Every horizontal card in the app finds its title art (TMDB backdrop with the name on it).
+            CompositionLocalProvider(com.nuvio.tv.ui.components.LocalTitleArtResolver provides titleArtService) {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
             var startupSession by remember { mutableIntStateOf(0) }
             // Triggered immediately on profile click (before system confirms selection).
@@ -1255,6 +1260,7 @@ open class MainActivity : ComponentActivity() {
                     }
                 }
                 }
+            }
             }
         }
 

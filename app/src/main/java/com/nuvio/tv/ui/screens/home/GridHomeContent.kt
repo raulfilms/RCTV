@@ -81,6 +81,9 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.catalogRowStableKey
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.ui.components.GridContentCard
+import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
+import com.nuvio.tv.ui.components.AppleLandscapeCard
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.GridContinueWatchingSection
 import com.nuvio.tv.core.poster.withCustomPosterUrls
@@ -109,13 +112,17 @@ fun GridHomeContent(
     onRemoveContinueWatching: (String, Int?, Int?, Boolean) -> Unit,
     isCatalogItemWatched: (MetaPreview) -> Boolean = { false },
     onCatalogItemLongPress: (MetaPreview, String) -> Unit = { _, _ -> },
-    posterCardStyle: PosterCardStyle = PosterCardDefaults.Style,
+    basePosterCardStyle: PosterCardStyle = PosterCardDefaults.Style,
     onItemFocus: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {},
     catalogSeeAllLabel: String? = null,
     onSaveGridFocusState: (Int, Int, String?) -> Unit,
     onFocusedRowKeyChanged: (String?) -> Unit = {},
     scrollToTopTrigger: Int = 0
 ) {
+    // Horizontal 16:9 cards with the title on the picture, like every page.
+    val posterCardStyle = remember(basePosterCardStyle) {
+        basePosterCardStyle.copy(width = AppleLandscapeCardWidth, height = AppleLandscapeCardHeight)
+    }
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = gridFocusState.verticalScrollIndex,
         initialFirstVisibleItemScrollOffset = gridFocusState.verticalScrollOffset
@@ -717,14 +724,13 @@ fun GridHomeContent(
                         } else {
                             null
                         }
-                        GridContentCard(
+                        AppleLandscapeCard(
                             item = gridItem.item,
                             focusRequester = focusRequester ?: focusRequesters.getOrPut(itemKey) { FocusRequester() },
-                            posterCardStyle = posterCardStyle,
-                            showLabel = uiState.posterLabelsEnabled,
+                            cornerRadius = posterCardStyle.cornerRadius,
                             isWatched = isCatalogItemWatched(gridItem.item),
-                            onFocused = remember(itemKey, gridItem.item) {
-                                {
+                            onFocus = remember(itemKey, gridItem.item) {
+                                { _: com.nuvio.tv.domain.model.MetaPreview ->
                                     lastFocusedGridItemKey.value = itemKey
                                     activeCwRowKey.value = null
                                     // No rows here, but a card still belongs to one.

@@ -271,8 +271,9 @@ fun LibraryScreen(
 
     val lastKeyRepeatTime = remember { longArrayOf(0L) }
 
+    // Horizontal 16:9 cards with the title on the picture, like every page.
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = posterCardStyle.width),
+        columns = GridCells.Adaptive(minSize = com.nuvio.tv.ui.components.AppleLandscapeCardWidth),
         state = gridState,
         modifier = Modifier
             .fillMaxSize()
@@ -455,13 +456,12 @@ fun LibraryScreen(
                 val previewForLongPress = remember(item) {
                     item.toMetaPreview().copy(posterShape = PosterShape.POSTER)
                 }
-                GridContentCard(
+                com.nuvio.tv.ui.components.AppleLandscapeCard(
                     item = previewForLongPress,
-                    posterCardStyle = posterCardStyle,
+                    cornerRadius = posterCardStyle.cornerRadius,
                     isWatched = if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds,
                     focusRequester = posterFocusRequesters[focusKey],
-                    showLabel = true,
-                    onFocused = {
+                    onFocus = {
                         lastFocusedPosterKey = focusKey
                         viewModel.prefetchMetaOnFocus(item.id, item.type)
                     },

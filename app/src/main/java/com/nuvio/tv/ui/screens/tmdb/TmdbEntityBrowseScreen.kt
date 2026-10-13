@@ -694,19 +694,19 @@ private fun EntityRailRow(
                         itemIndex == 0 -> firstItemFocusRequester
                         else -> itemFocusRequesters.getOrPut(itemIndex) { FocusRequester() }
                     }
-                    GridContentCard(
+                    // Horizontal 16:9 cards with the title on the picture, like every page.
+                    com.nuvio.tv.ui.components.AppleLandscapeCard(
                         item = item,
                         onClick = { onItemClick(item) },
                         onLongPress = { onItemLongPress(item) },
-                        posterCardStyle = posterCardStyle,
-                        showLabel = true,
+                        cornerRadius = posterCardStyle.cornerRadius,
                         isWatched = if (rail.mediaType == TmdbEntityMediaType.TV) {
                             item.id in watchedSeriesIds
                         } else {
                             item.id in watchedMovieIds
                         },
                         focusRequester = requester,
-                        onFocused = {
+                        onFocus = {
                             onFocusedItemIndexChanged(itemIndex)
                             if (isRestoreTarget && restoreFocusToken > 0) {
                                 restorePending = false
@@ -718,7 +718,10 @@ private fun EntityRailRow(
                 if (showSeeAll) {
                     item(key = "see_all") {
                         ClassicSeeAllCard(
-                            posterCardStyle = posterCardStyle,
+                            posterCardStyle = posterCardStyle.copy(
+                                width = com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
+                                height = com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+                            ),
                             label = stringResource(R.string.action_see_all),
                             onClick = onSeeAll,
                             modifier = if (seeAllFocusRequester != null) Modifier.focusRequester(seeAllFocusRequester) else Modifier
