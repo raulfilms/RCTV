@@ -427,7 +427,7 @@ private fun TabbedGridContent(
                                 options = listOf(com.nuvio.tv.ui.components.AppleFilterOption(allLabel, null)) +
                                     folderTypeFilterOptions.map {
                                         com.nuvio.tv.ui.components.AppleFilterOption(
-                                            com.nuvio.tv.ui.util.localizedContentType(filterContext, it.label),
+                                            com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it.label),
                                             it.key,
                                             it.count
                                         )
@@ -468,7 +468,7 @@ private fun TabbedGridContent(
                 }
             }
             val activeSummary = listOfNotNull(
-                selectedType?.let { com.nuvio.tv.ui.util.localizedContentType(filterContext, it) },
+                selectedType?.let { com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it) },
                 selectedGenre?.let { com.nuvio.tv.ui.util.localizedGenreLabel(filterContext, it) },
                 selectedYear
             ).joinToString(" · ")

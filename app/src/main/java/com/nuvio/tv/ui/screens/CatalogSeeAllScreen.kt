@@ -323,7 +323,7 @@ fun CatalogSeeAllScreen(
                                     selectedValue = selectedType,
                                     options = listOf(AppleFilterOption(allLabel, null)) +
                                         typeFilterOptions.map {
-                                            AppleFilterOption(localizedContentType(filterContext, it.label), it.key, it.count)
+                                            AppleFilterOption(com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it.label), it.key, it.count)
                                         }
                                 )
                             )
@@ -358,7 +358,7 @@ fun CatalogSeeAllScreen(
                 }
                 // The pill shows what is picked ("Action · 2024"), or "Filters" when nothing is.
                 val activeSummary = listOfNotNull(
-                    selectedType?.let { localizedContentType(filterContext, it) },
+                    selectedType?.let { com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it) },
                     selectedGenre?.let { localizedGenreLabel(filterContext, it) },
                     selectedYear
                 ).joinToString(" · ")

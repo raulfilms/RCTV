@@ -5,6 +5,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import com.nuvio.tv.R
 
+/** A type in a filter menu, plural like a section of the catalog: "Movies", "TV Shows". */
+fun filterTypeLabel(context: Context, contentType: String?): String = when (contentType?.lowercase()?.trim()) {
+    "movie" -> context.getString(R.string.filter_type_movies)
+    "series", "tv" -> context.getString(R.string.filter_type_tv_shows)
+    else -> localizedContentType(context, contentType)
+}
+
 fun formatAddonTypeLabel(value: String): String {
     val trimmed = value.trim()
     if (trimmed.isEmpty()) return ""

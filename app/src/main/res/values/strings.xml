@@ -2007,6 +2007,8 @@
     <string name="library_title">Library</string>
     <string name="library_filter_list">List</string>
     <string name="library_filter_type">Type</string>
+    <string name="filter_type_movies">Movies</string>
+    <string name="filter_type_tv_shows">TV Shows</string>
     <string name="library_filter_sort">Sort</string>
     <string name="library_filter_genre">Genre</string>
     <string name="library_filter_year">Year</string>
