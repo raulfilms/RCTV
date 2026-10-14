@@ -17,6 +17,12 @@ internal fun PlayerRuntimeController.startInitialPlaybackIfNeeded() {
 
     initialPlaybackStarted = true
 
+    // RCTV: no video, only the player's screen (to design it).
+    if (PlayerDesignPreview.isPreview(initialStreamUrl)) {
+        showDesignPreview()
+        return
+    }
+
     // Persist binge group from navigation args so that subsequent plays
     // (from CW, Details, or next-episode) can reuse the same source group.
     val bg = navigationArgs.bingeGroup

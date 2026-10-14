@@ -239,8 +239,14 @@ fun ChannelProfileScreen(
 
     fun openChannel(channel: LiveTvChannel, program: EpgProgram?) {
         if (liveState.isPreviewGuide) {
-            // Sample guide channels have no stream: show what's on instead.
-            (program ?: liveState.currentProgram(channel))?.let { liveTvViewModel.openProgramDetails(channel, it) }
+            // Sample guide channels have no stream: what's on now opens the player's screen with no
+            // video (to design it); a later show opens its details.
+            val airingNow = program == null || program.isAiringAt(System.currentTimeMillis())
+            if (airingNow) {
+                onPlayChannel(channel.copy(streamUrl = com.nuvio.tv.ui.screens.player.PlayerDesignPreview.URL))
+            } else {
+                liveTvViewModel.openProgramDetails(channel, program!!)
+            }
         } else {
             scope.launch {
                 val url = liveTvViewModel.resolvePlaybackUrl(channel)
@@ -326,7 +332,10 @@ fun ChannelProfileScreen(
                 program = program,
                 nowMs = liveState.nowMs,
                 onWatch = if (liveState.isPreviewGuide) {
-                    null
+                    {
+                        liveTvViewModel.dismissProgramDetails()
+                        onPlayChannel(programChannel.copy(streamUrl = com.nuvio.tv.ui.screens.player.PlayerDesignPreview.URL))
+                    }
                 } else {
                     {
                         liveTvViewModel.dismissProgramDetails()

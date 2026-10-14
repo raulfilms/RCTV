@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -480,6 +481,10 @@ fun StreamScreen(
                     },
                     onRetry = { viewModel.onEvent(StreamScreenEvent.OnRetry) },
                     onExpandStreams = { viewModel.expandFilteredStreamsIfNeeded() },
+                    onPreviewPlayer = {
+                        pendingRestoreOnResume = true
+                        launchInternalPlayer(viewModel.playerPreviewInfo())
+                    },
                     hazeState = streamHazeState,
                     modifier = Modifier
                         .weight(0.6f)
@@ -739,6 +744,8 @@ private fun RightStreamSection(
     onRestoreFocusedStreamHandled: () -> Unit,
     onRetry: () -> Unit,
     onExpandStreams: () -> Unit = {},
+    /** RCTV: opens the player's screen with no video, from "No streams found". */
+    onPreviewPlayer: (() -> Unit)? = null,
     hazeState: HazeState?,
     modifier: Modifier = Modifier
 ) {
@@ -903,7 +910,7 @@ private fun RightStreamSection(
                         )
                     }
                     streams.isEmpty() -> {
-                        EmptyState()
+                        EmptyState(onPreviewPlayer = onPreviewPlayer)
                     }
                     else -> {
                         StreamsList(
@@ -997,8 +1004,9 @@ private fun ErrorState(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun EmptyState() {
+private fun EmptyState(onPreviewPlayer: (() -> Unit)? = null) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -1019,6 +1027,54 @@ private fun EmptyState() {
             color = NuvioTheme.extendedColors.textSecondary,
             textAlign = TextAlign.Center
         )
+
+        if (onPreviewPlayer != null) {
+            // RCTV: a small button that opens the player's screen with no video (black), to see
+            // and design how playing a movie looks.
+            Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
+            val previewFocusRequester = remember { FocusRequester() }
+            var isFocused by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                repeat(2) { androidx.compose.runtime.withFrameNanos { } }
+                runCatching { previewFocusRequester.requestFocus() }
+            }
+            Card(
+                onClick = onPreviewPlayer,
+                modifier = Modifier
+                    .focusRequester(previewFocusRequester)
+                    .onFocusChanged { isFocused = it.isFocused },
+                colors = CardDefaults.colors(
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    focusedContainerColor = NuvioTheme.colors.Secondary
+                ),
+                border = CardDefaults.border(
+                    focusedBorder = Border(
+                        border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                        shape = RoundedCornerShape(50)
+                    )
+                ),
+                shape = CardDefaults.shape(shape = RoundedCornerShape(50)),
+                scale = CardDefaults.scale(focusedScale = 1.04f)
+            ) {
+                androidx.compose.foundation.layout.Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = if (isFocused) NuvioTheme.colors.OnSecondary else NuvioTheme.colors.TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.stream_preview_player),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isFocused) NuvioTheme.colors.OnSecondary else NuvioTheme.colors.TextPrimary
+                    )
+                }
+            }
+        }
     }
 }
 

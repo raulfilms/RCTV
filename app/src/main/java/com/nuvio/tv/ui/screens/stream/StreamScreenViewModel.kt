@@ -1348,6 +1348,35 @@ class StreamScreenViewModel @Inject constructor(
     /**
      * Gets the selected stream for playback
      */
+    /**
+     * RCTV: opens the player's screen with no video (black), carrying this title's name, logo and
+     * pictures, to see and design how playback looks. Nothing is cached or saved.
+     */
+    fun playerPreviewInfo(): StreamPlaybackInfo = StreamPlaybackInfo(
+        url = com.nuvio.tv.ui.screens.player.PlayerDesignPreview.URL,
+        title = _uiState.value.title,
+        streamName = "Preview",
+        year = year,
+        isExternal = false,
+        isTorrent = false,
+        infoHash = null,
+        ytId = null,
+        headers = null,
+        contentId = contentId ?: videoId.substringBefore(":"),
+        contentType = contentType,
+        contentName = contentName ?: title,
+        poster = poster,
+        backdrop = backdrop,
+        logo = logo,
+        videoId = videoId,
+        season = season,
+        episode = episode,
+        episodeTitle = episodeName,
+        bingeGroup = null,
+        profileId = playbackProfileId,
+        contentLanguage = contentLanguage
+    )
+
     fun getStreamForPlayback(stream: Stream): StreamPlaybackInfo {
         cancelStreamsLoad()
         val playbackInfo = StreamPlaybackInfo(

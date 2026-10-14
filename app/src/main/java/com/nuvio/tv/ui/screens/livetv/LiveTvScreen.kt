@@ -92,10 +92,15 @@ fun LiveTvScreen(
             onPlayChannel(channel.copy(streamUrl = resolvedUrl))
         }
     }
-    // Sample guide channels have no stream: choosing one shows what's on instead.
+    // Sample guide channels have no stream: they open the player's screen with no video (black),
+    // to see and design how live TV playback looks.
+    val openPlayerPreview: (LiveTvChannel) -> Unit = { channel ->
+        onPlayChannel(channel.copy(streamUrl = com.nuvio.tv.ui.screens.player.PlayerDesignPreview.URL))
+    }
     val onChannelChosen: (LiveTvChannel) -> Unit = { channel ->
         if (uiState.isPreviewGuide) {
-            uiState.currentProgram(channel)?.let { program -> viewModel.openProgramDetails(channel, program) }
+            viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
+            openPlayerPreview(channel)
         } else {
             resolvingPlayChannel(channel)
         }
@@ -126,6 +131,11 @@ fun LiveTvScreen(
                         !uiState.isPreviewGuide && airingNow -> {
                             viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
                             resolvingPlayChannel(channel)
+                        }
+                        // Sample guide: what's on now opens the player's screen (no video).
+                        uiState.isPreviewGuide && airingNow -> {
+                            viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
+                            openPlayerPreview(channel)
                         }
                         program != null -> viewModel.openProgramDetails(channel, program)
                     }
@@ -193,9 +203,12 @@ fun LiveTvScreen(
                 channel = selectedChannel,
                 program = selectedProgram,
                 nowMs = uiState.nowMs,
-                // Sample guide channels can't be played.
+                // Sample guide channels have no stream: Watch opens the player's screen (no video).
                 onWatch = if (uiState.isPreviewGuide) {
-                    null
+                    {
+                        viewModel.dismissProgramDetails()
+                        openPlayerPreview(selectedChannel)
+                    }
                 } else {
                     {
                         viewModel.dismissProgramDetails()
