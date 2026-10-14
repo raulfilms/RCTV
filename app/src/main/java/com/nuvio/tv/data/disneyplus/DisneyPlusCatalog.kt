@@ -246,6 +246,8 @@ object HboMaxIds {
     // TMDB genre ids used on the HBO Max pages
     const val G_DRAMA = "18"
     const val G_HORROR = "27"
+    const val G_FANTASY = "14"
+    const val G_TV_SCI_FI_FANTASY = "10765"
     const val G_TV_MYSTERY = "9648"
 
     /** A24 on TMDB (its films on HBO Max get their own collection). */
@@ -518,6 +520,9 @@ enum class DisneyPlusHub(
     H_SESAME("hbomax_sesame_workshop", R.string.hbomax_brand_sesame_workshop, HubService.HBO_MAX),
     H_TCM("hbomax_tcm", R.string.hbomax_brand_tcm, HubService.HBO_MAX),
     H_CRUNCHYROLL("hbomax_crunchyroll", R.string.hbomax_brand_crunchyroll, HubService.HBO_MAX),
+    H_ADULT_SWIM("hbomax_adult_swim", R.string.hbomax_brand_adult_swim, HubService.HBO_MAX),
+    H_CARTOON_NETWORK("hbomax_cartoon_network", R.string.hbomax_brand_cartoon_network, HubService.HBO_MAX),
+    H_HARRY_POTTER("hbomax_harry_potter", R.string.hbomax_brand_harry_potter, HubService.HBO_MAX),
 
     // HBO Max collection pages, opened from the "Discover Our Collections" row on the HBO Max page.
     HC_HORROR_COMES_HOME("hbomax_collection_horror_comes_home", R.string.hbomax_col_horror_comes_home, HubService.HBO_MAX),
@@ -583,7 +588,8 @@ enum class DisneyPlusHub(
                 D_ORIGINALS, D_HGTV, D_FOOD_NETWORK, D_TLC, D_ID, D_OWN, D_ANIMAL_PLANET, D_MAGNOLIA
             )
             HubService.HBO_MAX -> listOf(
-                H_HBO, H_MAX_ORIGINALS, H_DC, H_LOONEY_TUNES, H_WB_ANIMATION, H_SESAME, H_TCM, H_CRUNCHYROLL
+                H_HBO, H_MAX_ORIGINALS, H_DC, H_LOONEY_TUNES, H_WB_ANIMATION, H_SESAME, H_TCM, H_CRUNCHYROLL,
+                H_ADULT_SWIM, H_CARTOON_NETWORK, H_HARRY_POTTER
             )
             HubService.PEACOCK -> listOf(
                 PK_ORIGINALS, PK_NBC, PK_BRAVO, PK_TELEMUNDO, PK_WWE, PK_NBC_SPORTS,
@@ -3756,6 +3762,118 @@ object DisneyPlusCatalog {
         )
     )
 
+    // ---- Adult Swim, Cartoon Network and Harry Potter (brand tiles on the HBO Max page)
+
+    private val ADULT_SWIM_FAVORITES = listOf(
+        series("Rick and Morty", 2013),
+        series("Smiling Friends", 2020),
+        series("Common Side Effects", 2025),
+        series("Primal", 2019),
+        series("Robot Chicken", 2005),
+        series("Aqua Teen Hunger Force", 2000),
+        series("The Venture Bros.", 2003),
+        series("Harvey Birdman, Attorney at Law", 2000),
+        series("Space Ghost Coast to Coast", 1994),
+        series("Metalocalypse", 2006),
+        series("Squidbillies", 2005),
+        series("Superjail!", 2007),
+        series("The Eric Andre Show", 2012),
+        series("Joe Pera Talks with You", 2018),
+        series("Tim and Eric Awesome Show, Great Job!", 2007)
+    )
+
+    private val hboMaxAdultSwim = networkPage(
+        hub = DisneyPlusHub.H_ADULT_SWIM,
+        prefix = "as",
+        networks = null,
+        lookup = HboMaxIds.ADULT_SWIM,
+        middleRows = listOf(
+            DisneyRowSpec("as_favorites", R.string.hbomax_row_fan_favorites, listOf(curated(ADULT_SWIM_FAVORITES))),
+            DisneyRowSpec(
+                "as_animated", R.string.disney_row_animated_series,
+                listOf(net(null, HboMaxIds.ADULT_SWIM, genres = DisneyPlusIds.G_ANIMATION))
+            ),
+            DisneyRowSpec(
+                "as_toonami", R.string.hbomax_row_toonami,
+                listOf(net(null, HboMaxIds.ADULT_SWIM, genres = DisneyPlusIds.G_ANIMATION, keywordQuery = "anime"))
+            ),
+            DisneyRowSpec(
+                "as_live_action", R.string.hbomax_row_live_action,
+                listOf(net(null, HboMaxIds.ADULT_SWIM, withoutGenres = DisneyPlusIds.G_ANIMATION))
+            )
+        ),
+        classicUntil = "2009-12-31",
+        topRatedMinVotes = 50
+    )
+
+    private val CARTOON_NETWORK_FAVORITES = listOf(
+        series("Adventure Time", 2010),
+        series("The Amazing World of Gumball", 2011),
+        series("Regular Show", 2010),
+        series("Steven Universe", 2013),
+        series("Teen Titans Go!", 2013),
+        series("We Bare Bears", 2015),
+        series("Ben 10", 2005),
+        series("Craig of the Creek", 2018),
+        series("Over the Garden Wall", 2014),
+        series("Dexter's Laboratory", 1996),
+        series("The Powerpuff Girls", 1998),
+        series("Courage the Cowardly Dog", 1999),
+        series("Ed, Edd n Eddy", 1999),
+        series("Johnny Bravo", 1997),
+        series("Samurai Jack", 2001),
+        series("Foster's Home for Imaginary Friends", 2004),
+        series("Codename: Kids Next Door", 2002),
+        series("The Grim Adventures of Billy & Mandy", 2001)
+    )
+
+    private val hboMaxCartoonNetwork = networkPage(
+        hub = DisneyPlusHub.H_CARTOON_NETWORK,
+        prefix = "cn",
+        networks = HboMaxIds.NET_CARTOON_NETWORK,
+        middleRows = listOf(
+            DisneyRowSpec("cn_favorites", R.string.hbomax_row_fan_favorites, listOf(curated(CARTOON_NETWORK_FAVORITES))),
+            DisneyRowSpec(
+                "cn_movies", R.string.disney_row_movies,
+                listOf(studio(MOVIE, "Cartoon Network Studios", sortBy = MOST_VOTED))
+            ),
+            DisneyRowSpec(
+                "cn_hanna_barbera", R.string.hbomax_row_hanna_barbera,
+                listOf(studio(TV, "Hanna-Barbera Productions", sortBy = MOST_VOTED))
+            )
+        ),
+        classicUntil = "2004-12-31",
+        topRatedMinVotes = 50
+    )
+
+    private val HARRY_POTTER_FILMS = WIZARDING_WORLD.filter { it.title.startsWith("Harry Potter") }
+    private val FANTASTIC_BEASTS_FILMS = WIZARDING_WORLD.filter { it.title.startsWith("Fantastic Beasts") }
+    private val WIZARDING_WORLD_EXTRAS = listOf(
+        CuratedTitle("Harry Potter", 2027, TV),
+        movie("Harry Potter 20th Anniversary: Return to Hogwarts", 2022),
+        series("Harry Potter: Wizards of Baking", 2024),
+        series("Harry Potter: Hogwarts Tournament of Houses", 2021),
+        movie("Harry Potter: A History of Magic", 2017)
+    )
+
+    private val hboMaxHarryPotter = DisneyHubSpec(
+        hub = DisneyPlusHub.H_HARRY_POTTER,
+        heroRowId = "hp_films",
+        rows = listOf(
+            DisneyRowSpec("hp_films", R.string.hbomax_row_harry_potter_films, listOf(curated(HARRY_POTTER_FILMS)))
+                .withSeeAll(*keywordCatalog("wizarding world")),
+            DisneyRowSpec("hp_fantastic_beasts", R.string.hbomax_row_fantastic_beasts, listOf(curated(FANTASTIC_BEASTS_FILMS))),
+            DisneyRowSpec("hp_specials", R.string.hbomax_row_specials_docs, listOf(curated(WIZARDING_WORLD_EXTRAS))),
+            DisneyRowSpec(
+                "hp_more_magic", R.string.hbomax_row_more_magic,
+                listOf(
+                    onHboMax(MOVIE, genres = HboMaxIds.G_FANTASY, voteCountGte = 200),
+                    onHboMax(TV, genres = HboMaxIds.G_TV_SCI_FI_FANTASY, voteCountGte = 50)
+                )
+            )
+        )
+    )
+
     // ================================================================== Peacock
 
     private val ONE_CHICAGO_LAW_ORDER = listOf(
@@ -4904,6 +5022,9 @@ object DisneyPlusCatalog {
         DisneyPlusHub.H_SESAME -> hboMaxSesame
         DisneyPlusHub.H_TCM -> hboMaxTcm
         DisneyPlusHub.H_CRUNCHYROLL -> hboMaxCrunchyroll
+        DisneyPlusHub.H_ADULT_SWIM -> hboMaxAdultSwim
+        DisneyPlusHub.H_CARTOON_NETWORK -> hboMaxCartoonNetwork
+        DisneyPlusHub.H_HARRY_POTTER -> hboMaxHarryPotter
         DisneyPlusHub.PEACOCK_MAIN -> peacockMain
         DisneyPlusHub.PK_ORIGINALS -> peacockOriginals
         DisneyPlusHub.PK_NBC -> peacockNbc

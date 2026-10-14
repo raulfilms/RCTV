@@ -211,7 +211,10 @@
       "hbomax_wb_animation",
       "hbomax_sesame_workshop",
       "hbomax_tcm",
-      "hbomax_crunchyroll"
+      "hbomax_crunchyroll",
+      "hbomax_adult_swim",
+      "hbomax_cartoon_network",
+      "hbomax_harry_potter"
     ],
     "Peacock pages": [
       "peacock",
@@ -227,6 +230,38 @@
       "peacock_focus_features",
       "peacock_working_title",
       "peacock_amblin"
+    ],
+    "HBO Max collections pages": [
+      "hbomax_collection_horror_comes_home",
+      "hbomax_collection_nuestras_voces",
+      "hbomax_collection_awards_acclaim",
+      "hbomax_collection_hard_knocks",
+      "hbomax_collection_big_bang_theory",
+      "hbomax_collection_asl",
+      "hbomax_collection_stream_in_spanish",
+      "hbomax_collection_world_of_westeros",
+      "hbomax_collection_mortal_kombat",
+      "hbomax_collection_audio_description",
+      "hbomax_collection_rick_and_morty",
+      "hbomax_collection_fortress_of_solitude",
+      "hbomax_collection_whats_new",
+      "hbomax_collection_in_her_voice",
+      "hbomax_collection_podcasts",
+      "hbomax_collection_harry_potter",
+      "hbomax_collection_conjuring_universe",
+      "hbomax_collection_superman_films",
+      "hbomax_collection_lgbtq_voices",
+      "hbomax_collection_api_voices",
+      "hbomax_collection_black_voices",
+      "hbomax_collection_friends",
+      "hbomax_collection_a24",
+      "hbomax_collection_middle_earth",
+      "hbomax_collection_sex_and_the_city",
+      "hbomax_collection_godzilla",
+      "hbomax_collection_sopranos",
+      "hbomax_collection_barbie_land",
+      "hbomax_collection_batman_1989_1997",
+      "hbomax_collection_dark_knight_trilogy"
     ]
   }
 }

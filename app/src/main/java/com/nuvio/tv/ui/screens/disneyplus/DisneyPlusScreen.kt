@@ -466,6 +466,9 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
     DisneyPlusHub.H_SESAME -> R.drawable.hbomax_brand_logo_sesame
     DisneyPlusHub.H_TCM -> R.drawable.hbomax_brand_logo_tcm
     DisneyPlusHub.H_CRUNCHYROLL -> R.drawable.hbomax_brand_logo_crunchyroll
+    DisneyPlusHub.H_ADULT_SWIM -> R.drawable.hbomax_brand_logo_adult_swim
+    DisneyPlusHub.H_CARTOON_NETWORK -> R.drawable.hbomax_brand_logo_cartoon_network
+    DisneyPlusHub.H_HARRY_POTTER -> R.drawable.hbomax_brand_logo_harry_potter
     DisneyPlusHub.PK_ORIGINALS -> R.drawable.peacock_brand_logo_originals
     DisneyPlusHub.PK_NBC -> R.drawable.peacock_brand_logo_nbc
     DisneyPlusHub.PK_BRAVO -> R.drawable.peacock_brand_logo_bravo
@@ -630,6 +633,9 @@ private fun DisneyPlusHub.accentColor(): Color = when (this) {
     DisneyPlusHub.H_SESAME -> Color(0xFF00A651)
     DisneyPlusHub.H_TCM -> Color(0xFF3A3A3A)
     DisneyPlusHub.H_CRUNCHYROLL -> Color(0xFFF78C25)
+    DisneyPlusHub.H_ADULT_SWIM -> Color(0xFF3A3A3A)
+    DisneyPlusHub.H_CARTOON_NETWORK -> Color(0xFF3A3A3A)
+    DisneyPlusHub.H_HARRY_POTTER -> Color(0xFF740001)
     DisneyPlusHub.PEACOCK_MAIN -> Color(0xFF6E55DC)
     DisneyPlusHub.PK_ORIGINALS -> Color(0xFF6E55DC)
     DisneyPlusHub.PK_NBC -> Color(0xFF069DE0)

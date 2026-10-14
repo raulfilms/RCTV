@@ -2689,6 +2689,16 @@
     <string name="hbomax_brand_wb_animation">Warner Bros. Animation</string>
     <string name="hbomax_brand_sesame_workshop">Sesame Workshop</string>
     <string name="hbomax_brand_tcm">TCM</string>
+    <string name="hbomax_brand_adult_swim">Adult Swim</string>
+    <string name="hbomax_brand_cartoon_network">Cartoon Network</string>
+    <string name="hbomax_brand_harry_potter">Harry Potter</string>
+    <string name="hbomax_row_fan_favorites">Fan Favorites</string>
+    <string name="hbomax_row_toonami">Toonami</string>
+    <string name="hbomax_row_live_action">Live-Action</string>
+    <string name="hbomax_row_harry_potter_films">Harry Potter Films</string>
+    <string name="hbomax_row_fantastic_beasts">Fantastic Beasts</string>
+    <string name="hbomax_row_specials_docs">Specials &amp; Documentaries</string>
+    <string name="hbomax_row_more_magic">More Magic on HBO Max</string>
     <string name="hbomax_brand_crunchyroll">Crunchyroll</string>
     <string name="hbomax_row_new">New on HBO Max</string>
     <string name="hbomax_row_hbo_originals">HBO Originals</string>
