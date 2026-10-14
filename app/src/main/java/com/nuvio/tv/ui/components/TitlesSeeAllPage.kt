@@ -52,6 +52,27 @@ private const val SEE_ALL_FILTER_TYPE = "type"
 private const val SEE_ALL_FILTER_GENRE = "genre"
 private const val SEE_ALL_FILTER_YEAR = "year"
 
+/** One choice of a See All filter worked out by TMDB. [count] is TMDB's total (null while unknown). */
+@androidx.compose.runtime.Immutable
+data class SeeAllFilterChoice(val key: String, val label: String, val count: Int? = null)
+
+/**
+ * A See All filter applied by TMDB to the whole catalog rather than to what's loaded on screen: the
+ * page shows its items as given and reports new picks through onRemoteFilterChange. Type keys are
+ * "movie" and "series" (labelled here); genre and year choices carry their own labels.
+ */
+@androidx.compose.runtime.Immutable
+data class SeeAllRemoteFilter(
+    val types: List<SeeAllFilterChoice>,
+    val genres: List<SeeAllFilterChoice>,
+    val years: List<SeeAllFilterChoice>,
+    val selectedType: String?,
+    val selectedGenre: String?,
+    val selectedYear: String?
+) {
+    val hasActiveFilter: Boolean get() = selectedType != null || selectedGenre != null || selectedYear != null
+}
+
 /**
  * A row's "See All" page: the row's (or brand's) logo and name at the top, a Type / Genre / Year filter
  * at the top right like Home's See All (Type — Movies or TV Shows — only when the list has both), and every title in a grid of 16:9 cards, loading more as the person
@@ -74,7 +95,15 @@ fun TitlesSeeAllPage(
     @DrawableRes logoRes: Int? = null,
     logoDescription: String? = null,
     /** Vertical 2:3 posters instead of horizontal cards (the row was set to vertical on the website). */
-    vertical: Boolean = false
+    vertical: Boolean = false,
+    /**
+     * The Type / Genre / Year filter worked out by TMDB for the whole catalog (streaming hubs). Null:
+     * the filter works on the titles loaded here, with counts of those.
+     */
+    remoteFilter: SeeAllRemoteFilter? = null,
+    onRemoteFilterChange: (type: String?, genre: String?, year: String?) -> Unit = { _, _, _ -> },
+    /** The filter menu opened (the remote filter looks up its counts then). */
+    onFilterMenuOpen: () -> Unit = {}
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -93,7 +122,8 @@ fun TitlesSeeAllPage(
     }
     // Movies / TV Shows: only worth offering when the list has both.
     val typeOptions = if (filter.typeOptions.size > 1 || selectedType != null) filter.typeOptions else emptyList()
-    val shownItems = filter.filteredItems
+    // A remote filter already narrowed the items.
+    val shownItems = if (remoteFilter != null) items else filter.filteredItems
 
     val currentItems by rememberUpdatedState(shownItems)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
@@ -162,7 +192,17 @@ fun TitlesSeeAllPage(
             )
 
             // Type / Genre / Year filter, top right: one menu with every section and its counts.
-            if (typeOptions.isNotEmpty() || filter.genreOptions.isNotEmpty() || filter.yearOptions.isNotEmpty()) {
+            if (remoteFilter != null) {
+                RemoteSeeAllFilterMenu(
+                    filter = remoteFilter,
+                    onChange = { type, genre, year ->
+                        focusIndex = 0
+                        scope.launch { runCatching { gridState.scrollToItem(0) } }
+                        onRemoteFilterChange(type, genre, year)
+                    },
+                    onOpen = onFilterMenuOpen
+                )
+            } else if (typeOptions.isNotEmpty() || filter.genreOptions.isNotEmpty() || filter.yearOptions.isNotEmpty()) {
                 val filterContext = LocalContext.current
                 val allLabel = stringResource(R.string.apple_filter_all)
                 val typeTitle = stringResource(R.string.library_filter_type)
@@ -236,13 +276,16 @@ fun TitlesSeeAllPage(
                         selectedGenre = null
                         selectedYear = null
                         filterChanged()
-                    }
+                    },
+                    onExpand = onFilterMenuOpen
                 )
             }
         }
 
-        if (shownItems.isEmpty() && items.isNotEmpty() && !isLoadingMore) {
-            // The filter matches nothing that's loaded.
+        // Nothing matches the filter: in what's loaded (local filter), or in the whole catalog (remote).
+        val nothingMatches = !isLoadingMore && shownItems.isEmpty() &&
+            (if (remoteFilter != null) remoteFilter.hasActiveFilter else items.isNotEmpty())
+        if (nothingMatches) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -314,4 +357,81 @@ fun TitlesSeeAllPage(
             }
         }
     }
+}
+
+/**
+ * The Type / Genre / Year menu of a [SeeAllRemoteFilter]: TMDB's totals next to each choice once
+ * known, and genres TMDB has nothing for (with the other picks) left out.
+ */
+@Composable
+private fun RemoteSeeAllFilterMenu(
+    filter: SeeAllRemoteFilter,
+    onChange: (type: String?, genre: String?, year: String?) -> Unit,
+    onOpen: () -> Unit
+) {
+    val context = LocalContext.current
+    val allLabel = stringResource(R.string.apple_filter_all)
+    val typeTitle = stringResource(R.string.library_filter_type)
+    val genreTitle = stringResource(R.string.library_filter_genre)
+    val yearTitle = stringResource(R.string.library_filter_year)
+    val sections = remember(filter, allLabel, typeTitle, genreTitle, yearTitle, context) {
+        buildList {
+            // Movies / TV Shows: only worth offering when the catalog has both.
+            if (filter.types.size > 1) {
+                add(
+                    AppleFilterSection(
+                        key = SEE_ALL_FILTER_TYPE,
+                        title = typeTitle,
+                        selectedValue = filter.selectedType,
+                        options = listOf(AppleFilterOption(allLabel, null)) +
+                            filter.types.map { AppleFilterOption(filterTypeLabel(context, it.key), it.key, it.count) }
+                    )
+                )
+            }
+            val genres = filter.genres.filter { it.count != 0 || it.key == filter.selectedGenre }
+            if (genres.isNotEmpty()) {
+                add(
+                    AppleFilterSection(
+                        key = SEE_ALL_FILTER_GENRE,
+                        title = genreTitle,
+                        selectedValue = filter.selectedGenre,
+                        options = listOf(AppleFilterOption(allLabel, null)) +
+                            genres.map { AppleFilterOption(it.label, it.key, it.count) }
+                    )
+                )
+            }
+            if (filter.years.isNotEmpty()) {
+                add(
+                    AppleFilterSection(
+                        key = SEE_ALL_FILTER_YEAR,
+                        title = yearTitle,
+                        selectedValue = filter.selectedYear,
+                        options = listOf(AppleFilterOption(allLabel, null)) +
+                            filter.years.map { AppleFilterOption(it.label, it.key, it.count) }
+                    )
+                )
+            }
+        }
+    }
+    // The pill shows what is picked ("Movies · Drama · 2024"), or "Filters" when nothing is.
+    val summary = listOfNotNull(
+        filter.selectedType?.let { filterTypeLabel(context, it) },
+        filter.selectedGenre?.let { key -> filter.genres.firstOrNull { it.key == key }?.label ?: key },
+        filter.selectedYear
+    ).joinToString(" · ")
+    AppleFilterMenuButton(
+        label = summary.ifEmpty { stringResource(R.string.apple_filters) },
+        sections = sections,
+        hasActiveFilter = filter.hasActiveFilter,
+        clearLabel = stringResource(R.string.apple_filter_clear),
+        onSelect = { sectionKey, option ->
+            when (sectionKey) {
+                SEE_ALL_FILTER_TYPE -> onChange(option.value, filter.selectedGenre, filter.selectedYear)
+                SEE_ALL_FILTER_GENRE -> onChange(filter.selectedType, option.value, filter.selectedYear)
+                SEE_ALL_FILTER_YEAR -> onChange(filter.selectedType, filter.selectedGenre, option.value)
+            }
+        },
+        onClearAll = { onChange(null, null, null) },
+        onExpand = onOpen
+    )
 }

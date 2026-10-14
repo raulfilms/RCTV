@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.time.LocalDate
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,7 +35,12 @@ enum class DiscoverMediaFilter { ALL, MOVIES, SHOWS }
 data class DiscoverGenre(
     val label: String,
     val movieId: Int?,
-    val tvId: Int?
+    val tvId: Int?,
+    /**
+     * TMDB's names for it, lowercase ("action", and "action & adventure" for shows): how titles that
+     * didn't come from a TMDB query (hand-picked, franchise movies) are matched to it.
+     */
+    val names: Set<String> = emptySet()
 )
 
 /** One page of results for one kind of title. [lastPage] is how far TMDB lets the page number go. */
@@ -66,22 +72,22 @@ class TmdbDiscoverRepository @Inject constructor(
             m.await() to t.await()
         }
         when (filter) {
-            DiscoverMediaFilter.MOVIES -> movie.map { (id, name) -> DiscoverGenre(name, id, null) }
-            DiscoverMediaFilter.SHOWS -> tv.map { (id, name) -> DiscoverGenre(name, null, id) }
+            DiscoverMediaFilter.MOVIES -> movie.map { (id, name) -> DiscoverGenre(name, id, null, setOf(name.genreKey())) }
+            DiscoverMediaFilter.SHOWS -> tv.map { (id, name) -> DiscoverGenre(name, null, id, setOf(name.genreKey())) }
             DiscoverMediaFilter.ALL -> {
-                val tvIds = tv.map { it.first }.toSet()
+                val tvNames: Map<Int, String> = tv.toMap()
                 val usedTv = HashSet<Int>()
                 val merged = movie.map { (id, name) ->
                     val tvMatch = when {
-                        id in tvIds -> id
-                        else -> MOVIE_TO_TV_GENRE[id]?.takeIf { it in tvIds }
+                        id in tvNames -> id
+                        else -> MOVIE_TO_TV_GENRE[id]?.takeIf { it in tvNames }
                     }
                     if (tvMatch != null) usedTv += tvMatch
-                    DiscoverGenre(name, id, tvMatch)
+                    DiscoverGenre(name, id, tvMatch, setOfNotNull(name.genreKey(), tvMatch?.let { tvNames[it]?.genreKey() }))
                 }
                 // Show-only genres (Kids, News, Reality, Soap, Talk) that no movie genre stands for.
                 val showOnly = tv.filter { (id, _) -> id !in usedTv && id !in MOVIE_TO_TV_GENRE.values }
-                    .map { (id, name) -> DiscoverGenre(name, null, id) }
+                    .map { (id, name) -> DiscoverGenre(name, null, id, setOf(name.genreKey())) }
                 (merged + showOnly).sortedBy { it.label.lowercase() }
             }
         }
@@ -198,6 +204,8 @@ class TmdbDiscoverRepository @Inject constructor(
 
     private fun imageUrl(path: String?, size: String): String? =
         path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/$size$it" }
+
+    private fun String.genreKey(): String = trim().lowercase(Locale.ROOT)
 
     companion object {
         /** TMDB stops paging at 500 (20 titles a page). */

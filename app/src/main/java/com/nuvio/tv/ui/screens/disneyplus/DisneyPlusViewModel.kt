@@ -4,13 +4,20 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.data.discover.DiscoverGenre
+import com.nuvio.tv.data.discover.DiscoverMediaFilter
+import com.nuvio.tv.data.discover.TmdbDiscoverRepository
+import com.nuvio.tv.data.discover.TmdbSeeAllFilter
+import com.nuvio.tv.data.discover.matches
 import com.nuvio.tv.data.disneyplus.DisneyPlusCatalog
 import com.nuvio.tv.data.disneyplus.DisneyPlusHub
 import com.nuvio.tv.data.disneyplus.DisneyPlusRepository
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
+import com.nuvio.tv.data.disneyplus.DisneyRowSource
 import com.nuvio.tv.data.disneyplus.DisneyRowSpec
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.MetaPreview
+import com.nuvio.tv.domain.model.TmdbCollectionMediaType
 import com.nuvio.tv.domain.repository.WatchProgressRepository
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,7 +66,18 @@ data class HubSeeAllState(
     val title: String,
     val items: List<MetaPreview>,
     val isLoadingMore: Boolean = false,
-    val nextPage: Int? = 1
+    val nextPage: Int? = 1,
+    /** Type / Genre / Year, applied by TMDB to the row's whole catalog. */
+    val filter: TmdbSeeAllFilter = TmdbSeeAllFilter(),
+    /** Movies, shows or both: the Type menu only shows when there are both. */
+    val mediaTypes: List<TmdbCollectionMediaType> = emptyList(),
+    val genres: List<DiscoverGenre> = emptyList(),
+    /** Newest first. */
+    val years: List<Int> = emptyList(),
+    /** TMDB's totals by genre label (for the picked Type and Year), filled in once the menu opens. */
+    val genreCounts: Map<String, Int> = emptyMap(),
+    /** TMDB's totals by kind of title (for the picked Genre and Year). */
+    val typeCounts: Map<TmdbCollectionMediaType, Int> = emptyMap()
 )
 
 data class DisneyPlusUiState(
@@ -92,6 +110,7 @@ data class DisneyPlusUiState(
 class DisneyPlusViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: DisneyPlusRepository,
+    private val discoverRepository: TmdbDiscoverRepository,
     private val watchProgressRepository: WatchProgressRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -140,6 +159,13 @@ class DisneyPlusViewModel @Inject constructor(
     // ------------------------------------------------------------------ See All
 
     private var seeAllJob: Job? = null
+    /** Genre and Year menus of the open See All page. */
+    private var seeAllGenresJob: Job? = null
+    private var seeAllYearsJob: Job? = null
+    private var seeAllCountsJob: Job? = null
+    /** The filter menu was opened on this See All page, so its counts are kept up to date. */
+    private var seeAllCountsWanted = false
+    private val countLimiter = Semaphore(6)
 
     /** Opens a row's See All page with what the row already has, then loads more right away. */
     fun openSeeAll(rowId: String) {
@@ -148,34 +174,195 @@ class DisneyPlusViewModel @Inject constructor(
         // Every row has more past what it shows: its TMDB queries, its complete catalog, or (for
         // hand-picked titles) the whole TMDB franchise collections those movies belong to.
         val hasMoreSources = rowState.spec.seeAll.isNotEmpty() || rowState.spec.sources.isNotEmpty()
+        val mediaTypes = rowState.spec.mediaTypes(items)
+        seeAllJob?.cancel()
+        seeAllCountsJob?.cancel()
+        seeAllCountsWanted = false
         _uiState.update {
             it.copy(
                 seeAll = HubSeeAllState(
                     rowId = rowId,
                     title = rowState.title,
                     items = items,
-                    nextPage = if (hasMoreSources) 1 else null
+                    nextPage = if (hasMoreSources) 1 else null,
+                    mediaTypes = mediaTypes
                 )
             )
         }
+        loadSeeAllMenus(rowState.spec, mediaTypes)
         loadMoreSeeAll()
     }
 
     fun closeSeeAll() {
         seeAllJob?.cancel()
+        seeAllGenresJob?.cancel()
+        seeAllYearsJob?.cancel()
+        seeAllCountsJob?.cancel()
         _uiState.update { it.copy(seeAll = null) }
     }
 
     /**
-     * Next TMDB page(s) of the open See All row. A page that only repeats what's already shown (the row
-     * itself came from page 1) is skipped; loading stops only when TMDB has nothing more. A page that
-     * fails to load is tried again on the next scroll instead of ending the list.
+     * New Type / Genre / Year picks on the See All page ([type] "movie" or "series", [genre] a genre's
+     * label, [year] "2024"; null is "All"). The list starts over with the row's own titles that match,
+     * then TMDB's whole catalog for those picks.
+     */
+    fun setSeeAllFilter(type: String?, genre: String?, year: String?) {
+        val current = _uiState.value.seeAll ?: return
+        val filter = TmdbSeeAllFilter(
+            mediaType = when (type) {
+                "movie" -> TmdbCollectionMediaType.MOVIE
+                "series", "tv" -> TmdbCollectionMediaType.TV
+                else -> null
+            },
+            genre = genre?.let { label -> current.genres.firstOrNull { it.label == label } },
+            year = year?.toIntOrNull()
+        )
+        if (filter == current.filter) return
+        val rowState = _uiState.value.rows.firstOrNull { it.spec.id == current.rowId } ?: return
+        val rowItems = rowState.row?.items.orEmpty()
+        val hasMoreSources = rowState.spec.seeAll.isNotEmpty() || rowState.spec.sources.isNotEmpty()
+        val old = current.filter
+        seeAllJob?.cancel()
+        _uiState.update { state ->
+            val open = state.seeAll ?: return@update state
+            state.copy(
+                seeAll = open.copy(
+                    filter = filter,
+                    items = if (filter.isEmpty) rowItems else rowItems.filter { it.matches(filter) },
+                    isLoadingMore = false,
+                    nextPage = if (hasMoreSources) 1 else null,
+                    // Counts by genre depend on the Type and Year; counts by Type on the Genre and Year.
+                    genreCounts = if (old.mediaType != filter.mediaType || old.year != filter.year) emptyMap() else open.genreCounts,
+                    typeCounts = if (old.genre != filter.genre || old.year != filter.year) emptyMap() else open.typeCounts
+                )
+            )
+        }
+        loadMoreSeeAll()
+        if (seeAllCountsWanted) loadSeeAllCounts()
+    }
+
+    /**
+     * The filter menu opened: TMDB's totals for each genre and type, given the other picks, so the
+     * menu shows how many titles the whole catalog has (not just what's loaded). Asked only once the
+     * menu is opened (one TMDB query per genre), then kept up to date as the picks change.
+     */
+    fun loadSeeAllCounts() {
+        seeAllCountsWanted = true
+        val current = _uiState.value.seeAll ?: return
+        val spec = _uiState.value.rows.firstOrNull { it.spec.id == current.rowId }?.spec ?: return
+        val filter = current.filter
+        seeAllCountsJob?.cancel()
+        seeAllCountsJob = viewModelScope.launch {
+            // The Genre menu may still be loading: wait for it.
+            val genres = current.genres.ifEmpty {
+                seeAllGenresJob?.join()
+                _uiState.value.seeAll?.takeIf { it.rowId == current.rowId }?.genres.orEmpty()
+            }
+            fun stillOpen(open: HubSeeAllState?) = open != null && open.rowId == current.rowId && open.filter == filter
+            coroutineScope {
+                if (current.mediaTypes.size > 1) {
+                    current.mediaTypes.forEach { mediaType ->
+                        if (_uiState.value.seeAll?.typeCounts?.containsKey(mediaType) == true) return@forEach
+                        launch {
+                            val count = countLimiter.withPermit {
+                                safeCount(spec, filter.copy(mediaType = mediaType))
+                            } ?: return@launch
+                            _uiState.update { state ->
+                                val open = state.seeAll?.takeIf { stillOpen(it) } ?: return@update state
+                                state.copy(seeAll = open.copy(typeCounts = open.typeCounts + (mediaType to count)))
+                            }
+                        }
+                    }
+                }
+                genres.forEach { genre ->
+                    if (_uiState.value.seeAll?.genreCounts?.containsKey(genre.label) == true) return@forEach
+                    launch {
+                        val count = countLimiter.withPermit {
+                            safeCount(spec, filter.copy(genre = genre))
+                        } ?: return@launch
+                        _uiState.update { state ->
+                            val open = state.seeAll?.takeIf { stillOpen(it) } ?: return@update state
+                            state.copy(seeAll = open.copy(genreCounts = open.genreCounts + (genre.label to count)))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun safeCount(spec: DisneyRowSpec, filter: TmdbSeeAllFilter): Int? = try {
+        repository.countForFilter(spec, filter)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    /** The See All page's Genre menu (TMDB's genres for the row's movies and/or shows) and Year menu. */
+    private fun loadSeeAllMenus(spec: DisneyRowSpec, mediaTypes: List<TmdbCollectionMediaType>) {
+        seeAllGenresJob?.cancel()
+        seeAllYearsJob?.cancel()
+        val rowId = spec.id
+        seeAllGenresJob = viewModelScope.launch {
+            val mediaFilter = when {
+                mediaTypes.size > 1 || mediaTypes.isEmpty() -> DiscoverMediaFilter.ALL
+                mediaTypes.first() == TmdbCollectionMediaType.MOVIE -> DiscoverMediaFilter.MOVIES
+                else -> DiscoverMediaFilter.SHOWS
+            }
+            val genres = try {
+                discoverRepository.genres(mediaFilter, discoverRepository.language())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _uiState.update { state ->
+                val open = state.seeAll?.takeIf { it.rowId == rowId } ?: return@update state
+                state.copy(seeAll = open.copy(genres = genres))
+            }
+        }
+        seeAllYearsJob = viewModelScope.launch {
+            val years = try {
+                repository.seeAllYears(spec)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _uiState.update { state ->
+                val open = state.seeAll?.takeIf { it.rowId == rowId } ?: return@update state
+                state.copy(seeAll = open.copy(years = years))
+            }
+        }
+    }
+
+    /** Movies, shows or both: what the row's sources and titles are. */
+    private fun DisneyRowSpec.mediaTypes(items: List<MetaPreview>): List<TmdbCollectionMediaType> {
+        val found = HashSet<TmdbCollectionMediaType>()
+        (sources + seeAll).forEach { source ->
+            when (source) {
+                is DisneyRowSource.Discover -> found += source.mediaType
+                is DisneyRowSource.Curated -> source.titles.forEach { found += it.mediaType }
+                is DisneyRowSource.TmdbCollection -> found += TmdbCollectionMediaType.MOVIE
+            }
+        }
+        if (items.any { it.type == com.nuvio.tv.domain.model.ContentType.SERIES }) found += TmdbCollectionMediaType.TV
+        if (items.any { it.type != com.nuvio.tv.domain.model.ContentType.SERIES }) found += TmdbCollectionMediaType.MOVIE
+        return listOf(TmdbCollectionMediaType.MOVIE, TmdbCollectionMediaType.TV).filter { it in found }
+    }
+
+    /**
+     * Next TMDB page(s) of the open See All row, for its Type / Genre / Year picks. A page that only
+     * repeats what's already shown (the row itself came from page 1) is skipped; loading stops only
+     * when TMDB has nothing more. A page that fails to load is tried again on the next scroll instead
+     * of ending the list.
      */
     fun loadMoreSeeAll() {
         val current = _uiState.value.seeAll ?: return
         val firstPage = current.nextPage ?: return
         if (current.isLoadingMore) return
         val spec = _uiState.value.rows.firstOrNull { it.spec.id == current.rowId }?.spec ?: return
+        val filter = current.filter
         _uiState.update { state -> state.copy(seeAll = state.seeAll?.copy(isLoadingMore = true)) }
         seeAllJob = viewModelScope.launch {
             val known = current.items.mapTo(HashSet()) { "${it.apiType}:${it.id}" }
@@ -185,7 +372,7 @@ class DisneyPlusViewModel @Inject constructor(
             var failedPage: Int? = null
             while (page <= SEE_ALL_MAX_PAGES) {
                 val pageItems = try {
-                    repository.resolveRowPage(spec, page)
+                    repository.resolveRowPage(spec, page, filter)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -200,7 +387,7 @@ class DisneyPlusViewModel @Inject constructor(
                 nextPage = null
             }
             _uiState.update { state ->
-                val open = state.seeAll?.takeIf { it.rowId == current.rowId } ?: return@update state
+                val open = state.seeAll?.takeIf { it.rowId == current.rowId && it.filter == filter } ?: return@update state
                 state.copy(
                     seeAll = open.copy(
                         items = open.items + fresh,

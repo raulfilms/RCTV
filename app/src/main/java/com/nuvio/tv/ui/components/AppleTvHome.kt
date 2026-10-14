@@ -908,7 +908,9 @@ fun AppleFilterMenuButton(
     /** Icon before the label; null for a plain "Label ⌄" pill. */
     leadingIcon: ImageVector? = Icons.Filled.Tune,
     /** Close the menu once a row is picked (single-choice menus). */
-    closeOnSelect: Boolean = false
+    closeOnSelect: Boolean = false,
+    /** Called each time the menu opens (e.g. to look up its counts). */
+    onExpand: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
     val firstRowRequester = remember { FocusRequester() }
@@ -924,7 +926,10 @@ fun AppleFilterMenuButton(
 
     Box(modifier = modifier) {
         AppleGlassButton(
-            onClick = { expanded = !expanded },
+            onClick = {
+                expanded = !expanded
+                if (expanded) onExpand()
+            },
             shape = HeroPillShape,
             minWidth = 140.dp,
             modifier = Modifier.height(40.dp)

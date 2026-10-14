@@ -187,7 +187,11 @@ fun DisneyPlusScreen(
                         seeAll.rowId,
                         "disney_${uiState.hub.key}_${seeAll.rowId}",
                         seeAll.title
-                    )
+                    ),
+                    // Type / Genre / Year are worked out by TMDB over the row's whole catalog.
+                    remoteFilter = seeAll.remoteFilter(),
+                    onRemoteFilterChange = viewModel::setSeeAllFilter,
+                    onFilterMenuOpen = viewModel::loadSeeAllCounts
                 )
             }
 
@@ -776,3 +780,27 @@ private fun DisneyCollectionCard(
         }
     }
 }
+
+/** The See All page's Type / Genre / Year menu for this state, with TMDB's totals once known. */
+@Composable
+private fun HubSeeAllState.remoteFilter(): com.nuvio.tv.ui.components.SeeAllRemoteFilter =
+    remember(filter, mediaTypes, genres, years, genreCounts, typeCounts) {
+        com.nuvio.tv.ui.components.SeeAllRemoteFilter(
+            types = mediaTypes.map { mediaType ->
+                com.nuvio.tv.ui.components.SeeAllFilterChoice(
+                    key = if (mediaType == com.nuvio.tv.domain.model.TmdbCollectionMediaType.TV) "series" else "movie",
+                    label = "",
+                    count = typeCounts[mediaType]
+                )
+            },
+            genres = genres.map { genre ->
+                com.nuvio.tv.ui.components.SeeAllFilterChoice(genre.label, genre.label, genreCounts[genre.label])
+            },
+            years = years.map { year -> com.nuvio.tv.ui.components.SeeAllFilterChoice(year.toString(), year.toString()) },
+            selectedType = filter.mediaType?.let {
+                if (it == com.nuvio.tv.domain.model.TmdbCollectionMediaType.TV) "series" else "movie"
+            },
+            selectedGenre = filter.genre?.label,
+            selectedYear = filter.year?.toString()
+        )
+    }

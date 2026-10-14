@@ -4,9 +4,12 @@ import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.tmdb.TmdbTitleArtService
+import com.nuvio.tv.data.discover.TmdbSeeAllFilter
+import com.nuvio.tv.data.discover.matches
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbDetailsResponse
+import com.nuvio.tv.data.remote.api.TmdbDiscoverResponse
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
 import com.nuvio.tv.data.remote.api.TmdbWatchProviderEntry
 import com.nuvio.tv.domain.model.CatalogRow
@@ -37,6 +40,8 @@ import javax.inject.Singleton
 private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
 private const val HERO_ITEM_COUNT = 6
+/** The See All Year menu never goes back further than this. */
+private const val OLDEST_YEAR = 1900
 
 
 /** What we learned about one watched title from TMDB: which services own it (Disney, Paramount, Discovery, HBO Max), and its genres. */
@@ -77,11 +82,17 @@ class DisneyPlusRepository @Inject constructor(
     private val collectionPartsCache = ConcurrentHashMap<String, List<MetaPreview>>()
     /** A franchise collection name ("Toy Story") to its TMDB collection id. */
     private val collectionSearchCache = ConcurrentHashMap<String, Optional<Int>>()
+    /** TMDB's total for one (filtered) discover query: the See All filter's counts. */
+    private val totalCache = ConcurrentHashMap<String, Int>()
+    /** The year of a discover query's oldest title (0: it has none), for the See All Year menu. */
+    private val earliestYearCache = ConcurrentHashMap<String, Int>()
 
     /** Tiny nullable holder so "looked it up, found nothing" can be cached (ConcurrentHashMap rejects nulls). */
     private data class Optional<T>(val value: T?)
 
     private val lookupLimiter = Semaphore(6)
+    /** The See All filter's counts (one TMDB query per genre), kept from crowding out the titles. */
+    private val countLimiter = Semaphore(4)
 
     private suspend fun language(): String =
         runCatching { tmdbSettingsDataStore.settings.first().language }.getOrNull()?.ifBlank { null } ?: "en"
@@ -180,27 +191,21 @@ class DisneyPlusRepository @Inject constructor(
 
     /**
      * One more page of a row for its See All page: page [page] of every TMDB discover source in the
-     * row, interleaved like the row itself. Hand-picked (curated) sources have no further pages, so a
-     * row made only of those has nothing more past what it already shows.
+     * row and its complete catalog, interleaved like the row itself. Page 1 also brings the row's
+     * hand-picked titles and whole TMDB franchise collections.
+     *
+     * [filter] (the See All page's Type / Genre / Year) is applied by TMDB to every query, so it finds
+     * every matching title in the catalog, not just among the ones already loaded.
      */
-    suspend fun resolveRowPage(spec: DisneyRowSpec, page: Int): List<MetaPreview> = withContext(Dispatchers.IO) {
-        // Everything the row stands for: its own TMDB queries plus its complete catalog, without the
-        // row's minimum vote counts (those only pick what the 10-title row shows first). Top-rated
-        // queries keep theirs, or a title with one 10/10 vote would lead the list.
-        val discoverSources = (spec.sources + spec.seeAll)
-            .filterIsInstance<DisneyRowSource.Discover>()
-            .map { source -> if (source.sortBy.startsWith("vote_average")) source else source.copy(voteCountGte = null) }
-            .distinct()
+    suspend fun resolveRowPage(
+        spec: DisneyRowSpec,
+        page: Int,
+        filter: TmdbSeeAllFilter = TmdbSeeAllFilter()
+    ): List<MetaPreview> = withContext(Dispatchers.IO) {
+        val discoverSources = seeAllDiscoverSources(spec, filter)
         val language = language()
-        // Page 1 also brings the whole of every TMDB franchise collection: the ones named in the row's
-        // catalog, and the ones its hand-picked movies belong to (all of Toy Story, all of Shrek...).
-        val franchiseJobs: List<suspend () -> List<MetaPreview>> = if (page != 1) emptyList() else buildList {
-            (spec.sources + spec.seeAll).filterIsInstance<DisneyRowSource.TmdbCollection>().distinct()
-                .forEach { source -> add { tmdbCollection(source.query, language) } }
-            val handPicked = spec.sources.filterIsInstance<DisneyRowSource.Curated>()
-            if (handPicked.isNotEmpty()) add { franchisesOf(handPicked, language) }
-        }
-        val jobCount = discoverSources.size + franchiseJobs.size
+        val localJobs = if (page != 1) emptyList() else localJobs(spec, language)
+        val jobCount = discoverSources.size + localJobs.size
         if (jobCount == 0) return@withContext emptyList()
         var failures = 0
         val perSource = coroutineScope {
@@ -217,10 +222,11 @@ class DisneyPlusRepository @Inject constructor(
                     }
                 }
             }
-            val franchises = franchiseJobs.map { job ->
+            val local = localJobs.map { job ->
                 async {
                     try {
-                        job()
+                        // TMDB filtered the discover queries; these are filtered here.
+                        job().filter { it.matches(filter) }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -230,14 +236,157 @@ class DisneyPlusRepository @Inject constructor(
                     }
                 }
             }
-            // The franchise movies first (they're the closest to the row), then the wider catalog.
-            franchises.awaitAll() + discovered.awaitAll()
+            // The hand-picked and franchise titles first (they're the closest to the row), then the wider catalog.
+            local.awaitAll() + discovered.awaitAll()
         }
         // Nothing could be loaded (no connection): say so, so See All tries this page again on the next
         // scroll instead of treating it as the end of the list.
         if (failures == jobCount) throw java.io.IOException("Row ${spec.id} page $page could not be loaded")
         interleave(perSource, cap = Int.MAX_VALUE)
     }
+
+    /**
+     * How many titles the row's whole catalog has for [filter], from TMDB's own totals (null when TMDB
+     * couldn't be reached). Several queries in one row can share titles, so for those it's TMDB's sum.
+     */
+    suspend fun countForFilter(spec: DisneyRowSpec, filter: TmdbSeeAllFilter): Int? = withContext(Dispatchers.IO) {
+        val language = language()
+        val totals = coroutineScope {
+            seeAllDiscoverSources(spec, filter).map { source -> async { discoverTotal(source, language) } }.awaitAll()
+        }
+        if (totals.any { it == null }) return@withContext null
+        val local = localItems(spec, language).count { it.matches(filter) }
+        maxOf(totals.sumOf { it ?: 0 }, local)
+    }
+
+    /**
+     * The years the row's catalog spans, newest first, for the See All page's Year menu: from its
+     * oldest title on TMDB to next year (or the row's own last year, e.g. a classics row).
+     */
+    suspend fun seeAllYears(spec: DisneyRowSpec): List<Int> = withContext(Dispatchers.IO) {
+        val language = language()
+        val currentYear = LocalDate.now().year
+        val localYears = localItems(spec, language).mapNotNull { it.releaseYear() }
+        val sources = seeAllDiscoverSources(spec, TmdbSeeAllFilter())
+        if (sources.isEmpty()) return@withContext localYears.distinct().sortedDescending()
+        val earliest = coroutineScope {
+            sources.map { source -> async { earliestYear(source, language) } }.awaitAll()
+        }.filterNotNull().filter { it > 0 }
+        val first = (earliest + localYears).minOrNull()?.coerceAtLeast(OLDEST_YEAR) ?: OLDEST_YEAR
+        val sourceLast = sources.maxOf { source ->
+            source.releaseDateLte?.let { lte ->
+                if (lte == DisneyPlusCatalog.TODAY) currentYear else lte.take(4).toIntOrNull()
+            } ?: (currentYear + 1)
+        }
+        val last = maxOf(sourceLast.coerceAtMost(currentYear + 1), localYears.maxOrNull() ?: sourceLast)
+        if (last < first) emptyList() else (last downTo first).toList()
+    }
+
+    /**
+     * The row's TMDB discover queries for See All, with [filter] worked into each: its own queries plus
+     * its complete catalog, without the row's minimum vote counts (those only pick what the 10-title
+     * row shows first). Top-rated queries keep theirs, or a title with one 10/10 vote would lead the list.
+     */
+    private fun seeAllDiscoverSources(spec: DisneyRowSpec, filter: TmdbSeeAllFilter): List<DisneyRowSource.Discover> {
+        val today = LocalDate.now().toString()
+        return (spec.sources + spec.seeAll)
+            .filterIsInstance<DisneyRowSource.Discover>()
+            .map { source -> if (source.sortBy.startsWith("vote_average")) source else source.copy(voteCountGte = null) }
+            .distinct()
+            .flatMap { source -> if (filter.isEmpty) listOf(source) else source.filteredBy(filter, today) }
+            .distinct()
+    }
+
+    /**
+     * [filter] as TMDB parameters on this query: nothing when it can't match (wrong kind of title, a
+     * genre this kind of title doesn't have or the query leaves out, a year outside its dates), else
+     * the query narrowed to the genre and year. A query for several genres at once (Action or Adventure)
+     * becomes one query per genre, each also in the wanted genre (TMDB can't mix "or" and "and").
+     */
+    private fun DisneyRowSource.Discover.filteredBy(
+        filter: TmdbSeeAllFilter,
+        today: String
+    ): List<DisneyRowSource.Discover> {
+        if (filter.mediaType != null && filter.mediaType != mediaType) return emptyList()
+        var narrowed = this
+        filter.year?.let { year ->
+            val gte = releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
+            val lte = releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
+            val from = maxOf(gte ?: "0000-01-01", "$year-01-01")
+            val to = minOf(lte ?: "9999-12-31", "$year-12-31")
+            if (from > to) return emptyList()
+            narrowed = narrowed.copy(releaseDateGte = from, releaseDateLte = to)
+        }
+        if (filter.genre == null) return listOf(narrowed)
+        val id = filter.genreId(mediaType)?.toString() ?: return emptyList()
+        if (withoutGenres.orEmpty().split(',', '|').any { it.trim() == id }) return emptyList()
+        val current = genres?.trim()?.takeIf { it.isNotEmpty() } ?: return listOf(narrowed.copy(genres = id))
+        if ('|' in current) {
+            val anyOf = current.split('|').map { it.trim() }.filter { it.isNotEmpty() }
+            return if (id in anyOf) listOf(narrowed.copy(genres = id))
+            else anyOf.map { narrowed.copy(genres = "$it,$id") }
+        }
+        val allOf = current.split(',').map { it.trim() }
+        return listOf(if (id in allOf) narrowed else narrowed.copy(genres = "$current,$id"))
+    }
+
+    /**
+     * The row's titles that don't come from a TMDB discover query, each list its own source: its
+     * hand-picked titles (a row mixing them with a query only shows its first 30), the TMDB franchise
+     * collections it names, and the whole collections its hand-picked movies belong to.
+     */
+    private fun localJobs(spec: DisneyRowSpec, language: String): List<suspend () -> List<MetaPreview>> = buildList {
+        val all = spec.sources + spec.seeAll
+        all.filterIsInstance<DisneyRowSource.Curated>().distinct()
+            .forEach { source -> add { curated(source, language) } }
+        all.filterIsInstance<DisneyRowSource.TmdbCollection>().distinct()
+            .forEach { source -> add { tmdbCollection(source.query, language) } }
+        val handPicked = spec.sources.filterIsInstance<DisneyRowSource.Curated>()
+        if (handPicked.isNotEmpty()) add { franchisesOf(handPicked, language) }
+    }
+
+    /** Everything [localJobs] finds, once each (looked up once, then cached). */
+    private suspend fun localItems(spec: DisneyRowSpec, language: String): List<MetaPreview> = coroutineScope {
+        localJobs(spec, language).map { job ->
+            async {
+                runCatching { job() }.onFailure { if (it is CancellationException) throw it }.getOrDefault(emptyList())
+            }
+        }.awaitAll().flatten().distinctBy { "${it.apiType}:${it.id}" }
+    }
+
+    /** TMDB's total for one discover query (null: couldn't be reached; not cached then). */
+    private suspend fun discoverTotal(source: DisneyRowSource.Discover, language: String): Int? {
+        val key = source.toString()
+        totalCache[key]?.let { return it }
+        val total: Int? = countLimiter.withPermit {
+            runCatching { discoverResponse(source, language, page = 1)?.totalResults ?: 0 }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()
+        }
+        if (total != null) totalCache[key] = total
+        return total
+    }
+
+    /** The year of the oldest title a discover query has on TMDB (0: none; null: couldn't be reached). */
+    private suspend fun earliestYear(source: DisneyRowSource.Discover, language: String): Int? {
+        val key = source.toString()
+        earliestYearCache[key]?.let { return it }
+        val oldestFirst = source.copy(
+            sortBy = "primary_release_date.asc",
+            // Titles with no date at all would otherwise come first.
+            releaseDateGte = source.releaseDateGte ?: "1870-01-01"
+        )
+        val year: Int? = countLimiter.withPermit {
+            runCatching {
+                val results = discoverResponse(oldestFirst, language, page = 1)?.results.orEmpty()
+                results.mapNotNull { (it.releaseDate ?: it.firstAirDate)?.take(4)?.toIntOrNull() }.minOrNull() ?: 0
+            }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+        }
+        if (year != null) earliestYearCache[key] = year
+        return year
+    }
+
+    private fun MetaPreview.releaseYear(): Int? = (released ?: releaseInfo)?.take(4)?.toIntOrNull()
 
     /**
      * Every movie of the TMDB franchise collections the hand-picked movies belong to (Toy Story ->
@@ -296,6 +445,7 @@ class DisneyPlusRepository @Inject constructor(
             if (!response.isSuccessful) throw java.io.IOException("TMDB collection HTTP ${response.code()}")
             response.body()?.parts.orEmpty()
         }
+        val genreNames = genreMap(TmdbCollectionMediaType.MOVIE, language)
         val previews = parts
             .sortedBy { it.releaseDate?.takeIf { date -> date.isNotBlank() } ?: "9999" }
             .mapNotNull { part ->
@@ -308,8 +458,9 @@ class DisneyPlusRepository @Inject constructor(
                     overview = part.overview,
                     releaseDate = part.releaseDate,
                     voteAverage = part.voteAverage,
-                    voteCount = part.voteCount
-                ).toPreview(TmdbCollectionMediaType.MOVIE)
+                    voteCount = part.voteCount,
+                    genreIds = part.genreIds
+                ).toPreview(TmdbCollectionMediaType.MOVIE, genreNames)
             }
         if (previews.isNotEmpty()) collectionPartsCache[key] = previews
         return previews
@@ -409,22 +560,36 @@ class DisneyPlusRepository @Inject constructor(
     // ------------------------------------------------------------------ sources
 
     private suspend fun discover(source: DisneyRowSource.Discover, language: String, page: Int = 1): List<MetaPreview> {
+        val body = discoverResponse(source, language, page) ?: return emptyList()
+        val genres = genreMap(source.mediaType, language)
+        return body.results.orEmpty().mapNotNull { it.toPreview(source.mediaType, genres) }
+    }
+
+    /**
+     * One page of a discover query straight from TMDB. Null when a name in it (keyword, company,
+     * network, provider) isn't on TMDB, so the query has no titles.
+     */
+    private suspend fun discoverResponse(
+        source: DisneyRowSource.Discover,
+        language: String,
+        page: Int
+    ): TmdbDiscoverResponse? {
         val resolvedKeywordId = source.keywordQuery?.let { query ->
-            keywordId(query) ?: return emptyList()
+            keywordId(query) ?: return null
         }
         val companies = source.companyQuery?.let { query ->
-            val resolved = companyId(query) ?: return emptyList()
+            val resolved = companyId(query) ?: return null
             listOfNotNull(source.companies, resolved.toString()).joinToString("|")
         } ?: source.companies
         val networks = source.networkLookup?.let { lookup ->
-            val resolved = networkId(lookup, language) ?: return emptyList()
+            val resolved = networkId(lookup, language) ?: return null
             listOfNotNull(source.networks, resolved.toString()).joinToString("|")
         } ?: source.networks
         val today = LocalDate.now().toString()
         val releaseLte = source.releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
         val releaseGte = source.releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
         val providers = source.providerQuery?.let { query ->
-            val resolved = providerId(query) ?: return emptyList()
+            val resolved = providerId(query) ?: return null
             listOfNotNull(source.providers, resolved.toString()).joinToString("|")
         } ?: source.providers
         val usesProviders = !providers.isNullOrBlank()
@@ -469,8 +634,7 @@ class DisneyPlusRepository @Inject constructor(
         }
         // An error answer (TMDB still busy after retries) is a failure, not "no more titles".
         if (!response.isSuccessful) throw java.io.IOException("TMDB discover HTTP ${response.code()}")
-        val genres = genreMap(source.mediaType, language)
-        return response.body()?.results.orEmpty().mapNotNull { it.toPreview(source.mediaType, genres) }
+        return response.body() ?: TmdbDiscoverResponse()
     }
 
     private suspend fun keywordId(query: String): Int? {
@@ -574,7 +738,8 @@ class DisneyPlusRepository @Inject constructor(
                     normalizeTitle(result.originalTitle ?: result.originalName ?: "") == wanted ||
                         normalizeTitle(result.title ?: result.name ?: "") == wanted
                 } ?: results.firstOrNull()
-                best?.toPreview(title.mediaType)
+                // Genre names too, for the See All page's Genre filter.
+                best?.toPreview(title.mediaType, genreMap(title.mediaType, language))
             }.onFailure { if (it is CancellationException) throw it }.getOrNull()
         }
         // Only cache successful lookups, so a transient network error doesn't hide the title for the whole session.
