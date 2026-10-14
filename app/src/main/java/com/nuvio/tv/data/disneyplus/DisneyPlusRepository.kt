@@ -4,6 +4,7 @@ import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.tmdb.TmdbTitleArtService
+import com.nuvio.tv.data.discover.TmdbDeepPager
 import com.nuvio.tv.data.discover.TmdbSeeAllFilter
 import com.nuvio.tv.data.discover.matches
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
@@ -190,59 +191,115 @@ class DisneyPlusRepository @Inject constructor(
     }
 
     /**
-     * One more page of a row for its See All page: page [page] of every TMDB discover source in the
-     * row and its complete catalog, interleaved like the row itself. Page 1 also brings the row's
-     * hand-picked titles and whole TMDB franchise collections.
+     * A row's See All list, with no limit: [HubSeeAllSession.next] brings the next titles of every
+     * TMDB query in the row and its complete catalog, interleaved like the row itself; the first
+     * call also brings the row's hand-picked titles and whole TMDB franchise collections. Each query
+     * goes past TMDB's 10,000-title cap (see [TmdbDeepPager]), so the list has every title there is.
      *
      * [filter] (the See All page's Type / Genre / Year) is applied by TMDB to every query, so it finds
      * every matching title in the catalog, not just among the ones already loaded.
      */
-    suspend fun resolveRowPage(
-        spec: DisneyRowSpec,
-        page: Int,
-        filter: TmdbSeeAllFilter = TmdbSeeAllFilter()
-    ): List<MetaPreview> = withContext(Dispatchers.IO) {
-        val discoverSources = seeAllDiscoverSources(spec, filter)
-        val language = language()
-        val localJobs = if (page != 1) emptyList() else localJobs(spec, language)
-        val jobCount = discoverSources.size + localJobs.size
-        if (jobCount == 0) return@withContext emptyList()
-        var failures = 0
-        val perSource = coroutineScope {
-            val discovered = discoverSources.map { source ->
-                async {
-                    try {
-                        discover(source, language, page)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Row ${spec.id} page $page: source failed", e)
-                        synchronized(this@DisneyPlusRepository) { failures++ }
-                        emptyList()
+    fun seeAllSession(spec: DisneyRowSpec, filter: TmdbSeeAllFilter = TmdbSeeAllFilter()): HubSeeAllSession =
+        HubSeeAllSession(spec, filter)
+
+    inner class HubSeeAllSession internal constructor(
+        private val spec: DisneyRowSpec,
+        private val filter: TmdbSeeAllFilter
+    ) {
+        private var sessionLanguage: String? = null
+        private var pagers: List<TmdbDeepPager<MetaPreview>>? = null
+        private var localPending = true
+
+        /** True once every title of the row's catalog has been listed. */
+        val isDone: Boolean get() = !localPending && pagers?.all { it.isDone } == true
+
+        /**
+         * The next titles (one more page of each query). Throws when nothing could be loaded (no
+         * connection), so the same titles are asked for again next time; nothing is skipped.
+         */
+        suspend fun next(): List<MetaPreview> = withContext(Dispatchers.IO) {
+            val language = sessionLanguage ?: language().also { sessionLanguage = it }
+            val allPagers = pagers ?: seeAllDiscoverSources(spec, filter).map { deepPager(it, language) }.also { pagers = it }
+            val active = allPagers.filterNot { it.isDone }
+            val localJobs = if (localPending) localJobs(spec, language) else emptyList()
+            val jobCount = active.size + localJobs.size
+            if (jobCount == 0) {
+                localPending = false
+                return@withContext emptyList()
+            }
+            var failures = 0
+            var localFailures = 0
+            val perSource = coroutineScope {
+                val discovered = active.map { pager ->
+                    async {
+                        try {
+                            pager.next()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Row ${spec.id}: page failed", e)
+                            synchronized(this@DisneyPlusRepository) { failures++ }
+                            emptyList()
+                        }
                     }
                 }
-            }
-            val local = localJobs.map { job ->
-                async {
-                    try {
-                        // TMDB filtered the discover queries; these are filtered here.
-                        job().filter { it.matches(filter) }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Row ${spec.id}: franchise lookup failed", e)
-                        synchronized(this@DisneyPlusRepository) { failures++ }
-                        emptyList()
+                val local = localJobs.map { job ->
+                    async {
+                        try {
+                            // TMDB filtered the discover queries; these are filtered here.
+                            job().filter { it.matches(filter) }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Row ${spec.id}: franchise lookup failed", e)
+                            synchronized(this@DisneyPlusRepository) { failures++; localFailures++ }
+                            emptyList()
+                        }
                     }
                 }
+                // The hand-picked and franchise titles first (they're the closest to the row), then the wider catalog.
+                local.awaitAll() + discovered.awaitAll()
             }
-            // The hand-picked and franchise titles first (they're the closest to the row), then the wider catalog.
-            local.awaitAll() + discovered.awaitAll()
+            // Nothing could be loaded (no connection): say so, so See All asks again on the next
+            // scroll instead of treating it as the end of the list.
+            if (failures == jobCount) throw java.io.IOException("Row ${spec.id}: nothing could be loaded")
+            if (localFailures == 0) localPending = false
+            interleave(perSource, cap = Int.MAX_VALUE)
         }
-        // Nothing could be loaded (no connection): say so, so See All tries this page again on the next
-        // scroll instead of treating it as the end of the list.
-        if (failures == jobCount) throw java.io.IOException("Row ${spec.id} page $page could not be loaded")
-        interleave(perSource, cap = Int.MAX_VALUE)
+    }
+
+    /** One discover query of a row, paged with no limit, a stretch of time at a time past 10,000. */
+    private fun deepPager(source: DisneyRowSource.Discover, language: String): TmdbDeepPager<MetaPreview> {
+        val today = LocalDate.now()
+        fun date(value: String?): LocalDate? = when (value) {
+            null -> null
+            DisneyPlusCatalog.TODAY -> today
+            else -> runCatching { LocalDate.parse(value) }.getOrNull()
+        }
+        val order = when {
+            source.sortBy.endsWith("date.desc") -> TmdbDeepPager.DateOrder.NEWEST_FIRST
+            source.sortBy.endsWith("date.asc") -> TmdbDeepPager.DateOrder.OLDEST_FIRST
+            else -> TmdbDeepPager.DateOrder.NONE
+        }
+        return TmdbDeepPager(
+            from = date(source.releaseDateGte),
+            to = date(source.releaseDateLte),
+            dateOrder = order,
+            idOf = { "${it.apiType}:${it.id}" }
+        ) { page, from, to ->
+            val windowed = source.copy(releaseDateGte = from?.toString(), releaseDateLte = to?.toString())
+            // Null: a name in the query (keyword, company...) isn't on TMDB, so it has no titles.
+            val body = discoverResponse(windowed, language, page)
+            if (body == null) {
+                TmdbDeepPager.DeepPage(emptyList(), 0)
+            } else {
+                val genres = genreMap(source.mediaType, language)
+                TmdbDeepPager.DeepPage(
+                    items = body.results.orEmpty().mapNotNull { it.toPreview(source.mediaType, genres) },
+                    totalPages = body.totalPages ?: page
+                )
+            }
+        }
     }
 
     /**

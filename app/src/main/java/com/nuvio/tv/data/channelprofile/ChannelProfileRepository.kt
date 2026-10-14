@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.tmdb.TmdbService
+import com.nuvio.tv.data.discover.TmdbDeepPager
 import com.nuvio.tv.data.discover.TmdbSeeAllFilter
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
@@ -305,6 +306,34 @@ class ChannelProfileRepository @Inject constructor(
             val next = if (page < minOf(result.totalPages, TMDB_MAX_PAGE)) page + 1 else null
             ChannelTitlesPage(result.items, next)
         }
+
+    /**
+     * Every show (or movie) of the channel's networks (or studios) for [filter], with no limit: past
+     * TMDB's 10,000-title cap the list goes on a stretch of time at a time (see [TmdbDeepPager]).
+     * Null when the channel has no TMDB network (or studio) for that kind of title.
+     */
+    fun seeAllPager(isTv: Boolean, ids: ChannelBrandIds, filter: TmdbSeeAllFilter): TmdbDeepPager<MetaPreview>? {
+        val query = seeAllQuery(isTv, ids, filter) ?: return null
+        return TmdbDeepPager(
+            from = query.dateGte?.let { LocalDate.parse(it) },
+            to = query.dateLte?.let { LocalDate.parse(it) },
+            dateOrder = TmdbDeepPager.DateOrder.NONE,
+            idOf = { it.id }
+        ) { page, from, to ->
+            val language = language()
+            val body = withContext(Dispatchers.IO) {
+                discoverResponse(
+                    isTv, query.networks, query.companies, language, page, query.genres,
+                    from?.toString(), to?.toString(), "popularity.desc"
+                )
+            }
+            val genres = genreMap(isTv, language)
+            TmdbDeepPager.DeepPage(
+                items = body?.results.orEmpty().mapNotNull { it.toPreview(isTv, genres) },
+                totalPages = body?.totalPages ?: 0
+            )
+        }
+    }
 
     /** True when the channel's See All of shows (or movies) comes from TMDB, not just from its guide. */
     fun hasSeeAllCatalog(isTv: Boolean, ids: ChannelBrandIds): Boolean =

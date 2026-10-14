@@ -10,6 +10,7 @@ import com.nuvio.tv.data.channelprofile.CHANNEL_ROW_VISIBLE
 import com.nuvio.tv.data.channelprofile.EpgMovieTitle
 import com.nuvio.tv.data.discover.DiscoverGenre
 import com.nuvio.tv.data.discover.DiscoverMediaFilter
+import com.nuvio.tv.data.discover.TmdbDeepPager
 import com.nuvio.tv.data.discover.TmdbDiscoverRepository
 import com.nuvio.tv.data.discover.TmdbSeeAllFilter
 import com.nuvio.tv.data.discover.matches
@@ -45,8 +46,11 @@ import kotlinx.coroutines.sync.withPermit
 import java.util.Locale
 import javax.inject.Inject
 
-/** Titles a "See All" page loads before the person scrolls (so its filter has enough to sort). */
+/** Titles a "See All" page loads before the person scrolls, so the grid fills the screen. */
 private const val SEE_ALL_PRELOAD = 60
+
+/** Most pages for one See All load, when the pages only repeat titles already shown. */
+private const val SEE_ALL_ROUNDS = 60
 
 /** Which of the channel's two title rows a "See All" page shows. */
 enum class ChannelTitlesKind { TV_SHOWS, MOVIES }
@@ -214,14 +218,17 @@ class ChannelProfileViewModel @Inject constructor(
         seeAllJob?.cancel()
         seeAllCountsJob?.cancel()
         seeAllCountsWanted = false
+        // Every title of the channel's networks (or studios), with no limit; the row's own are skipped.
+        seeAllPager = repository.seeAllPager(kind == ChannelTitlesKind.TV_SHOWS, boundIds, TmdbSeeAllFilter())
         _uiState.update {
-            it.copy(seeAll = ChannelSeeAllState(kind = kind, items = row.items, nextPage = if (row.hasMore) 2 else null))
+            it.copy(seeAll = ChannelSeeAllState(kind = kind, items = row.items, nextPage = if (seeAllPager != null) 1 else null))
         }
         loadSeeAllMenus(kind, row.items)
         loadMoreSeeAll()
     }
 
     fun closeSeeAll() {
+        seeAllPager = null
         seeAllJob?.cancel()
         seeAllMenusJob?.cancel()
         seeAllCountsJob?.cancel()
@@ -241,7 +248,7 @@ class ChannelProfileViewModel @Inject constructor(
         if (filter == current.filter) return
         val row = rowFor(current.kind) ?: return
         val isTv = current.kind == ChannelTitlesKind.TV_SHOWS
-        val fromTmdb = repository.hasSeeAllCatalog(isTv, boundIds)
+        seeAllPager = repository.seeAllPager(isTv, boundIds, filter)
         val yearChanged = filter.year != current.filter.year
         seeAllJob?.cancel()
         _uiState.update { state ->
@@ -251,12 +258,7 @@ class ChannelProfileViewModel @Inject constructor(
                     filter = filter,
                     items = if (filter.isEmpty) row.items else row.items.filter { it.matches(filter) },
                     isLoadingMore = false,
-                    // Unfiltered, the row is TMDB's page 1; filtered, TMDB starts again from page 1.
-                    nextPage = when {
-                        filter.isEmpty -> if (row.hasMore) 2 else null
-                        fromTmdb -> 1
-                        else -> null
-                    },
+                    nextPage = if (seeAllPager != null) 1 else null,
                     // Counts by genre depend on the Year.
                     genreCounts = if (yearChanged) emptyMap() else open.genreCounts
                 )
@@ -336,37 +338,50 @@ class ChannelProfileViewModel @Inject constructor(
         }
     }
 
-    /** Loads the next page while the person scrolls down the "See All" grid. */
+    /** The open See All page's list being loaded (the channel's networks or studios, its picks). */
+    private var seeAllPager: TmdbDeepPager<MetaPreview>? = null
+
+    /**
+     * More titles while the person scrolls down the "See All" grid, with no limit. Titles already
+     * shown are skipped; when nothing could be loaded the same titles are asked for again next time.
+     */
     fun loadMoreSeeAll() {
         val current = _uiState.value.seeAll ?: return
-        val page = current.nextPage ?: return
-        if (current.isLoadingMore) return
+        if (current.nextPage == null || current.isLoadingMore) return
+        val pager = seeAllPager ?: return
         _uiState.update { state -> state.copy(seeAll = state.seeAll?.copy(isLoadingMore = true)) }
         seeAllJob = viewModelScope.launch {
-            val result = safe {
-                repository.seeAllPage(
-                    isTv = current.kind == ChannelTitlesKind.TV_SHOWS,
-                    ids = boundIds,
-                    page = page,
-                    loadedCount = current.items.size,
-                    filter = current.filter
-                )
+            val known = current.items.mapTo(HashSet()) { it.id }
+            var fresh: List<MetaPreview> = emptyList()
+            var failed = false
+            var rounds = 0
+            while (!pager.isDone && rounds < SEE_ALL_ROUNDS) {
+                rounds++
+                val pageItems = try {
+                    pager.next()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failed = true
+                    break
+                }
+                fresh = pageItems.filter { known.add(it.id) }
+                if (fresh.isNotEmpty()) break
             }
             _uiState.update { state ->
                 val seeAll = state.seeAll?.takeIf { it.kind == current.kind && it.filter == current.filter } ?: return@update state
-                val known = seeAll.items.mapTo(HashSet()) { it.id }
+                val shown = seeAll.items.mapTo(HashSet()) { it.id }
                 state.copy(
                     seeAll = seeAll.copy(
-                        items = seeAll.items + result?.items.orEmpty().filter { known.add(it.id) },
+                        items = seeAll.items + fresh.filter { shown.add(it.id) },
                         isLoadingMore = false,
-                        // A failed page can be tried again by scrolling; an empty one ends the list.
-                        nextPage = if (result == null) page else result.nextPage
+                        nextPage = if (pager.isDone && !failed) null else 1
                     )
                 )
             }
             // Load a few pages up front, so the grid fills the screen.
             val after = _uiState.value.seeAll
-            if (result != null && after != null && after.kind == current.kind && after.filter == current.filter &&
+            if (!failed && after != null && after.kind == current.kind && after.filter == current.filter &&
                 after.nextPage != null && after.items.size < SEE_ALL_PRELOAD
             ) {
                 loadMoreSeeAll()

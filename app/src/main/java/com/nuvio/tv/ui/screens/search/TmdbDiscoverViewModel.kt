@@ -6,6 +6,7 @@ import com.nuvio.tv.data.discover.DiscoverCategory
 import com.nuvio.tv.data.discover.DiscoverGenre
 import com.nuvio.tv.data.discover.DiscoverMediaFilter
 import com.nuvio.tv.data.discover.DiscoverPage
+import com.nuvio.tv.data.discover.TmdbDeepPager
 import com.nuvio.tv.data.discover.TmdbDiscoverRepository
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.TmdbCollectionMediaType
@@ -40,7 +41,9 @@ data class TmdbDiscoverUiState(
 
 /**
  * The Discover page: TMDB's whole catalog (movies, shows or both) by Category (Popular, Trending,
- * New), Genre and Year. More titles load as the grid scrolls, up to everything TMDB will page through.
+ * New, All), Genre and Year. More titles load as the grid scrolls, with no limit: past TMDB's
+ * 10,000-title cap the list goes on a stretch of time at a time (see [TmdbDeepPager]), so every
+ * movie and show TMDB has can be reached.
  */
 @HiltViewModel
 class TmdbDiscoverViewModel @Inject constructor(
@@ -50,11 +53,18 @@ class TmdbDiscoverViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(TmdbDiscoverUiState())
     val uiState: StateFlow<TmdbDiscoverUiState> = _uiState.asStateFlow()
 
-    /** One kind of title being paged through (movies or shows) for the current menus. */
-    private class Stream(val mediaType: TmdbCollectionMediaType, val genreId: Int?) {
+    /**
+     * One kind of title being paged through (movies or shows) for the current menus: [pager] for the
+     * whole catalog, or plain pages for Trending (which TMDB keeps short).
+     */
+    private class Stream(
+        val mediaType: TmdbCollectionMediaType,
+        val genreId: Int?,
+        val pager: TmdbDeepPager<MetaPreview>?
+    ) {
         var nextPage = 1
         var lastPage = TmdbDiscoverRepository.TMDB_MAX_PAGE
-        val done get() = nextPage > lastPage
+        val done get() = pager?.isDone ?: (nextPage > lastPage)
     }
 
     private var streams: List<Stream> = emptyList()
@@ -118,23 +128,29 @@ class TmdbDiscoverViewModel @Inject constructor(
         }
     }
 
-    /** New menus: start over from page 1. */
+    /** New menus: start over from the beginning. */
     private fun restart() {
         loadJob?.cancel()
         val state = _uiState.value
         val genre = state.selectedGenre
         val wantMovies = state.mediaFilter != DiscoverMediaFilter.SHOWS && (genre == null || genre.movieId != null)
         val wantShows = state.mediaFilter != DiscoverMediaFilter.MOVIES && (genre == null || genre.tvId != null)
-        streams = buildList {
-            if (wantMovies) add(Stream(TmdbCollectionMediaType.MOVIE, genre?.movieId))
-            if (wantShows) add(Stream(TmdbCollectionMediaType.TV, genre?.tvId))
-        }
         seen.clear()
         _uiState.update {
-            it.copy(items = emptyList(), isLoading = true, isLoadingMore = false, hasMore = streams.isNotEmpty(), loadFailed = false)
+            it.copy(items = emptyList(), isLoading = true, isLoadingMore = false, hasMore = wantMovies || wantShows, loadFailed = false)
         }
-        loadJob = viewModelScope.launch { loadNextBatch() }
+        loadJob = viewModelScope.launch {
+            val language = repository.language()
+            streams = buildList {
+                if (wantMovies) add(stream(TmdbCollectionMediaType.MOVIE, genre?.movieId, state, language))
+                if (wantShows) add(stream(TmdbCollectionMediaType.TV, genre?.tvId, state, language))
+            }
+            loadNextBatch()
+        }
     }
+
+    private fun stream(mediaType: TmdbCollectionMediaType, genreId: Int?, state: TmdbDiscoverUiState, language: String) =
+        Stream(mediaType, genreId, repository.deepPager(mediaType, state.category, genreId, state.year, language))
 
     /**
      * Fetches the next page of each kind of title together and mixes them (a movie, a show, a movie...).
@@ -154,25 +170,28 @@ class TmdbDiscoverViewModel @Inject constructor(
             val pages: List<List<MetaPreview>?> = coroutineScope {
                 active.map { stream ->
                     async {
-                        val result: DiscoverPage? = try {
-                            repository.page(
-                                mediaType = stream.mediaType,
-                                category = state.category,
-                                genreId = stream.genreId,
-                                year = state.year,
-                                page = stream.nextPage,
-                                language = language
-                            )
+                        try {
+                            val pager = stream.pager
+                            if (pager != null) {
+                                pager.next()
+                            } else {
+                                val result: DiscoverPage = repository.page(
+                                    mediaType = stream.mediaType,
+                                    category = state.category,
+                                    genreId = stream.genreId,
+                                    year = state.year,
+                                    page = stream.nextPage,
+                                    language = language
+                                )
+                                stream.lastPage = result.lastPage
+                                stream.nextPage += 1
+                                result.items
+                            }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             null
                         }
-                        if (result != null) {
-                            stream.lastPage = result.lastPage
-                            stream.nextPage += 1
-                        }
-                        result?.items
                     }
                 }.awaitAll()
             }
@@ -205,7 +224,10 @@ class TmdbDiscoverViewModel @Inject constructor(
     private companion object {
         /** Titles to gather before showing a batch (a few rows of the grid). */
         const val MIN_BATCH = 20
-        /** Most page fetches per batch, so a rare Trending filter can't run forever. */
-        const val MAX_ROUNDS_PER_BATCH = 8
+        /**
+         * Most page fetches per batch, so a rare Trending filter can't run forever. Past the first
+         * 10,000 titles a few pages can be all repeats (skipped), so there's room to get past them.
+         */
+        const val MAX_ROUNDS_PER_BATCH = 30
     }
 }

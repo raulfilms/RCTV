@@ -40,8 +40,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
-/** TMDB's discover stops at page 500; See All goes as far as TMDB has titles. */
-private const val SEE_ALL_MAX_PAGES = 500
+/** Most rounds of pages for one See All load, when the pages only repeat titles already shown. */
+private const val SEE_ALL_ROUNDS = 60
 
 /** How long a page waits for its banner's title logos before opening without them (they follow). */
 private const val HERO_LOGO_WAIT_MS = 1_200L
@@ -198,11 +198,13 @@ class DisneyPlusViewModel @Inject constructor(
                 )
             )
         }
+        seeAllSession = repository.seeAllSession(rowState.spec)
         loadSeeAllMenus(rowState.spec, mediaTypes)
         loadMoreSeeAll()
     }
 
     fun closeSeeAll() {
+        seeAllSession = null
         seeAllJob?.cancel()
         seeAllGenresJob?.cancel()
         seeAllYearsJob?.cancel()
@@ -246,6 +248,7 @@ class DisneyPlusViewModel @Inject constructor(
                 )
             )
         }
+        seeAllSession = repository.seeAllSession(rowState.spec, filter)
         loadMoreSeeAll()
         if (seeAllCountsWanted) loadSeeAllCounts()
     }
@@ -360,40 +363,39 @@ class DisneyPlusViewModel @Inject constructor(
         return listOf(TmdbCollectionMediaType.MOVIE, TmdbCollectionMediaType.TV).filter { it in found }
     }
 
+    /** The open See All page's list being loaded (the row, its picks), with no limit. */
+    private var seeAllSession: DisneyPlusRepository.HubSeeAllSession? = null
+
     /**
-     * Next TMDB page(s) of the open See All row, for its Type / Genre / Year picks. A page that only
-     * repeats what's already shown (the row itself came from page 1) is skipped; loading stops only
-     * when TMDB has nothing more. A page that fails to load is tried again on the next scroll instead
-     * of ending the list.
+     * More titles of the open See All row, for its Type / Genre / Year picks, with no limit: every
+     * title TMDB has for the row. Titles already shown (the row's own) are skipped; loading stops only
+     * when there's nothing more. When nothing could be loaded, the same titles are asked for again on
+     * the next scroll instead of ending the list.
      */
     fun loadMoreSeeAll() {
         val current = _uiState.value.seeAll ?: return
-        val firstPage = current.nextPage ?: return
-        if (current.isLoadingMore) return
-        val spec = _uiState.value.rows.firstOrNull { it.spec.id == current.rowId }?.spec ?: return
+        if (current.nextPage == null || current.isLoadingMore) return
+        val session = seeAllSession ?: return
         val filter = current.filter
         _uiState.update { state -> state.copy(seeAll = state.seeAll?.copy(isLoadingMore = true)) }
         seeAllJob = viewModelScope.launch {
             val known = current.items.mapTo(HashSet()) { "${it.apiType}:${it.id}" }
-            var page = firstPage
             var fresh: List<MetaPreview> = emptyList()
-            var nextPage: Int? = null
-            var failedPage: Int? = null
-            while (page <= SEE_ALL_MAX_PAGES) {
+            var failed = false
+            var rounds = 0
+            // A round can bring only titles already shown; keep going until something new comes.
+            while (!session.isDone && rounds < SEE_ALL_ROUNDS) {
+                rounds++
                 val pageItems = try {
-                    repository.resolveRowPage(spec, page, filter)
+                    session.next()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    failedPage = page
+                    failed = true
                     break
                 }
-                if (pageItems.isEmpty()) break
                 fresh = pageItems.filter { known.add("${it.apiType}:${it.id}") }
-                if (page < SEE_ALL_MAX_PAGES) nextPage = page + 1
                 if (fresh.isNotEmpty()) break
-                page++
-                nextPage = null
             }
             _uiState.update { state ->
                 val open = state.seeAll?.takeIf { it.rowId == current.rowId && it.filter == filter } ?: return@update state
@@ -401,7 +403,7 @@ class DisneyPlusViewModel @Inject constructor(
                     seeAll = open.copy(
                         items = open.items + fresh,
                         isLoadingMore = false,
-                        nextPage = failedPage ?: if (fresh.isEmpty()) null else nextPage
+                        nextPage = if (session.isDone && !failed) null else 1
                     )
                 )
             }

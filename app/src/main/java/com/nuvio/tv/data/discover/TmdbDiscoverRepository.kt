@@ -97,6 +97,88 @@ class TmdbDiscoverRepository @Inject constructor(
     }
 
     /**
+     * Every [mediaType] title for the menus, with no limit (Popular, New, All): TMDB's whole catalog,
+     * past its 10,000-title cap (see [TmdbDeepPager]). Null for Trending, which TMDB keeps short.
+     */
+    fun deepPager(
+        mediaType: TmdbCollectionMediaType,
+        category: DiscoverCategory,
+        genreId: Int?,
+        year: Int?,
+        language: String
+    ): TmdbDeepPager<MetaPreview>? {
+        if (category == DiscoverCategory.TRENDING) return null
+        val today = LocalDate.now()
+        val from = year?.let { LocalDate.of(it, 1, 1) }
+        val yearEnd = year?.let { LocalDate.of(it, 12, 31) }
+        // New: released up to today, newest first.
+        val to = if (category == DiscoverCategory.NEW) listOfNotNull(yearEnd, today).minOrNull() else yearEnd
+        return TmdbDeepPager(
+            from = from,
+            to = to,
+            dateOrder = if (category == DiscoverCategory.NEW) TmdbDeepPager.DateOrder.NEWEST_FIRST else TmdbDeepPager.DateOrder.NONE,
+            idOf = { it.id }
+        ) { page, windowFrom, windowTo ->
+            val result = discoverWindow(mediaType, category, genreId, page, language, windowFrom, windowTo)
+            TmdbDeepPager.DeepPage(result.items, result.lastPage)
+        }
+    }
+
+    /** One page of the menus' query for [mediaType] within the given release dates (null: any). */
+    private suspend fun discoverWindow(
+        mediaType: TmdbCollectionMediaType,
+        category: DiscoverCategory,
+        genreId: Int?,
+        page: Int,
+        language: String,
+        from: LocalDate?,
+        to: LocalDate?
+    ): DiscoverPage = withContext(Dispatchers.IO) {
+        val isTv = mediaType == TmdbCollectionMediaType.TV
+        val isNew = category == DiscoverCategory.NEW
+        val isAll = category == DiscoverCategory.ALL
+        val response = if (isTv) {
+            tmdbApi.discoverTv(
+                apiKey = apiKey,
+                language = language,
+                page = page,
+                sortBy = when {
+                    isNew -> "first_air_date.desc"
+                    isAll -> "vote_count.desc"
+                    else -> "popularity.desc"
+                },
+                withGenres = genreId?.toString(),
+                firstAirDateGte = from?.toString(),
+                firstAirDateLte = to?.toString(),
+                // Newest first: skip shows no one has rated yet (thousands of unknown uploads).
+                voteCountGte = if (isNew) NEW_MIN_VOTES_TV else null
+            )
+        } else {
+            tmdbApi.discoverMovies(
+                apiKey = apiKey,
+                language = language,
+                page = page,
+                sortBy = when {
+                    isNew -> "primary_release_date.desc"
+                    isAll -> "vote_count.desc"
+                    else -> "popularity.desc"
+                },
+                withGenres = genreId?.toString(),
+                releaseDateGte = from?.toString(),
+                releaseDateLte = to?.toString(),
+                voteCountGte = if (isNew) NEW_MIN_VOTES_MOVIE else null
+            )
+        }
+        if (!response.isSuccessful) throw IOException("TMDB discover HTTP ${response.code()}")
+        val body = response.body()
+        val names = genreList(mediaType, language).toMap()
+        DiscoverPage(
+            items = body?.results.orEmpty().mapNotNull { it.toPreview(mediaType, names) },
+            lastPage = body?.totalPages ?: page
+        )
+    }
+
+    /**
      * One page of [mediaType] titles. Trending can't be filtered by TMDB, so its genre and year are
      * applied to each page here (a filtered page can come back short or empty; the caller goes on).
      */
@@ -191,8 +273,7 @@ class TmdbDiscoverRepository @Inject constructor(
             ?: originalTitle?.takeIf { it.isNotBlank() }
             ?: originalName?.takeIf { it.isNotBlank() }
             ?: return null
-        // A title with no picture at all would be an empty card.
-        if (posterPath.isNullOrBlank() && backdropPath.isNullOrBlank()) return null
+        // Every title, even one with no picture yet (its card shows the name).
         val isTv = mediaType == TmdbCollectionMediaType.TV
         val date = if (isTv) firstAirDate else releaseDate
         return MetaPreview(

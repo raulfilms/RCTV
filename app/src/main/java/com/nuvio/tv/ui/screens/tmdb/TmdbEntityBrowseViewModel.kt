@@ -13,6 +13,7 @@ import com.nuvio.tv.core.tmdb.TmdbEntityMediaType
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.data.discover.DiscoverGenre
 import com.nuvio.tv.data.discover.DiscoverMediaFilter
+import com.nuvio.tv.data.discover.TmdbDeepPager
 import com.nuvio.tv.data.discover.TmdbDiscoverRepository
 import com.nuvio.tv.data.discover.TmdbSeeAllFilter
 import com.nuvio.tv.data.discover.matches
@@ -36,8 +37,8 @@ import java.net.URLDecoder
 import javax.inject.Inject
 
 /**
- * The Genre / Year filter of a rail's See All page, applied by TMDB to everything the studio, network
- * or service has. While a filter is on, the page shows [items] (TMDB's matches) instead of the rail.
+ * A rail's See All page: every title the studio, network or service has (with no limit), and its
+ * Genre / Year filter, applied by TMDB to all of them.
  */
 data class EntitySeeAllFilterState(
     val railKey: String? = null,
@@ -132,6 +133,9 @@ class TmdbEntityBrowseViewModel @Inject constructor(
     private var seeAllCountsWanted = false
     private val countLimiter = Semaphore(6)
 
+    /** The open See All page's list being loaded (the rail, its picks), with no limit. */
+    private var seeAllPager: TmdbDeepPager<com.nuvio.tv.domain.model.MetaPreview>? = null
+
     /** Opens a rail's See All page (every title, more loading while scrolling). */
     fun openSeeAll(mediaType: TmdbEntityMediaType, railType: TmdbEntityRailType) {
         val railKey = "${mediaType.value}_${railType.value}"
@@ -139,12 +143,56 @@ class TmdbEntityBrowseViewModel @Inject constructor(
         seeAllFilterJob?.cancel()
         seeAllCountsJob?.cancel()
         seeAllCountsWanted = false
-        _seeAllFilter.value = EntitySeeAllFilterState(railKey = railKey)
+        val rail = openRail()
+        seeAllPager = railPager(mediaType, railType, TmdbSeeAllFilter())
+        _seeAllFilter.value = EntitySeeAllFilterState(railKey = railKey, items = rail?.items.orEmpty())
         loadSeeAllMenus(mediaType, railType, railKey)
-        loadMoreRail(mediaType, railType)
+        loadMoreFiltered()
+    }
+
+    /**
+     * Every title of a rail for [filter], with no limit: past TMDB's 10,000-title cap the list goes on
+     * a stretch of time at a time (see [TmdbDeepPager]). Recently released stays newest first.
+     */
+    private fun railPager(
+        mediaType: TmdbEntityMediaType,
+        railType: TmdbEntityRailType,
+        filter: TmdbSeeAllFilter
+    ): TmdbDeepPager<com.nuvio.tv.domain.model.MetaPreview> {
+        val genreId = filter.genreId(mediaType.toCollectionType())
+        val today = LocalDate.now()
+        // Recently released, and a network's shows, only go up to today.
+        val railEnd = if (railType == TmdbEntityRailType.RECENT ||
+            (entityKind == TmdbEntityKind.NETWORK && mediaType == TmdbEntityMediaType.TV)
+        ) today else null
+        val from = filter.year?.let { LocalDate.of(it, 1, 1) }
+        val to = listOfNotNull(filter.year?.let { LocalDate.of(it, 12, 31) }, railEnd).minOrNull()
+        return TmdbDeepPager(
+            from = from,
+            to = to,
+            dateOrder = if (railType == TmdbEntityRailType.RECENT) TmdbDeepPager.DateOrder.NEWEST_FIRST
+            else TmdbDeepPager.DateOrder.NONE,
+            idOf = { it.id }
+        ) { page, windowFrom, windowTo ->
+            val language = tmdbSettingsDataStore.settings.first().language
+            val result = tmdbMetadataService.fetchEntityRailPage(
+                entityKind = entityKind,
+                entityId = entityId,
+                mediaType = mediaType,
+                railType = railType,
+                language = language,
+                page = page,
+                genreId = genreId,
+                dateFrom = windowFrom?.toString(),
+                dateTo = windowTo?.toString()
+            )
+            if (result.failed) throw java.io.IOException("TMDB rail page $page could not be loaded")
+            TmdbDeepPager.DeepPage(result.items, result.totalPages)
+        }
     }
 
     fun closeSeeAll() {
+        seeAllPager = null
         _seeAllRailKey.value = null
         seeAllFilterJob?.cancel()
         seeAllMenusJob?.cancel()
@@ -175,65 +223,60 @@ class TmdbEntityBrowseViewModel @Inject constructor(
         )
         if (filter == current.filter) return
         seeAllFilterJob?.cancel()
+        seeAllPager = railPager(rail.mediaType, rail.railType, filter)
         _seeAllFilter.value = current.copy(
             filter = filter,
-            items = if (filter.isEmpty) emptyList() else rail.items.filter { it.matches(filter) },
+            items = if (filter.isEmpty) rail.items else rail.items.filter { it.matches(filter) },
             nextPage = 1,
             isLoading = false,
             genreCounts = if (filter.year != current.filter.year) emptyMap() else current.genreCounts
         )
-        if (!filter.isEmpty) loadMoreFiltered()
+        loadMoreFiltered()
         if (seeAllCountsWanted) loadSeeAllCounts()
     }
 
-    /** Next TMDB page of the filtered See All list. A page that fails is tried again on the next scroll. */
+    /**
+     * More titles of the See All list (filtered or not), with no limit. Titles already shown are
+     * skipped; when nothing could be loaded the same titles are asked for again on the next scroll.
+     */
     fun loadMoreFiltered() {
         val current = _seeAllFilter.value
-        val page = current.nextPage ?: return
-        if (current.isLoading || current.filter.isEmpty) return
-        val rail = openRail() ?: return
-        val mediaType = rail.mediaType
-        val railType = rail.railType
+        if (current.nextPage == null || current.isLoading) return
+        val pager = seeAllPager ?: return
         val filter = current.filter
         _seeAllFilter.update { it.copy(isLoading = true) }
         seeAllFilterJob = viewModelScope.launch {
-            val language = tmdbSettingsDataStore.settings.first().language
-            val result = try {
-                tmdbMetadataService.fetchEntityRailPage(
-                    entityKind = entityKind,
-                    entityId = entityId,
-                    mediaType = mediaType,
-                    railType = railType,
-                    language = language,
-                    page = page,
-                    genreId = filter.genreId(mediaType.toCollectionType()),
-                    year = filter.year
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                null
+            val known = current.items.mapTo(HashSet()) { it.id }
+            var fresh: List<com.nuvio.tv.domain.model.MetaPreview> = emptyList()
+            var failed = false
+            var rounds = 0
+            while (!pager.isDone && rounds < SEE_ALL_ROUNDS) {
+                rounds++
+                val pageItems = try {
+                    pager.next()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failed = true
+                    break
+                }
+                fresh = pageItems.filter { known.add(it.id) }
+                if (fresh.isNotEmpty()) break
             }
             val pattern = runCatching { layoutPreferenceDataStore.customPosterUrlPattern.first() }.getOrNull()
             _seeAllFilter.update { state ->
-                if (state.filter != filter) return@update state
-                val known = state.items.mapTo(HashSet()) { it.id }
-                val fresh = result?.items.orEmpty().filter { known.add(it.id) }
+                if (state.filter != filter || seeAllPager !== pager) return@update state
+                val shown = state.items.mapTo(HashSet()) { it.id }
+                val added = fresh.filter { shown.add(it.id) }
                 state.copy(
-                    items = state.items + (if (pattern != null) fresh.withCustomPosterUrls(pattern) else fresh),
+                    items = state.items + (if (pattern != null) added.withCustomPosterUrls(pattern) else added),
                     isLoading = false,
-                    nextPage = when {
-                        result == null || result.failed -> page
-                        result.hasMore -> page + 1
-                        else -> null
-                    }
+                    nextPage = if (pager.isDone && !failed) null else 1
                 )
             }
-            // A few pages up front, so the grid fills the screen (and a page of repeats doesn't stall it).
+            // A few pages up front, so the grid fills the screen.
             val after = _seeAllFilter.value
-            if (result != null && !result.failed && after.filter == filter && after.nextPage != null &&
-                after.items.size < SEE_ALL_FILTER_PRELOAD
-            ) {
+            if (!failed && after.filter == filter && after.nextPage != null && after.items.size < SEE_ALL_FILTER_PRELOAD) {
                 loadMoreFiltered()
             }
         }
@@ -430,5 +473,8 @@ class TmdbEntityBrowseViewModel @Inject constructor(
 /** The See All Year menu never goes back further than this. */
 private const val SEE_ALL_OLDEST_YEAR = 1900
 
-/** Filtered titles loaded before the person scrolls. */
+/** Titles loaded before the person scrolls. */
 private const val SEE_ALL_FILTER_PRELOAD = 40
+
+/** Most pages for one See All load, when the pages only repeat titles already shown. */
+private const val SEE_ALL_ROUNDS = 60

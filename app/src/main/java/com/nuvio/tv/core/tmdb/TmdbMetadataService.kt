@@ -62,6 +62,8 @@ class TmdbMetadataService(
     private val moreLikeThisCache = ConcurrentHashMap<String, List<MetaPreview>>()
     private val entityHeaderCache = ConcurrentHashMap<String, TmdbEntityHeader>()
     private val entityRailCache = ConcurrentHashMap<String, List<MetaPreview>>()
+    /** TMDB's page count for each cached rail page (the See All goes on past page 500 with it). */
+    private val entityRailTotalPagesCache = ConcurrentHashMap<String, Int>()
     private val entityBrowseCache = ConcurrentHashMap<String, TmdbEntityBrowseData>()
 
     suspend fun fetchEnrichment(
@@ -1041,24 +1043,29 @@ class TmdbMetadataService(
         language: String,
         page: Int,
         genreId: Int? = null,
-        year: Int? = null
+        year: Int? = null,
+        /** A stretch of release dates (yyyy-MM-dd) within the rail, for paging past TMDB's 500 pages. */
+        dateFrom: String? = null,
+        dateTo: String? = null
     ): TmdbEntityRailPageResult {
         if (entityKind == TmdbEntityKind.NETWORK && mediaType == TmdbEntityMediaType.MOVIE) {
             return TmdbEntityRailPageResult(items = emptyList(), hasMore = false)
         }
 
-        val filterKey = if (genreId == null && year == null) "" else ":g$genreId:y$year"
+        val filterKey = if (genreId == null && year == null && dateFrom == null && dateTo == null) "" else ":g$genreId:y$year:$dateFrom:$dateTo"
         val cacheKey = "${entityKind.routeValue}:$entityId:${mediaType.value}:${railType.value}:$language:page:$page$filterKey"
         entityRailCache[cacheKey]?.let { cached ->
             return TmdbEntityRailPageResult(
                 items = cached,
-                hasMore = cached.isNotEmpty()
+                hasMore = cached.isNotEmpty(),
+                totalPages = entityRailTotalPagesCache[cacheKey] ?: 0
             )
         }
 
         val result = try {
             suspend fun loadDiscover(requestLanguage: String) = entityDiscover(
-                entityKind, entityId, mediaType, railType, requestLanguage, page, genreId, year
+                entityKind, entityId, mediaType, railType, requestLanguage, page, genreId, year,
+                dateGteOverride = dateFrom, dateLteOverride = dateTo
             )
 
             val response = loadDiscover(language)
@@ -1094,8 +1101,9 @@ class TmdbMetadataService(
 
             TmdbEntityRailPageResult(
                 items = mappedItems,
-                // Every page TMDB has, up to its own 500-page limit.
-                hasMore = page < minOf(totalPages, TMDB_DISCOVER_MAX_PAGE) && mappedItems.isNotEmpty()
+                // Every page TMDB has, up to its own 500-page limit (See All goes past it, see TmdbDeepPager).
+                hasMore = page < minOf(totalPages, TMDB_DISCOVER_MAX_PAGE) && mappedItems.isNotEmpty(),
+                totalPages = if (response == null) 0 else totalPages
             )
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1109,6 +1117,7 @@ class TmdbMetadataService(
 
         if (result.items.isNotEmpty()) {
             entityRailCache[cacheKey] = result.items
+            entityRailTotalPagesCache[cacheKey] = result.totalPages
         }
         return result
     }
@@ -1127,7 +1136,8 @@ class TmdbMetadataService(
         genreId: Int?,
         year: Int?,
         sortOverride: String? = null,
-        dateGteOverride: String? = null
+        dateGteOverride: String? = null,
+        dateLteOverride: String? = null
     ): com.nuvio.tv.data.remote.api.TmdbDiscoverResponse? {
         val today = LocalDate.now().toString()
         val voteCountFloor = if (railType == TmdbEntityRailType.TOP_RATED) TOP_RATED_VOTE_COUNT_FLOOR else null
@@ -1141,7 +1151,8 @@ class TmdbMetadataService(
         }
         // The filter's year, inside the rail's own date limit.
         val dateGte = year?.let { "$it-01-01" } ?: dateGteOverride
-        val dateLte = year?.let { y -> listOfNotNull(railLte, "$y-12-31").minOrNull() } ?: railLte
+        val baseLte = year?.let { y -> listOfNotNull(railLte, "$y-12-31").minOrNull() } ?: railLte
+        val dateLte = if (dateLteOverride != null) listOfNotNull(baseLte, dateLteOverride).minOrNull() else baseLte
         if (dateGte != null && dateLte != null && dateGte > dateLte) return null
         val genres = genreId?.toString()
         return when (mediaType) {
@@ -1893,7 +1904,9 @@ data class TmdbEntityRailPageResult(
     val items: List<MetaPreview>,
     val hasMore: Boolean,
     /** The page couldn't be loaded (busy, offline): try the same page again later. */
-    val failed: Boolean = false
+    val failed: Boolean = false,
+    /** TMDB's page count for the query (0 when unknown, e.g. from the cache). */
+    val totalPages: Int = 0
 )
 
 private fun TmdbEpisode.toEnrichment(): TmdbEpisodeEnrichment {

@@ -308,18 +308,15 @@ private fun TmdbEntityBrowseContent(
         }
         if (seeAllRail != null) {
             // A rail's See All page: every title, more loading while scrolling.
-            // With a Genre / Year picked, the list is TMDB's matches; otherwise the rail itself.
-            val filtered = !seeAllFilter.filter.isEmpty
+            // Every title of the rail (with no limit), or TMDB's matches for the Genre / Year picked.
             TitlesSeeAllPage(
                 title = railTitle(seeAllRail),
                 stateKey = "entity_${data.header.id}_${seeAllRailKey}",
-                items = if (filtered) seeAllFilter.items else seeAllRail.items,
-                isLoadingMore = if (filtered) seeAllFilter.isLoading else seeAllRail.isLoading,
+                items = seeAllFilter.items.ifEmpty { if (seeAllFilter.filter.isEmpty) seeAllRail.items else emptyList() },
+                isLoadingMore = seeAllFilter.isLoading,
                 onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, null) },
                 onItemLongPress = onItemLongPress,
-                onLoadMore = {
-                    if (filtered) onLoadMoreFiltered() else onLoadMoreRail(seeAllRail.mediaType, seeAllRail.railType)
-                },
+                onLoadMore = onLoadMoreFiltered,
                 remoteFilter = remember(seeAllFilter.filter, seeAllFilter.genres, seeAllFilter.years, seeAllFilter.genreCounts) {
                     com.nuvio.tv.ui.components.SeeAllRemoteFilter(
                         // One kind of title per rail: no Type menu.
