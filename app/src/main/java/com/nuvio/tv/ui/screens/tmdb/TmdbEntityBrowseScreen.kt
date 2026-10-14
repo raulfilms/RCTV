@@ -106,6 +106,7 @@ fun TmdbEntityBrowseScreen(
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsStateWithLifecycle()
     val heroItems by viewModel.heroItems.collectAsStateWithLifecycle()
     val seeAllRailKey by viewModel.seeAllRailKey.collectAsStateWithLifecycle()
+    val seeAllFilter by viewModel.seeAllFilter.collectAsStateWithLifecycle()
     val screenMode = when (uiState) {
         TmdbEntityBrowseUiState.Loading -> 0
         is TmdbEntityBrowseUiState.Error -> 1
@@ -160,7 +161,11 @@ fun TmdbEntityBrowseScreen(
                         },
                         onLoadMoreRail = { mediaType, railType ->
                             viewModel.loadMoreRail(mediaType = mediaType, railType = railType)
-                        }
+                        },
+                        seeAllFilter = seeAllFilter,
+                        onSeeAllFilterChange = viewModel::setSeeAllFilter,
+                        onLoadMoreFiltered = viewModel::loadMoreFiltered,
+                        onSeeAllFilterMenuOpen = viewModel::loadSeeAllCounts
                     )
                 }
             }
@@ -194,7 +199,12 @@ private fun TmdbEntityBrowseContent(
     posterCardCornerRadiusDp: Int = 12,
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
-    onLoadMoreRail: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit
+    onLoadMoreRail: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit,
+    /** The See All page's Genre / Year filter (applied by TMDB) and, while one is on, its matches. */
+    seeAllFilter: EntitySeeAllFilterState = EntitySeeAllFilterState(),
+    onSeeAllFilterChange: (type: String?, genre: String?, year: String?) -> Unit = { _, _, _ -> },
+    onLoadMoreFiltered: () -> Unit = {},
+    onSeeAllFilterMenuOpen: () -> Unit = {}
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var pendingRestoreItemId by rememberSaveable(data.header.id) { mutableStateOf<String?>(null) }
@@ -290,14 +300,35 @@ private fun TmdbEntityBrowseContent(
         }
         if (seeAllRail != null) {
             // A rail's See All page: every title, more loading while scrolling.
+            // With a Genre / Year picked, the list is TMDB's matches; otherwise the rail itself.
+            val filtered = !seeAllFilter.filter.isEmpty
             TitlesSeeAllPage(
                 title = railTitle(seeAllRail),
                 stateKey = "entity_${data.header.id}_${seeAllRailKey}",
-                items = seeAllRail.items,
-                isLoadingMore = seeAllRail.isLoading,
+                items = if (filtered) seeAllFilter.items else seeAllRail.items,
+                isLoadingMore = if (filtered) seeAllFilter.isLoading else seeAllRail.isLoading,
                 onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, null) },
                 onItemLongPress = onItemLongPress,
-                onLoadMore = { onLoadMoreRail(seeAllRail.mediaType, seeAllRail.railType) },
+                onLoadMore = {
+                    if (filtered) onLoadMoreFiltered() else onLoadMoreRail(seeAllRail.mediaType, seeAllRail.railType)
+                },
+                remoteFilter = remember(seeAllFilter.filter, seeAllFilter.genres, seeAllFilter.years, seeAllFilter.genreCounts) {
+                    com.nuvio.tv.ui.components.SeeAllRemoteFilter(
+                        // One kind of title per rail: no Type menu.
+                        types = emptyList(),
+                        genres = seeAllFilter.genres.map { genre ->
+                            com.nuvio.tv.ui.components.SeeAllFilterChoice(genre.label, genre.label, seeAllFilter.genreCounts[genre.label])
+                        },
+                        years = seeAllFilter.years.map { year ->
+                            com.nuvio.tv.ui.components.SeeAllFilterChoice(year.toString(), year.toString())
+                        },
+                        selectedType = null,
+                        selectedGenre = seeAllFilter.filter.genre?.label,
+                        selectedYear = seeAllFilter.filter.year?.toString()
+                    )
+                },
+                onRemoteFilterChange = onSeeAllFilterChange,
+                onFilterMenuOpen = onSeeAllFilterMenuOpen,
                 logoRes = platformLogoRes,
                 logoUrl = data.header.logo,
                 logoDescription = data.header.name,

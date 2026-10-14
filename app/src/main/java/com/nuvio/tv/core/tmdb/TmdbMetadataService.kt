@@ -1029,19 +1029,26 @@ class TmdbMetadataService(
         return header
     }
 
+    /**
+     * One page of a studio's, network's or streaming service's rail. [genreId] and [year] are the See
+     * All page's Genre / Year filter, applied by TMDB so it covers everything TMDB lists.
+     */
     suspend fun fetchEntityRailPage(
         entityKind: TmdbEntityKind,
         entityId: Int,
         mediaType: TmdbEntityMediaType,
         railType: TmdbEntityRailType,
         language: String,
-        page: Int
+        page: Int,
+        genreId: Int? = null,
+        year: Int? = null
     ): TmdbEntityRailPageResult {
         if (entityKind == TmdbEntityKind.NETWORK && mediaType == TmdbEntityMediaType.MOVIE) {
             return TmdbEntityRailPageResult(items = emptyList(), hasMore = false)
         }
 
-        val cacheKey = "${entityKind.routeValue}:$entityId:${mediaType.value}:${railType.value}:$language:page:$page"
+        val filterKey = if (genreId == null && year == null) "" else ":g$genreId:y$year"
+        val cacheKey = "${entityKind.routeValue}:$entityId:${mediaType.value}:${railType.value}:$language:page:$page$filterKey"
         entityRailCache[cacheKey]?.let { cached ->
             return TmdbEntityRailPageResult(
                 items = cached,
@@ -1049,48 +1056,10 @@ class TmdbMetadataService(
             )
         }
 
-        val today = LocalDate.now().toString()
-        val voteCountFloor = if (railType == TmdbEntityRailType.TOP_RATED) TOP_RATED_VOTE_COUNT_FLOOR else null
-        val isProvider = entityKind == TmdbEntityKind.PROVIDER
-        val providerRegion = if (isProvider) STREAMING_PROVIDER_REGION else null
-        val providerIds = if (isProvider) entityId.toString() else null
-        val providerMonetization = if (isProvider) "flatrate" else null
         val result = try {
-            suspend fun loadDiscover(requestLanguage: String) = when (mediaType) {
-                TmdbEntityMediaType.MOVIE -> {
-                    tmdbApi.discoverMovies(
-                        apiKey = TMDB_API_KEY,
-                        language = requestLanguage,
-                        page = page,
-                        sortBy = movieSortBy(railType),
-                        withCompanies = if (entityKind == TmdbEntityKind.COMPANY) entityId.toString() else null,
-                        releaseDateLte = if (railType == TmdbEntityRailType.RECENT) today else null,
-                        voteCountGte = voteCountFloor,
-                        watchRegion = providerRegion,
-                        withWatchProviders = providerIds,
-                        withWatchMonetizationTypes = providerMonetization
-                    ).body()
-                }
-
-                TmdbEntityMediaType.TV -> {
-                    tmdbApi.discoverTv(
-                        apiKey = TMDB_API_KEY,
-                        language = requestLanguage,
-                        page = page,
-                        sortBy = tvSortBy(railType),
-                        withCompanies = if (entityKind == TmdbEntityKind.COMPANY) entityId.toString() else null,
-                        withNetworks = if (entityKind == TmdbEntityKind.NETWORK) entityId.toString() else null,
-                        firstAirDateLte = if (railType == TmdbEntityRailType.RECENT || entityKind == TmdbEntityKind.NETWORK) today else null,
-                        voteCountGte = voteCountFloor,
-                        // RCTV: every show the network has aired, whatever its status (pilots, in
-                        // production, canceled...); the air-date limit already leaves out unaired ones.
-                        withStatus = null,
-                        watchRegion = providerRegion,
-                        withWatchProviders = providerIds,
-                        withWatchMonetizationTypes = providerMonetization
-                    ).body()
-                }
-            }
+            suspend fun loadDiscover(requestLanguage: String) = entityDiscover(
+                entityKind, entityId, mediaType, railType, requestLanguage, page, genreId, year
+            )
 
             val response = loadDiscover(language)
             val results = response?.results.orEmpty()
@@ -1142,6 +1111,135 @@ class TmdbMetadataService(
             entityRailCache[cacheKey] = result.items
         }
         return result
+    }
+
+    /**
+     * A studio's, network's or service's discover query for a rail, with the See All filter's genre
+     * and year. Null when the filter's year is outside what the rail lists (nothing to ask for).
+     */
+    private suspend fun entityDiscover(
+        entityKind: TmdbEntityKind,
+        entityId: Int,
+        mediaType: TmdbEntityMediaType,
+        railType: TmdbEntityRailType,
+        language: String,
+        page: Int,
+        genreId: Int?,
+        year: Int?,
+        sortOverride: String? = null,
+        dateGteOverride: String? = null
+    ): com.nuvio.tv.data.remote.api.TmdbDiscoverResponse? {
+        val today = LocalDate.now().toString()
+        val voteCountFloor = if (railType == TmdbEntityRailType.TOP_RATED) TOP_RATED_VOTE_COUNT_FLOOR else null
+        val isProvider = entityKind == TmdbEntityKind.PROVIDER
+        val providerRegion = if (isProvider) STREAMING_PROVIDER_REGION else null
+        val providerIds = if (isProvider) entityId.toString() else null
+        val providerMonetization = if (isProvider) "flatrate" else null
+        val railLte = when (mediaType) {
+            TmdbEntityMediaType.MOVIE -> if (railType == TmdbEntityRailType.RECENT) today else null
+            TmdbEntityMediaType.TV -> if (railType == TmdbEntityRailType.RECENT || entityKind == TmdbEntityKind.NETWORK) today else null
+        }
+        // The filter's year, inside the rail's own date limit.
+        val dateGte = year?.let { "$it-01-01" } ?: dateGteOverride
+        val dateLte = year?.let { y -> listOfNotNull(railLte, "$y-12-31").minOrNull() } ?: railLte
+        if (dateGte != null && dateLte != null && dateGte > dateLte) return null
+        val genres = genreId?.toString()
+        return when (mediaType) {
+            TmdbEntityMediaType.MOVIE -> {
+                tmdbApi.discoverMovies(
+                    apiKey = TMDB_API_KEY,
+                    language = language,
+                    page = page,
+                    sortBy = sortOverride ?: movieSortBy(railType),
+                    withCompanies = if (entityKind == TmdbEntityKind.COMPANY) entityId.toString() else null,
+                    releaseDateLte = dateLte,
+                    voteCountGte = voteCountFloor,
+                    withGenres = genres,
+                    releaseDateGte = dateGte,
+                    watchRegion = providerRegion,
+                    withWatchProviders = providerIds,
+                    withWatchMonetizationTypes = providerMonetization
+                ).body()
+            }
+
+            TmdbEntityMediaType.TV -> {
+                tmdbApi.discoverTv(
+                    apiKey = TMDB_API_KEY,
+                    language = language,
+                    page = page,
+                    sortBy = (sortOverride ?: tvSortBy(railType)).replace("primary_release_date", "first_air_date"),
+                    withCompanies = if (entityKind == TmdbEntityKind.COMPANY) entityId.toString() else null,
+                    withNetworks = if (entityKind == TmdbEntityKind.NETWORK) entityId.toString() else null,
+                    firstAirDateLte = dateLte,
+                    voteCountGte = voteCountFloor,
+                    withGenres = genres,
+                    firstAirDateGte = dateGte,
+                    // RCTV: every show the network has aired, whatever its status (pilots, in
+                    // production, canceled...); the air-date limit already leaves out unaired ones.
+                    withStatus = null,
+                    watchRegion = providerRegion,
+                    withWatchProviders = providerIds,
+                    withWatchMonetizationTypes = providerMonetization
+                ).body()
+            }
+        }
+    }
+
+    private val entityTotalCache = ConcurrentHashMap<String, Int>()
+    private val entityEarliestYearCache = ConcurrentHashMap<String, Int>()
+
+    /**
+     * How many titles TMDB lists for a rail with the See All filter's genre and year (the filter
+     * menu's counts). Null when TMDB couldn't be reached.
+     */
+    suspend fun fetchEntityRailTotal(
+        entityKind: TmdbEntityKind,
+        entityId: Int,
+        mediaType: TmdbEntityMediaType,
+        railType: TmdbEntityRailType,
+        genreId: Int?,
+        year: Int?
+    ): Int? = withContext(ioDispatcher) {
+        if (entityKind == TmdbEntityKind.NETWORK && mediaType == TmdbEntityMediaType.MOVIE) return@withContext 0
+        val key = "${entityKind.routeValue}:$entityId:${mediaType.value}:${railType.value}:g$genreId:y$year"
+        entityTotalCache[key]?.let { return@withContext it }
+        val total = try {
+            entityDiscover(entityKind, entityId, mediaType, railType, "en", 1, genreId, year)?.totalResults ?: 0
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (total != null) entityTotalCache[key] = total
+        total
+    }
+
+    /** The year of a rail's oldest title on TMDB (for the See All Year menu); null when unknown. */
+    suspend fun fetchEntityEarliestYear(
+        entityKind: TmdbEntityKind,
+        entityId: Int,
+        mediaType: TmdbEntityMediaType,
+        railType: TmdbEntityRailType
+    ): Int? = withContext(ioDispatcher) {
+        if (entityKind == TmdbEntityKind.NETWORK && mediaType == TmdbEntityMediaType.MOVIE) return@withContext null
+        val key = "${entityKind.routeValue}:$entityId:${mediaType.value}:${railType.value}"
+        entityEarliestYearCache[key]?.let { return@withContext it.takeIf { year -> year > 0 } }
+        val year = try {
+            entityDiscover(
+                entityKind, entityId, mediaType, railType, "en", 1, null, null,
+                sortOverride = "primary_release_date.asc",
+                // Titles with no date at all would otherwise come first.
+                dateGteOverride = "1870-01-01"
+            )?.results.orEmpty()
+                .mapNotNull { (it.releaseDate ?: it.firstAirDate)?.take(4)?.toIntOrNull() }
+                .minOrNull() ?: 0
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return@withContext null
+        }
+        entityEarliestYearCache[key] = year
+        year.takeIf { it > 0 }
     }
 
     /** TMDB genre names by id, per media type and language (for the See All page's Genre filter). */

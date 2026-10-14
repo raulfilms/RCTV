@@ -297,7 +297,9 @@ fun ChannelProfileScreen(
                 logoUrl = logoUrl,
                 onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, "") },
                 onItemLongPress = { item -> posterOptionsController.show(item, "") },
-                onLoadMore = viewModel::loadMoreSeeAll
+                onLoadMore = viewModel::loadMoreSeeAll,
+                onFilterChange = viewModel::setSeeAllFilter,
+                onFilterMenuOpen = viewModel::loadSeeAllCounts
             )
         } else {
             ChannelProfileContent(
@@ -1146,7 +1148,8 @@ private fun HeroDots(count: Int, activeIndex: Int, modifier: Modifier = Modifier
 /**
  * "See All" for the channel's TV Shows or Movies: the channel's logo and the row's name on top,
  * the Genre / Year filter at the top right (like Home's See All), then every title as horizontal
- * cards, four across. More load from TMDB while scrolling down; the filter works on what's loaded.
+ * cards, four across. More load from TMDB while scrolling down; the filter is applied by TMDB to
+ * the channel's whole network (or studio), with TMDB's totals in the menu.
  * Coming back from a title puts focus back on it.
  */
 @Composable
@@ -1156,7 +1159,9 @@ private fun ChannelSeeAllPage(
     logoUrl: String?,
     onItemClick: (MetaPreview) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    onFilterChange: (type: String?, genre: String?, year: String?) -> Unit,
+    onFilterMenuOpen: () -> Unit
 ) {
     val title = stringResource(
         if (state.kind == ChannelTitlesKind.TV_SHOWS) R.string.channel_profile_tv_shows
@@ -1176,6 +1181,23 @@ private fun ChannelSeeAllPage(
         vertical = com.nuvio.tv.ui.components.isRowVertical(
             if (state.kind == ChannelTitlesKind.TV_SHOWS) "tv_shows" else "movies",
             title
-        )
+        ),
+        remoteFilter = remember(state.filter, state.genres, state.years, state.genreCounts) {
+            com.nuvio.tv.ui.components.SeeAllRemoteFilter(
+                // One kind of title per page: no Type menu.
+                types = emptyList(),
+                genres = state.genres.map { genre ->
+                    com.nuvio.tv.ui.components.SeeAllFilterChoice(genre.label, genre.label, state.genreCounts[genre.label])
+                },
+                years = state.years.map { year ->
+                    com.nuvio.tv.ui.components.SeeAllFilterChoice(year.toString(), year.toString())
+                },
+                selectedType = null,
+                selectedGenre = state.filter.genre?.label,
+                selectedYear = state.filter.year?.toString()
+            )
+        },
+        onRemoteFilterChange = onFilterChange,
+        onFilterMenuOpen = onFilterMenuOpen
     )
 }

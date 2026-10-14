@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.tmdb.TmdbService
+import com.nuvio.tv.data.discover.TmdbSeeAllFilter
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
@@ -11,6 +12,7 @@ import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
+import com.nuvio.tv.domain.model.TmdbCollectionMediaType
 import com.nuvio.tv.ui.screens.channelprofile.ChannelBrand
 import com.nuvio.tv.ui.screens.channelprofile.ChannelBrands
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,6 +28,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
+import java.time.LocalDate
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -38,6 +41,8 @@ const val CHANNEL_ROW_VISIBLE = 10
 /** TMDB's discover stops at page 500, so a "See All" can go that far (every title TMDB lists). */
 private const val TMDB_MAX_PAGE = 500
 private const val HERO_ITEM_COUNT = 5
+/** The See All Year menu never goes back further than this. */
+private const val OLDEST_YEAR = 1900
 /**
  * Shows from a channel family's guide looked up to find more of its TMDB networks (a sister channel
  * like Investigation Discovery or Nick Jr.), or the network itself when it isn't a known one.
@@ -93,6 +98,11 @@ class ChannelProfileRepository @Inject constructor(
     private data class RowContent(val items: List<MetaPreview>, val morePages: Boolean)
 
     private val rowCache = ConcurrentHashMap<String, RowContent>()
+    /** TMDB's total for a See All query with a filter (the filter menu's counts). */
+    private val totalCache = ConcurrentHashMap<String, Int>()
+    /** The year of a network's (or studio's) oldest title on TMDB (0: none). */
+    private val earliestYearCache = ConcurrentHashMap<String, Int>()
+    private val countLimiter = Semaphore(4)
 
     private val lookupLimiter = Semaphore(6)
 
@@ -266,25 +276,101 @@ class ChannelProfileRepository @Inject constructor(
         }
 
     /**
-     * The next page of a channel's "See All" (TV shows or movies): TMDB page [page] of its network's
-     * (or studio's) titles. Page 1 comes from the row itself, so this starts at page 2.
+     * A page of a channel's "See All" (TV shows or movies): TMDB page [page] of its network's (or
+     * studio's) titles. Unfiltered, page 1 comes from the row itself, so this starts at page 2.
+     * [filter] (Genre / Year) is applied by TMDB, so it finds every matching title it lists.
      */
-    suspend fun seeAllPage(isTv: Boolean, ids: ChannelBrandIds, page: Int, loadedCount: Int): ChannelTitlesPage =
+    suspend fun seeAllPage(
+        isTv: Boolean,
+        ids: ChannelBrandIds,
+        page: Int,
+        loadedCount: Int,
+        filter: TmdbSeeAllFilter = TmdbSeeAllFilter()
+    ): ChannelTitlesPage =
         withContext(Dispatchers.IO) {
-            val filter = if (isTv) ids.networks else ids.companies
-            if (filter.isEmpty() || page > TMDB_MAX_PAGE) return@withContext ChannelTitlesPage(emptyList(), null)
+            val query = seeAllQuery(isTv, ids, filter)
+            if (query == null || page > TMDB_MAX_PAGE) return@withContext ChannelTitlesPage(emptyList(), null)
             val result = discover(
                 isTv = isTv,
-                networks = if (isTv) filter.joinToString("|") else null,
-                companies = if (isTv) null else filter.joinToString("|"),
+                networks = query.networks,
+                companies = query.companies,
                 language = language(),
                 page = page,
-                failOnError = true
+                failOnError = true,
+                genres = query.genres,
+                dateGte = query.dateGte,
+                dateLte = query.dateLte
             )
             // Every page TMDB has (up to its own limit), so See All lists the whole network or studio.
             val next = if (page < minOf(result.totalPages, TMDB_MAX_PAGE)) page + 1 else null
             ChannelTitlesPage(result.items, next)
         }
+
+    /** True when the channel's See All of shows (or movies) comes from TMDB, not just from its guide. */
+    fun hasSeeAllCatalog(isTv: Boolean, ids: ChannelBrandIds): Boolean =
+        if (isTv) ids.networks.isNotEmpty() else ids.companies.isNotEmpty()
+
+    /** TMDB's total of the channel's shows (or movies) for [filter]; null when TMDB couldn't be reached. */
+    suspend fun seeAllCount(isTv: Boolean, ids: ChannelBrandIds, filter: TmdbSeeAllFilter): Int? =
+        withContext(Dispatchers.IO) {
+            val query = seeAllQuery(isTv, ids, filter) ?: return@withContext 0
+            val key = "${if (isTv) "tv" else "movie"}:$query"
+            totalCache[key]?.let { return@withContext it }
+            val total: Int? = countLimiter.withPermit {
+                runCatching {
+                    discoverResponse(isTv, query.networks, query.companies, language(), 1, query.genres, query.dateGte, query.dateLte, "popularity.desc")
+                        ?.totalResults ?: 0
+                }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+            }
+            if (total != null) totalCache[key] = total
+            total
+        }
+
+    /** The years of the channel's shows (or movies) on TMDB, newest first: from its oldest to next year. */
+    suspend fun seeAllYears(isTv: Boolean, ids: ChannelBrandIds): List<Int> = withContext(Dispatchers.IO) {
+        val query = seeAllQuery(isTv, ids, TmdbSeeAllFilter()) ?: return@withContext emptyList()
+        val key = "${if (isTv) "tv" else "movie"}:$query"
+        val earliest: Int? = earliestYearCache[key] ?: countLimiter.withPermit {
+            runCatching {
+                val results = discoverResponse(
+                    isTv, query.networks, query.companies, language(), 1,
+                    genres = null,
+                    // Titles with no date at all would otherwise come first.
+                    dateGte = "1870-01-01",
+                    dateLte = null,
+                    sortBy = if (isTv) "first_air_date.asc" else "primary_release_date.asc"
+                )?.results.orEmpty()
+                results.mapNotNull { (if (isTv) it.firstAirDate else it.releaseDate)?.take(4)?.toIntOrNull() }.minOrNull() ?: 0
+            }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+        }?.also { earliestYearCache[key] = it }
+        val last = LocalDate.now().year + 1
+        val first = earliest?.takeIf { it > 0 }?.coerceIn(OLDEST_YEAR, last) ?: OLDEST_YEAR
+        (last downTo first).toList()
+    }
+
+    /** The channel's network (or studio) query with the filter's genre and year in it; null: none or no match. */
+    private data class SeeAllQuery(
+        val networks: String?,
+        val companies: String?,
+        val genres: String?,
+        val dateGte: String?,
+        val dateLte: String?
+    )
+
+    private fun seeAllQuery(isTv: Boolean, ids: ChannelBrandIds, filter: TmdbSeeAllFilter): SeeAllQuery? {
+        val list = if (isTv) ids.networks else ids.companies
+        if (list.isEmpty()) return null
+        val mediaType = if (isTv) TmdbCollectionMediaType.TV else TmdbCollectionMediaType.MOVIE
+        if (filter.mediaType != null && filter.mediaType != mediaType) return null
+        val genre = if (filter.genre == null) null else (filter.genreId(mediaType) ?: return null)
+        return SeeAllQuery(
+            networks = if (isTv) list.joinToString("|") else null,
+            companies = if (isTv) null else list.joinToString("|"),
+            genres = genre?.toString(),
+            dateGte = filter.year?.let { "$it-01-01" },
+            dateLte = filter.year?.let { "$it-12-31" }
+        )
+    }
 
     /**
      * The same titles with their title art for the horizontal cards: TMDB's backdrop with the title on
@@ -306,32 +392,17 @@ class ChannelProfileRepository @Inject constructor(
         language: String,
         page: Int,
         /** See All: a page TMDB couldn't give (busy, offline) is an error, so it's tried again, not the end. */
-        failOnError: Boolean = false
+        failOnError: Boolean = false,
+        /** See All filter: TMDB genre id(s) and first air / release date range. */
+        genres: String? = null,
+        dateGte: String? = null,
+        dateLte: String? = null
     ): DiscoverResult =
         runCatching {
-            val raw = if (isTv) {
-                tmdbApi.discoverTv(
-                    apiKey = apiKey,
-                    language = language,
-                    page = page,
-                    sortBy = "popularity.desc",
-                    withNetworks = networks,
-                    withCompanies = companies
-                )
-            } else {
-                tmdbApi.discoverMovies(
-                    apiKey = apiKey,
-                    language = language,
-                    page = page,
-                    sortBy = "popularity.desc",
-                    withCompanies = companies
-                )
-            }
-            if (!raw.isSuccessful) throw java.io.IOException("TMDB discover HTTP ${raw.code()}")
-            val response = raw.body()
-            val genres = genreMap(isTv, language)
+            val response = discoverResponse(isTv, networks, companies, language, page, genres, dateGte, dateLte, "popularity.desc")
+            val genreNames = genreMap(isTv, language)
             DiscoverResult(
-                items = response?.results.orEmpty().mapNotNull { it.toPreview(isTv, genres) },
+                items = response?.results.orEmpty().mapNotNull { it.toPreview(isTv, genreNames) },
                 totalPages = response?.totalPages ?: 1
             )
         }.onFailure {
@@ -339,6 +410,45 @@ class ChannelProfileRepository @Inject constructor(
             Log.w(TAG, "Discover failed", it)
             if (failOnError) throw it
         }.getOrDefault(DiscoverResult(emptyList(), 0))
+
+    private suspend fun discoverResponse(
+        isTv: Boolean,
+        networks: String?,
+        companies: String?,
+        language: String,
+        page: Int,
+        genres: String?,
+        dateGte: String?,
+        dateLte: String?,
+        sortBy: String
+    ): com.nuvio.tv.data.remote.api.TmdbDiscoverResponse? {
+        val raw = if (isTv) {
+            tmdbApi.discoverTv(
+                apiKey = apiKey,
+                language = language,
+                page = page,
+                sortBy = sortBy,
+                withNetworks = networks,
+                withCompanies = companies,
+                withGenres = genres,
+                firstAirDateGte = dateGte,
+                firstAirDateLte = dateLte
+            )
+        } else {
+            tmdbApi.discoverMovies(
+                apiKey = apiKey,
+                language = language,
+                page = page,
+                sortBy = sortBy,
+                withCompanies = companies,
+                withGenres = genres,
+                releaseDateGte = dateGte,
+                releaseDateLte = dateLte
+            )
+        }
+        if (!raw.isSuccessful) throw java.io.IOException("TMDB discover HTTP ${raw.code()}")
+        return raw.body()
+    }
 
     /** A guide title to its TMDB entry, only when the names match (so "NBA Basketball" finds nothing). */
     private suspend fun searchExact(title: String, year: Int?, isTv: Boolean, language: String): MetaPreview? {

@@ -8,6 +8,11 @@ import com.nuvio.tv.data.channelprofile.ChannelBrandIds
 import com.nuvio.tv.data.channelprofile.ChannelProfileRepository
 import com.nuvio.tv.data.channelprofile.CHANNEL_ROW_VISIBLE
 import com.nuvio.tv.data.channelprofile.EpgMovieTitle
+import com.nuvio.tv.data.discover.DiscoverGenre
+import com.nuvio.tv.data.discover.DiscoverMediaFilter
+import com.nuvio.tv.data.discover.TmdbDiscoverRepository
+import com.nuvio.tv.data.discover.TmdbSeeAllFilter
+import com.nuvio.tv.data.discover.matches
 import com.nuvio.tv.data.repository.parseContentIds
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.EpgProgram
@@ -35,6 +40,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.Locale
 import javax.inject.Inject
 
@@ -50,7 +57,14 @@ data class ChannelSeeAllState(
     val items: List<MetaPreview> = emptyList(),
     val isLoadingMore: Boolean = false,
     /** Next TMDB page to load, or null once everything is in. */
-    val nextPage: Int? = null
+    val nextPage: Int? = null,
+    /** Genre / Year, applied by TMDB to the channel's whole network (or studio). */
+    val filter: TmdbSeeAllFilter = TmdbSeeAllFilter(),
+    val genres: List<DiscoverGenre> = emptyList(),
+    /** Newest first. */
+    val years: List<Int> = emptyList(),
+    /** TMDB's totals by genre label (for the picked Year), filled in once the menu opens. */
+    val genreCounts: Map<String, Int> = emptyMap()
 )
 
 data class ChannelProfileUiState(
@@ -78,6 +92,7 @@ data class ChannelProfileUiState(
 class ChannelProfileViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: ChannelProfileRepository,
+    private val discoverRepository: TmdbDiscoverRepository,
     private val watchProgressRepository: WatchProgressRepository,
     private val libraryRepository: LibraryRepository
 ) : ViewModel() {
@@ -182,22 +197,143 @@ class ChannelProfileViewModel @Inject constructor(
 
     // ------------------------------------------------------------------ See All
 
+    private var seeAllMenusJob: Job? = null
+    private var seeAllCountsJob: Job? = null
+    /** The filter menu was opened on this See All page, so its counts are kept up to date. */
+    private var seeAllCountsWanted = false
+    private val countLimiter = Semaphore(6)
+
+    private fun rowFor(kind: ChannelTitlesKind): CatalogRow? = when (kind) {
+        ChannelTitlesKind.TV_SHOWS -> _uiState.value.tvShows
+        ChannelTitlesKind.MOVIES -> _uiState.value.movies
+    }
+
     /** Opens "See All" for TV Shows or Movies: the row's titles first, then TMDB's next pages. */
     fun openSeeAll(kind: ChannelTitlesKind) {
-        val row = when (kind) {
-            ChannelTitlesKind.TV_SHOWS -> _uiState.value.tvShows
-            ChannelTitlesKind.MOVIES -> _uiState.value.movies
-        } ?: return
+        val row = rowFor(kind) ?: return
         seeAllJob?.cancel()
+        seeAllCountsJob?.cancel()
+        seeAllCountsWanted = false
         _uiState.update {
             it.copy(seeAll = ChannelSeeAllState(kind = kind, items = row.items, nextPage = if (row.hasMore) 2 else null))
         }
+        loadSeeAllMenus(kind, row.items)
         loadMoreSeeAll()
     }
 
     fun closeSeeAll() {
         seeAllJob?.cancel()
+        seeAllMenusJob?.cancel()
+        seeAllCountsJob?.cancel()
         _uiState.update { it.copy(seeAll = null) }
+    }
+
+    /**
+     * New Genre / Year picks ([genre] a genre's label, [year] "2024"; null is "All"). The list starts
+     * over with the row's titles that match, then every match TMDB lists for the channel.
+     */
+    fun setSeeAllFilter(@Suppress("UNUSED_PARAMETER") type: String?, genre: String?, year: String?) {
+        val current = _uiState.value.seeAll ?: return
+        val filter = TmdbSeeAllFilter(
+            genre = genre?.let { label -> current.genres.firstOrNull { it.label == label } },
+            year = year?.toIntOrNull()
+        )
+        if (filter == current.filter) return
+        val row = rowFor(current.kind) ?: return
+        val isTv = current.kind == ChannelTitlesKind.TV_SHOWS
+        val fromTmdb = repository.hasSeeAllCatalog(isTv, boundIds)
+        val yearChanged = filter.year != current.filter.year
+        seeAllJob?.cancel()
+        _uiState.update { state ->
+            val open = state.seeAll ?: return@update state
+            state.copy(
+                seeAll = open.copy(
+                    filter = filter,
+                    items = if (filter.isEmpty) row.items else row.items.filter { it.matches(filter) },
+                    isLoadingMore = false,
+                    // Unfiltered, the row is TMDB's page 1; filtered, TMDB starts again from page 1.
+                    nextPage = when {
+                        filter.isEmpty -> if (row.hasMore) 2 else null
+                        fromTmdb -> 1
+                        else -> null
+                    },
+                    // Counts by genre depend on the Year.
+                    genreCounts = if (yearChanged) emptyMap() else open.genreCounts
+                )
+            )
+        }
+        loadMoreSeeAll()
+        if (seeAllCountsWanted) loadSeeAllCounts()
+    }
+
+    /**
+     * The filter menu opened: TMDB's total for each genre (with the picked Year), so the menu shows
+     * how many titles the whole network or studio has, not just what's loaded.
+     */
+    fun loadSeeAllCounts() {
+        seeAllCountsWanted = true
+        val current = _uiState.value.seeAll ?: return
+        val row = rowFor(current.kind) ?: return
+        val isTv = current.kind == ChannelTitlesKind.TV_SHOWS
+        val ids = boundIds
+        val filter = current.filter
+        seeAllCountsJob?.cancel()
+        seeAllCountsJob = viewModelScope.launch {
+            val genres = current.genres.ifEmpty {
+                seeAllMenusJob?.join()
+                _uiState.value.seeAll?.takeIf { it.kind == current.kind }?.genres.orEmpty()
+            }
+            coroutineScope {
+                genres.forEach { genre ->
+                    if (_uiState.value.seeAll?.genreCounts?.containsKey(genre.label) == true) return@forEach
+                    launch {
+                        val withGenre = filter.copy(genre = genre)
+                        // The guide's titles count too (some aren't the studio's on TMDB).
+                        val local = row.items.count { it.matches(withGenre) }
+                        val count = if (repository.hasSeeAllCatalog(isTv, ids)) {
+                            countLimiter.withPermit { safe { repository.seeAllCount(isTv, ids, withGenre) } }
+                                ?.let { maxOf(it, local) } ?: return@launch
+                        } else {
+                            local
+                        }
+                        _uiState.update { state ->
+                            val open = state.seeAll?.takeIf { it.kind == current.kind && it.filter == filter } ?: return@update state
+                            state.copy(seeAll = open.copy(genreCounts = open.genreCounts + (genre.label to count)))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** The See All page's Genre menu (TMDB's show or movie genres) and Year menu. */
+    private fun loadSeeAllMenus(kind: ChannelTitlesKind, rowItems: List<MetaPreview>) {
+        seeAllMenusJob?.cancel()
+        val isTv = kind == ChannelTitlesKind.TV_SHOWS
+        val ids = boundIds
+        seeAllMenusJob = viewModelScope.launch {
+            val genres = safe {
+                discoverRepository.genres(
+                    if (isTv) DiscoverMediaFilter.SHOWS else DiscoverMediaFilter.MOVIES,
+                    discoverRepository.language()
+                )
+            }.orEmpty()
+            _uiState.update { state ->
+                val open = state.seeAll?.takeIf { it.kind == kind } ?: return@update state
+                state.copy(seeAll = open.copy(genres = genres))
+            }
+            val localYears = rowItems.mapNotNull { (it.released ?: it.releaseInfo)?.take(4)?.toIntOrNull() }
+            val years = if (repository.hasSeeAllCatalog(isTv, ids)) {
+                val remote = safe { repository.seeAllYears(isTv, ids) }.orEmpty()
+                (remote + localYears).distinct().sortedDescending()
+            } else {
+                localYears.distinct().sortedDescending()
+            }
+            _uiState.update { state ->
+                val open = state.seeAll?.takeIf { it.kind == kind } ?: return@update state
+                state.copy(seeAll = open.copy(years = years))
+            }
+        }
     }
 
     /** Loads the next page while the person scrolls down the "See All" grid. */
@@ -212,11 +348,12 @@ class ChannelProfileViewModel @Inject constructor(
                     isTv = current.kind == ChannelTitlesKind.TV_SHOWS,
                     ids = boundIds,
                     page = page,
-                    loadedCount = current.items.size
+                    loadedCount = current.items.size,
+                    filter = current.filter
                 )
             }
             _uiState.update { state ->
-                val seeAll = state.seeAll?.takeIf { it.kind == current.kind } ?: return@update state
+                val seeAll = state.seeAll?.takeIf { it.kind == current.kind && it.filter == current.filter } ?: return@update state
                 val known = seeAll.items.mapTo(HashSet()) { it.id }
                 state.copy(
                     seeAll = seeAll.copy(
@@ -227,9 +364,9 @@ class ChannelProfileViewModel @Inject constructor(
                     )
                 )
             }
-            // Load a few pages up front, so the genre and year filter has titles to work with.
+            // Load a few pages up front, so the grid fills the screen.
             val after = _uiState.value.seeAll
-            if (result != null && after != null && after.kind == current.kind &&
+            if (result != null && after != null && after.kind == current.kind && after.filter == current.filter &&
                 after.nextPage != null && after.items.size < SEE_ALL_PRELOAD
             ) {
                 loadMoreSeeAll()
