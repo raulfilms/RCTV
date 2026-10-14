@@ -101,7 +101,6 @@ import com.nuvio.tv.ui.components.posteroptions.PosterOptionsHost
 import com.nuvio.tv.ui.components.posteroptions.PosterOptionsViewModel
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.theme.NuvioTheme
-import kotlinx.coroutines.delay
 
 /** Extra room above each row of a hub page (on top of the list's spacing), like Disney+. */
 private val HubRowExtraSpacing = 16.dp
@@ -127,18 +126,25 @@ fun DisneyPlusScreen(
     val heroFocusRequester = remember { FocusRequester() }
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
 
-    // Every page is opened from a tile (Home's streaming tiles or a brand tile), so put focus on
-    // the hero once it's there. Coming back to the page keeps focus where the person left it.
-    LaunchedEffect(uiState.heroItems.isNotEmpty()) {
-        if (!initialFocusDone && uiState.heroItems.isNotEmpty()) {
-            delay(50)
-            runCatching { heroFocusRequester.requestFocus() }
-            initialFocusDone = true
-        }
-    }
-
     // Kept out here so the page comes back where it was after a row's See All page closes.
     val listState = rememberLazyListState()
+
+    // Every page (a service, a brand, a collection) opens at its very top with focus on the hero:
+    // the page shows once the hero is ready (see isInitialLoading), and until focus is on the hero
+    // nothing scrolls the page (see pageSpec), so it never opens lower down and slides back up.
+    // Coming back to the page keeps focus where the person left it.
+    LaunchedEffect(uiState.isHeroLoading, uiState.heroItems.isNotEmpty()) {
+        if (initialFocusDone || uiState.isHeroLoading) return@LaunchedEffect
+        runCatching { listState.scrollToItem(0) }
+        if (uiState.heroItems.isNotEmpty()) {
+            for (attempt in 0 until 12) {
+                withFrameNanos { }
+                if (runCatching { heroFocusRequester.requestFocus() }.getOrDefault(false)) break
+            }
+            runCatching { listState.scrollToItem(0) }
+        }
+        initialFocusDone = true
+    }
     var heroFocused by remember { mutableStateOf(false) }
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     var returnFocusRowId by remember { mutableStateOf<String?>(null) }
@@ -244,7 +250,8 @@ fun DisneyPlusScreen(
                     object : BringIntoViewSpec {
                         override val scrollAnimationSpec: AnimationSpec<Float> = parentSpec.scrollAnimationSpec
                         override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-                            if (heroFocused) 0f else parentSpec.calculateScrollDistance(offset, size, containerSize)
+                            if (heroFocused || !initialFocusDone) 0f
+                            else parentSpec.calculateScrollDistance(offset, size, containerSize)
                     }
                 }
                 val headerLogoRes = uiState.hub.headerLogoRes()

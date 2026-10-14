@@ -37,10 +37,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /** TMDB's discover stops at page 500; See All goes as far as TMDB has titles. */
 private const val SEE_ALL_MAX_PAGES = 500
+
+/** How long a page waits for its banner's title logos before opening without them (they follow). */
+private const val HERO_LOGO_WAIT_MS = 1_200L
 
 /** A wide collection card (e.g. "Disney Jr. — Collection"). [backdrops] fill in once loaded. */
 data class DisneyCollectionTile(
@@ -88,8 +92,13 @@ data class DisneyPlusUiState(
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
     val rows: List<DisneyPlusRowState> = emptyList()
 ) {
+    /**
+     * The page shows once its top (the hero) is ready, so it always opens at the top with focus on
+     * the hero, instead of showing the rows first and then scrolling back up when the hero arrives.
+     * A page whose hero can't load still shows its rows.
+     */
     val isInitialLoading: Boolean
-        get() = isHeroLoading && rows.none { it.row != null }
+        get() = isHeroLoading
 
     val hasAnyContent: Boolean
         get() = heroItems.isNotEmpty() || continueWatching.isNotEmpty() ||
@@ -414,19 +423,20 @@ class DisneyPlusViewModel @Inject constructor(
         }
         loadJob = viewModelScope.launch {
             launch { loadCollectionArt() }
-            // The banner and every row load at the same time: nothing waits for the banner's logos.
+            // The banner and every row load at the same time. The page opens once the banner is
+            // there; it waits a moment for the titles' logos, never longer (they're added after).
             launch {
                 val heroSpec = hubSpec.rows.firstOrNull { it.id == hubSpec.heroRowId }
                 val heroRow = heroSpec?.let { spec -> safeResolve(spec, forceRefresh) }
                 heroSpec?.let { setRow(it.id, heroRow) }
-                val heroItems = try {
-                    repository.heroItems(heroRow)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    repository.heroPicks(heroRow?.items.orEmpty())
+                val picks = repository.heroPicks(heroRow?.items.orEmpty())
+                val withLogos = safeLogos { withTimeoutOrNull(HERO_LOGO_WAIT_MS) { repository.withLogos(picks) } }
+                _uiState.update { it.copy(heroItems = withLogos ?: picks, isHeroLoading = false) }
+                if (withLogos == null && picks.isNotEmpty()) {
+                    safeLogos { repository.withLogos(picks) }?.let { late ->
+                        _uiState.update { state -> if (state.heroItems == picks) state.copy(heroItems = late) else state }
+                    }
                 }
-                _uiState.update { it.copy(heroItems = heroItems, isHeroLoading = false) }
             }
 
             coroutineScope {
@@ -478,6 +488,14 @@ class DisneyPlusViewModel @Inject constructor(
                 }
             }.awaitAll()
         }
+    }
+
+    private suspend fun safeLogos(block: suspend () -> List<MetaPreview>?): List<MetaPreview>? = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     /** A failed row just stays hidden; it never leaves the page stuck in a loading state. */

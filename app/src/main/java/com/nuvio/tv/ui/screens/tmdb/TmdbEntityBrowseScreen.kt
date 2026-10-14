@@ -257,11 +257,19 @@ private fun TmdbEntityBrowseContent(
         returnFocusRailKey = null
     }
 
-    // A hub opens with focus on its hero, like the other streaming hubs.
+    // A hub opens at its very top with focus on its hero, like the other streaming hubs (nothing
+    // scrolls the page before that, so it never opens lower down and slides back up).
     LaunchedEffect(showHero) {
         if (!showHero || initialFocusRequested || pendingRestoreItemId != null) return@LaunchedEffect
-        if (heroFocusRequester.requestFocusAfterFrames(frames = 2)) initialFocusRequested = true
+        runCatching { railsListState.scrollToItem(0) }
+        heroFocusRequester.requestFocusAfterFrames(frames = 2)
+        runCatching { railsListState.scrollToItem(0) }
+        initialFocusRequested = true
     }
+    // Read by the page's scrolling while it runs, so kept as state.
+    val openingOnHero by androidx.compose.runtime.rememberUpdatedState(
+        showHero && !initialFocusRequested && pendingRestoreItemId == null
+    )
     // While the hero has focus the page stays at the very top, so the logo above it stays in view.
     LaunchedEffect(heroFocused) {
         if (heroFocused) runCatching { railsListState.animateScrollToItem(0) }
@@ -360,7 +368,7 @@ private fun TmdbEntityBrowseContent(
                         offset: Float,
                         size: Float,
                         containerSize: Float
-                    ): Float = if (heroFocused) 0f else offset - topInsetPx
+                    ): Float = if (heroFocused || openingOnHero) 0f else offset - topInsetPx
                 }
             }
 

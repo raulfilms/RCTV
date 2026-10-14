@@ -390,6 +390,8 @@ private fun ChannelProfileContent(
     val firstLiveRequester = remember { FocusRequester() }
     var pageHasFocus by remember { mutableStateOf(false) }
     var initialFocusDone by initialFocusDoneState
+    /** The person pressed a key on the page: from then on focus and scrolling are theirs. */
+    var userMoved by remember { mutableStateOf(false) }
 
     suspend fun focusFirst(requester: FocusRequester): Boolean {
         repeat(10) {
@@ -399,16 +401,28 @@ private fun ChannelProfileContent(
         return false
     }
 
-    // Opening the page: focus the featured show's Play button once it's there (or the first
-    // live channel when there's no featured show), unless the person already moved.
+    // Opening the page: it stays at its very top (nothing scrolls it until then), and focus goes
+    // to the featured show's Play button once it's there (or the first live channel when there's
+    // no featured show), unless the person already moved. So the page never opens lower down and
+    // slides back up.
     LaunchedEffect(uiState.isHeroLoading, uiState.heroItems.isNotEmpty()) {
-        if (initialFocusDone || pageHasFocus || uiState.isHeroLoading) return@LaunchedEffect
+        if (initialFocusDone || uiState.isHeroLoading) return@LaunchedEffect
+        if (userMoved) {
+            initialFocusDone = true
+            return@LaunchedEffect
+        }
+        runCatching { listState.scrollToItem(0) }
         val target = if (uiState.heroItems.isNotEmpty()) heroPlayRequester else firstLiveRequester
-        initialFocusDone = focusFirst(target) || focusFirst(firstLiveRequester)
+        if (!focusFirst(target)) focusFirst(firstLiveRequester)
+        runCatching { listState.scrollToItem(0) }
+        initialFocusDone = true
     }
     LaunchedEffect(Unit) {
         delay(2_500)
-        if (!initialFocusDone && !pageHasFocus) initialFocusDone = focusFirst(firstLiveRequester)
+        if (!initialFocusDone) {
+            if (!userMoved && !pageHasFocus) focusFirst(firstLiveRequester)
+            initialFocusDone = true
+        }
     }
 
     val posterStyle = remember {
@@ -436,6 +450,8 @@ private fun ChannelProfileContent(
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
                 // The top of the page scrolls itself back (see onTopFocus).
                 if (topFocus[0] || topFocus[1]) return 0f
+                // Still opening: the page stays at its top.
+                if (!initialFocusDone && !userMoved) return 0f
                 val distance = offset - rowTopPx
                 if (kotlin.math.abs(distance) < 1f) return 0f
                 if (distance < 0f && !listState.canScrollBackward) return 0f
@@ -455,7 +471,11 @@ private fun ChannelProfileContent(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .onFocusChanged { pageHasFocus = it.hasFocus },
+                .onFocusChanged { pageHasFocus = it.hasFocus }
+                .onPreviewKeyEvent { event ->
+                    if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) userMoved = true
+                    false
+                },
             contentPadding = PaddingValues(bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(RowGap)
         ) {

@@ -23,6 +23,14 @@ object DisneyPlusIds {
     const val CO_LUCASFILM = "1"
     const val CO_MARVEL_STUDIOS = "420"
     const val CO_MARVEL_ANIMATION = "13252"
+    /**
+     * Every Marvel film on TMDB, not only Marvel Studios': Marvel Entertainment (Logan, Deadpool,
+     * Spider-Verse...), Marvel Enterprises (X-Men, Spider-Man 2002, Daredevil...), Marvel Knights,
+     * Marvel Films and Marvel Entertainment Group (verified on TMDB).
+     */
+    const val CO_ALL_MARVEL_MOVIES = "420|7505|19551|11106|108634|160251"
+    /** Every Marvel series: Marvel Studios, Marvel Television (Daredevil, Agents of S.H.I.E.L.D...), Marvel Animation, Marvel Entertainment. */
+    const val CO_ALL_MARVEL_TV = "420|38679|13252|7505"
     const val CO_WALT_DISNEY_ANIMATION = "6125"
     const val CO_NATIONAL_GEOGRAPHIC = "7521|189457"
 
@@ -1920,7 +1928,7 @@ object DisneyPlusCatalog {
                     company(TV, DisneyPlusIds.CO_MARVEL_STUDIOS),
                     company(TV, DisneyPlusIds.CO_MARVEL_ANIMATION)
                 )
-            ),
+            ).withSeeAll(company(MOVIE, DisneyPlusIds.CO_ALL_MARVEL_MOVIES), company(TV, DisneyPlusIds.CO_ALL_MARVEL_TV)),
             DisneyRowSpec(
                 "star_wars", R.string.disney_brand_star_wars,
                 listOf(curated(STAR_WARS_FEATURED), curated(STAR_WARS_MOVIES), curated(STAR_WARS_ANIMATED))
@@ -2128,7 +2136,7 @@ object DisneyPlusCatalog {
         hub = DisneyPlusHub.MARVEL,
         heroRowId = "mv_featured",
         rows = listOf(
-            DisneyRowSpec("mv_featured", R.string.disney_row_featured, listOf(curated(MARVEL_PAGE_FEATURED))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_MARVEL_STUDIOS, sortBy = MOST_VOTED), company(TV, DisneyPlusIds.CO_MARVEL_STUDIOS), DisneyRowSource.Discover(TV, companyQuery = "Marvel Television")),
+            DisneyRowSpec("mv_featured", R.string.disney_row_featured, listOf(curated(MARVEL_PAGE_FEATURED))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_ALL_MARVEL_MOVIES, sortBy = MOST_VOTED), company(TV, DisneyPlusIds.CO_ALL_MARVEL_TV)),
             DisneyRowSpec("mv_countdown", R.string.marvel_row_avengers_countdown, listOf(curated(AVENGERS_COUNTDOWN))).withSeeAll(*keywordCatalog(MCU)),
             DisneyRowSpec("mv_infinity_saga", R.string.marvel_row_infinity_saga, listOf(curated(MCU_INFINITY_SAGA))).withSeeAll(*keywordCatalog(MCU)),
             DisneyRowSpec("mv_multiverse_saga", R.string.marvel_row_multiverse_saga, listOf(curated(MCU_MULTIVERSE_SAGA))).withSeeAll(*keywordCatalog(MCU)),
@@ -2142,7 +2150,7 @@ object DisneyPlusCatalog {
             DisneyRowSpec("mv_defenders", R.string.marvel_row_defenders, listOf(curated(THE_DEFENDERS))).withSeeAll(*studioCatalog("Marvel Television"), *keywordCatalog(MCU)),
             DisneyRowSpec("mv_complete_timeline", R.string.marvel_row_complete_timeline, listOf(curated(MCU_COMPLETE_TIMELINE))).withSeeAll(*keywordCatalog(MCU)),
             DisneyRowSpec("mv_sam_wilson", R.string.marvel_row_sam_wilson, listOf(curated(SAM_WILSON))).withSeeAll(franchise("Captain America"), *keywordCatalog(MCU)),
-            DisneyRowSpec("mv_rivals", R.string.marvel_row_rivals_characters, listOf(curated(MARVEL_RIVALS_CHARACTERS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_MARVEL_STUDIOS, sortBy = MOST_VOTED), company(TV, "${DisneyPlusIds.CO_MARVEL_STUDIOS}|${DisneyPlusIds.CO_MARVEL_ANIMATION}", sortBy = MOST_VOTED)),
+            DisneyRowSpec("mv_rivals", R.string.marvel_row_rivals_characters, listOf(curated(MARVEL_RIVALS_CHARACTERS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_ALL_MARVEL_MOVIES, sortBy = MOST_VOTED), company(TV, DisneyPlusIds.CO_ALL_MARVEL_TV, sortBy = MOST_VOTED)),
             DisneyRowSpec(
                 "mv_character_collections", R.string.marvel_row_character_collections,
                 kind = DisneyRowKind.COLLECTIONS,
