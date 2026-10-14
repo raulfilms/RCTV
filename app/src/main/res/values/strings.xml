@@ -2379,6 +2379,7 @@
     <string name="discover_category_popular">Popular</string>
     <string name="discover_category_trending">Trending</string>
     <string name="discover_category_new">New</string>
+    <string name="discover_category_all">All</string>
     <string name="discover_genre_all">All Genres</string>
     <string name="discover_year_all">All Years</string>
     <string name="discover_empty_filters_subtitle">Try a different genre or year</string>

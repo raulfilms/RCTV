@@ -21,8 +21,11 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** The Discover page's "Category" menu. */
-enum class DiscoverCategory { POPULAR, TRENDING, NEW }
+/**
+ * The Discover page's "Category" menu. [ALL] is every title TMDB has, with nothing left out (no
+ * minimum votes, no date limit): the best-known titles of all time first, then everything else.
+ */
+enum class DiscoverCategory { POPULAR, TRENDING, NEW, ALL }
 
 /** The Discover page's "Type" menu. */
 enum class DiscoverMediaFilter { ALL, MOVIES, SHOWS }
@@ -115,14 +118,19 @@ class TmdbDiscoverRepository @Inject constructor(
                 language = language,
                 page = page
             )
-            DiscoverCategory.POPULAR, DiscoverCategory.NEW -> {
+            DiscoverCategory.POPULAR, DiscoverCategory.NEW, DiscoverCategory.ALL -> {
                 val isNew = category == DiscoverCategory.NEW
+                val isAll = category == DiscoverCategory.ALL
                 if (isTv) {
                     tmdbApi.discoverTv(
                         apiKey = apiKey,
                         language = language,
                         page = page,
-                        sortBy = if (isNew) "first_air_date.desc" else "popularity.desc",
+                        sortBy = when {
+                            isNew -> "first_air_date.desc"
+                            isAll -> "vote_count.desc"
+                            else -> "popularity.desc"
+                        },
                         withGenres = genreId?.toString(),
                         firstAirDateYear = year,
                         firstAirDateLte = if (isNew) today else null,
@@ -134,7 +142,11 @@ class TmdbDiscoverRepository @Inject constructor(
                         apiKey = apiKey,
                         language = language,
                         page = page,
-                        sortBy = if (isNew) "primary_release_date.desc" else "popularity.desc",
+                        sortBy = when {
+                            isNew -> "primary_release_date.desc"
+                            isAll -> "vote_count.desc"
+                            else -> "popularity.desc"
+                        },
                         withGenres = genreId?.toString(),
                         year = year,
                         releaseDateLte = if (isNew) today else null,

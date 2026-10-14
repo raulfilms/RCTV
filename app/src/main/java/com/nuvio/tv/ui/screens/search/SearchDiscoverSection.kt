@@ -333,7 +333,9 @@ internal fun TmdbDiscoverSection(
     val categoryOptions = listOf(
         DiscoverOption(stringResource(R.string.discover_category_popular), com.nuvio.tv.data.discover.DiscoverCategory.POPULAR.name),
         DiscoverOption(stringResource(R.string.discover_category_trending), com.nuvio.tv.data.discover.DiscoverCategory.TRENDING.name),
-        DiscoverOption(stringResource(R.string.discover_category_new), com.nuvio.tv.data.discover.DiscoverCategory.NEW.name)
+        DiscoverOption(stringResource(R.string.discover_category_new), com.nuvio.tv.data.discover.DiscoverCategory.NEW.name),
+        // Every title TMDB has.
+        DiscoverOption(stringResource(R.string.discover_category_all), com.nuvio.tv.data.discover.DiscoverCategory.ALL.name)
     )
     val allGenres = stringResource(R.string.discover_genre_all)
     val genreOptions = buildList {
