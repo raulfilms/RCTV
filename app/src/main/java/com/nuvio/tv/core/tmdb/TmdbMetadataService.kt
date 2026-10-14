@@ -1143,7 +1143,9 @@ class TmdbMetadataService(
         val voteCountFloor = if (railType == TmdbEntityRailType.TOP_RATED) TOP_RATED_VOTE_COUNT_FLOOR else null
         val isProvider = entityKind == TmdbEntityKind.PROVIDER
         val providerRegion = if (isProvider) STREAMING_PROVIDER_REGION else null
-        val providerIds = if (isProvider) entityId.toString() else null
+        // A service under all its TMDB names (its ad tier, its Amazon / Apple channels), so its
+        // page has everything the service has.
+        val providerIds = if (isProvider) (PROVIDER_GROUPS[entityId] ?: entityId.toString()) else null
         val providerMonetization = if (isProvider) "flatrate" else null
         val railLte = when (mediaType) {
             TmdbEntityMediaType.MOVIE -> if (railType == TmdbEntityRailType.RECENT) today else null
@@ -1417,6 +1419,28 @@ class TmdbMetadataService(
             "es" to "ES"
         )
         private const val ENTITY_RAIL_MAX_ITEMS = 20
+
+        /**
+         * A streaming service's TMDB watch providers (US), all of them: Netflix with its ad tier and
+         * Kids, Prime Video with its ad tier and free tier, Apple TV+ with its Amazon channel... (verified
+         * on TMDB). Services not listed use their own id only.
+         */
+        private val PROVIDER_GROUPS: Map<Int, String> = mapOf(
+            8 to "8|1796|175",
+            9 to "9|119|2100|613",
+            119 to "9|119|2100|613",
+            350 to "350|2243",
+            99 to "99|204|2049",
+            1899 to "1899|384|1825",
+            384 to "1899|384|1825",
+            337 to "337",
+            531 to "531|2303|2616|582|1853|633",
+            2303 to "531|2303|2616|582|1853|633",
+            386 to "386|387|2553",
+            387 to "386|387|2553",
+            520 to "520|584",
+            283 to "283|1968"
+        )
         /** TMDB's discover stops at page 500. */
         private const val TMDB_DISCOVER_MAX_PAGE = 500
         private const val TOP_RATED_VOTE_COUNT_FLOOR = 200

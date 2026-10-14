@@ -645,7 +645,8 @@ class DisneyPlusRepository @Inject constructor(
             listOfNotNull(source.companies, resolved.toString()).joinToString("|")
         } ?: source.companies
         val networks = source.networkLookup?.let { lookup ->
-            val resolved = networkId(lookup, language) ?: return null
+            // Verified TMDB ids when known; else found through one of the network's shows.
+            val resolved = lookup.knownIds ?: networkId(lookup, language)?.toString() ?: return null
             listOfNotNull(source.networks, resolved.toString()).joinToString("|")
         } ?: source.networks
         val today = LocalDate.now().toString()
