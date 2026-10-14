@@ -27,7 +27,8 @@ class ProfileManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
-        const val MAX_PROFILES = 6
+        /** RCTV allows up to 8 profiles per account (Nuvio allowed 6). */
+        const val MAX_PROFILES = 8
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1016,8 +1017,30 @@ private fun ProfileGrid(
             } else {
                 ProfileSelectionSpacing.GridItemGap
             }
+            // Up to 8 profiles: when even the small cards are wider than the screen (7 or more),
+            // the whole row is shrunk to fit, so every profile stays on screen in one line.
+            val compactGridWidth = profileGridWidth(
+                itemCount = totalItems,
+                cardWidth = ProfileSelectionSpacing.CompactCardWidth,
+                itemGap = ProfileSelectionSpacing.CompactGridItemGap
+            )
+            val fitScale = if (useCompactCards && compactGridWidth > maxWidth && compactGridWidth.value > 0f) {
+                (maxWidth.value / compactGridWidth.value).coerceIn(0.5f, 1f)
+            } else {
+                1f
+            }
 
             Row(
+                modifier = if (fitScale < 1f) {
+                    Modifier
+                        .graphicsLayer {
+                            scaleX = fitScale
+                            scaleY = fitScale
+                        }
+                        .wrapContentWidth(unbounded = true)
+                } else {
+                    Modifier
+                },
                 horizontalArrangement = Arrangement.spacedBy(gridItemGap),
                 verticalAlignment = Alignment.Top
             ) {
