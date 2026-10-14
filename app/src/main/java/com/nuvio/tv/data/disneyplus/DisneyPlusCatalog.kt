@@ -19,8 +19,10 @@ object DisneyPlusIds {
 
     // Production companies
     const val CO_WALT_DISNEY_PICTURES = "2"
-    const val CO_PIXAR = "3"
-    const val CO_LUCASFILM = "1"
+    /** Pixar and Pixar Canada (its shorts studio). */
+    const val CO_PIXAR = "3|219390"
+    /** Lucasfilm, Lucasfilm Animation (The Clone Wars, Rebels...) and Lucasfilm Kids. */
+    const val CO_LUCASFILM = "1|108270|71126"
     const val CO_MARVEL_STUDIOS = "420"
     const val CO_MARVEL_ANIMATION = "13252"
     /**
@@ -32,19 +34,35 @@ object DisneyPlusIds {
     /** Every Marvel series: Marvel Studios, Marvel Television (Daredevil, Agents of S.H.I.E.L.D...), Marvel Animation, Marvel Entertainment. */
     const val CO_ALL_MARVEL_TV = "420|38679|13252|7505"
     const val CO_WALT_DISNEY_ANIMATION = "6125"
-    const val CO_NATIONAL_GEOGRAPHIC = "7521|189457"
+    /**
+     * TMDB only credits "Walt Disney Animation Studios" (6125) from 2006 on. The studio's earlier
+     * films are under its older names: Walt Disney Feature Animation (171656, the 1990s-2005) and
+     * Walt Disney Productions (3166, Snow White to the 1980s, which also made live action), and a few
+     * only under Walt Disney Pictures (2: Beauty and the Beast, Lilo & Stitch, Treasure Planet...).
+     * Verified on TMDB.
+     */
+    const val CO_WALT_DISNEY_FEATURE_ANIMATION = "171656"
+    const val CO_WALT_DISNEY_PRODUCTIONS = "3166"
+    /** National Geographic under every name TMDB has (films, documentary films, kids, Nat Geo Wild...). */
+    const val CO_NATIONAL_GEOGRAPHIC = "7521|189457|114038|171426|234219|123388|177898"
 
     // TV networks
     const val NET_DISNEY_PLUS = "2739"
     const val NET_HULU = "453"
-    const val NET_FX = "88"
+    /** FX and FXX. FX's shows streaming as "FX on Hulu" (The Bear, Shogun) come from [CO_FX_PRODUCTIONS]. */
+    const val NET_FX = "88|1035"
+    const val CO_FX_PRODUCTIONS = "15990"
     const val NET_ABC = "2"
-    const val NET_FREEFORM = "1267"
+    /** Freeform and ABC Family (its name until 2016). */
+    const val NET_FREEFORM = "1267|75"
     const val NET_NAT_GEO = "43"
     const val NET_DISNEY_CHANNEL = "54"
-    const val NET_DISNEY_JUNIOR = "281"
-    const val NET_DISNEY_XD = "44"
-    const val NET_ESPN = "29"
+    /** Disney Junior and Playhouse Disney (its name until 2011). */
+    const val NET_DISNEY_JUNIOR = "281|2991"
+    /** Disney XD and Toon Disney (before 2009). */
+    const val NET_DISNEY_XD = "44|142"
+    /** ESPN and ESPN+. */
+    const val NET_ESPN = "29|4132"
 
     // TMDB genre ids
     const val G_ACTION = "28"
@@ -67,10 +85,13 @@ object DisneyPlusIds {
     )
 
     /** Company ids owned by The Walt Disney Company, used to decide what counts as "Disney" content. */
-    val DISNEY_COMPANY_IDS: Set<Int> = setOf(2, 3, 1, 420, 13252, 6125, 7521, 189457, 3475)
+    val DISNEY_COMPANY_IDS: Set<Int> = setOf(
+        2, 3, 1, 420, 13252, 6125, 171656, 3166, 7521, 189457, 114038, 171426, 234219, 123388, 177898, 3475,
+        7505, 19551, 11106, 108634, 160251, 38679
+    )
 
     /** Network ids owned by The Walt Disney Company. */
-    val DISNEY_NETWORK_IDS: Set<Int> = setOf(2739, 453, 88, 2, 1267, 43, 54, 281, 44, 29)
+    val DISNEY_NETWORK_IDS: Set<Int> = setOf(2739, 453, 88, 1035, 2, 1267, 75, 43, 54, 281, 2991, 44, 142, 29, 4132)
 
     /**
      * Name fragments for Disney-owned studios/labels that aren't in the id sets above (20th Century,
@@ -97,17 +118,24 @@ object DisneyPlusIds {
  */
 object ParamountPlusIds {
     /** Paramount Plus / Paramount Plus Premium (US), the same ids Home's Paramount+ tile uses. */
-    const val PROVIDERS = "531|2303"
+    const val PROVIDERS = "531|2303|2616"
 
-    const val CO_PARAMOUNT_PICTURES = "4"
+    /**
+     * Paramount's films under every label TMDB has: Paramount Pictures, Paramount Animation,
+     * Paramount Players, Paramount Vantage and Paramount Classics.
+     */
+    const val CO_PARAMOUNT_PICTURES = "4|24955|96540|838|220287"
 
-    const val NET_PARAMOUNT_PLUS = "4330"
+    /** Paramount+ and CBS All Access (its name until 2021: Star Trek: Discovery, Picard...). */
+    const val NET_PARAMOUNT_PLUS = "4330|1709"
     const val NET_CBS = "16"
     const val NET_BET = "24"
     const val NET_COMEDY_CENTRAL = "47"
     const val NET_MTV = "33"
-    const val NET_NICKELODEON = "13"
-    const val NET_SHOWTIME = "67"
+    /** Nickelodeon and its channels: Nick Jr., Nicktoons, TeenNick, Nick at Nite. */
+    const val NET_NICKELODEON = "13|35|224|234|286"
+    /** Showtime and Paramount+ with Showtime (Dexter: Original Sin...). */
+    const val NET_SHOWTIME = "67|6631"
 
     val SMITHSONIAN_CHANNEL = NetworkLookup(
         names = listOf("Smithsonian Channel"),
@@ -134,9 +162,9 @@ object ParamountPlusIds {
     const val G_TV_TALK = "10767"
 
     /** Paramount Global companies, used to decide what counts as Paramount content. */
-    val COMPANY_IDS: Set<Int> = setOf(4)
+    val COMPANY_IDS: Set<Int> = setOf(4, 24955, 96540, 838, 220287)
 
-    val NETWORK_IDS: Set<Int> = setOf(4330, 16, 24, 47, 33, 13, 67)
+    val NETWORK_IDS: Set<Int> = setOf(4330, 1709, 16, 24, 47, 33, 13, 35, 224, 234, 286, 67, 6631)
 
     val COMPANY_NAME_FRAGMENTS: List<String> = listOf(
         "paramount", "cbs", "nickelodeon", "mtv", "comedy central", "bet films", "bet networks",
@@ -225,7 +253,8 @@ object HboMaxIds {
 
     const val NET_HBO = "49"
     const val NET_HBO_MAX = "3186"
-    const val NET_CARTOON_NETWORK = "56"
+    /** Cartoon Network and Boomerang (Adult Swim has its own page). */
+    const val NET_CARTOON_NETWORK = "56|523"
 
     val ADULT_SWIM = NetworkLookup(
         names = listOf("Adult Swim"),
@@ -264,7 +293,7 @@ object HboMaxIds {
     /** Warner Bros. / HBO companies and networks, used to decide what counts as HBO Max content. */
     val COMPANY_IDS: Set<Int> = emptySet()
 
-    val NETWORK_IDS: Set<Int> = setOf(49, 3186, 56)
+    val NETWORK_IDS: Set<Int> = setOf(49, 3186, 56, 523)
 
     val COMPANY_NAME_FRAGMENTS: List<String> = listOf(
         "warner bros", "hbo", "dc comics", "dc entertainment", "dc studios", "new line cinema", "castle rock",
@@ -290,7 +319,8 @@ object PeacockIds {
     const val NET_PEACOCK = "3353"
     const val NET_NBC = "6"
 
-    const val CO_UNIVERSAL = "33"
+    /** Universal Pictures and Universal-International (its name 1946-1963: the 1950s monsters...). */
+    const val CO_UNIVERSAL = "33|10330"
     const val CO_ILLUMINATION = "6704"
     const val CO_DREAMWORKS_ANIMATION = "521"
     const val CO_FOCUS_FEATURES = "10146"
@@ -324,7 +354,7 @@ object PeacockIds {
     const val G_TV_TALK = "10767"
 
     /** NBCUniversal companies and networks, used to decide what counts as Peacock content. */
-    val COMPANY_IDS: Set<Int> = setOf(33, 6704, 521, 10146, 10163, 56)
+    val COMPANY_IDS: Set<Int> = setOf(33, 10330, 6704, 521, 10146, 10163, 56)
 
     val NETWORK_IDS: Set<Int> = setOf(3353, 6)
 
@@ -637,7 +667,9 @@ sealed interface DisneyRowSource {
         val runtimeGte: Int? = null,
         val runtimeLte: Int? = null,
         /** Original language (ISO 639-1, e.g. "es"): only titles first made in that language. */
-        val originalLanguage: String? = null
+        val originalLanguage: String? = null,
+        /** Leave out titles from these companies (e.g. Pixar from Disney's animation catalog). */
+        val withoutCompanies: String? = null
     ) : DisneyRowSource
 
     data class Curated(val titles: List<CuratedTitle>) : DisneyRowSource
@@ -723,6 +755,77 @@ object DisneyPlusCatalog {
         movie("One Hundred and One Dalmatians", 1961),
         movie("Dumbo", 1941),
         movie("Fantasia", 1940)
+    )
+
+    /**
+     * Walt Disney Animation Studios' films, all of them, in release order (the studio's own list, as
+     * of Zootopia 2). Years are the US release years.
+     */
+    private val WDAS_CANON = listOf(
+        movie("Snow White and the Seven Dwarfs", 1937),
+        movie("Pinocchio", 1940),
+        movie("Fantasia", 1940),
+        movie("Dumbo", 1941),
+        movie("Bambi", 1942),
+        movie("Saludos Amigos", 1942),
+        movie("The Three Caballeros", 1944),
+        movie("Make Mine Music", 1946),
+        movie("Fun and Fancy Free", 1947),
+        movie("Melody Time", 1948),
+        movie("The Adventures of Ichabod and Mr. Toad", 1949),
+        movie("Cinderella", 1950),
+        movie("Alice in Wonderland", 1951),
+        movie("Peter Pan", 1953),
+        movie("Lady and the Tramp", 1955),
+        movie("Sleeping Beauty", 1959),
+        movie("One Hundred and One Dalmatians", 1961),
+        movie("The Sword in the Stone", 1963),
+        movie("The Jungle Book", 1967),
+        movie("The Aristocats", 1970),
+        movie("Robin Hood", 1973),
+        movie("The Many Adventures of Winnie the Pooh", 1977),
+        movie("The Rescuers", 1977),
+        movie("The Fox and the Hound", 1981),
+        movie("The Black Cauldron", 1985),
+        movie("The Great Mouse Detective", 1986),
+        movie("Oliver & Company", 1988),
+        movie("The Little Mermaid", 1989),
+        movie("The Rescuers Down Under", 1990),
+        movie("Beauty and the Beast", 1991),
+        movie("Aladdin", 1992),
+        movie("The Lion King", 1994),
+        movie("Pocahontas", 1995),
+        movie("The Hunchback of Notre Dame", 1996),
+        movie("Hercules", 1997),
+        movie("Mulan", 1998),
+        movie("Tarzan", 1999),
+        movie("Fantasia 2000", 2000),
+        movie("Dinosaur", 2000),
+        movie("The Emperor's New Groove", 2000),
+        movie("Atlantis: The Lost Empire", 2001),
+        movie("Lilo & Stitch", 2002),
+        movie("Treasure Planet", 2002),
+        movie("Brother Bear", 2003),
+        movie("Home on the Range", 2004),
+        movie("Chicken Little", 2005),
+        movie("Meet the Robinsons", 2007),
+        movie("Bolt", 2008),
+        movie("The Princess and the Frog", 2009),
+        movie("Tangled", 2010),
+        movie("Winnie the Pooh", 2011),
+        movie("Wreck-It Ralph", 2012),
+        movie("Frozen", 2013),
+        movie("Big Hero 6", 2014),
+        movie("Zootopia", 2016),
+        movie("Moana", 2016),
+        movie("Ralph Breaks the Internet", 2018),
+        movie("Frozen II", 2019),
+        movie("Raya and the Last Dragon", 2021),
+        movie("Encanto", 2021),
+        movie("Strange World", 2022),
+        movie("Wish", 2023),
+        movie("Moana 2", 2024),
+        movie("Zootopia 2", 2025)
     )
 
     private val PRINCESSES = listOf(
@@ -1792,7 +1895,8 @@ object DisneyPlusCatalog {
         genres: String? = null,
         withoutGenres: String? = null,
         releaseDateLte: String? = null,
-        releaseDateGte: String? = null
+        releaseDateGte: String? = null,
+        withoutCompanies: String? = null
     ) = DisneyRowSource.Discover(
         mediaType = mediaType,
         sortBy = sortBy,
@@ -1803,15 +1907,45 @@ object DisneyPlusCatalog {
         genres = genres,
         withoutGenres = withoutGenres,
         releaseDateLte = releaseDateLte,
-        releaseDateGte = releaseDateGte
+        releaseDateGte = releaseDateGte,
+        withoutCompanies = withoutCompanies
     )
 
     private fun curated(titles: List<CuratedTitle>) = DisneyRowSource.Curated(titles)
 
     // ------------------------------------------------------------------ complete catalogs (See All)
 
-    /** Walt Disney Pictures + Walt Disney Animation Studios. */
-    private const val DISNEY_FILM_STUDIOS = "2|6125"
+    /**
+     * Walt Disney Pictures and Walt Disney Animation Studios under every name TMDB has: Walt Disney
+     * Productions (the classics, 1930s-80s) and Walt Disney Feature Animation (1990s-2005) too.
+     */
+    private const val DISNEY_FILM_STUDIOS = "2|3166|6125|171656"
+
+    /**
+     * Every Walt Disney Animation feature, from Snow White on: the studio under all its names, plus
+     * the animated films credited only to Walt Disney Pictures or Walt Disney Productions (not Pixar's).
+     * Two queries, since TMDB can't ask "these companies, or those companies in Animation" at once.
+     */
+    private fun disneyAnimation(
+        sortBy: String = MOST_VOTED,
+        runtimeGte: Int? = 40,
+        runtimeLte: Int? = null,
+        voteCountGte: Int? = null,
+        releaseDateLte: String? = null,
+        releaseDateGte: String? = null
+    ) = arrayOf(
+        company(
+            MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}|${DisneyPlusIds.CO_WALT_DISNEY_FEATURE_ANIMATION}",
+            sortBy = sortBy, runtimeGte = runtimeGte, runtimeLte = runtimeLte, voteCountGte = voteCountGte,
+            releaseDateLte = releaseDateLte, releaseDateGte = releaseDateGte
+        ),
+        company(
+            MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PRODUCTIONS}|${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}",
+            sortBy = sortBy, runtimeGte = runtimeGte, runtimeLte = runtimeLte, voteCountGte = voteCountGte,
+            genres = DisneyPlusIds.G_ANIMATION, withoutCompanies = DisneyPlusIds.CO_PIXAR,
+            releaseDateLte = releaseDateLte, releaseDateGte = releaseDateGte
+        )
+    )
 
     /** Every movie and series TMDB tags with [keyword] (optionally only from [companies] / in [genres]). */
     private fun keywordCatalog(keyword: String, companies: String? = null, genres: String? = null) = arrayOf(
@@ -1838,16 +1972,16 @@ object DisneyPlusCatalog {
     )
 
     private const val MCU = "marvel cinematic universe (mcu)"
-    private const val DISNEY_AND_PIXAR = "2|6125|3"
+    private const val DISNEY_AND_PIXAR = "2|3166|6125|171656|3"
 
     // ---- Rows reused across pages ----
 
-    private val rowClassics = DisneyRowSpec("classics", R.string.disney_row_classics, listOf(curated(CLASSICS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = MOST_VOTED, runtimeGte = 40))
+    private val rowClassics = DisneyRowSpec("classics", R.string.disney_row_classics, listOf(curated(CLASSICS))).withSeeAll(*disneyAnimation(sortBy = MOST_VOTED))
     private val rowPrincess = DisneyRowSpec("princess", R.string.disney_row_princess, listOf(curated(PRINCESSES))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DISNEY_FILM_STUDIOS, keywordQuery = "princess"))
     private val rowVillains = DisneyRowSpec("villains", R.string.disney_row_villains, listOf(curated(VILLAINS))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = "$DISNEY_FILM_STUDIOS|${DisneyPlusIds.CO_PIXAR}", keywordQuery = "villain"))
     private val rowDisneyAnimation = DisneyRowSpec(
         "disney_animation", R.string.disney_row_disney_animation,
-        listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = MOST_VOTED, runtimeGte = 60))
+        disneyAnimation(sortBy = MOST_VOTED, runtimeGte = 60).toList()
     )
     private val rowOriginals = DisneyRowSpec(
         "originals", R.string.disney_row_originals,
@@ -1867,7 +2001,9 @@ object DisneyPlusCatalog {
     private val rowShorts = DisneyRowSpec(
         "shorts", R.string.disney_row_shorts,
         listOf(
-            company(MOVIE, "${DisneyPlusIds.CO_PIXAR}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}", runtimeLte = 30, voteCountGte = 20),
+            company(MOVIE, "${DisneyPlusIds.CO_PIXAR}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}|${DisneyPlusIds.CO_WALT_DISNEY_FEATURE_ANIMATION}", runtimeLte = 30, voteCountGte = 20),
+            // The classic shorts (Mickey, Donald, Goofy, Silly Symphonies...).
+            company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_PRODUCTIONS, genres = DisneyPlusIds.G_ANIMATION, runtimeLte = 30, voteCountGte = 20),
             company(MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_MARVEL_STUDIOS}|${DisneyPlusIds.CO_LUCASFILM}", runtimeLte = 30, voteCountGte = 10)
         )
     )
@@ -2001,7 +2137,7 @@ object DisneyPlusCatalog {
                 "d_featured", R.string.disney_row_featured,
                 listOf(
                     curated(DISNEY_FEATURED),
-                    company(MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}", voteCountGte = 300)
+                    company(MOVIE, DISNEY_FILM_STUDIOS, voteCountGte = 300)
                 )
             ),
             DisneyRowSpec(
@@ -2020,7 +2156,7 @@ object DisneyPlusCatalog {
                 "d_throwbacks", R.string.disney_row_throwbacks,
                 listOf(
                     company(
-                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        MOVIE, DISNEY_FILM_STUDIOS,
                         sortBy = MOST_VOTED, releaseDateGte = "1985-01-01", releaseDateLte = "2009-12-31"
                     ),
                     DisneyRowSource.Discover(
@@ -2033,11 +2169,12 @@ object DisneyPlusCatalog {
             DisneyRowSpec("d_princesses", R.string.disney_row_princesses, listOf(curated(PRINCESSES))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DISNEY_FILM_STUDIOS, keywordQuery = "princess")),
             DisneyRowSpec(
                 "d_wdas", R.string.disney_row_wdas,
-                listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = RECENT, runtimeGte = 60, releaseDateLte = TODAY))
+                disneyAnimation(sortBy = RECENT, runtimeGte = 60, releaseDateLte = TODAY).toList()
             ),
             DisneyRowSpec(
                 "d_live_action", R.string.disney_row_live_action_movies,
-                listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_PICTURES, withoutGenres = DisneyPlusIds.G_ANIMATION, voteCountGte = 200))
+                // Walt Disney Productions too: the classics (Mary Poppins, The Parent Trap, Old Yeller...).
+                listOf(company(MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_PRODUCTIONS}", withoutGenres = DisneyPlusIds.G_ANIMATION, voteCountGte = 200))
             ),
             DisneyRowSpec("d_lilo_stitch", R.string.disney_row_lilo_stitch, listOf(curated(LILO_AND_STITCH))).withSeeAll(franchise("Lilo & Stitch (Animated)"), franchise("Lilo & Stitch (Live-Action)")),
             DisneyRowSpec("d_villains", R.string.disney_row_villains, listOf(curated(DISNEY_VILLAINS))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = "$DISNEY_FILM_STUDIOS|${DisneyPlusIds.CO_PIXAR}", keywordQuery = "villain")),
@@ -2048,7 +2185,7 @@ object DisneyPlusCatalog {
                 "d_vintage", R.string.disney_row_vintage,
                 listOf(
                     company(
-                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        MOVIE, DISNEY_FILM_STUDIOS,
                         sortBy = MOST_VOTED, releaseDateLte = "1979-12-31"
                     )
                 )
@@ -2069,7 +2206,7 @@ object DisneyPlusCatalog {
                 "d_90s", R.string.disney_row_made_in_90s,
                 listOf(
                     company(
-                        MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_PICTURES}|${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}",
+                        MOVIE, DISNEY_FILM_STUDIOS,
                         sortBy = MOST_VOTED, releaseDateGte = "1990-01-01", releaseDateLte = "1999-12-31"
                     ),
                     DisneyRowSource.Discover(
@@ -2298,7 +2435,7 @@ object DisneyPlusCatalog {
                 "hulu_movies", R.string.disney_row_hulu_movies,
                 listOf(DisneyRowSource.Discover(MOVIE, providers = DisneyPlusIds.PROVIDER_HULU, voteCountGte = 100))
             ),
-            DisneyRowSpec("fx", R.string.disney_row_fx, listOf(tvNetwork(DisneyPlusIds.NET_FX))),
+            DisneyRowSpec("fx", R.string.disney_row_fx, listOf(tvNetwork(DisneyPlusIds.NET_FX), company(TV, DisneyPlusIds.CO_FX_PRODUCTIONS))),
             DisneyRowSpec("abc", R.string.disney_row_abc, listOf(tvNetwork(DisneyPlusIds.NET_ABC))),
             DisneyRowSpec("freeform", R.string.disney_row_freeform, listOf(tvNetwork(DisneyPlusIds.NET_FREEFORM)))
         )
@@ -2328,21 +2465,27 @@ object DisneyPlusCatalog {
         )
     )
 
-    private val wdas = "${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}"
 
     private val colWdas = DisneyHubSpec(
         hub = DisneyPlusHub.COL_WDAS,
         heroRowId = "wdas_featured",
         rows = listOf(
-            DisneyRowSpec("wdas_featured", R.string.disney_row_featured, listOf(curated(WDAS_FEATURED))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = MOST_VOTED)),
-            DisneyRowSpec(
-                "wdas_all", R.string.disney_row_all_films_release_order,
-                listOf(company(MOVIE, wdas, sortBy = RELEASE_ORDER, runtimeGte = 60, voteCountGte = 50, releaseDateLte = TODAY))
-            ),
-            DisneyRowSpec("wdas_popular", R.string.disney_row_popular, listOf(company(MOVIE, wdas, runtimeGte = 60, voteCountGte = 200))),
-            DisneyRowSpec("wdas_classics", R.string.disney_row_classics, listOf(curated(CLASSICS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = MOST_VOTED, runtimeGte = 40)),
+            DisneyRowSpec("wdas_featured", R.string.disney_row_featured, listOf(curated(WDAS_FEATURED))).withSeeAll(*disneyAnimation(sortBy = MOST_VOTED)),
+            // Every Walt Disney Animation Studios film in release order (all 64, Snow White to
+            // Zootopia 2); See All then adds every other Disney animated feature on TMDB.
+            DisneyRowSpec("wdas_all", R.string.disney_row_all_films_release_order, listOf(curated(WDAS_CANON)))
+                .withSeeAll(*disneyAnimation(sortBy = RELEASE_ORDER, releaseDateLte = TODAY)),
+            DisneyRowSpec("wdas_popular", R.string.disney_row_popular, disneyAnimation(sortBy = POPULAR, runtimeGte = 60, voteCountGte = 200).toList()),
+            DisneyRowSpec("wdas_classics", R.string.disney_row_classics, listOf(curated(CLASSICS))).withSeeAll(*disneyAnimation(sortBy = MOST_VOTED)),
             DisneyRowSpec("wdas_princesses", R.string.disney_row_princesses, listOf(curated(PRINCESSES))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DISNEY_FILM_STUDIOS, keywordQuery = "princess")),
-            DisneyRowSpec("wdas_shorts", R.string.disney_row_shorts, listOf(company(MOVIE, wdas, runtimeLte = 30, voteCountGte = 10)))
+            DisneyRowSpec(
+                "wdas_shorts", R.string.disney_row_shorts,
+                listOf(
+                    company(MOVIE, "${DisneyPlusIds.CO_WALT_DISNEY_ANIMATION}|${DisneyPlusIds.CO_WALT_DISNEY_FEATURE_ANIMATION}", runtimeLte = 30, voteCountGte = 10),
+                    // The classic shorts (Mickey, Donald, Goofy, Pluto, Silly Symphonies...).
+                    company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_PRODUCTIONS, genres = DisneyPlusIds.G_ANIMATION, runtimeLte = 30, voteCountGte = 10)
+                )
+            )
         )
     )
 

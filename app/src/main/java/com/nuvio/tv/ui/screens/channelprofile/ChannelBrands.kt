@@ -176,8 +176,9 @@ object ChannelBrands {
         brand(
             "disney", "Disney Channel",
             family = listOf("disney( channel)?", "disney (jr|junior).*", "disney xd.*", "disney channel.*"),
-            networks = listOf(54, 281, 44),
-            names = setOf("disneychannel", "disneyjunior", "disneyjr", "disneyxd"),
+            // With their old names: Playhouse Disney (2991) and Toon Disney (142).
+            networks = listOf(54, 281, 44, 2991, 142),
+            names = setOf("disneychannel", "disneyjunior", "disneyjr", "disneyxd", "playhousedisney", "toondisney"),
             companies = listOf("Disney Channel")
         ),
         brand(
@@ -217,7 +218,7 @@ object ChannelBrands {
                 "showtime", "showtime.*", "sho( [0-9]+| 2| x bet)?", "paramount plus with showtime.*",
                 "the movie channel.*", "tmc.*"
             ),
-            networks = listOf(67),
+            networks = listOf(67, 6631),
             names = setOf("showtime", "paramountpluswithshowtime", "themoviechannel")
         ),
         brand(
@@ -296,7 +297,8 @@ object ChannelBrands {
             networks = listOf(43, 1043),
             names = setOf("nationalgeographic", "natgeo", "natgeowild")
         ),
-        brand("freeform", "Freeform", family = listOf("freeform.*"), networks = listOf(1267)),
+        // Freeform and ABC Family, its name until 2016.
+        brand("freeform", "Freeform", family = listOf("freeform.*"), networks = listOf(1267, 75), names = setOf("freeform", "abcfamily")),
         brand(
             "hallmark", "Hallmark Channel",
             family = listOf("hallmark( channel)?", "hallmark.*"),

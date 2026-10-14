@@ -611,7 +611,8 @@ class DisneyPlusRepository @Inject constructor(
                 withoutGenres = source.withoutGenres,
                 withRuntimeGte = source.runtimeGte,
                 withRuntimeLte = source.runtimeLte,
-                withOriginalLanguage = source.originalLanguage
+                withOriginalLanguage = source.originalLanguage,
+                withoutCompanies = source.withoutCompanies
             )
             TmdbCollectionMediaType.TV -> tmdbApi.discoverTv(
                 apiKey = apiKey,
@@ -629,7 +630,8 @@ class DisneyPlusRepository @Inject constructor(
                 withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
                 withoutGenres = source.withoutGenres,
-                withOriginalLanguage = source.originalLanguage
+                withOriginalLanguage = source.originalLanguage,
+                withoutCompanies = source.withoutCompanies
             )
         }
         // An error answer (TMDB still busy after retries) is a failure, not "no more titles".
@@ -726,25 +728,52 @@ class DisneyPlusRepository @Inject constructor(
         val key = "${title.mediaType.value}:${title.title.lowercase(Locale.US)}:${title.year}:$language"
         curatedCache[key]?.let { return it.value }
         val preview = lookupLimiter.withPermit {
-            runCatching {
-                val results = when (title.mediaType) {
-                    TmdbCollectionMediaType.MOVIE ->
-                        tmdbApi.searchMovies(apiKey, title.title, language, primaryReleaseYear = title.year).body()
-                    TmdbCollectionMediaType.TV ->
-                        tmdbApi.searchTv(apiKey, title.title, language, firstAirDateYear = title.year).body()
-                }?.results.orEmpty()
-                val wanted = normalizeTitle(title.title)
-                val best = results.firstOrNull { result ->
-                    normalizeTitle(result.originalTitle ?: result.originalName ?: "") == wanted ||
-                        normalizeTitle(result.title ?: result.name ?: "") == wanted
-                } ?: results.firstOrNull()
-                // Genre names too, for the See All page's Genre filter.
-                best?.toPreview(title.mediaType, genreMap(title.mediaType, language))
-            }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+            runCatching { findCurated(title, language) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()
         }
         // Only cache successful lookups, so a transient network error doesn't hide the title for the whole session.
         if (preview != null) curatedCache[key] = Optional(preview)
+        else Log.w(TAG, "Hand-picked title not found on TMDB: ${title.title} (${title.year})")
         return preview
+    }
+
+    /**
+     * A hand-picked title on TMDB, so none is lost: the exact name in its year first. TMDB sometimes
+     * dates a title a year off (Snow White and the Seven Dwarfs is 1938 there, not 1937), so then the
+     * exact name a year either side, then in any year (the closest one). Last, as before, the best
+     * match TMDB gives for the name in that year.
+     */
+    private suspend fun findCurated(curated: CuratedTitle, language: String): MetaPreview? {
+        val wanted = normalizeTitle(curated.title)
+        val isTv = curated.mediaType == TmdbCollectionMediaType.TV
+        suspend fun search(year: Int?): List<TmdbDiscoverResult> {
+            val response = if (isTv) {
+                tmdbApi.searchTv(apiKey, curated.title, language, firstAirDateYear = year)
+            } else {
+                tmdbApi.searchMovies(apiKey, curated.title, language, primaryReleaseYear = year)
+            }
+            if (!response.isSuccessful) throw java.io.IOException("TMDB search HTTP ${response.code()}")
+            return response.body()?.results.orEmpty()
+        }
+        fun TmdbDiscoverResult.isExact(): Boolean =
+            normalizeTitle(originalTitle ?: originalName ?: "") == wanted ||
+                normalizeTitle(title ?: name ?: "") == wanted
+        fun TmdbDiscoverResult.year(): Int? = (if (isTv) firstAirDate else releaseDate)?.take(4)?.toIntOrNull()
+        val genres = genreMap(curated.mediaType, language)
+
+        val inYear = search(curated.year)
+        inYear.firstOrNull { it.isExact() }?.let { return it.toPreview(curated.mediaType, genres) }
+        val year = curated.year
+        if (year != null) {
+            for (near in listOf(year + 1, year - 1)) {
+                search(near).firstOrNull { it.isExact() }?.let { return it.toPreview(curated.mediaType, genres) }
+            }
+            search(null).filter { it.isExact() }
+                .minByOrNull { result -> kotlin.math.abs((result.year() ?: 0) - year) }
+                ?.let { return it.toPreview(curated.mediaType, genres) }
+        }
+        return inYear.firstOrNull()?.toPreview(curated.mediaType, genres)
     }
 
     /** Like [normalizeTitle] but keeps "+", so "discovery+" doesn't match "Discovery". */
@@ -758,6 +787,8 @@ class DisneyPlusRepository @Inject constructor(
         Normalizer.normalize(value, Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
             .lowercase(Locale.US)
+            // "Beauty & the Beast" and "Beauty and the Beast" are the same title.
+            .replace("&", "and")
             .replace(Regex("[^a-z0-9]+"), "")
 
     // ------------------------------------------------------------------ helpers
