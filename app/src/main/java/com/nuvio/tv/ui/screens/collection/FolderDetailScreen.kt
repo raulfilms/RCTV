@@ -302,6 +302,20 @@ private fun TabbedGridContent(
     val hasAnyFolderFilterOptions = folderTypeFilterOptions.isNotEmpty() ||
         genreYearFilter.genreOptions.isNotEmpty() ||
         genreYearFilter.yearOptions.isNotEmpty()
+    // Counts only once every title of the tab is in; part of a catalog would give wrong totals.
+    val tabRow = currentTab?.catalogRow
+    val tabComplete = tabRow != null && !tabRow.hasMore
+    // A filter with few matches keeps loading the tab's catalog so it finds more (a limited number
+    // of pages per pick, so a rare match can't load forever).
+    val folderFilterActive = selectedType != null || selectedGenre != null || selectedYear != null
+    val folderAutoLoads = remember(uiState.selectedTabIndex, selectedType, selectedGenre, selectedYear) { intArrayOf(0) }
+    LaunchedEffect(folderFilterActive, genreYearFilter.filteredItems.size, rawItems.size, tabRow?.isLoading, tabRow?.hasMore) {
+        val row = tabRow ?: return@LaunchedEffect
+        if (!folderFilterActive || genreYearFilter.filteredItems.size >= 24 || !row.hasMore || row.isLoading) return@LaunchedEffect
+        if (folderAutoLoads[0] >= 15) return@LaunchedEffect
+        folderAutoLoads[0]++
+        onLoadMore()
+    }
 
     // Grid Back: focus on grid -> move focus to active tab (grid stays scrolled).
     BackHandler(enabled = gridHasFocus && uiState.tabs.size > 1) {
@@ -408,6 +422,7 @@ private fun TabbedGridContent(
                 folderTypeFilterOptions,
                 genreYearFilter.genreOptions,
                 genreYearFilter.yearOptions,
+                tabComplete,
                 selectedType,
                 selectedGenre,
                 selectedYear,
@@ -429,7 +444,7 @@ private fun TabbedGridContent(
                                         com.nuvio.tv.ui.components.AppleFilterOption(
                                             com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it.label),
                                             it.key,
-                                            it.count
+                                            if (tabComplete) it.count else null
                                         )
                                     }
                             )
@@ -446,7 +461,7 @@ private fun TabbedGridContent(
                                         com.nuvio.tv.ui.components.AppleFilterOption(
                                             com.nuvio.tv.ui.util.localizedGenreLabel(filterContext, it.label),
                                             it.key,
-                                            it.count
+                                            if (tabComplete) it.count else null
                                         )
                                     }
                             )
@@ -460,7 +475,7 @@ private fun TabbedGridContent(
                                 selectedValue = selectedYear,
                                 options = listOf(com.nuvio.tv.ui.components.AppleFilterOption(allLabel, null)) +
                                     genreYearFilter.yearOptions.map {
-                                        com.nuvio.tv.ui.components.AppleFilterOption(it.label, it.key, it.count)
+                                        com.nuvio.tv.ui.components.AppleFilterOption(it.label, it.key, if (tabComplete) it.count else null)
                                     }
                             )
                         )

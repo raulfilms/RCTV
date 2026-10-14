@@ -97,6 +97,10 @@ import kotlin.math.roundToInt
 private fun catalogItemFocusKey(item: MetaPreview): String = "${item.apiType}:${item.id}"
 
 private const val FILTER_SECTION_TYPE = "type"
+/** With a filter on the loaded titles, keep loading pages until this many match... */
+private const val LOCAL_FILTER_TARGET = 24
+/** ...or this many more pages were loaded for that pick. */
+private const val LOCAL_FILTER_MAX_PAGES = 15
 private const val FILTER_SECTION_GENRE = "genre"
 private const val FILTER_SECTION_YEAR = "year"
 
@@ -108,6 +112,7 @@ fun CatalogSeeAllScreen(
     searchViewModel: SearchViewModel? = null,
     viewModel: HomeViewModel = hiltViewModel(),
     posterOptionsViewModel: com.nuvio.tv.ui.components.posteroptions.PosterOptionsViewModel = hiltViewModel(),
+    genreFilterViewModel: CatalogGenreFilterViewModel = hiltViewModel(),
     onNavigateToDetail: (String, String, String) -> Unit,
     onBackPress: () -> Unit
 ) {
@@ -147,17 +152,47 @@ fun CatalogSeeAllScreen(
         }
     }
 
-    // Type/genre/year filtering over whatever items are currently loaded for this catalog.
+    // The addon's own genre (or year) filter, when its manifest lists one for this catalog: the
+    // addon is asked for the filtered catalog, so the filter covers everything it has.
+    LaunchedEffect(catalogKey, isSearchMode) {
+        if (!isSearchMode) genreFilterViewModel.bind(addonId, type, catalogId)
+    }
+    val remoteFilter by genreFilterViewModel.state.collectAsState()
+    val remoteGenres = !isSearchMode && remoteFilter.genres.isNotEmpty()
+    val remoteYears = !isSearchMode && remoteFilter.years.isNotEmpty()
+    val remoteActive = !isSearchMode && remoteFilter.isActive
+    // What the filter works on: the addon's filtered list while one of its genres (years) is
+    // picked, otherwise the catalog as loaded so far.
+    val baseItems = if (remoteActive) remoteFilter.items else catalogRow?.items.orEmpty()
+    val baseLoading = if (remoteActive) remoteFilter.isLoading else catalogRow?.isLoading == true
+    val baseHasMore = if (remoteActive) remoteFilter.hasMore else catalogRow?.hasMore == true
+    // Counts are only shown once every title is in; part of a catalog would give wrong totals.
+    val baseComplete = catalogRow != null && !baseHasMore
+
+    // Type/genre/year filtering over the titles loaded (the addon's own filter is applied by the addon).
     var selectedType by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
     var selectedGenre by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
     var selectedYear by rememberSaveable(catalogKey) { mutableStateOf<String?>(null) }
-    val genreYearFilter = remember(catalogRow?.items, selectedType, selectedGenre, selectedYear) {
+    val genreYearFilter = remember(baseItems, selectedType, selectedGenre, selectedYear, remoteGenres, remoteYears) {
         buildMetaGenreYearFilter(
-            items = catalogRow?.items.orEmpty(),
+            items = baseItems,
             selectedType = selectedType,
-            selectedGenre = selectedGenre,
-            selectedYear = selectedYear
+            selectedGenre = if (remoteGenres) null else selectedGenre,
+            selectedYear = if (remoteYears) null else selectedYear
         )
+    }
+    fun loadMoreBase() {
+        if (remoteActive) {
+            genreFilterViewModel.loadMore()
+            return
+        }
+        val row = catalogRow ?: return
+        if (!row.hasMore || row.isLoading) return
+        if (isSearchMode) {
+            searchViewModel?.onEvent(SearchEvent.LoadMoreCatalog(row.catalogId, row.addonId, row.apiType))
+        } else {
+            viewModel.onEvent(HomeEvent.OnLoadMoreCatalog(row.catalogId, row.addonId, row.apiType))
+        }
     }
     // Only worth offering the Type facet when this catalog actually mixes more than one type.
     val typeFilterOptions = if (genreYearFilter.typeOptions.size > 1) genreYearFilter.typeOptions else emptyList()
@@ -178,7 +213,21 @@ fun CatalogSeeAllScreen(
     }
     val hasAnyFilterOptions = typeFilterOptions.isNotEmpty() ||
         genreYearFilter.genreOptions.isNotEmpty() ||
-        genreYearFilter.yearOptions.isNotEmpty()
+        genreYearFilter.yearOptions.isNotEmpty() ||
+        remoteGenres || remoteYears
+
+    // A filter on the loaded titles with few matches: keep loading the catalog so it finds more
+    // (a limited number of pages per pick, so a rare match can't load forever).
+    val localFilterActive = selectedType != null ||
+        (selectedGenre != null && !remoteGenres) ||
+        (selectedYear != null && !remoteYears)
+    val autoLoadCount = remember(catalogKey, selectedType, selectedGenre, selectedYear) { intArrayOf(0) }
+    LaunchedEffect(localFilterActive, filteredItems.size, baseItems.size, baseLoading, baseHasMore) {
+        if (!localFilterActive || filteredItems.size >= LOCAL_FILTER_TARGET || !baseHasMore || baseLoading) return@LaunchedEffect
+        if (autoLoadCount[0] >= LOCAL_FILTER_MAX_PAGES) return@LaunchedEffect
+        autoLoadCount[0]++
+        loadMoreBase()
+    }
 
     val gridState = rememberLazyGridState()
     val filterScope = rememberCoroutineScope()
@@ -197,7 +246,7 @@ fun CatalogSeeAllScreen(
     }
 
     // Load more when scrolling near the bottom
-    LaunchedEffect(gridState, catalogRow?.items?.size) {
+    LaunchedEffect(gridState, catalogRow?.items?.size, remoteActive, remoteFilter.items.size) {
         snapshotFlow {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = gridState.layoutInfo.totalItemsCount
@@ -205,20 +254,7 @@ fun CatalogSeeAllScreen(
         }
             .distinctUntilChanged()
             .collect { (lastVisible, total) ->
-                if (total > 0 && lastVisible >= total - 10) {
-                    val row = catalogRow
-                    if (row != null && row.hasMore && !row.isLoading) {
-                        if (isSearchMode) {
-                            searchViewModel.onEvent(
-                                SearchEvent.LoadMoreCatalog(row.catalogId, row.addonId, row.apiType)
-                            )
-                        } else {
-                            viewModel.onEvent(
-                                HomeEvent.OnLoadMoreCatalog(row.catalogId, row.addonId, row.apiType)
-                            )
-                        }
-                    }
-                }
+                if (total > 0 && lastVisible >= total - 10) loadMoreBase()
             }
     }
 
@@ -305,6 +341,11 @@ fun CatalogSeeAllScreen(
                     typeFilterOptions,
                     genreYearFilter.genreOptions,
                     genreYearFilter.yearOptions,
+                    remoteFilter.genres,
+                    remoteFilter.years,
+                    remoteGenres,
+                    remoteYears,
+                    baseComplete,
                     selectedType,
                     selectedGenre,
                     selectedYear,
@@ -314,6 +355,7 @@ fun CatalogSeeAllScreen(
                     yearTitle,
                     filterContext
                 ) {
+                    fun count(value: Int): Int? = if (baseComplete) value else null
                     buildList {
                         if (typeFilterOptions.isNotEmpty()) {
                             add(
@@ -323,12 +365,25 @@ fun CatalogSeeAllScreen(
                                     selectedValue = selectedType,
                                     options = listOf(AppleFilterOption(allLabel, null)) +
                                         typeFilterOptions.map {
-                                            AppleFilterOption(com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it.label), it.key, it.count)
+                                            AppleFilterOption(com.nuvio.tv.ui.util.filterTypeLabel(filterContext, it.label), it.key, count(it.count))
                                         }
                                 )
                             )
                         }
-                        if (genreYearFilter.genreOptions.isNotEmpty()) {
+                        if (remoteGenres) {
+                            // Every genre the addon can filter this catalog by.
+                            add(
+                                AppleFilterSection(
+                                    key = FILTER_SECTION_GENRE,
+                                    title = genreTitle,
+                                    selectedValue = selectedGenre,
+                                    options = listOf(AppleFilterOption(allLabel, null)) +
+                                        remoteFilter.genres.map {
+                                            AppleFilterOption(localizedGenreLabel(filterContext, it), it)
+                                        }
+                                )
+                            )
+                        } else if (genreYearFilter.genreOptions.isNotEmpty()) {
                             add(
                                 AppleFilterSection(
                                     key = FILTER_SECTION_GENRE,
@@ -336,12 +391,23 @@ fun CatalogSeeAllScreen(
                                     selectedValue = selectedGenre,
                                     options = listOf(AppleFilterOption(allLabel, null)) +
                                         genreYearFilter.genreOptions.map {
-                                            AppleFilterOption(localizedGenreLabel(filterContext, it.label), it.key, it.count)
+                                            AppleFilterOption(localizedGenreLabel(filterContext, it.label), it.key, count(it.count))
                                         }
                                 )
                             )
                         }
-                        if (genreYearFilter.yearOptions.isNotEmpty()) {
+                        if (remoteYears) {
+                            // Every year the addon can filter this catalog by.
+                            add(
+                                AppleFilterSection(
+                                    key = FILTER_SECTION_YEAR,
+                                    title = yearTitle,
+                                    selectedValue = selectedYear,
+                                    options = listOf(AppleFilterOption(allLabel, null)) +
+                                        remoteFilter.years.map { AppleFilterOption(it, it) }
+                                )
+                            )
+                        } else if (genreYearFilter.yearOptions.isNotEmpty()) {
                             add(
                                 AppleFilterSection(
                                     key = FILTER_SECTION_YEAR,
@@ -349,7 +415,7 @@ fun CatalogSeeAllScreen(
                                     selectedValue = selectedYear,
                                     options = listOf(AppleFilterOption(allLabel, null)) +
                                         genreYearFilter.yearOptions.map {
-                                            AppleFilterOption(it.label, it.key, it.count)
+                                            AppleFilterOption(it.label, it.key, count(it.count))
                                         }
                                 )
                             )
@@ -370,8 +436,14 @@ fun CatalogSeeAllScreen(
                     onSelect = { sectionKey, option ->
                         when (sectionKey) {
                             FILTER_SECTION_TYPE -> selectedType = option.value
-                            FILTER_SECTION_GENRE -> selectedGenre = option.value
-                            FILTER_SECTION_YEAR -> selectedYear = option.value
+                            FILTER_SECTION_GENRE -> {
+                                selectedGenre = option.value
+                                if (remoteGenres) genreFilterViewModel.select(option.value)
+                            }
+                            FILTER_SECTION_YEAR -> {
+                                selectedYear = option.value
+                                if (remoteYears) genreFilterViewModel.select(option.value)
+                            }
                         }
                         focusedItemKey = null
                         filterScope.launch { runCatching { gridState.scrollToItem(0) } }
@@ -380,6 +452,7 @@ fun CatalogSeeAllScreen(
                         selectedType = null
                         selectedGenre = null
                         selectedYear = null
+                        genreFilterViewModel.select(null)
                         focusedItemKey = null
                         filterScope.launch { runCatching { gridState.scrollToItem(0) } }
                     }
@@ -390,7 +463,7 @@ fun CatalogSeeAllScreen(
         Spacer(modifier = Modifier.height(18.dp))
 
         val hasItems = filteredItems.isNotEmpty()
-        val isCatalogLoading = catalogRow == null || catalogRow.isLoading
+        val isCatalogLoading = catalogRow == null || baseLoading
         val isFilteredEmpty = hasRawItems && !isCatalogLoading && filteredItems.isEmpty()
 
         if (hasItems) {
@@ -504,7 +577,7 @@ fun CatalogSeeAllScreen(
                         }
                     }
 
-                    if (row.isLoading) {
+                    if (baseLoading) {
                         item(key = "loading_more") {
                             val cardShape = remember(posterCardStyle.cornerRadius) {
                                 androidx.compose.foundation.shape.RoundedCornerShape(posterCardStyle.cornerRadius)
