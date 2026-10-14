@@ -341,14 +341,20 @@ class DisneyPlusRepository @Inject constructor(
 
     /**
      * The row's TMDB discover queries for See All, with [filter] worked into each: its own queries plus
-     * its complete catalog, without the row's minimum vote counts (those only pick what the 10-title
-     * row shows first). Top-rated queries keep theirs, or a title with one 10/10 vote would lead the list.
+     * its complete catalog, without what only picks what the 10-title row shows first: minimum vote
+     * counts and minimum lengths (a studio's "Movies" row shows its features; its See All has every
+     * title TMDB lists for the studio, shorts and specials too, as many as its TMDB page counts).
+     * Top-rated queries keep their vote minimum, or a title with one 10/10 vote would lead the list;
+     * Shorts rows keep their maximum length (that's what they are).
      */
     private fun seeAllDiscoverSources(spec: DisneyRowSpec, filter: TmdbSeeAllFilter): List<DisneyRowSource.Discover> {
         val today = LocalDate.now().toString()
         return (spec.sources + spec.seeAll)
             .filterIsInstance<DisneyRowSource.Discover>()
-            .map { source -> if (source.sortBy.startsWith("vote_average")) source else source.copy(voteCountGte = null) }
+            .map { source ->
+                val votes = if (source.sortBy.startsWith("vote_average")) source.voteCountGte else null
+                source.copy(voteCountGte = votes, runtimeGte = null)
+            }
             .distinct()
             .flatMap { source -> if (filter.isEmpty) listOf(source) else source.filteredBy(filter, today) }
             .distinct()
@@ -715,9 +721,10 @@ class DisneyPlusRepository @Inject constructor(
         companyCache[key]?.let { return it.value }
         val id = runCatching {
             val results = tmdbApi.searchCompanies(apiKey, query).body()?.results.orEmpty()
+            // Only the exact name (a US one first): never a near match or the first result ("Wolf
+            // Films" isn't a TMDB company; its first result is "WOOF Films", a Croatian studio).
             (results.firstOrNull { it.name.equals(query, ignoreCase = true) && it.originCountry.equals("US", ignoreCase = true) }
-                ?: results.firstOrNull { it.name.equals(query, ignoreCase = true) }
-                ?: results.firstOrNull())?.id
+                ?: results.firstOrNull { it.name.equals(query, ignoreCase = true) })?.id
         }.onFailure { if (it is CancellationException) throw it }.getOrNull()
         if (id != null) companyCache[key] = Optional(id)
         return id

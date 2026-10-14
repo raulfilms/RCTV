@@ -200,7 +200,13 @@ interface TmdbApi {
         @Query("without_keywords") withoutKeywords: String? = null,
         @Query("without_watch_providers") withoutWatchProviders: String? = null,
         @Query("with_runtime.gte") withRuntimeGte: Int? = null,
-        @Query("with_runtime.lte") withRuntimeLte: Int? = null
+        @Query("with_runtime.lte") withRuntimeLte: Int? = null,
+        /**
+         * RCTV: TMDB leaves out titles it flags as "video" (shorts and specials released on video,
+         * like Walt Disney Animation's) unless asked; its company and network pages count them, so
+         * every list here includes them too (Walt Disney Animation Studios: 87, as on TMDB).
+         */
+        @Query("include_video") includeVideo: Boolean? = true
     ): Response<TmdbDiscoverResponse>
 
     /** Title search for movies. Results share the discover result shape. */

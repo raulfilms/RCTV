@@ -19,8 +19,9 @@ object DisneyPlusIds {
 
     // Production companies
     const val CO_WALT_DISNEY_PICTURES = "2"
-    /** Pixar and Pixar Canada (its shorts studio). */
-    const val CO_PIXAR = "3|219390"
+    const val CO_PIXAR = "3"
+    /** Pixar Canada, which made Pixar shorts too. */
+    const val CO_PIXAR_CANADA = "219390"
     /** Lucasfilm, Lucasfilm Animation (The Clone Wars, Rebels...) and Lucasfilm Kids. */
     const val CO_LUCASFILM = "1|108270|71126"
     const val CO_MARVEL_STUDIOS = "420"
@@ -120,11 +121,8 @@ object ParamountPlusIds {
     /** Paramount Plus / Paramount Plus Premium (US), the same ids Home's Paramount+ tile uses. */
     const val PROVIDERS = "531|2303|2616"
 
-    /**
-     * Paramount's films under every label TMDB has: Paramount Pictures, Paramount Animation,
-     * Paramount Players, Paramount Vantage and Paramount Classics.
-     */
-    const val CO_PARAMOUNT_PICTURES = "4|24955|96540|838|220287"
+    /** Paramount Pictures: exactly its TMDB company, so its list matches TMDB's count. */
+    const val CO_PARAMOUNT_PICTURES = "4"
 
     /** Paramount+ and CBS All Access (its name until 2021: Star Trek: Discovery, Picard...). */
     const val NET_PARAMOUNT_PLUS = "4330|1709"
@@ -319,8 +317,10 @@ object PeacockIds {
     const val NET_PEACOCK = "3353"
     const val NET_NBC = "6"
 
-    /** Universal Pictures and Universal-International (its name 1946-1963: the 1950s monsters...). */
-    const val CO_UNIVERSAL = "33|10330"
+    /** Universal Pictures: exactly its TMDB company, so its list matches TMDB's count. */
+    const val CO_UNIVERSAL = "33"
+    /** Universal Pictures and Universal-International (its name 1946-1963), for the classic monsters. */
+    const val CO_UNIVERSAL_CLASSIC = "33|10330"
     const val CO_ILLUMINATION = "6704"
     const val CO_DREAMWORKS_ANIMATION = "521"
     const val CO_FOCUS_FEATURES = "10146"
@@ -755,77 +755,6 @@ object DisneyPlusCatalog {
         movie("One Hundred and One Dalmatians", 1961),
         movie("Dumbo", 1941),
         movie("Fantasia", 1940)
-    )
-
-    /**
-     * Walt Disney Animation Studios' films, all of them, in release order (the studio's own list, as
-     * of Zootopia 2). Years are the US release years.
-     */
-    private val WDAS_CANON = listOf(
-        movie("Snow White and the Seven Dwarfs", 1937),
-        movie("Pinocchio", 1940),
-        movie("Fantasia", 1940),
-        movie("Dumbo", 1941),
-        movie("Bambi", 1942),
-        movie("Saludos Amigos", 1942),
-        movie("The Three Caballeros", 1944),
-        movie("Make Mine Music", 1946),
-        movie("Fun and Fancy Free", 1947),
-        movie("Melody Time", 1948),
-        movie("The Adventures of Ichabod and Mr. Toad", 1949),
-        movie("Cinderella", 1950),
-        movie("Alice in Wonderland", 1951),
-        movie("Peter Pan", 1953),
-        movie("Lady and the Tramp", 1955),
-        movie("Sleeping Beauty", 1959),
-        movie("One Hundred and One Dalmatians", 1961),
-        movie("The Sword in the Stone", 1963),
-        movie("The Jungle Book", 1967),
-        movie("The Aristocats", 1970),
-        movie("Robin Hood", 1973),
-        movie("The Many Adventures of Winnie the Pooh", 1977),
-        movie("The Rescuers", 1977),
-        movie("The Fox and the Hound", 1981),
-        movie("The Black Cauldron", 1985),
-        movie("The Great Mouse Detective", 1986),
-        movie("Oliver & Company", 1988),
-        movie("The Little Mermaid", 1989),
-        movie("The Rescuers Down Under", 1990),
-        movie("Beauty and the Beast", 1991),
-        movie("Aladdin", 1992),
-        movie("The Lion King", 1994),
-        movie("Pocahontas", 1995),
-        movie("The Hunchback of Notre Dame", 1996),
-        movie("Hercules", 1997),
-        movie("Mulan", 1998),
-        movie("Tarzan", 1999),
-        movie("Fantasia 2000", 2000),
-        movie("Dinosaur", 2000),
-        movie("The Emperor's New Groove", 2000),
-        movie("Atlantis: The Lost Empire", 2001),
-        movie("Lilo & Stitch", 2002),
-        movie("Treasure Planet", 2002),
-        movie("Brother Bear", 2003),
-        movie("Home on the Range", 2004),
-        movie("Chicken Little", 2005),
-        movie("Meet the Robinsons", 2007),
-        movie("Bolt", 2008),
-        movie("The Princess and the Frog", 2009),
-        movie("Tangled", 2010),
-        movie("Winnie the Pooh", 2011),
-        movie("Wreck-It Ralph", 2012),
-        movie("Frozen", 2013),
-        movie("Big Hero 6", 2014),
-        movie("Zootopia", 2016),
-        movie("Moana", 2016),
-        movie("Ralph Breaks the Internet", 2018),
-        movie("Frozen II", 2019),
-        movie("Raya and the Last Dragon", 2021),
-        movie("Encanto", 2021),
-        movie("Strange World", 2022),
-        movie("Wish", 2023),
-        movie("Moana 2", 2024),
-        movie("Zootopia 2", 2025)
     )
 
     private val PRINCESSES = listOf(
@@ -2169,7 +2098,7 @@ object DisneyPlusCatalog {
             DisneyRowSpec("d_princesses", R.string.disney_row_princesses, listOf(curated(PRINCESSES))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DISNEY_FILM_STUDIOS, keywordQuery = "princess")),
             DisneyRowSpec(
                 "d_wdas", R.string.disney_row_wdas,
-                disneyAnimation(sortBy = RECENT, runtimeGte = 60, releaseDateLte = TODAY).toList()
+                listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = RECENT, runtimeGte = 60, releaseDateLte = TODAY))
             ),
             DisneyRowSpec(
                 "d_live_action", R.string.disney_row_live_action_movies,
@@ -2235,7 +2164,7 @@ object DisneyPlusCatalog {
             ),
             DisneyRowSpec(
                 "px_shorts", R.string.disney_row_shorts,
-                listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, runtimeLte = 30, voteCountGte = 10))
+                listOf(company(MOVIE, "${DisneyPlusIds.CO_PIXAR}|${DisneyPlusIds.CO_PIXAR_CANADA}", runtimeLte = 30, voteCountGte = 10))
             ),
             DisneyRowSpec("px_originals", R.string.disney_row_originals_short, listOf(company(TV, DisneyPlusIds.CO_PIXAR))),
             DisneyRowSpec(
@@ -2470,12 +2399,11 @@ object DisneyPlusCatalog {
         hub = DisneyPlusHub.COL_WDAS,
         heroRowId = "wdas_featured",
         rows = listOf(
-            DisneyRowSpec("wdas_featured", R.string.disney_row_featured, listOf(curated(WDAS_FEATURED))).withSeeAll(*disneyAnimation(sortBy = MOST_VOTED)),
-            // Every Walt Disney Animation Studios film in release order (all 64, Snow White to
-            // Zootopia 2); See All then adds every other Disney animated feature on TMDB.
-            DisneyRowSpec("wdas_all", R.string.disney_row_all_films_release_order, listOf(curated(WDAS_CANON)))
-                .withSeeAll(*disneyAnimation(sortBy = RELEASE_ORDER, releaseDateLte = TODAY)),
-            DisneyRowSpec("wdas_popular", R.string.disney_row_popular, disneyAnimation(sortBy = POPULAR, runtimeGte = 60, voteCountGte = 200).toList()),
+            DisneyRowSpec("wdas_featured", R.string.disney_row_featured, listOf(curated(WDAS_FEATURED))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = MOST_VOTED)),
+            // Every title TMDB lists for Walt Disney Animation Studios (its company page: 87), in
+            // release order, with nothing left out.
+            DisneyRowSpec("wdas_all", R.string.disney_row_all_films_release_order, listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = RELEASE_ORDER))),
+            DisneyRowSpec("wdas_popular", R.string.disney_row_popular, listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, runtimeGte = 60, voteCountGte = 200))),
             DisneyRowSpec("wdas_classics", R.string.disney_row_classics, listOf(curated(CLASSICS))).withSeeAll(*disneyAnimation(sortBy = MOST_VOTED)),
             DisneyRowSpec("wdas_princesses", R.string.disney_row_princesses, listOf(curated(PRINCESSES))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DISNEY_FILM_STUDIOS, keywordQuery = "princess")),
             DisneyRowSpec(
@@ -2882,7 +2810,7 @@ object DisneyPlusCatalog {
             DisneyRowSpec(
                 "p_paramount_pictures", R.string.paramount_row_paramount_pictures,
                 listOf(company(MOVIE, ParamountPlusIds.CO_PARAMOUNT_PICTURES, voteCountGte = 300, releaseDateLte = TODAY))
-            ),
+            ).withSeeAll(company(MOVIE, ParamountPlusIds.CO_PARAMOUNT_PICTURES)),
             DisneyRowSpec("p_showtime", R.string.paramount_row_showtime, listOf(net(ParamountPlusIds.NET_SHOWTIME))),
             DisneyRowSpec(
                 "p_nickelodeon", R.string.paramount_brand_nickelodeon,
@@ -3841,7 +3769,7 @@ object DisneyPlusCatalog {
             DisneyRowSpec("wba_adult_swim", R.string.hbomax_row_adult_swim, listOf(net(null, HboMaxIds.ADULT_SWIM))),
             DisneyRowSpec(
                 "wba_hanna_barbera", R.string.hbomax_row_hanna_barbera,
-                listOf(studio(TV, "Hanna-Barbera Productions", sortBy = MOST_VOTED))
+                listOf(studio(TV, "Hanna-Barbera Cartoons", sortBy = MOST_VOTED))
             ),
             DisneyRowSpec(
                 "wba_top_rated", R.string.disney_row_top_rated,
@@ -4023,7 +3951,7 @@ object DisneyPlusCatalog {
             ),
             DisneyRowSpec(
                 "cn_hanna_barbera", R.string.hbomax_row_hanna_barbera,
-                listOf(studio(TV, "Hanna-Barbera Productions", sortBy = MOST_VOTED))
+                listOf(studio(TV, "Hanna-Barbera Cartoons", sortBy = MOST_VOTED))
             )
         ),
         classicUntil = "2004-12-31",
@@ -4279,7 +4207,7 @@ object DisneyPlusCatalog {
             DisneyRowSpec("pk_trending", R.string.disney_row_trending, listOf(onPeacock(MOVIE), onPeacock(TV))),
             DisneyRowSpec("pk_originals", R.string.peacock_brand_originals, listOf(net(PeacockIds.NET_PEACOCK))),
             DisneyRowSpec("pk_nbc", R.string.peacock_row_nbc_shows, listOf(net(PeacockIds.NET_NBC))),
-            DisneyRowSpec("pk_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))).withSeeAll(*studioCatalog("Wolf Entertainment"), *studioCatalog("Wolf Films")),
+            DisneyRowSpec("pk_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))).withSeeAll(*studioCatalog("Wolf Entertainment")),
             DisneyRowSpec("pk_bravo", R.string.peacock_brand_bravo, listOf(net(null, PeacockIds.BRAVO))),
             DisneyRowSpec(
                 "pk_universal", R.string.peacock_brand_universal,
@@ -4360,7 +4288,7 @@ object DisneyPlusCatalog {
         prefix = "nbc",
         networks = PeacockIds.NET_NBC,
         middleRows = listOf(
-            DisneyRowSpec("nbc_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))).withSeeAll(*studioCatalog("Wolf Entertainment"), *studioCatalog("Wolf Films")),
+            DisneyRowSpec("nbc_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))).withSeeAll(*studioCatalog("Wolf Entertainment")),
             DisneyRowSpec("nbc_dramas", R.string.paramount_row_dramas, listOf(net(PeacockIds.NET_NBC, genres = PeacockIds.G_DRAMA))),
             DisneyRowSpec("nbc_comedies", R.string.paramount_row_comedies, listOf(net(PeacockIds.NET_NBC, genres = DisneyPlusIds.G_COMEDY))),
             DisneyRowSpec(
@@ -4499,7 +4427,7 @@ object DisneyPlusCatalog {
         middleRows = listOf(
             DisneyRowSpec("uni_jurassic", R.string.peacock_row_jurassic, listOf(curated(JURASSIC))).withSeeAll(franchise("Jurassic Park")),
             DisneyRowSpec("uni_fast", R.string.peacock_row_fast_furious, listOf(curated(FAST_FURIOUS))).withSeeAll(franchise("The Fast and the Furious")),
-            DisneyRowSpec("uni_monsters", R.string.peacock_row_universal_monsters, listOf(curated(UNIVERSAL_MONSTERS))).withSeeAll(*keywordCatalog("universal monsters"), company(MOVIE, PeacockIds.CO_UNIVERSAL, sortBy = MOST_VOTED, genres = HboMaxIds.G_HORROR, releaseDateLte = "1960-12-31")),
+            DisneyRowSpec("uni_monsters", R.string.peacock_row_universal_monsters, listOf(curated(UNIVERSAL_MONSTERS))).withSeeAll(*keywordCatalog("universal monsters"), company(MOVIE, PeacockIds.CO_UNIVERSAL_CLASSIC, sortBy = MOST_VOTED, genres = HboMaxIds.G_HORROR, releaseDateLte = "1960-12-31")),
             DisneyRowSpec(
                 "uni_animation", R.string.peacock_row_animation,
                 listOf(
