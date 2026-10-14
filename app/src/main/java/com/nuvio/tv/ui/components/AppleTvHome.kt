@@ -910,7 +910,9 @@ fun AppleFilterMenuButton(
     /** Close the menu once a row is picked (single-choice menus). */
     closeOnSelect: Boolean = false,
     /** Called each time the menu opens (e.g. to look up its counts). */
-    onExpand: () -> Unit = {}
+    onExpand: () -> Unit = {},
+    /** Puts focus on the pill from elsewhere (e.g. Right at the end of a See All grid's row). */
+    buttonFocusRequester: FocusRequester? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     val firstRowRequester = remember { FocusRequester() }
@@ -932,7 +934,9 @@ fun AppleFilterMenuButton(
             },
             shape = HeroPillShape,
             minWidth = 140.dp,
-            modifier = Modifier.height(40.dp)
+            modifier = Modifier
+                .height(40.dp)
+                .then(if (buttonFocusRequester != null) Modifier.focusRequester(buttonFocusRequester) else Modifier)
         ) { color ->
             Row(
                 modifier = Modifier.padding(start = 16.dp, end = 14.dp),

@@ -29,6 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.nuvio.tv.ui.components.isRowEnd
+import com.nuvio.tv.ui.components.rightAtRowEndFocuses
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -299,6 +301,8 @@ private fun TabbedGridContent(
     // Only worth offering the Type facet when this tab actually mixes more than one type
     // (e.g. the "All" tab); a type-specific tab already has just one.
     val folderTypeFilterOptions = if (genreYearFilter.typeOptions.size > 1) genreYearFilter.typeOptions else emptyList()
+    // The filter pill, which Right at the end of any row of the grid jumps up to.
+    val folderFilterRequester = remember { FocusRequester() }
     val hasAnyFolderFilterOptions = folderTypeFilterOptions.isNotEmpty() ||
         genreYearFilter.genreOptions.isNotEmpty() ||
         genreYearFilter.yearOptions.isNotEmpty()
@@ -505,7 +509,8 @@ private fun TabbedGridContent(
                     selectedGenre = null
                     selectedYear = null
                     gridScrollToTopTrigger++
-                }
+                },
+                buttonFocusRequester = folderFilterRequester
             )
         }
     }
@@ -639,6 +644,10 @@ private fun TabbedGridContent(
                     ContentCard(
                         item = item,
                         posterCardStyle = posterCardStyle,
+                        // Right on the last title of a row goes up to the filter.
+                        modifier = Modifier.rightAtRowEndFocuses(
+                            if (rawItems.isNotEmpty() && hasAnyFolderFilterOptions) folderFilterRequester else null
+                        ) { gridState.isRowEnd(index, items.size) },
                         focusRequester = focusReq,
                         isWatched = isItemWatched(item),
                         onFocus = { _ -> lastFocusedItemKey = itemKey },

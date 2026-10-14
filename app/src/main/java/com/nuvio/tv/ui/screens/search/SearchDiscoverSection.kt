@@ -63,6 +63,8 @@ import com.nuvio.tv.ui.util.contentTextDirection
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import com.nuvio.tv.ui.components.isRowEnd
+import com.nuvio.tv.ui.components.rightAtRowEndFocuses
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
@@ -478,6 +480,8 @@ internal fun TmdbDiscoverSection(
                         onItemLongPress = onItemLongPress,
                         filterKey = state.filterKey,
                         autoLoadMore = !state.loadFailed,
+                        // Right at the end of any row goes up to the menus (Type first).
+                        rowEndFocusTarget = filterFocusRequester,
                         layoutPage = com.nuvio.tv.ui.components.RowLayoutPages.DISCOVER
                     )
                 }
@@ -723,7 +727,9 @@ internal fun DiscoverGrid(
     /** Loads the next titles by itself when the grid gets near the end (the whole-catalog Discover page). */
     autoLoadMore: Boolean = false,
     /** The page name in the website's row layout file (vertical or horizontal cards). */
-    layoutPage: String = com.nuvio.tv.ui.components.RowLayoutPages.SEARCH
+    layoutPage: String = com.nuvio.tv.ui.components.RowLayoutPages.SEARCH,
+    /** Right on the last title of a row goes up here (the Discover page's menus); null: Right as usual. */
+    rowEndFocusTarget: FocusRequester? = null
 ) {
     val restoreFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
@@ -923,6 +929,7 @@ internal fun DiscoverGrid(
                     posterCardStyle = adaptiveStyle,
                     isWatched = itemWatched,
                     modifier = Modifier
+                        .rightAtRowEndFocuses(rowEndFocusTarget) { gridState.isRowEnd(index, items.size) }
                         .padding(top = 3.dp)
                         .width(adaptiveStyle.width),
                     focusRequester = focusReq,
@@ -936,6 +943,7 @@ internal fun DiscoverGrid(
                     cornerRadius = adaptiveStyle.cornerRadius,
                     isWatched = itemWatched,
                     modifier = Modifier
+                        .rightAtRowEndFocuses(rowEndFocusTarget) { gridState.isRowEnd(index, items.size) }
                         .padding(top = 3.dp)
                         .width(adaptiveStyle.width),
                     focusRequester = focusReq,

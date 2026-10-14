@@ -125,6 +125,10 @@ fun TitlesSeeAllPage(
     // A remote filter already narrowed the items.
     val shownItems = if (remoteFilter != null) items else filter.filteredItems
 
+    // The filter pill, which Right at the end of any row of the grid jumps up to.
+    val filterRequester = remember { FocusRequester() }
+    val hasFilter = remoteFilter != null ||
+        typeOptions.isNotEmpty() || filter.genreOptions.isNotEmpty() || filter.yearOptions.isNotEmpty()
     val currentItems by rememberUpdatedState(shownItems)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
     // The card that last had focus, kept while a title's page is open.
@@ -195,6 +199,7 @@ fun TitlesSeeAllPage(
             if (remoteFilter != null) {
                 RemoteSeeAllFilterMenu(
                     filter = remoteFilter,
+                    focusRequester = filterRequester,
                     onChange = { type, genre, year ->
                         focusIndex = 0
                         scope.launch { runCatching { gridState.scrollToItem(0) } }
@@ -277,7 +282,8 @@ fun TitlesSeeAllPage(
                         selectedYear = null
                         filterChanged()
                     },
-                    onExpand = onFilterMenuOpen
+                    onExpand = onFilterMenuOpen,
+                    buttonFocusRequester = filterRequester
                 )
             }
         }
@@ -320,6 +326,12 @@ fun TitlesSeeAllPage(
                 modifier = Modifier.fillMaxSize()
             ) {
                 itemsIndexed(shownItems, key = { _, item -> item.id }) { index, item ->
+                    // Right on the last title of a row goes up to the filter.
+                    Box(
+                        modifier = Modifier.rightAtRowEndFocuses(if (hasFilter) filterRequester else null) {
+                            gridState.isRowEnd(index, shownItems.size)
+                        }
+                    ) {
                     if (vertical) {
                         ContentCard(
                             item = item,
@@ -342,6 +354,7 @@ fun TitlesSeeAllPage(
                             onFocus = { focusIndex = index },
                             onLongPress = { onItemLongPress(item) }
                         )
+                    }
                     }
                 }
                 if (isLoadingMore) {
@@ -366,6 +379,7 @@ fun TitlesSeeAllPage(
 @Composable
 private fun RemoteSeeAllFilterMenu(
     filter: SeeAllRemoteFilter,
+    focusRequester: FocusRequester,
     onChange: (type: String?, genre: String?, year: String?) -> Unit,
     onOpen: () -> Unit
 ) {
@@ -432,6 +446,7 @@ private fun RemoteSeeAllFilterMenu(
             }
         },
         onClearAll = { onChange(null, null, null) },
-        onExpand = onOpen
+        onExpand = onOpen,
+        buttonFocusRequester = focusRequester
     )
 }

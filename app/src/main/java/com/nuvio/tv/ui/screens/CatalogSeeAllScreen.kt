@@ -71,6 +71,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.nuvio.tv.ui.components.EmptyScreenState
+import com.nuvio.tv.ui.components.isRowEnd
+import com.nuvio.tv.ui.components.rightAtRowEndFocuses
 import com.nuvio.tv.ui.components.FilterDropdownOption
 import com.nuvio.tv.ui.components.GridContentCard
 import com.nuvio.tv.ui.components.LoadingIndicator
@@ -231,6 +233,8 @@ fun CatalogSeeAllScreen(
 
     val gridState = rememberLazyGridState()
     val filterScope = rememberCoroutineScope()
+    // The filter pill, which Right at the end of any row of the grid jumps up to.
+    val filterRequester = remember { FocusRequester() }
     val restoreFocusRequester = remember { FocusRequester() }
     // Persist the focused catalog item by stable id (not grid index) so return-from-Details
     // can re-focus the same poster even if the row reloads or the first cell steals focus.
@@ -455,7 +459,8 @@ fun CatalogSeeAllScreen(
                         genreFilterViewModel.select(null)
                         focusedItemKey = null
                         filterScope.launch { runCatching { gridState.scrollToItem(0) } }
-                    }
+                    },
+                    buttonFocusRequester = filterRequester
                 )
             }
         }
@@ -510,7 +515,15 @@ fun CatalogSeeAllScreen(
                             ] == true
                         }
                         val itemFocusKey = catalogItemFocusKey(item)
-                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // Right on the last title of a row goes up to the filter.
+                                .rightAtRowEndFocuses(if (hasRawItems && hasAnyFilterOptions) filterRequester else null) {
+                                    gridState.isRowEnd(index, filteredItems.size)
+                                },
+                            contentAlignment = Alignment.TopCenter
+                        ) {
                         val onCardFocus: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {
                             // While restoring after Details/resume, ignore transient focus on the
                             // first/leftmost cell so it cannot overwrite the saved poster key.
