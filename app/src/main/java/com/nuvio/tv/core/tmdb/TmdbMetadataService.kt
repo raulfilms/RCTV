@@ -1082,7 +1082,9 @@ class TmdbMetadataService(
                         withNetworks = if (entityKind == TmdbEntityKind.NETWORK) entityId.toString() else null,
                         firstAirDateLte = if (railType == TmdbEntityRailType.RECENT || entityKind == TmdbEntityKind.NETWORK) today else null,
                         voteCountGte = voteCountFloor,
-                        withStatus = if (entityKind == TmdbEntityKind.NETWORK) "0|3|4" else null,
+                        // RCTV: every show the network has aired, whatever its status (pilots, in
+                        // production, canceled...); the air-date limit already leaves out unaired ones.
+                        withStatus = null,
                         watchRegion = providerRegion,
                         withWatchProviders = providerIds,
                         withWatchMonetizationTypes = providerMonetization
@@ -1123,14 +1125,17 @@ class TmdbMetadataService(
 
             TmdbEntityRailPageResult(
                 items = mappedItems,
-                hasMore = page < totalPages && mappedItems.isNotEmpty()
+                // Every page TMDB has, up to its own 500-page limit.
+                hasMore = page < minOf(totalPages, TMDB_DISCOVER_MAX_PAGE) && mappedItems.isNotEmpty()
             )
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(
                 TAG,
                 "Failed to fetch ${entityKind.routeValue} rail ${railType.value}/${mediaType.value} for $entityId: ${e.message}"
             )
-            TmdbEntityRailPageResult(items = emptyList(), hasMore = false)
+            // A page that failed (busy, offline) isn't the end of the list: scrolling tries it again.
+            TmdbEntityRailPageResult(items = emptyList(), hasMore = page <= TMDB_DISCOVER_MAX_PAGE, failed = true)
         }
 
         if (result.items.isNotEmpty()) {
@@ -1303,6 +1308,8 @@ class TmdbMetadataService(
             "es" to "ES"
         )
         private const val ENTITY_RAIL_MAX_ITEMS = 20
+        /** TMDB's discover stops at page 500. */
+        private const val TMDB_DISCOVER_MAX_PAGE = 500
         private const val TOP_RATED_VOTE_COUNT_FLOOR = 200
     }
 
@@ -1786,7 +1793,9 @@ data class TmdbEntityBrowseData(
 
 data class TmdbEntityRailPageResult(
     val items: List<MetaPreview>,
-    val hasMore: Boolean
+    val hasMore: Boolean,
+    /** The page couldn't be loaded (busy, offline): try the same page again later. */
+    val failed: Boolean = false
 )
 
 private fun TmdbEpisode.toEnrichment(): TmdbEpisodeEnrichment {

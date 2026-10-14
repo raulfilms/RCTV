@@ -139,7 +139,8 @@ object ChannelBrands {
                 "fox deportes", "fox weather", "fox soccer plus", "fox sports racing", "fox sports.*",
                 "fox soul", "fox nation", "fox live ?now", "big ten network.*|btn.*"
             ),
-            networks = listOf(19),
+            // FOX and Fox News Channel (TMDB ids, checked against TMDB's names at runtime).
+            networks = listOf(19, 45),
             names = setOf(
                 "fox", "foxnewschannel", "foxnews", "foxbusinessnetwork", "foxbusiness", "fs1", "foxsports1",
                 "fs2", "foxsports", "foxdeportes", "foxnation", "foxweather", "foxsoul", "bigtennetwork", "btn"
@@ -182,7 +183,8 @@ object ChannelBrands {
         brand(
             "nickelodeon", "Nickelodeon",
             family = listOf("nickelodeon.*", "nick (jr|junior).*", "nick.*", "teen ?nick.*"),
-            networks = listOf(13),
+            // Nickelodeon, Nick Jr., Nicktoons, TeenNick and Nickelodeon's second TMDB entry.
+            networks = listOf(13, 35, 224, 234, 286),
             names = setOf("nickelodeon", "nickjr", "nicktoons", "teennick", "nickatnite"),
             companies = listOf("Nickelodeon Movies"),
             fragments = listOf("nickelodeon")
@@ -190,13 +192,15 @@ object ChannelBrands {
         brand(
             "cartoon_network", "Cartoon Network",
             family = listOf("cartoon network.*", "boomerang.*", "adult swim.*", "cartoonito.*"),
-            networks = listOf(56, 80),
+            // Cartoon Network, Adult Swim and Boomerang.
+            networks = listOf(56, 80, 523),
             names = setOf("cartoonnetwork", "adultswim", "boomerang", "cartoonito")
         ),
         brand(
             "hbo", "HBO",
             family = listOf("hbo", "hbo ?2", "hbo.*"),
-            networks = listOf(49),
+            // HBO and HBO Max (its originals).
+            networks = listOf(49, 3186),
             names = setOf("hbo", "hbomax", "max"),
             companies = listOf("HBO Films"),
             fragments = listOf("hbo")
@@ -225,7 +229,9 @@ object ChannelBrands {
         brand(
             "mgm_plus", "MGM+",
             family = listOf("mgm plus.*", "mgm.*", "epix.*"),
-            names = setOf("mgmplus", "epix")
+            // MGM+ and Epix (its name before 2023).
+            networks = listOf(6219, 922),
+            names = setOf("mgmplus", "mgm", "epix")
         ),
         brand("amc", "AMC", family = listOf("amc", "amc.*"), networks = listOf(174), names = setOf("amc", "amcplus")),
         brand(
@@ -247,7 +253,8 @@ object ChannelBrands {
             family = listOf(
                 "discovery( channel)?", "discovery.*", "science( channel)?", "investigation discovery.*", "destination america"
             ),
-            networks = listOf(64),
+            // Discovery (both TMDB entries), Investigation Discovery, Destination America and discovery+.
+            networks = listOf(64, 106, 244, 530, 4353),
             names = setOf(
                 "discovery", "discoverychannel", "science", "sciencechannel", "investigationdiscovery", "id",
                 "destinationamerica", "discoverylife", "discoveryfamily", "discoveryplus"
@@ -285,7 +292,8 @@ object ChannelBrands {
         brand(
             "nat_geo", "National Geographic",
             family = listOf("national geographic.*", "nat geo.*"),
-            networks = listOf(43),
+            // National Geographic and Nat Geo Wild.
+            networks = listOf(43, 1043),
             names = setOf("nationalgeographic", "natgeo", "natgeowild")
         ),
         brand("freeform", "Freeform", family = listOf("freeform.*"), networks = listOf(1267)),
@@ -304,6 +312,7 @@ object ChannelBrands {
         brand(
             "cnn", "CNN",
             family = listOf("cnn", "cnn.*", "cable news network", "hln", "headline news"),
+            networks = listOf(59),
             names = setOf("cnn", "hln", "cnninternational")
         )
     )

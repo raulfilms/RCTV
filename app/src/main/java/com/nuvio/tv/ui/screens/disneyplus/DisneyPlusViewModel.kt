@@ -145,8 +145,9 @@ class DisneyPlusViewModel @Inject constructor(
     fun openSeeAll(rowId: String) {
         val rowState = _uiState.value.rows.firstOrNull { it.spec.id == rowId } ?: return
         val items = rowState.row?.items.orEmpty()
-        val hasMoreSources = rowState.spec.seeAll.isNotEmpty() ||
-            rowState.spec.sources.any { it is com.nuvio.tv.data.disneyplus.DisneyRowSource.Discover }
+        // Every row has more past what it shows: its TMDB queries, its complete catalog, or (for
+        // hand-picked titles) the whole TMDB franchise collections those movies belong to.
+        val hasMoreSources = rowState.spec.seeAll.isNotEmpty() || rowState.spec.sources.isNotEmpty()
         _uiState.update {
             it.copy(
                 seeAll = HubSeeAllState(

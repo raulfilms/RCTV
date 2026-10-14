@@ -278,7 +278,8 @@ class ChannelProfileRepository @Inject constructor(
                 networks = if (isTv) filter.joinToString("|") else null,
                 companies = if (isTv) null else filter.joinToString("|"),
                 language = language(),
-                page = page
+                page = page,
+                failOnError = true
             )
             // Every page TMDB has (up to its own limit), so See All lists the whole network or studio.
             val next = if (page < minOf(result.totalPages, TMDB_MAX_PAGE)) page + 1 else null
@@ -303,10 +304,12 @@ class ChannelProfileRepository @Inject constructor(
         networks: String?,
         companies: String?,
         language: String,
-        page: Int
+        page: Int,
+        /** See All: a page TMDB couldn't give (busy, offline) is an error, so it's tried again, not the end. */
+        failOnError: Boolean = false
     ): DiscoverResult =
         runCatching {
-            val response = if (isTv) {
+            val raw = if (isTv) {
                 tmdbApi.discoverTv(
                     apiKey = apiKey,
                     language = language,
@@ -314,7 +317,7 @@ class ChannelProfileRepository @Inject constructor(
                     sortBy = "popularity.desc",
                     withNetworks = networks,
                     withCompanies = companies
-                ).body()
+                )
             } else {
                 tmdbApi.discoverMovies(
                     apiKey = apiKey,
@@ -322,8 +325,10 @@ class ChannelProfileRepository @Inject constructor(
                     page = page,
                     sortBy = "popularity.desc",
                     withCompanies = companies
-                ).body()
+                )
             }
+            if (!raw.isSuccessful) throw java.io.IOException("TMDB discover HTTP ${raw.code()}")
+            val response = raw.body()
             val genres = genreMap(isTv, language)
             DiscoverResult(
                 items = response?.results.orEmpty().mapNotNull { it.toPreview(isTv, genres) },
@@ -332,6 +337,7 @@ class ChannelProfileRepository @Inject constructor(
         }.onFailure {
             if (it is CancellationException) throw it
             Log.w(TAG, "Discover failed", it)
+            if (failOnError) throw it
         }.getOrDefault(DiscoverResult(emptyList(), 0))
 
     /** A guide title to its TMDB entry, only when the names match (so "NBA Basketball" finds nothing). */

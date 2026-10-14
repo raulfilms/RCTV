@@ -633,6 +633,12 @@ sealed interface DisneyRowSource {
     ) : DisneyRowSource
 
     data class Curated(val titles: List<CuratedTitle>) : DisneyRowSource
+
+    /**
+     * A TMDB franchise collection found by name at runtime ("Toy Story" -> "Toy Story Collection"):
+     * every movie in it, in release order.
+     */
+    data class TmdbCollection(val query: String) : DisneyRowSource
 }
 
 enum class DisneyRowKind {
@@ -658,13 +664,14 @@ data class DisneyRowSpec(
     /**
      * The complete TMDB catalog the row stands for, which its See All goes on with after the row's own
      * titles: e.g. Disney Classics shows hand-picked classics, then every Walt Disney Animation Studios
-     * film. Rows built from TMDB queries already page through everything they match.
+     * film. Rows built from TMDB queries already page through everything they match. (Hand-picked
+     * movies also bring every other movie of their TMDB franchise collections into See All.)
      */
-    val seeAll: List<DisneyRowSource.Discover> = emptyList()
+    val seeAll: List<DisneyRowSource> = emptyList()
 )
 
 /** Gives a row its complete catalog for See All (see [DisneyRowSpec.seeAll]). */
-fun DisneyRowSpec.withSeeAll(vararg sources: DisneyRowSource.Discover): DisneyRowSpec = copy(seeAll = sources.toList())
+fun DisneyRowSpec.withSeeAll(vararg sources: DisneyRowSource): DisneyRowSpec = copy(seeAll = sources.toList())
 
 /** A page definition: its rows, and which row feeds the hero banner. */
 data class DisneyHubSpec(
@@ -1804,6 +1811,27 @@ object DisneyPlusCatalog {
         DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, keywordQuery = keyword, companies = companies, genres = genres)
     )
 
+    /** A TMDB franchise collection by name ("Toy Story" -> every Toy Story movie), for See All. */
+    private fun franchise(name: String) = DisneyRowSource.TmdbCollection(name)
+
+    /** Every movie and series TMDB tags with [keyword], released up to [until] (yyyy-MM-dd). */
+    private fun keywordCatalogUntil(keyword: String, until: String) = arrayOf(
+        DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = keyword, releaseDateLte = until),
+        DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, keywordQuery = keyword, releaseDateLte = until)
+    )
+
+    /** Every series TMDB tags with [keyword]. */
+    private fun keywordShows(keyword: String) = DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, keywordQuery = keyword)
+
+    /** Every movie and series from a production company found by name ("Tyler Perry Studios"). */
+    private fun studioCatalog(name: String) = arrayOf(
+        DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companyQuery = name),
+        DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, companyQuery = name)
+    )
+
+    private const val MCU = "marvel cinematic universe (mcu)"
+    private const val DISNEY_AND_PIXAR = "2|6125|3"
+
     // ---- Rows reused across pages ----
 
     private val rowClassics = DisneyRowSpec("classics", R.string.disney_row_classics, listOf(curated(CLASSICS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_ANIMATION, sortBy = MOST_VOTED, runtimeGte = 40))
@@ -2003,11 +2031,11 @@ object DisneyPlusCatalog {
                 "d_live_action", R.string.disney_row_live_action_movies,
                 listOf(company(MOVIE, DisneyPlusIds.CO_WALT_DISNEY_PICTURES, withoutGenres = DisneyPlusIds.G_ANIMATION, voteCountGte = 200))
             ),
-            DisneyRowSpec("d_lilo_stitch", R.string.disney_row_lilo_stitch, listOf(curated(LILO_AND_STITCH))),
+            DisneyRowSpec("d_lilo_stitch", R.string.disney_row_lilo_stitch, listOf(curated(LILO_AND_STITCH))).withSeeAll(franchise("Lilo & Stitch (Animated)"), franchise("Lilo & Stitch (Live-Action)")),
             DisneyRowSpec("d_villains", R.string.disney_row_villains, listOf(curated(DISNEY_VILLAINS))).withSeeAll(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = "$DISNEY_FILM_STUDIOS|${DisneyPlusIds.CO_PIXAR}", keywordQuery = "villain")),
-            DisneyRowSpec("d_sing_alongs", R.string.disney_row_sing_alongs, listOf(curated(SING_ALONGS))),
-            DisneyRowSpec("d_frozen", R.string.disney_row_frozen, listOf(curated(FROZEN))),
-            DisneyRowSpec("d_characters", R.string.disney_row_characters, listOf(curated(CHARACTERS))),
+            DisneyRowSpec("d_sing_alongs", R.string.disney_row_sing_alongs, listOf(curated(SING_ALONGS))).withSeeAll(company(MOVIE, DISNEY_AND_PIXAR, sortBy = MOST_VOTED, genres = HboMaxIds.G_MUSIC), *keywordCatalog("musical", companies = DISNEY_FILM_STUDIOS)),
+            DisneyRowSpec("d_frozen", R.string.disney_row_frozen, listOf(curated(FROZEN))).withSeeAll(franchise("Frozen"), franchise("A Frozen Christmas")),
+            DisneyRowSpec("d_characters", R.string.disney_row_characters, listOf(curated(CHARACTERS))).withSeeAll(company(MOVIE, DISNEY_AND_PIXAR, sortBy = MOST_VOTED)),
             DisneyRowSpec(
                 "d_vintage", R.string.disney_row_vintage,
                 listOf(
@@ -2055,7 +2083,7 @@ object DisneyPlusCatalog {
         heroRowId = "px_featured",
         rows = listOf(
             DisneyRowSpec("px_featured", R.string.disney_row_featured, listOf(curated(PIXAR_PAGE_FEATURED))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = MOST_VOTED, runtimeGte = 40), company(TV, DisneyPlusIds.CO_PIXAR)),
-            DisneyRowSpec("px_toy_story", R.string.disney_row_toy_story, listOf(curated(TOY_STORY))),
+            DisneyRowSpec("px_toy_story", R.string.disney_row_toy_story, listOf(curated(TOY_STORY))).withSeeAll(franchise("Toy Story")),
             DisneyRowSpec(
                 "px_movies", R.string.disney_row_movies,
                 listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, runtimeGte = 60, voteCountGte = 50))
@@ -2079,11 +2107,11 @@ object DisneyPlusCatalog {
                     )
                 )
             ),
-            DisneyRowSpec("px_forky", R.string.pixar_row_forky, listOf(curated(FORKY_AND_FRIENDS))),
-            DisneyRowSpec("px_cars", R.string.disney_row_cars, listOf(curated(CARS))),
-            DisneyRowSpec("px_beasts", R.string.pixar_row_beasts_and_monsters, listOf(curated(BEASTS_AND_MONSTERS))),
-            DisneyRowSpec("px_unlikely_heroes", R.string.pixar_row_unlikely_heroes, listOf(curated(UNLIKELY_HEROES))),
-            DisneyRowSpec("px_oscar_winners", R.string.pixar_row_oscar_winners, listOf(curated(PIXAR_OSCAR_WINNERS))),
+            DisneyRowSpec("px_forky", R.string.pixar_row_forky, listOf(curated(FORKY_AND_FRIENDS))).withSeeAll(franchise("Toy Story")),
+            DisneyRowSpec("px_cars", R.string.disney_row_cars, listOf(curated(CARS))).withSeeAll(franchise("Cars"), franchise("Planes")),
+            DisneyRowSpec("px_beasts", R.string.pixar_row_beasts_and_monsters, listOf(curated(BEASTS_AND_MONSTERS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = MOST_VOTED)),
+            DisneyRowSpec("px_unlikely_heroes", R.string.pixar_row_unlikely_heroes, listOf(curated(UNLIKELY_HEROES))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = MOST_VOTED)),
+            DisneyRowSpec("px_oscar_winners", R.string.pixar_row_oscar_winners, listOf(curated(PIXAR_OSCAR_WINNERS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = MOST_VOTED)),
             DisneyRowSpec(
                 "px_through_the_years", R.string.pixar_row_through_the_years,
                 listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = RELEASE_ORDER, runtimeGte = 60, voteCountGte = 50, releaseDateLte = TODAY))
@@ -2101,20 +2129,20 @@ object DisneyPlusCatalog {
         heroRowId = "mv_featured",
         rows = listOf(
             DisneyRowSpec("mv_featured", R.string.disney_row_featured, listOf(curated(MARVEL_PAGE_FEATURED))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_MARVEL_STUDIOS, sortBy = MOST_VOTED), company(TV, DisneyPlusIds.CO_MARVEL_STUDIOS), DisneyRowSource.Discover(TV, companyQuery = "Marvel Television")),
-            DisneyRowSpec("mv_countdown", R.string.marvel_row_avengers_countdown, listOf(curated(AVENGERS_COUNTDOWN))),
-            DisneyRowSpec("mv_infinity_saga", R.string.marvel_row_infinity_saga, listOf(curated(MCU_INFINITY_SAGA))),
-            DisneyRowSpec("mv_multiverse_saga", R.string.marvel_row_multiverse_saga, listOf(curated(MCU_MULTIVERSE_SAGA))),
-            DisneyRowSpec("mv_spider_verse", R.string.marvel_row_spider_verse, listOf(curated(SPIDER_VERSE))).withSeeAll(*keywordCatalog("spider-man")),
-            DisneyRowSpec("mv_movie_timeline", R.string.marvel_row_movie_timeline, listOf(curated(MCU_MOVIE_TIMELINE))),
-            DisneyRowSpec("mv_monsters", R.string.marvel_row_monsters, listOf(curated(MARVEL_MONSTERS))),
-            DisneyRowSpec("mv_prepare_for_vision", R.string.marvel_row_prepare_for_vision, listOf(curated(PREPARE_FOR_VISION))),
-            DisneyRowSpec("mv_mutant_legacy", R.string.marvel_row_mutant_legacy, listOf(curated(MUTANT_LEGACY))).withSeeAll(*keywordCatalog("x-men")),
-            DisneyRowSpec("mv_fantastic", R.string.marvel_row_fantastic_adventures, listOf(curated(FANTASTIC_ADVENTURES))).withSeeAll(*keywordCatalog("fantastic four")),
-            DisneyRowSpec("mv_origin_stories", R.string.marvel_row_origin_stories, listOf(curated(MARVEL_ORIGIN_STORIES))),
-            DisneyRowSpec("mv_defenders", R.string.marvel_row_defenders, listOf(curated(THE_DEFENDERS))),
-            DisneyRowSpec("mv_complete_timeline", R.string.marvel_row_complete_timeline, listOf(curated(MCU_COMPLETE_TIMELINE))),
-            DisneyRowSpec("mv_sam_wilson", R.string.marvel_row_sam_wilson, listOf(curated(SAM_WILSON))),
-            DisneyRowSpec("mv_rivals", R.string.marvel_row_rivals_characters, listOf(curated(MARVEL_RIVALS_CHARACTERS))),
+            DisneyRowSpec("mv_countdown", R.string.marvel_row_avengers_countdown, listOf(curated(AVENGERS_COUNTDOWN))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_infinity_saga", R.string.marvel_row_infinity_saga, listOf(curated(MCU_INFINITY_SAGA))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_multiverse_saga", R.string.marvel_row_multiverse_saga, listOf(curated(MCU_MULTIVERSE_SAGA))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_spider_verse", R.string.marvel_row_spider_verse, listOf(curated(SPIDER_VERSE))).withSeeAll(franchise("Spider-Man"), franchise("Spider-Man (MCU)"), franchise("The Amazing Spider-Man"), franchise("Spider-Man: Spider-Verse"), franchise("Spider-Man (TV)")),
+            DisneyRowSpec("mv_movie_timeline", R.string.marvel_row_movie_timeline, listOf(curated(MCU_MOVIE_TIMELINE))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_monsters", R.string.marvel_row_monsters, listOf(curated(MARVEL_MONSTERS))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_prepare_for_vision", R.string.marvel_row_prepare_for_vision, listOf(curated(PREPARE_FOR_VISION))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_mutant_legacy", R.string.marvel_row_mutant_legacy, listOf(curated(MUTANT_LEGACY))).withSeeAll(franchise("X-Men")),
+            DisneyRowSpec("mv_fantastic", R.string.marvel_row_fantastic_adventures, listOf(curated(FANTASTIC_ADVENTURES))).withSeeAll(franchise("Fantastic Four")),
+            DisneyRowSpec("mv_origin_stories", R.string.marvel_row_origin_stories, listOf(curated(MARVEL_ORIGIN_STORIES))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_defenders", R.string.marvel_row_defenders, listOf(curated(THE_DEFENDERS))).withSeeAll(*studioCatalog("Marvel Television"), *keywordCatalog(MCU)),
+            DisneyRowSpec("mv_complete_timeline", R.string.marvel_row_complete_timeline, listOf(curated(MCU_COMPLETE_TIMELINE))).withSeeAll(*keywordCatalog(MCU)),
+            DisneyRowSpec("mv_sam_wilson", R.string.marvel_row_sam_wilson, listOf(curated(SAM_WILSON))).withSeeAll(franchise("Captain America"), *keywordCatalog(MCU)),
+            DisneyRowSpec("mv_rivals", R.string.marvel_row_rivals_characters, listOf(curated(MARVEL_RIVALS_CHARACTERS))).withSeeAll(company(MOVIE, DisneyPlusIds.CO_MARVEL_STUDIOS, sortBy = MOST_VOTED), company(TV, "${DisneyPlusIds.CO_MARVEL_STUDIOS}|${DisneyPlusIds.CO_MARVEL_ANIMATION}", sortBy = MOST_VOTED)),
             DisneyRowSpec(
                 "mv_character_collections", R.string.marvel_row_character_collections,
                 kind = DisneyRowKind.COLLECTIONS,
@@ -2124,7 +2152,7 @@ object DisneyPlusCatalog {
                 "mv_animation", R.string.marvel_row_animation,
                 listOf(curated(MARVEL_ANIMATION), company(TV, DisneyPlusIds.CO_MARVEL_ANIMATION))
             ),
-            DisneyRowSpec("mv_imax", R.string.marvel_row_imax_enhanced, listOf(curated(MARVEL_IMAX_ENHANCED))),
+            DisneyRowSpec("mv_imax", R.string.marvel_row_imax_enhanced, listOf(curated(MARVEL_IMAX_ENHANCED))).withSeeAll(*keywordCatalog(MCU)),
             DisneyRowSpec(
                 "mv_unscripted", R.string.marvel_row_unscripted,
                 listOf(
@@ -2140,10 +2168,10 @@ object DisneyPlusCatalog {
         heroRowId = "sw_featured",
         rows = listOf(
             DisneyRowSpec("sw_featured", R.string.disney_row_featured, listOf(curated(STAR_WARS_PAGE_FEATURED))).withSeeAll(*keywordCatalog("star wars")),
-            DisneyRowSpec("sw_movies", R.string.disney_row_movies, listOf(curated(STAR_WARS_MOVIES_RELEASE))),
-            DisneyRowSpec("sw_timeline", R.string.sw_row_timeline, listOf(curated(STAR_WARS_TIMELINE))),
+            DisneyRowSpec("sw_movies", R.string.disney_row_movies, listOf(curated(STAR_WARS_MOVIES_RELEASE))).withSeeAll(franchise("Star Wars"), franchise("LEGO Star Wars"), *keywordCatalog("star wars")),
+            DisneyRowSpec("sw_timeline", R.string.sw_row_timeline, listOf(curated(STAR_WARS_TIMELINE))).withSeeAll(franchise("Star Wars"), franchise("LEGO Star Wars"), *keywordCatalog("star wars")),
             DisneyRowSpec("sw_series_specials", R.string.sw_row_series_and_specials, listOf(curated(STAR_WARS_SERIES_AND_SPECIALS))).withSeeAll(*keywordCatalog("star wars")),
-            DisneyRowSpec("sw_references", R.string.sw_row_references, listOf(curated(STAR_WARS_REFERENCES))),
+            DisneyRowSpec("sw_references", R.string.sw_row_references, listOf(curated(STAR_WARS_REFERENCES))).withSeeAll(*keywordCatalog("star wars")),
             DisneyRowSpec(
                 "sw_collections", R.string.disney_row_collections,
                 kind = DisneyRowKind.COLLECTIONS,
@@ -2162,9 +2190,9 @@ object DisneyPlusCatalog {
                 "sw_shorts", R.string.disney_row_shorts,
                 listOf(curated(STAR_WARS_SHORTS), company(MOVIE, DisneyPlusIds.CO_LUCASFILM, runtimeLte = 30))
             ),
-            DisneyRowSpec("sw_vintage", R.string.sw_row_vintage, listOf(curated(STAR_WARS_VINTAGE))),
-            DisneyRowSpec("sw_obi_wan", R.string.sw_row_obi_wan, listOf(curated(OBI_WAN_KENOBI))),
-            DisneyRowSpec("sw_darth_vader", R.string.sw_row_darth_vader, listOf(curated(DARTH_VADER)))
+            DisneyRowSpec("sw_vintage", R.string.sw_row_vintage, listOf(curated(STAR_WARS_VINTAGE))).withSeeAll(*keywordCatalogUntil("star wars", "1999-12-31")),
+            DisneyRowSpec("sw_obi_wan", R.string.sw_row_obi_wan, listOf(curated(OBI_WAN_KENOBI))).withSeeAll(*keywordCatalog("obi-wan kenobi")),
+            DisneyRowSpec("sw_darth_vader", R.string.sw_row_darth_vader, listOf(curated(DARTH_VADER))).withSeeAll(*keywordCatalog("darth vader"))
         )
     )
 
@@ -2697,7 +2725,7 @@ object DisneyPlusCatalog {
                 )
             ),
             DisneyRowSpec("p_originals", R.string.paramount_row_originals, listOf(net(ParamountPlusIds.NET_PARAMOUNT_PLUS))),
-            DisneyRowSpec("p_sheridan", R.string.paramount_row_sheridan, listOf(curated(TAYLOR_SHERIDAN))),
+            DisneyRowSpec("p_sheridan", R.string.paramount_row_sheridan, listOf(curated(TAYLOR_SHERIDAN))).withSeeAll(*studioCatalog("101 Studios")),
             DisneyRowSpec("p_cbs", R.string.paramount_brand_cbs, listOf(net(ParamountPlusIds.NET_CBS))),
             DisneyRowSpec("p_star_trek", R.string.paramount_row_star_trek, listOf(curated(STAR_TREK_SERIES), curated(STAR_TREK_MOVIES))).withSeeAll(*keywordCatalog("star trek")),
             DisneyRowSpec(
@@ -3505,14 +3533,14 @@ object DisneyPlusCatalog {
             ),
             DisneyRowSpec("hm_hbo", R.string.hbomax_row_hbo_originals, listOf(net(HboMaxIds.NET_HBO))),
             DisneyRowSpec("hm_max_originals", R.string.hbomax_brand_max_originals, listOf(net(HboMaxIds.NET_HBO_MAX))),
-            DisneyRowSpec("hm_got", R.string.hbomax_row_game_of_thrones, listOf(curated(GAME_OF_THRONES))),
+            DisneyRowSpec("hm_got", R.string.hbomax_row_game_of_thrones, listOf(curated(GAME_OF_THRONES))).withSeeAll(*keywordCatalog("game of thrones"), *keywordCatalog("a song of ice and fire")),
             DisneyRowSpec("hm_dc", R.string.hbomax_brand_dc, dc(MOVIE, voteCountGte = 200) + dc(TV)),
-            DisneyRowSpec("hm_wizarding", R.string.hbomax_row_wizarding_world, listOf(curated(WIZARDING_WORLD))),
+            DisneyRowSpec("hm_wizarding", R.string.hbomax_row_wizarding_world, listOf(curated(WIZARDING_WORLD))).withSeeAll(franchise("Harry Potter"), franchise("Fantastic Beasts"), *keywordCatalog("harry potter")),
             DisneyRowSpec(
                 "hm_wb_pictures", R.string.hbomax_row_wb_pictures,
                 listOf(studio(MOVIE, "Warner Bros. Pictures", voteCountGte = 300, releaseDateLte = TODAY))
             ),
-            DisneyRowSpec("hm_looney_tunes", R.string.hbomax_brand_looney_tunes, listOf(curated(LOONEY_TUNES))).withSeeAll(*keywordCatalog("looney tunes")),
+            DisneyRowSpec("hm_looney_tunes", R.string.hbomax_brand_looney_tunes, listOf(curated(LOONEY_TUNES))).withSeeAll(franchise("Space Jam"), studio(MOVIE, "Warner Bros. Cartoons", sortBy = MOST_VOTED)),
             DisneyRowSpec("hm_cartoon_network", R.string.hbomax_row_cartoon_network, listOf(net(HboMaxIds.NET_CARTOON_NETWORK))),
             DisneyRowSpec("hm_adult_swim", R.string.hbomax_row_adult_swim, listOf(net(null, HboMaxIds.ADULT_SWIM))),
             DisneyRowSpec("hm_sesame", R.string.hbomax_brand_sesame_workshop, listOf(studio(TV, HboMaxIds.SESAME_WORKSHOP))),
@@ -3608,8 +3636,12 @@ object DisneyPlusCatalog {
             DisneyRowSpec(
                 "dc_batman", R.string.hbomax_row_batman,
                 listOf(
-                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "batman"),
-                    DisneyRowSource.Discover(TV, keywordQuery = "batman")
+                    // TMDB has no "batman" keyword: every Batman film collection instead.
+                    franchise("Batman"),
+                    franchise("The Batman"),
+                    franchise("The Dark Knight"),
+                    franchise("Batman (DC Universe Animated)"),
+                    franchise("Batman (Adam West) Animation")
                 )
             ),
             DisneyRowSpec(
@@ -3627,11 +3659,12 @@ object DisneyPlusCatalog {
         hub = DisneyPlusHub.H_LOONEY_TUNES,
         heroRowId = "lt_featured",
         rows = listOf(
-            DisneyRowSpec("lt_featured", R.string.disney_row_featured, listOf(curated(LOONEY_TUNES))).withSeeAll(*keywordCatalog("looney tunes")),
-            DisneyRowSpec("lt_series", R.string.disney_row_series, listOf(DisneyRowSource.Discover(TV, keywordQuery = "looney tunes"))),
+            DisneyRowSpec("lt_featured", R.string.disney_row_featured, listOf(curated(LOONEY_TUNES))).withSeeAll(franchise("Space Jam"), studio(MOVIE, "Warner Bros. Cartoons", sortBy = MOST_VOTED)),
+            // TMDB has no "looney tunes" keyword: the Looney Tunes series and films by name.
+            DisneyRowSpec("lt_series", R.string.disney_row_series, listOf(curated(LOONEY_TUNES.filter { it.mediaType == TV }))),
             DisneyRowSpec(
                 "lt_movies", R.string.disney_row_movies,
-                listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "looney tunes", runtimeGte = 60))
+                listOf(curated(LOONEY_TUNES.filter { it.mediaType == MOVIE }), franchise("Space Jam"))
             ),
             DisneyRowSpec(
                 "lt_shorts", R.string.hbomax_row_classic_shorts,
@@ -3788,7 +3821,7 @@ object DisneyPlusCatalog {
         networks = null,
         lookup = HboMaxIds.ADULT_SWIM,
         middleRows = listOf(
-            DisneyRowSpec("as_favorites", R.string.hbomax_row_fan_favorites, listOf(curated(ADULT_SWIM_FAVORITES))),
+            DisneyRowSpec("as_favorites", R.string.hbomax_row_fan_favorites, listOf(curated(ADULT_SWIM_FAVORITES))).withSeeAll(net(null, HboMaxIds.ADULT_SWIM, sortBy = MOST_VOTED)),
             DisneyRowSpec(
                 "as_animated", R.string.disney_row_animated_series,
                 listOf(net(null, HboMaxIds.ADULT_SWIM, genres = DisneyPlusIds.G_ANIMATION))
@@ -3832,7 +3865,7 @@ object DisneyPlusCatalog {
         prefix = "cn",
         networks = HboMaxIds.NET_CARTOON_NETWORK,
         middleRows = listOf(
-            DisneyRowSpec("cn_favorites", R.string.hbomax_row_fan_favorites, listOf(curated(CARTOON_NETWORK_FAVORITES))),
+            DisneyRowSpec("cn_favorites", R.string.hbomax_row_fan_favorites, listOf(curated(CARTOON_NETWORK_FAVORITES))).withSeeAll(net(HboMaxIds.NET_CARTOON_NETWORK, sortBy = MOST_VOTED)),
             DisneyRowSpec(
                 "cn_movies", R.string.disney_row_movies,
                 listOf(studio(MOVIE, "Cartoon Network Studios", sortBy = MOST_VOTED))
@@ -3861,9 +3894,9 @@ object DisneyPlusCatalog {
         heroRowId = "hp_films",
         rows = listOf(
             DisneyRowSpec("hp_films", R.string.hbomax_row_harry_potter_films, listOf(curated(HARRY_POTTER_FILMS)))
-                .withSeeAll(*keywordCatalog("wizarding world")),
-            DisneyRowSpec("hp_fantastic_beasts", R.string.hbomax_row_fantastic_beasts, listOf(curated(FANTASTIC_BEASTS_FILMS))),
-            DisneyRowSpec("hp_specials", R.string.hbomax_row_specials_docs, listOf(curated(WIZARDING_WORLD_EXTRAS))),
+                .withSeeAll(*keywordCatalog("harry potter")),
+            DisneyRowSpec("hp_fantastic_beasts", R.string.hbomax_row_fantastic_beasts, listOf(curated(FANTASTIC_BEASTS_FILMS))).withSeeAll(franchise("Fantastic Beasts")),
+            DisneyRowSpec("hp_specials", R.string.hbomax_row_specials_docs, listOf(curated(WIZARDING_WORLD_EXTRAS))).withSeeAll(*keywordCatalog("harry potter")),
             DisneyRowSpec(
                 "hp_more_magic", R.string.hbomax_row_more_magic,
                 listOf(
@@ -4095,7 +4128,7 @@ object DisneyPlusCatalog {
             DisneyRowSpec("pk_trending", R.string.disney_row_trending, listOf(onPeacock(MOVIE), onPeacock(TV))),
             DisneyRowSpec("pk_originals", R.string.peacock_brand_originals, listOf(net(PeacockIds.NET_PEACOCK))),
             DisneyRowSpec("pk_nbc", R.string.peacock_row_nbc_shows, listOf(net(PeacockIds.NET_NBC))),
-            DisneyRowSpec("pk_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))),
+            DisneyRowSpec("pk_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))).withSeeAll(*studioCatalog("Wolf Entertainment"), *studioCatalog("Wolf Films")),
             DisneyRowSpec("pk_bravo", R.string.peacock_brand_bravo, listOf(net(null, PeacockIds.BRAVO))),
             DisneyRowSpec(
                 "pk_universal", R.string.peacock_brand_universal,
@@ -4176,7 +4209,7 @@ object DisneyPlusCatalog {
         prefix = "nbc",
         networks = PeacockIds.NET_NBC,
         middleRows = listOf(
-            DisneyRowSpec("nbc_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))),
+            DisneyRowSpec("nbc_one_chicago", R.string.peacock_row_one_chicago, listOf(curated(ONE_CHICAGO_LAW_ORDER))).withSeeAll(*studioCatalog("Wolf Entertainment"), *studioCatalog("Wolf Films")),
             DisneyRowSpec("nbc_dramas", R.string.paramount_row_dramas, listOf(net(PeacockIds.NET_NBC, genres = PeacockIds.G_DRAMA))),
             DisneyRowSpec("nbc_comedies", R.string.paramount_row_comedies, listOf(net(PeacockIds.NET_NBC, genres = DisneyPlusIds.G_COMEDY))),
             DisneyRowSpec(
@@ -4194,7 +4227,7 @@ object DisneyPlusCatalog {
         networks = null,
         lookup = PeacockIds.BRAVO,
         middleRows = listOf(
-            DisneyRowSpec("bravo_housewives", R.string.peacock_row_real_housewives, listOf(curated(REAL_HOUSEWIVES))),
+            DisneyRowSpec("bravo_housewives", R.string.peacock_row_real_housewives, listOf(curated(REAL_HOUSEWIVES))).withSeeAll(keywordShows("real housewives")),
             DisneyRowSpec("bravo_below_deck", R.string.peacock_row_below_deck, listOf(curated(BELOW_DECK))),
             DisneyRowSpec(
                 "bravo_reality", R.string.paramount_row_reality,
@@ -4276,8 +4309,8 @@ object DisneyPlusCatalog {
             DisneyRowSpec(
                 "nbcs_soccer", R.string.peacock_row_soccer,
                 listOf(
-                    DisneyRowSource.Discover(TV, keywordQuery = "soccer"),
-                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "soccer")
+                    DisneyRowSource.Discover(TV, keywordQuery = "football (soccer)"),
+                    DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "football (soccer)")
                 )
             ),
             DisneyRowSpec(
@@ -4313,9 +4346,9 @@ object DisneyPlusCatalog {
         prefix = "uni",
         companies = PeacockIds.CO_UNIVERSAL,
         middleRows = listOf(
-            DisneyRowSpec("uni_jurassic", R.string.peacock_row_jurassic, listOf(curated(JURASSIC))),
-            DisneyRowSpec("uni_fast", R.string.peacock_row_fast_furious, listOf(curated(FAST_FURIOUS))),
-            DisneyRowSpec("uni_monsters", R.string.peacock_row_universal_monsters, listOf(curated(UNIVERSAL_MONSTERS))),
+            DisneyRowSpec("uni_jurassic", R.string.peacock_row_jurassic, listOf(curated(JURASSIC))).withSeeAll(franchise("Jurassic Park")),
+            DisneyRowSpec("uni_fast", R.string.peacock_row_fast_furious, listOf(curated(FAST_FURIOUS))).withSeeAll(franchise("The Fast and the Furious")),
+            DisneyRowSpec("uni_monsters", R.string.peacock_row_universal_monsters, listOf(curated(UNIVERSAL_MONSTERS))).withSeeAll(*keywordCatalog("universal monsters"), company(MOVIE, PeacockIds.CO_UNIVERSAL, sortBy = MOST_VOTED, genres = HboMaxIds.G_HORROR, releaseDateLte = "1960-12-31")),
             DisneyRowSpec(
                 "uni_animation", R.string.peacock_row_animation,
                 listOf(
@@ -4333,7 +4366,7 @@ object DisneyPlusCatalog {
         prefix = "illu",
         companies = PeacockIds.CO_ILLUMINATION,
         middleRows = listOf(
-            DisneyRowSpec("illu_despicable", R.string.peacock_row_despicable_me, listOf(curated(DESPICABLE_ME)))
+            DisneyRowSpec("illu_despicable", R.string.peacock_row_despicable_me, listOf(curated(DESPICABLE_ME))).withSeeAll(franchise("Despicable Me"), franchise("Minions"), franchise("Minions & More"))
         ),
         classicUntil = null,
         topRatedMinVotes = 500
@@ -4344,9 +4377,9 @@ object DisneyPlusCatalog {
         prefix = "dwa",
         companies = PeacockIds.CO_DREAMWORKS_ANIMATION,
         middleRows = listOf(
-            DisneyRowSpec("dwa_shrek", R.string.peacock_row_shrek, listOf(curated(SHREK))),
-            DisneyRowSpec("dwa_dragon", R.string.peacock_row_how_to_train_your_dragon, listOf(curated(HOW_TO_TRAIN_YOUR_DRAGON))),
-            DisneyRowSpec("dwa_kung_fu_panda", R.string.peacock_row_kung_fu_panda, listOf(curated(KUNG_FU_PANDA))),
+            DisneyRowSpec("dwa_shrek", R.string.peacock_row_shrek, listOf(curated(SHREK))).withSeeAll(franchise("Shrek"), franchise("Puss in Boots")),
+            DisneyRowSpec("dwa_dragon", R.string.peacock_row_how_to_train_your_dragon, listOf(curated(HOW_TO_TRAIN_YOUR_DRAGON))).withSeeAll(franchise("How to Train Your Dragon"), franchise("How to Train Your Dragon (Live-Action)")),
+            DisneyRowSpec("dwa_kung_fu_panda", R.string.peacock_row_kung_fu_panda, listOf(curated(KUNG_FU_PANDA))).withSeeAll(franchise("Kung Fu Panda")),
             DisneyRowSpec("dwa_series", R.string.peacock_row_dreamworks_series, listOf(studio(TV, PeacockIds.DREAMWORKS_TV)))
         ),
         classicUntil = "2005-12-31",
@@ -4792,11 +4825,15 @@ object DisneyPlusCatalog {
         titles: List<CuratedTitle>,
         extraSources: List<DisneyRowSource> = emptyList(),
         /** The franchise's complete TMDB catalog, for the Featured row's See All. */
-        seeAll: List<DisneyRowSource.Discover> = emptyList()
+        seeAll: List<DisneyRowSource> = emptyList()
     ): DisneyHubSpec {
         val distinct = titles.distinct()
         val movies = distinct.filter { it.mediaType == MOVIE }
         val shows = distinct.filter { it.mediaType == TV }
+        // The Movies and Series rows' See All: the same complete catalog, movies or shows only.
+        val everything = seeAll + extraSources.filterIsInstance<DisneyRowSource.Discover>()
+        val movieCatalog = everything.filter { it is DisneyRowSource.TmdbCollection || (it as? DisneyRowSource.Discover)?.mediaType == MOVIE }
+        val showCatalog = everything.filter { (it as? DisneyRowSource.Discover)?.mediaType == TV }
         return DisneyHubSpec(
             hub = hub,
             heroRowId = "${hub.key}_featured",
@@ -4806,80 +4843,80 @@ object DisneyPlusCatalog {
                         .copy(seeAll = seeAll)
                 )
                 if (movies.isNotEmpty() && shows.isNotEmpty()) {
-                    add(DisneyRowSpec("${hub.key}_movies", R.string.disney_row_movies, listOf(curated(movies))))
-                    add(DisneyRowSpec("${hub.key}_series", R.string.disney_row_series, listOf(curated(shows))))
+                    add(DisneyRowSpec("${hub.key}_movies", R.string.disney_row_movies, listOf(curated(movies))).copy(seeAll = movieCatalog.distinct()))
+                    add(DisneyRowSpec("${hub.key}_series", R.string.disney_row_series, listOf(curated(shows))).copy(seeAll = showCatalog.distinct()))
                 }
             }
         )
     }
 
     private val collectionPages: Map<DisneyPlusHub, DisneyHubSpec> = listOf(
-        collectionPage(DisneyPlusHub.COL_TOY_STORY, TOY_STORY + COLLECTION_TOY_STORY_EXTRAS),
-        collectionPage(DisneyPlusHub.COL_CARS, CARS),
-        collectionPage(DisneyPlusHub.COL_INCREDIBLES, COLTITLES_INCREDIBLES),
-        collectionPage(DisneyPlusHub.COL_INSIDE_OUT, COLTITLES_INSIDE_OUT),
+        collectionPage(DisneyPlusHub.COL_TOY_STORY, TOY_STORY + COLLECTION_TOY_STORY_EXTRAS, seeAll = listOf(franchise("Toy Story"))),
+        collectionPage(DisneyPlusHub.COL_CARS, CARS, seeAll = listOf(franchise("Cars"), franchise("Planes"))),
+        collectionPage(DisneyPlusHub.COL_INCREDIBLES, COLTITLES_INCREDIBLES, seeAll = listOf(franchise("The Incredibles"))),
+        collectionPage(DisneyPlusHub.COL_INSIDE_OUT, COLTITLES_INSIDE_OUT, seeAll = listOf(franchise("Inside Out"))),
         collectionPage(DisneyPlusHub.COL_PIXAR_SHORTS, COLTITLES_PIXAR_SHORTS, extraSources = listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, runtimeLte = 30, voteCountGte = 10))),
         collectionPage(DisneyPlusHub.COL_SPARKSHORTS, SPARKSHORTS, extraSources = listOf(company(MOVIE, DisneyPlusIds.CO_PIXAR, sortBy = RELEASE_ORDER, runtimeLte = 25, releaseDateGte = "2019-01-01", releaseDateLte = "2021-12-31"))),
-        collectionPage(DisneyPlusHub.COL_FORKY, FORKY_AND_FRIENDS),
-        collectionPage(DisneyPlusHub.COL_INFINITY_SAGA, MCU_INFINITY_SAGA),
-        collectionPage(DisneyPlusHub.COL_AVENGERS, COLTITLES_AVENGERS),
-        collectionPage(DisneyPlusHub.COL_IRON_SUIT, COLTITLES_IRON_SUIT),
-        collectionPage(DisneyPlusHub.COL_SPIDER_MAN, SPIDER_VERSE),
-        collectionPage(DisneyPlusHub.COL_THOR, COLTITLES_THOR),
-        collectionPage(DisneyPlusHub.COL_BLACK_PANTHER, COLTITLES_BLACK_PANTHER),
-        collectionPage(DisneyPlusHub.COL_BLACK_WIDOW, COLTITLES_BLACK_WIDOW),
-        collectionPage(DisneyPlusHub.COL_ANT_MAN, COLTITLES_ANT_MAN),
-        collectionPage(DisneyPlusHub.COL_DOCTOR_STRANGE, COLTITLES_DOCTOR_STRANGE),
-        collectionPage(DisneyPlusHub.COL_LOKI, COLTITLES_LOKI),
-        collectionPage(DisneyPlusHub.COL_WANDA_VISION, PREPARE_FOR_VISION),
-        collectionPage(DisneyPlusHub.COL_FALCON_WINTER_SOLDIER, SAM_WILSON + COLLECTION_WINTER_SOLDIER_EXTRAS),
-        collectionPage(DisneyPlusHub.COL_DAREDEVIL, THE_DEFENDERS + COLLECTION_DAREDEVIL_EXTRAS),
-        collectionPage(DisneyPlusHub.COL_SKYWALKER_SAGA, COLTITLES_SKYWALKER_SAGA),
-        collectionPage(DisneyPlusHub.COL_MANDALORIAN_GROGU, COLTITLES_MANDALORIAN_GROGU),
-        collectionPage(DisneyPlusHub.COL_DARTH_VADER, DARTH_VADER),
-        collectionPage(DisneyPlusHub.COL_OBI_WAN, OBI_WAN_KENOBI),
-        collectionPage(DisneyPlusHub.COL_STAR_WARS_TALES, COLTITLES_STAR_WARS_TALES),
-        collectionPage(DisneyPlusHub.COL_LUCASFILM_ANIMATION, STAR_WARS_ANIMATION),
-        collectionPage(DisneyPlusHub.COL_STAR_WARS_VINTAGE, STAR_WARS_VINTAGE),
+        collectionPage(DisneyPlusHub.COL_FORKY, FORKY_AND_FRIENDS, seeAll = listOf(franchise("Toy Story"))),
+        collectionPage(DisneyPlusHub.COL_INFINITY_SAGA, MCU_INFINITY_SAGA, seeAll = keywordCatalog(MCU).toList()),
+        collectionPage(DisneyPlusHub.COL_AVENGERS, COLTITLES_AVENGERS, seeAll = listOf(franchise("The Avengers")) + keywordCatalog(MCU)),
+        collectionPage(DisneyPlusHub.COL_IRON_SUIT, COLTITLES_IRON_SUIT, seeAll = listOf(franchise("Iron Man")) + keywordCatalog("iron man")),
+        collectionPage(DisneyPlusHub.COL_SPIDER_MAN, SPIDER_VERSE, seeAll = listOf(franchise("Spider-Man"), franchise("Spider-Man (MCU)"), franchise("The Amazing Spider-Man"), franchise("Spider-Man: Spider-Verse"), franchise("Spider-Man (TV)"))),
+        collectionPage(DisneyPlusHub.COL_THOR, COLTITLES_THOR, seeAll = listOf(franchise("Thor")) + keywordCatalog("thor")),
+        collectionPage(DisneyPlusHub.COL_BLACK_PANTHER, COLTITLES_BLACK_PANTHER, seeAll = listOf(franchise("Black Panther")) + keywordCatalog(MCU)),
+        collectionPage(DisneyPlusHub.COL_BLACK_WIDOW, COLTITLES_BLACK_WIDOW, seeAll = keywordCatalog(MCU).toList()),
+        collectionPage(DisneyPlusHub.COL_ANT_MAN, COLTITLES_ANT_MAN, seeAll = listOf(franchise("Ant-Man")) + keywordCatalog(MCU)),
+        collectionPage(DisneyPlusHub.COL_DOCTOR_STRANGE, COLTITLES_DOCTOR_STRANGE, seeAll = listOf(franchise("Doctor Strange")) + keywordCatalog(MCU)),
+        collectionPage(DisneyPlusHub.COL_LOKI, COLTITLES_LOKI, seeAll = keywordCatalog("loki").toList()),
+        collectionPage(DisneyPlusHub.COL_WANDA_VISION, PREPARE_FOR_VISION, seeAll = keywordCatalog(MCU).toList()),
+        collectionPage(DisneyPlusHub.COL_FALCON_WINTER_SOLDIER, SAM_WILSON + COLLECTION_WINTER_SOLDIER_EXTRAS, seeAll = listOf(franchise("Captain America")) + keywordCatalog("captain america")),
+        collectionPage(DisneyPlusHub.COL_DAREDEVIL, THE_DEFENDERS + COLLECTION_DAREDEVIL_EXTRAS, seeAll = studioCatalog("Marvel Television").toList()),
+        collectionPage(DisneyPlusHub.COL_SKYWALKER_SAGA, COLTITLES_SKYWALKER_SAGA, seeAll = listOf(franchise("Star Wars"), franchise("LEGO Star Wars")) + keywordCatalog("star wars")),
+        collectionPage(DisneyPlusHub.COL_MANDALORIAN_GROGU, COLTITLES_MANDALORIAN_GROGU, seeAll = keywordCatalog("star wars").toList()),
+        collectionPage(DisneyPlusHub.COL_DARTH_VADER, DARTH_VADER, seeAll = keywordCatalog("darth vader").toList()),
+        collectionPage(DisneyPlusHub.COL_OBI_WAN, OBI_WAN_KENOBI, seeAll = keywordCatalog("obi-wan kenobi").toList()),
+        collectionPage(DisneyPlusHub.COL_STAR_WARS_TALES, COLTITLES_STAR_WARS_TALES, seeAll = keywordCatalog("star wars").toList()),
+        collectionPage(DisneyPlusHub.COL_LUCASFILM_ANIMATION, STAR_WARS_ANIMATION, seeAll = studioCatalog("Lucasfilm Animation").toList()),
+        collectionPage(DisneyPlusHub.COL_STAR_WARS_VINTAGE, STAR_WARS_VINTAGE, seeAll = keywordCatalogUntil("star wars", "1999-12-31").toList()),
         collectionPage(DisneyPlusHub.COL_NG_ANIMALS_NATURE, NAT_GEO_ANIMALS, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "nature"), net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "animal"))),
         collectionPage(DisneyPlusHub.COL_NG_EXPLORING, NAT_GEO_EXPLORING, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "exploration"))),
         collectionPage(DisneyPlusHub.COL_NG_SPACE, COLTITLES_NG_SPACE, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "space"))),
-        collectionPage(DisneyPlusHub.COL_NG_EARTH_MONTH, COLTITLES_NG_EARTH_MONTH),
-        collectionPage(DisneyPlusHub.COL_NG_OUR_HOME, COLLECTION_OUR_HOME),
+        collectionPage(DisneyPlusHub.COL_NG_EARTH_MONTH, COLTITLES_NG_EARTH_MONTH, seeAll = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "climate change"), DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DisneyPlusIds.CO_NATIONAL_GEOGRAPHIC, keywordQuery = "environment"))),
+        collectionPage(DisneyPlusHub.COL_NG_OUR_HOME, COLLECTION_OUR_HOME, seeAll = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "nature"), DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companies = DisneyPlusIds.CO_NATIONAL_GEOGRAPHIC, genres = DisneyPlusIds.G_DOCUMENTARY))),
         collectionPage(DisneyPlusHub.COL_NG_VETS_PETS, NAT_GEO_VETS_AND_PETS, extraSources = listOf(net(null, DisneyPlusIds.NAT_GEO_WILD, keywordQuery = "veterinarian"))),
         collectionPage(DisneyPlusHub.COL_NG_SHARKS, COLTITLES_NG_SHARKS, extraSources = listOf(net(DisneyPlusIds.NET_NAT_GEO, keywordQuery = "shark"), net(null, DisneyPlusIds.NAT_GEO_WILD, keywordQuery = "shark"), DisneyRowSource.Discover(MOVIE, companies = DisneyPlusIds.CO_NATIONAL_GEOGRAPHIC, keywordQuery = "shark"))),
-        collectionPage(DisneyPlusHub.COL_DISNEY100, COLTITLES_DISNEY100),
-        collectionPage(DisneyPlusHub.COL_AVATAR, COLTITLES_AVATAR),
-        collectionPage(DisneyPlusHub.COL_BLUEY, COLTITLES_BLUEY),
-        collectionPage(DisneyPlusHub.COL_SIMPSONS, COLLECTION_SIMPSONS),
-        collectionPage(DisneyPlusHub.COL_TREEHOUSE_OF_HORROR, COLTITLES_TREEHOUSE_OF_HORROR),
+        collectionPage(DisneyPlusHub.COL_DISNEY100, COLTITLES_DISNEY100, seeAll = listOf(company(MOVIE, DISNEY_AND_PIXAR, sortBy = MOST_VOTED))),
+        collectionPage(DisneyPlusHub.COL_AVATAR, COLTITLES_AVATAR, seeAll = listOf(franchise("Avatar"))),
+        collectionPage(DisneyPlusHub.COL_BLUEY, COLTITLES_BLUEY, seeAll = keywordCatalog("bluey").toList()),
+        collectionPage(DisneyPlusHub.COL_SIMPSONS, COLLECTION_SIMPSONS, seeAll = listOf(franchise("The Simpsons")) + keywordCatalog("the simpsons")),
+        collectionPage(DisneyPlusHub.COL_TREEHOUSE_OF_HORROR, COLTITLES_TREEHOUSE_OF_HORROR, seeAll = keywordCatalog("the simpsons").toList()),
         collectionPage(DisneyPlusHub.COL_PHINEAS_FERB, COLTITLES_PHINEAS_FERB),
-        collectionPage(DisneyPlusHub.COL_LILO_STITCH, LILO_AND_STITCH),
-        collectionPage(DisneyPlusHub.COL_ZOOTOPIA, COLTITLES_ZOOTOPIA),
-        collectionPage(DisneyPlusHub.COL_DESCENDANTS, COLTITLES_DESCENDANTS),
-        collectionPage(DisneyPlusHub.COL_CHIP_DALE, COLTITLES_CHIP_DALE),
-        collectionPage(DisneyPlusHub.COL_DISNEY_FAIRIES, COLTITLES_DISNEY_FAIRIES),
-        collectionPage(DisneyPlusHub.COL_TRON, COLTITLES_TRON),
-        collectionPage(DisneyPlusHub.COL_AIR_BUD, COLTITLES_AIR_BUD),
-        collectionPage(DisneyPlusHub.COL_PRINCESSES, PRINCESSES),
-        collectionPage(DisneyPlusHub.COL_THROWBACKS, DISNEY_CHANNEL_FEATURED + DCOM_CLASSICS),
-        collectionPage(DisneyPlusHub.COL_MUSICALS, SING_ALONGS + COLLECTION_MUSICALS_EXTRAS),
-        collectionPage(DisneyPlusHub.COL_PRIDE, COLTITLES_PRIDE),
-        collectionPage(DisneyPlusHub.COL_BLACK_STORIES, COLTITLES_BLACK_STORIES),
-        collectionPage(DisneyPlusHub.COL_HALLOWEEN, COLTITLES_HALLOWEEN),
-        collectionPage(DisneyPlusHub.COL_DISNEY_PARKS, COLTITLES_DISNEY_PARKS),
-        collectionPage(DisneyPlusHub.COL_DISNEY_PLUS_INSIDER, COLTITLES_DISNEY_PLUS_INSIDER),
+        collectionPage(DisneyPlusHub.COL_LILO_STITCH, LILO_AND_STITCH, seeAll = listOf(franchise("Lilo & Stitch (Animated)"), franchise("Lilo & Stitch (Live-Action)"))),
+        collectionPage(DisneyPlusHub.COL_ZOOTOPIA, COLTITLES_ZOOTOPIA, seeAll = listOf(franchise("Zootopia")) + keywordCatalog("zootopia")),
+        collectionPage(DisneyPlusHub.COL_DESCENDANTS, COLTITLES_DESCENDANTS, seeAll = listOf(franchise("Descendants"))),
+        collectionPage(DisneyPlusHub.COL_CHIP_DALE, COLTITLES_CHIP_DALE, seeAll = keywordCatalog("chip n' dale").toList()),
+        collectionPage(DisneyPlusHub.COL_DISNEY_FAIRIES, COLTITLES_DISNEY_FAIRIES, seeAll = listOf(franchise("Tinker Bell"))),
+        collectionPage(DisneyPlusHub.COL_TRON, COLTITLES_TRON, seeAll = listOf(franchise("Tron"))),
+        collectionPage(DisneyPlusHub.COL_AIR_BUD, COLTITLES_AIR_BUD, seeAll = listOf(franchise("Air Bud"))),
+        collectionPage(DisneyPlusHub.COL_PRINCESSES, PRINCESSES, seeAll = keywordCatalog("princess", companies = DISNEY_FILM_STUDIOS).toList()),
+        collectionPage(DisneyPlusHub.COL_THROWBACKS, DISNEY_CHANNEL_FEATURED + DCOM_CLASSICS, seeAll = listOf(DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, networks = DisneyPlusIds.NET_DISNEY_CHANNEL, releaseDateLte = "2012-12-31"), DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, companyQuery = "Disney Channel", releaseDateLte = "2012-12-31"))),
+        collectionPage(DisneyPlusHub.COL_MUSICALS, SING_ALONGS + COLLECTION_MUSICALS_EXTRAS, seeAll = listOf(company(MOVIE, DISNEY_AND_PIXAR, sortBy = MOST_VOTED, genres = HboMaxIds.G_MUSIC)) + keywordCatalog("musical", companies = DISNEY_FILM_STUDIOS)),
+        collectionPage(DisneyPlusHub.COL_PRIDE, COLTITLES_PRIDE, seeAll = listOf(onDisneyPlus(MOVIE, sortBy = MOST_VOTED, keywordQuery = "lgbt"), onDisneyPlus(TV, sortBy = MOST_VOTED, keywordQuery = "lgbt"))),
+        collectionPage(DisneyPlusHub.COL_BLACK_STORIES, COLTITLES_BLACK_STORIES, seeAll = listOf(onDisneyPlus(MOVIE, sortBy = MOST_VOTED, keywordQuery = "african american"), onDisneyPlus(TV, sortBy = MOST_VOTED, keywordQuery = "african american"))),
+        collectionPage(DisneyPlusHub.COL_HALLOWEEN, COLTITLES_HALLOWEEN, seeAll = keywordCatalog("halloween", companies = DISNEY_AND_PIXAR).toList() + listOf(onDisneyPlus(MOVIE, sortBy = MOST_VOTED, keywordQuery = "halloween"), onDisneyPlus(TV, sortBy = MOST_VOTED, keywordQuery = "halloween"))),
+        collectionPage(DisneyPlusHub.COL_DISNEY_PARKS, COLTITLES_DISNEY_PARKS, seeAll = keywordCatalog("disneyland").toList()),
+        collectionPage(DisneyPlusHub.COL_DISNEY_PLUS_INSIDER, COLTITLES_DISNEY_PLUS_INSIDER, seeAll = listOf(DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, networks = DisneyPlusIds.NET_DISNEY_PLUS, genres = DisneyPlusIds.G_DOCUMENTARY))),
         collectionPage(DisneyPlusHub.PU_STAR_TREK, STAR_TREK_UNIVERSE, seeAll = keywordCatalog("star trek").toList()),
-        collectionPage(DisneyPlusHub.PU_TAYLOR_SHERIDAN, TAYLOR_SHERIDAN_UNIVERSE),
-        collectionPage(DisneyPlusHub.PU_MISSION_IMPOSSIBLE, MISSION_IMPOSSIBLE_UNIVERSE),
-        collectionPage(DisneyPlusHub.PU_TYLER_PERRY, TYLER_PERRY_TELEVISION),
-        collectionPage(DisneyPlusHub.PU_QUIET_PLACE_SCREAM, QUIET_PLACE_SCREAM),
+        collectionPage(DisneyPlusHub.PU_TAYLOR_SHERIDAN, TAYLOR_SHERIDAN_UNIVERSE, seeAll = studioCatalog("101 Studios").toList()),
+        collectionPage(DisneyPlusHub.PU_MISSION_IMPOSSIBLE, MISSION_IMPOSSIBLE_UNIVERSE, seeAll = listOf(franchise("Mission: Impossible"))),
+        collectionPage(DisneyPlusHub.PU_TYLER_PERRY, TYLER_PERRY_TELEVISION, seeAll = listOf(franchise("Madea")) + studioCatalog("Tyler Perry Studios")),
+        collectionPage(DisneyPlusHub.PU_QUIET_PLACE_SCREAM, QUIET_PLACE_SCREAM, seeAll = listOf(franchise("A Quiet Place"), franchise("Scream"))),
         collectionPage(DisneyPlusHub.PU_DEXTER, DEXTER_UNIVERSE),
         collectionPage(DisneyPlusHub.PU_NCIS, NCIS_UNIVERSE),
         collectionPage(DisneyPlusHub.PU_CSI, CSI_UNIVERSE),
         collectionPage(DisneyPlusHub.PU_CRIMINAL_MINDS, CRIMINAL_MINDS_UNIVERSE),
-        collectionPage(DisneyPlusHub.PU_SPONGEBOB, SPONGEBOB_UNIVERSE),
-        collectionPage(DisneyPlusHub.PU_SOUTH_PARK, SOUTH_PARK_UNIVERSE),
+        collectionPage(DisneyPlusHub.PU_SPONGEBOB, SPONGEBOB_UNIVERSE, seeAll = listOf(franchise("SpongeBob")) + keywordCatalog("spongebob")),
+        collectionPage(DisneyPlusHub.PU_SOUTH_PARK, SOUTH_PARK_UNIVERSE, seeAll = listOf(franchise("South Park: Post COVID"), franchise("South Park the Streaming Wars"))),
         collectionPage(DisneyPlusHub.PU_CHALLENGE, CHALLENGE_UNIVERSE),
         // HBO Max "Discover Our Collections": hand-picked titles first, then everything on HBO Max
         // that fits the collection (its See All goes through the whole TMDB catalog).
@@ -4905,7 +4942,7 @@ object DisneyPlusCatalog {
         collectionPage(
             DisneyPlusHub.HC_ASL, HBO_ASL,
             extraSources = listOf(onHboMax(MOVIE, keywordQuery = "sign language"), onHboMax(TV, keywordQuery = "sign language")),
-            seeAll = keywordCatalog("sign language").toList() + keywordCatalog("deaf").toList()
+            seeAll = keywordCatalog("american sign language (asl)").toList() + keywordCatalog("sign language") + keywordCatalog("deaf")
         ),
         collectionPage(
             DisneyPlusHub.HC_STREAM_IN_SPANISH, HBO_STREAM_IN_SPANISH,
@@ -4915,7 +4952,7 @@ object DisneyPlusCatalog {
                 DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, providers = HboMaxIds.PROVIDERS, originalLanguage = "es")
             )
         ),
-        collectionPage(DisneyPlusHub.HC_WORLD_OF_WESTEROS, HBO_WORLD_OF_WESTEROS),
+        collectionPage(DisneyPlusHub.HC_WORLD_OF_WESTEROS, HBO_WORLD_OF_WESTEROS, seeAll = keywordCatalog("game of thrones").toList() + keywordCatalog("a song of ice and fire")),
         collectionPage(DisneyPlusHub.HC_MORTAL_KOMBAT, HBO_MORTAL_KOMBAT, seeAll = keywordCatalog("mortal kombat").toList()),
         collectionPage(
             DisneyPlusHub.HC_AUDIO_DESCRIPTION, HBO_AUDIO_DESCRIPTION,
@@ -4943,9 +4980,9 @@ object DisneyPlusCatalog {
             extraSources = listOf(onHboMax(TV, keywordQuery = "podcast"), onHboMax(TV, genres = ParamountPlusIds.G_TV_TALK)),
             seeAll = keywordCatalog("podcast").toList()
         ),
-        collectionPage(DisneyPlusHub.HC_HARRY_POTTER, HBO_HARRY_POTTER, seeAll = keywordCatalog("wizarding world").toList()),
-        collectionPage(DisneyPlusHub.HC_CONJURING_UNIVERSE, HBO_CONJURING_UNIVERSE, seeAll = keywordCatalog("conjuring universe").toList()),
-        collectionPage(DisneyPlusHub.HC_SUPERMAN_FILMS, HBO_SUPERMAN_FILMS),
+        collectionPage(DisneyPlusHub.HC_HARRY_POTTER, HBO_HARRY_POTTER, seeAll = listOf(franchise("Harry Potter"), franchise("Fantastic Beasts")) + keywordCatalog("harry potter")),
+        collectionPage(DisneyPlusHub.HC_CONJURING_UNIVERSE, HBO_CONJURING_UNIVERSE, seeAll = listOf(franchise("The Conjuring"), franchise("Annabelle"), franchise("The Nun")) + keywordCatalog("conjuring")),
+        collectionPage(DisneyPlusHub.HC_SUPERMAN_FILMS, HBO_SUPERMAN_FILMS, seeAll = listOf(franchise("Superman"), franchise("Superman (DCU)"), franchise("Man of Steel"), franchise("Superman (DC Universe Animated)"), DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "superman"))),
         collectionPage(
             DisneyPlusHub.HC_LGBTQ_VOICES, HBO_LGBTQ_VOICES,
             extraSources = listOf(onHboMax(TV, keywordQuery = "lgbt"), onHboMax(MOVIE, keywordQuery = "lgbt")),
@@ -4967,16 +5004,16 @@ object DisneyPlusCatalog {
             extraSources = listOf(onHboMax(MOVIE, companies = HboMaxIds.CO_A24)),
             seeAll = listOf(company(MOVIE, HboMaxIds.CO_A24, sortBy = MOST_VOTED))
         ),
-        collectionPage(DisneyPlusHub.HC_MIDDLE_EARTH, HBO_MIDDLE_EARTH),
-        collectionPage(DisneyPlusHub.HC_SEX_AND_THE_CITY, HBO_SEX_AND_THE_CITY),
+        collectionPage(DisneyPlusHub.HC_MIDDLE_EARTH, HBO_MIDDLE_EARTH, seeAll = listOf(franchise("The Lord of the Rings"), franchise("The Lord of the Rings (Animated)"), franchise("The Hobbit")) + keywordCatalog("middle earth")),
+        collectionPage(DisneyPlusHub.HC_SEX_AND_THE_CITY, HBO_SEX_AND_THE_CITY, seeAll = listOf(franchise("Sex and the City"))),
         collectionPage(DisneyPlusHub.HC_GODZILLA, HBO_GODZILLA, seeAll = keywordCatalog("godzilla").toList()),
         collectionPage(DisneyPlusHub.HC_SOPRANOS, HBO_SOPRANOS),
         collectionPage(
             DisneyPlusHub.HC_BARBIE_LAND, HBO_BARBIE_LAND,
             extraSources = listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "barbie"))
         ),
-        collectionPage(DisneyPlusHub.HC_BATMAN_1989_1997, HBO_BATMAN_1989_1997),
-        collectionPage(DisneyPlusHub.HC_DARK_KNIGHT_TRILOGY, HBO_DARK_KNIGHT_TRILOGY)
+        collectionPage(DisneyPlusHub.HC_BATMAN_1989_1997, HBO_BATMAN_1989_1997, seeAll = listOf(franchise("Batman"))),
+        collectionPage(DisneyPlusHub.HC_DARK_KNIGHT_TRILOGY, HBO_DARK_KNIGHT_TRILOGY, seeAll = listOf(franchise("The Dark Knight")))
     ).associateBy { it.hub }
 
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */

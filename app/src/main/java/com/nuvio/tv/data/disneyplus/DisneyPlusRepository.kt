@@ -71,6 +71,12 @@ class DisneyPlusRepository @Inject constructor(
     private val titleInfoCache = ConcurrentHashMap<String, Optional<DisneyTitleInfo>>()
     private val rowCache = ConcurrentHashMap<String, List<MetaPreview>>()
     private val genreNameCache = ConcurrentHashMap<String, Map<Int, String>>()
+    /** A movie's TMDB franchise collection id (null: none), by TMDB movie id. */
+    private val movieCollectionCache = ConcurrentHashMap<Int, Optional<Int>>()
+    /** A franchise collection's movies, by collection id and language. */
+    private val collectionPartsCache = ConcurrentHashMap<String, List<MetaPreview>>()
+    /** A franchise collection name ("Toy Story") to its TMDB collection id. */
+    private val collectionSearchCache = ConcurrentHashMap<String, Optional<Int>>()
 
     /** Tiny nullable holder so "looked it up, found nothing" can be cached (ConcurrentHashMap rejects nulls). */
     private data class Optional<T>(val value: T?)
@@ -104,6 +110,7 @@ class DisneyPlusRepository @Inject constructor(
                                 when (source) {
                                     is DisneyRowSource.Discover -> discover(source, language)
                                     is DisneyRowSource.Curated -> curated(source, language)
+                                    is DisneyRowSource.TmdbCollection -> tmdbCollection(source.query, language)
                                 }
                             } catch (e: CancellationException) {
                                 throw e
@@ -180,14 +187,24 @@ class DisneyPlusRepository @Inject constructor(
         // Everything the row stands for: its own TMDB queries plus its complete catalog, without the
         // row's minimum vote counts (those only pick what the 10-title row shows first). Top-rated
         // queries keep theirs, or a title with one 10/10 vote would lead the list.
-        val sources = (spec.sources.filterIsInstance<DisneyRowSource.Discover>() + spec.seeAll)
+        val discoverSources = (spec.sources + spec.seeAll)
+            .filterIsInstance<DisneyRowSource.Discover>()
             .map { source -> if (source.sortBy.startsWith("vote_average")) source else source.copy(voteCountGte = null) }
             .distinct()
-        if (sources.isEmpty()) return@withContext emptyList()
         val language = language()
+        // Page 1 also brings the whole of every TMDB franchise collection: the ones named in the row's
+        // catalog, and the ones its hand-picked movies belong to (all of Toy Story, all of Shrek...).
+        val franchiseJobs: List<suspend () -> List<MetaPreview>> = if (page != 1) emptyList() else buildList {
+            (spec.sources + spec.seeAll).filterIsInstance<DisneyRowSource.TmdbCollection>().distinct()
+                .forEach { source -> add { tmdbCollection(source.query, language) } }
+            val handPicked = spec.sources.filterIsInstance<DisneyRowSource.Curated>()
+            if (handPicked.isNotEmpty()) add { franchisesOf(handPicked, language) }
+        }
+        val jobCount = discoverSources.size + franchiseJobs.size
+        if (jobCount == 0) return@withContext emptyList()
         var failures = 0
         val perSource = coroutineScope {
-            sources.map { source ->
+            val discovered = discoverSources.map { source ->
                 async {
                     try {
                         discover(source, language, page)
@@ -199,12 +216,103 @@ class DisneyPlusRepository @Inject constructor(
                         emptyList()
                     }
                 }
-            }.awaitAll()
+            }
+            val franchises = franchiseJobs.map { job ->
+                async {
+                    try {
+                        job()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Row ${spec.id}: franchise lookup failed", e)
+                        synchronized(this@DisneyPlusRepository) { failures++ }
+                        emptyList()
+                    }
+                }
+            }
+            // The franchise movies first (they're the closest to the row), then the wider catalog.
+            franchises.awaitAll() + discovered.awaitAll()
         }
         // Nothing could be loaded (no connection): say so, so See All tries this page again on the next
         // scroll instead of treating it as the end of the list.
-        if (failures == sources.size) throw java.io.IOException("Row ${spec.id} page $page could not be loaded")
+        if (failures == jobCount) throw java.io.IOException("Row ${spec.id} page $page could not be loaded")
         interleave(perSource, cap = Int.MAX_VALUE)
+    }
+
+    /**
+     * Every movie of the TMDB franchise collections the hand-picked movies belong to (Toy Story ->
+     * the whole Toy Story Collection), in release order, collection by collection.
+     */
+    private suspend fun franchisesOf(sources: List<DisneyRowSource.Curated>, language: String): List<MetaPreview> =
+        coroutineScope {
+            val movies = sources.flatMap { it.titles }.filter { it.mediaType == TmdbCollectionMediaType.MOVIE }.distinct()
+            val tmdbIds = movies.map { title -> async { resolveCurated(title, language) } }.awaitAll()
+                .mapNotNull { it?.id?.removePrefix("tmdb:")?.toIntOrNull() }
+                .distinct()
+            val collectionIds = tmdbIds.map { id -> async { movieCollectionId(id) } }.awaitAll().filterNotNull().distinct()
+            collectionIds.map { id -> async { collectionParts(id, language) } }.awaitAll().flatten()
+        }
+
+    /** A TMDB franchise collection found by name ("Toy Story" or "Toy Story Collection"): all its movies. */
+    private suspend fun tmdbCollection(query: String, language: String): List<MetaPreview> {
+        val id = collectionIdByName(query) ?: return emptyList()
+        return collectionParts(id, language)
+    }
+
+    private suspend fun collectionIdByName(query: String): Int? {
+        val key = query.lowercase(Locale.US)
+        collectionSearchCache[key]?.let { return it.value }
+        val result = lookupLimiter.withPermit {
+            runCatching {
+                val results = tmdbApi.searchCollections(apiKey, query).body()?.results.orEmpty()
+                val wanted = normalizeTitle(query).removeSuffix("collection")
+                // Exact name first ("Toy Story Collection"), then a collection whose name starts with it.
+                (results.firstOrNull { normalizeTitle(it.name.orEmpty()).removeSuffix("collection") == wanted }
+                    ?: results.firstOrNull { normalizeTitle(it.name.orEmpty()).startsWith(wanted) })?.id
+            }.onFailure { if (it is CancellationException) throw it }
+        }
+        if (result.isSuccess) collectionSearchCache[key] = Optional(result.getOrNull())
+        return result.getOrNull()
+    }
+
+    private suspend fun movieCollectionId(tmdbId: Int): Int? {
+        movieCollectionCache[tmdbId]?.let { return it.value }
+        val result = lookupLimiter.withPermit {
+            runCatching {
+                val response = tmdbApi.getMovieDetails(tmdbId, apiKey)
+                if (!response.isSuccessful) throw java.io.IOException("TMDB movie HTTP ${response.code()}")
+                response.body()?.belongsToCollection?.id
+            }.onFailure { if (it is CancellationException) throw it }
+        }
+        if (result.isSuccess) movieCollectionCache[tmdbId] = Optional(result.getOrNull())
+        return result.getOrNull()
+    }
+
+    private suspend fun collectionParts(collectionId: Int, language: String): List<MetaPreview> {
+        val key = "$collectionId:$language"
+        collectionPartsCache[key]?.let { return it }
+        val parts = lookupLimiter.withPermit {
+            val response = tmdbApi.getCollectionDetails(collectionId, apiKey, language)
+            if (!response.isSuccessful) throw java.io.IOException("TMDB collection HTTP ${response.code()}")
+            response.body()?.parts.orEmpty()
+        }
+        val previews = parts
+            .sortedBy { it.releaseDate?.takeIf { date -> date.isNotBlank() } ?: "9999" }
+            .mapNotNull { part ->
+                TmdbDiscoverResult(
+                    id = part.id,
+                    title = part.title,
+                    originalTitle = part.originalTitle,
+                    posterPath = part.posterPath,
+                    backdropPath = part.backdropPath,
+                    overview = part.overview,
+                    releaseDate = part.releaseDate,
+                    voteAverage = part.voteAverage,
+                    voteCount = part.voteCount
+                ).toPreview(TmdbCollectionMediaType.MOVIE)
+            }
+        if (previews.isNotEmpty()) collectionPartsCache[key] = previews
+        return previews
     }
 
     /** TMDB genre names by id, per media type and language (for the See All page's Genre filter). */
@@ -370,7 +478,9 @@ class DisneyPlusRepository @Inject constructor(
         keywordCache[key]?.let { return it.value }
         val id = runCatching {
             val results = tmdbApi.searchKeywords(apiKey, query).body()?.results.orEmpty()
-            (results.firstOrNull { it.name.equals(query, ignoreCase = true) } ?: results.firstOrNull())?.id
+            // Only the exact keyword: never a near match or the first result ("batman" isn't a TMDB
+            // keyword; its first result is "baştan"), which would fill a catalog with the wrong titles.
+            results.firstOrNull { it.name?.trim().equals(query.trim(), ignoreCase = true) }?.id
         }.onFailure { if (it is CancellationException) throw it }.getOrNull()
         if (id != null) keywordCache[key] = Optional(id)
         return id

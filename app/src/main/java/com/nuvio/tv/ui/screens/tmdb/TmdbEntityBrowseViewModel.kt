@@ -140,7 +140,8 @@ class TmdbEntityBrowseViewModel @Inject constructor(
                     latestData.withUpdatedRail(mediaType, railType) {
                         it.copy(
                             items = mergedItems.withCustomPosterUrls(pattern),
-                            currentPage = nextPage,
+                            // A failed page keeps its place, so scrolling tries it again.
+                            currentPage = if (pageResult.failed) latestRail.currentPage else nextPage,
                             hasMore = pageResult.hasMore,
                             isLoading = false
                         )
