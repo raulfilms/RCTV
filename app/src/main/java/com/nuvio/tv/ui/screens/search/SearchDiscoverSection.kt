@@ -286,6 +286,226 @@ internal fun DiscoverSection(
     }
 }
 
+/**
+ * The Discover page with TMDB's whole catalog: Type, Category (Popular, Trending, New), Genre and
+ * Year menus on top, then the same grid as before, which keeps loading titles as it scrolls.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun TmdbDiscoverSection(
+    state: TmdbDiscoverUiState,
+    posterCardStyle: PosterCardStyle,
+    watchedMovieIds: Set<String> = emptySet(),
+    watchedSeriesIds: Set<String> = emptySet(),
+    showBuiltInHeader: Boolean = true,
+    firstItemFocusRequester: FocusRequester,
+    focusedItemIndex: Int,
+    shouldRestoreFocusedItem: Boolean,
+    blockFilterFocus: Boolean = false,
+    onRestoreFocusedItemHandled: () -> Unit,
+    onNavigateToDetail: (String, String, String) -> Unit,
+    onItemFocused: (Int) -> Unit,
+    onSelectType: (com.nuvio.tv.data.discover.DiscoverMediaFilter) -> Unit,
+    onSelectCategory: (com.nuvio.tv.data.discover.DiscoverCategory) -> Unit,
+    onSelectGenre: (com.nuvio.tv.data.discover.DiscoverGenre?) -> Unit,
+    onSelectYear: (Int?) -> Unit,
+    onLoadMore: () -> Unit,
+    onItemLongPress: (MetaPreview) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var expandedPicker by remember { mutableStateOf<String?>(null) }
+    val filterFocusRequester = remember { FocusRequester() }
+    var gridHasFocus by remember { mutableStateOf(false) }
+
+    // Back from the grid goes up to the menus first.
+    androidx.activity.compose.BackHandler(enabled = gridHasFocus) {
+        try { filterFocusRequester.requestFocus() } catch (_: Exception) {}
+    }
+
+    val typeAll = stringResource(R.string.discover_type_all)
+    val typeMovies = stringResource(R.string.filter_type_movies)
+    val typeShows = stringResource(R.string.filter_type_tv_shows)
+    val typeOptions = listOf(
+        DiscoverOption(typeAll, com.nuvio.tv.data.discover.DiscoverMediaFilter.ALL.name),
+        DiscoverOption(typeMovies, com.nuvio.tv.data.discover.DiscoverMediaFilter.MOVIES.name),
+        DiscoverOption(typeShows, com.nuvio.tv.data.discover.DiscoverMediaFilter.SHOWS.name)
+    )
+    val categoryOptions = listOf(
+        DiscoverOption(stringResource(R.string.discover_category_popular), com.nuvio.tv.data.discover.DiscoverCategory.POPULAR.name),
+        DiscoverOption(stringResource(R.string.discover_category_trending), com.nuvio.tv.data.discover.DiscoverCategory.TRENDING.name),
+        DiscoverOption(stringResource(R.string.discover_category_new), com.nuvio.tv.data.discover.DiscoverCategory.NEW.name)
+    )
+    val allGenres = stringResource(R.string.discover_genre_all)
+    val genreOptions = buildList {
+        add(DiscoverOption(allGenres, ALL_VALUE))
+        addAll(state.genres.map { DiscoverOption(it.label, it.label) })
+    }
+    val allYears = stringResource(R.string.discover_year_all)
+    val yearOptions = remember(allYears) {
+        val newest = java.time.LocalDate.now().year + 1
+        buildList {
+            add(DiscoverOption(allYears, ALL_VALUE))
+            for (year in newest downTo OLDEST_YEAR) add(DiscoverOption(year.toString(), year.toString()))
+        }
+    }
+
+    val typeLabel = typeOptions.first { it.value == state.mediaFilter.name }.label
+    val categoryLabel = categoryOptions.first { it.value == state.category.name }.label
+    val genreLabel = state.selectedGenre?.label ?: allGenres
+    val yearLabel = state.year?.toString() ?: allYears
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = NuvioTheme.spacing.xxxl),
+        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+    ) {
+        Text(
+            text = stringResource(R.string.discover_title),
+            style = MaterialTheme.typography.headlineMedium,
+            color = if (showBuiltInHeader) NuvioTheme.colors.TextPrimary else Color.Transparent
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+        ) {
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f).focusRequester(filterFocusRequester),
+                title = stringResource(R.string.discover_filter_type),
+                value = typeLabel,
+                selectedValue = state.mediaFilter.name,
+                expanded = expandedPicker == "type",
+                options = typeOptions,
+                onExpandedChange = { expand -> expandedPicker = if (expand) "type" else null },
+                onSelect = { option ->
+                    expandedPicker = null
+                    onSelectType(com.nuvio.tv.data.discover.DiscoverMediaFilter.valueOf(option.value))
+                },
+                blockFocus = blockFilterFocus
+            )
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.discover_filter_category),
+                value = categoryLabel,
+                selectedValue = state.category.name,
+                expanded = expandedPicker == "category",
+                options = categoryOptions,
+                onExpandedChange = { expand -> expandedPicker = if (expand) "category" else null },
+                onSelect = { option ->
+                    expandedPicker = null
+                    onSelectCategory(com.nuvio.tv.data.discover.DiscoverCategory.valueOf(option.value))
+                },
+                blockFocus = blockFilterFocus
+            )
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.discover_filter_genre),
+                value = genreLabel,
+                selectedValue = state.selectedGenre?.label ?: ALL_VALUE,
+                expanded = expandedPicker == "genre",
+                options = genreOptions,
+                onExpandedChange = { expand -> expandedPicker = if (expand) "genre" else null },
+                onSelect = { option ->
+                    expandedPicker = null
+                    onSelectGenre(state.genres.firstOrNull { it.label == option.value })
+                },
+                blockFocus = blockFilterFocus
+            )
+            DiscoverDropdownPicker(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.discover_filter_year),
+                value = yearLabel,
+                selectedValue = state.year?.toString() ?: ALL_VALUE,
+                expanded = expandedPicker == "year",
+                options = yearOptions,
+                onExpandedChange = { expand -> expandedPicker = if (expand) "year" else null },
+                onSelect = { option ->
+                    expandedPicker = null
+                    onSelectYear(option.value.toIntOrNull())
+                },
+                blockFocus = blockFilterFocus
+            )
+        }
+
+        // What's showing, in one line: "Popular • Movies • Action • 2024".
+        Text(
+            text = listOfNotNull(
+                categoryLabel,
+                typeLabel,
+                state.selectedGenre?.label,
+                state.year?.toString()
+            ).joinToString(" • "),
+            style = MaterialTheme.typography.bodySmall,
+            color = NuvioTheme.colors.TextSecondary
+        )
+
+        when {
+            state.isLoading && state.items.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 28.dp, bottom = 28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    LoadingIndicator()
+                }
+            }
+
+            state.items.isNotEmpty() -> {
+                Box(modifier = Modifier.onFocusChanged { gridHasFocus = it.hasFocus }) {
+                    DiscoverGrid(
+                        items = state.items,
+                        posterCardStyle = posterCardStyle,
+                        watchedMovieIds = watchedMovieIds,
+                        watchedSeriesIds = watchedSeriesIds,
+                        focusResults = false,
+                        firstItemFocusRequester = firstItemFocusRequester,
+                        focusedItemIndex = focusedItemIndex,
+                        shouldRestoreFocusedItem = shouldRestoreFocusedItem,
+                        onRestoreFocusedItemHandled = onRestoreFocusedItemHandled,
+                        onItemFocused = onItemFocused,
+                        pendingCount = 0,
+                        canLoadMore = state.hasMore,
+                        isLoadingMore = state.isLoadingMore,
+                        onLoadMore = onLoadMore,
+                        onItemClick = { _, item ->
+                            HeroBackdropState.update(item.backdropUrl)
+                            onNavigateToDetail(item.id, item.apiType, "")
+                        },
+                        onItemLongPress = onItemLongPress,
+                        filterKey = state.filterKey,
+                        autoLoadMore = !state.loadFailed,
+                        layoutPage = com.nuvio.tv.ui.components.RowLayoutPages.DISCOVER
+                    )
+                }
+            }
+
+            state.loadFailed -> {
+                EmptyScreenState(
+                    title = stringResource(R.string.discover_error_title),
+                    subtitle = stringResource(R.string.discover_error_subtitle),
+                    icon = Icons.Default.Search
+                )
+            }
+
+            !state.isLoading -> {
+                EmptyScreenState(
+                    title = stringResource(R.string.discover_empty_no_content_title),
+                    subtitle = stringResource(R.string.discover_empty_filters_subtitle),
+                    icon = Icons.Default.Search
+                )
+            }
+        }
+    }
+}
+
+/** The "All genres" / "All years" choice in the Discover menus. */
+private const val ALL_VALUE = "__all__"
+
+/** The oldest year in the Year menu. */
+private const val OLDEST_YEAR = 1900
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun DiscoverDropdownPicker(
@@ -497,10 +717,30 @@ internal fun DiscoverGrid(
     onLoadMore: () -> Unit,
     onItemClick: (Int, MetaPreview) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
-    filterKey: String = ""
+    filterKey: String = "",
+    /** Loads the next titles by itself when the grid gets near the end (the whole-catalog Discover page). */
+    autoLoadMore: Boolean = false,
+    /** The page name in the website's row layout file (vertical or horizontal cards). */
+    layoutPage: String = com.nuvio.tv.ui.components.RowLayoutPages.SEARCH
 ) {
     val restoreFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
+    val latestOnLoadMore by androidx.compose.runtime.rememberUpdatedState(onLoadMore)
+    val latestCanLoadMore by androidx.compose.runtime.rememberUpdatedState(canLoadMore && !isLoadingMore)
+    if (autoLoadMore) {
+        LaunchedEffect(gridState, filterKey) {
+            androidx.compose.runtime.snapshotFlow {
+                val info = gridState.layoutInfo
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                lastVisible to info.totalItemsCount
+            }.collect { (lastVisible, total) ->
+                // A few rows before the end, fetch the next titles so scrolling never hits a wall.
+                if (total > 0 && lastVisible >= total - AUTO_LOAD_THRESHOLD && latestCanLoadMore) {
+                    latestOnLoadMore()
+                }
+            }
+        }
+    }
     var pendingFocusOnNewItemIndex by remember { mutableStateOf<Int?>(null) }
 
     // Scroll to top only when the filter combination actually changes (not on initial composition / back navigation).
@@ -530,7 +770,7 @@ internal fun DiscoverGrid(
 
     // Horizontal 16:9 cards with the title on the picture, unless the website sets Search
     // ("search" page) to vertical posters.
-    val verticalGrid = com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.SEARCH)
+    val verticalGrid = com.nuvio.tv.ui.components.isPageVertical(layoutPage)
     val adaptiveStyle = remember(posterCardStyle, verticalGrid) {
         if (verticalGrid) {
             posterCardStyle.copy(width = posterCardStyle.width, height = posterCardStyle.width * 1.5f)
@@ -742,6 +982,9 @@ internal fun DiscoverGrid(
         }
     }
 }
+
+/** How many cells before the end the Discover grid starts loading more titles. */
+private const val AUTO_LOAD_THRESHOLD = 12
 
 private sealed class DiscoverGridAction {
     object None : DiscoverGridAction()

@@ -38,10 +38,13 @@ import kotlin.math.roundToInt
 @Composable
 fun DiscoverScreen(
     viewModel: SearchViewModel = hiltViewModel(),
+    discoverViewModel: TmdbDiscoverViewModel = hiltViewModel(),
     showBuiltInHeader: Boolean = true,
     onNavigateToDetail: (String, String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // The page's titles: TMDB's whole catalog, by Type, Category, Genre and Year.
+    val discoverState by discoverViewModel.uiState.collectAsState()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsState()
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -59,12 +62,6 @@ fun DiscoverScreen(
             focusedBorderWidth = PosterCardDefaults.Style.focusedBorderWidth,
             focusedScale = PosterCardDefaults.Style.focusedScale
         )
-    }
-
-    LaunchedEffect(uiState.discoverLocation) {
-        if (uiState.discoverLocation != DiscoverLocation.OFF) {
-            viewModel.ensureDiscoverLoaded()
-        }
     }
 
     val latestPendingDiscoverRestore by rememberUpdatedState(pendingDiscoverRestoreOnResume)
@@ -91,12 +88,11 @@ fun DiscoverScreen(
                 icon = Icons.Default.Search
             )
         } else {
-            DiscoverSection(
-                uiState = uiState,
+            TmdbDiscoverSection(
+                state = discoverState,
                 posterCardStyle = posterCardStyle,
                 watchedMovieIds = watchedMovieIds,
                 watchedSeriesIds = watchedSeriesIds,
-                focusResults = false,
                 showBuiltInHeader = showBuiltInHeader,
                 firstItemFocusRequester = discoverFirstItemFocusRequester,
                 focusedItemIndex = discoverFocusedItemIndex,
@@ -107,28 +103,25 @@ fun DiscoverScreen(
                     pendingDiscoverRestoreOnResume = true
                     onNavigateToDetail(itemId, itemType, addonBaseUrl)
                 },
-                onDiscoverItemFocused = { index ->
-                    discoverFocusedItemIndex = index
-                    uiState.discoverResults.getOrNull(index)?.let { item ->
-                        viewModel.prefetchMetaOnFocus(item.id, item.rawType)
-                    }
-                },
+                onItemFocused = { index -> discoverFocusedItemIndex = index },
                 onSelectType = {
                     discoverFocusedItemIndex = 0
-                    viewModel.onEvent(SearchEvent.SelectDiscoverType(it))
+                    discoverViewModel.selectMediaFilter(it)
                 },
-                onSelectCatalog = {
+                onSelectCategory = {
                     discoverFocusedItemIndex = 0
-                    viewModel.onEvent(SearchEvent.SelectDiscoverCatalog(it))
+                    discoverViewModel.selectCategory(it)
                 },
                 onSelectGenre = {
                     discoverFocusedItemIndex = 0
-                    viewModel.onEvent(SearchEvent.SelectDiscoverGenre(it))
+                    discoverViewModel.selectGenre(it)
                 },
-                onLoadMore = { viewModel.onEvent(SearchEvent.LoadNextDiscoverResults) },
-                onItemLongPress = { item, addonBaseUrl ->
-                    viewModel.posterOptions.show(item, addonBaseUrl)
+                onSelectYear = {
+                    discoverFocusedItemIndex = 0
+                    discoverViewModel.selectYear(it)
                 },
+                onLoadMore = discoverViewModel::retry,
+                onItemLongPress = { item -> viewModel.posterOptions.show(item, "") },
                 modifier = Modifier.padding(top = NuvioTheme.spacing.lg)
             )
         }
@@ -139,7 +132,7 @@ fun DiscoverScreen(
             controller = viewModel.posterOptions,
             onNavigateToDetail = { id, type, addonBaseUrl ->
                 pendingDiscoverRestoreOnResume = true
-                val clickedItem = uiState.discoverResults.firstOrNull { it.id == id }
+                val clickedItem = discoverState.items.firstOrNull { it.id == id }
                 HeroBackdropState.update(clickedItem?.backdropUrl)
                 onNavigateToDetail(id, type, addonBaseUrl)
             }

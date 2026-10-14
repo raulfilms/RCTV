@@ -17,6 +17,7 @@ val LocalRowLayoutPage = staticCompositionLocalOf { "" }
 object RowLayoutPages {
     const val HOME = "home"
     const val SEARCH = "search"
+    const val DISCOVER = "discover"
     const val CHANNEL = "channel"
     const val BROWSE = "browse"
     const val COLLECTION = "collection"

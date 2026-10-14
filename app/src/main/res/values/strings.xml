@@ -2372,6 +2372,17 @@
     <string name="discover_empty_no_catalog_subtitle">Choose a discover catalog to browse</string>
     <string name="discover_empty_no_content_title">No content found</string>
     <string name="discover_empty_no_content_subtitle">Try a different genre or catalog</string>
+    <string name="discover_type_all">All</string>
+    <string name="discover_filter_category">Category</string>
+    <string name="discover_filter_year">Year</string>
+    <string name="discover_category_popular">Popular</string>
+    <string name="discover_category_trending">Trending</string>
+    <string name="discover_category_new">New</string>
+    <string name="discover_genre_all">All Genres</string>
+    <string name="discover_year_all">All Years</string>
+    <string name="discover_empty_filters_subtitle">Try a different genre or year</string>
+    <string name="discover_error_title">Couldn\'t load titles</string>
+    <string name="discover_error_subtitle">Check the connection, then pick the menu again</string>
 
     <!-- AddonManagerScreen -->
 

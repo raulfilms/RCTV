@@ -277,6 +277,16 @@ interface TmdbApi {
         @Query("include_adult") includeAdult: Boolean = false
     ): Response<TmdbCollectionSearchResponse>
 
+    /** What's trending on TMDB ("movie" or "tv", over a "day" or a "week"). Same result shape as discover. */
+    @GET("trending/{media_type}/{time_window}")
+    suspend fun getTrending(
+        @Path("media_type") mediaType: String,
+        @Path("time_window") timeWindow: String,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String? = null,
+        @Query("page") page: Int = 1
+    ): Response<TmdbDiscoverResponse>
+
     @GET("genre/movie/list")
     suspend fun getMovieGenres(
         @Query("api_key") apiKey: String,
