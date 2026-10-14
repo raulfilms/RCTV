@@ -3793,4 +3793,36 @@
         <string name="game_detail_no_stats">Stats aren\'t available for this game yet.</string>
         <string name="game_detail_loading_stats">Loading stats…</string>
 
+    <!-- HBO Max: "Discover Our Collections" row and its collection pages -->
+    <string name="hbomax_row_collections">Discover Our Collections</string>
+    <string name="hbomax_col_horror_comes_home">Horror Comes Home</string>
+    <string name="hbomax_col_nuestras_voces">Nuestras Voces</string>
+    <string name="hbomax_col_awards_acclaim">Awards &amp; Acclaim</string>
+    <string name="hbomax_col_hard_knocks">Hard Knocks</string>
+    <string name="hbomax_col_big_bang_theory">The Big Bang Theory</string>
+    <string name="hbomax_col_asl">ASL</string>
+    <string name="hbomax_col_stream_in_spanish">Stream It in Spanish</string>
+    <string name="hbomax_col_world_of_westeros">World of Westeros</string>
+    <string name="hbomax_col_mortal_kombat">Mortal Kombat</string>
+    <string name="hbomax_col_audio_description">Audio Description</string>
+    <string name="hbomax_col_rick_and_morty">Rick and Morty</string>
+    <string name="hbomax_col_fortress_of_solitude">The Fortress of Solitude</string>
+    <string name="hbomax_col_whats_new">What\'s New</string>
+    <string name="hbomax_col_in_her_voice">In Her Voice</string>
+    <string name="hbomax_col_podcasts">Podcasts</string>
+    <string name="hbomax_col_harry_potter">Harry Potter</string>
+    <string name="hbomax_col_conjuring_universe">The Conjuring Universe</string>
+    <string name="hbomax_col_superman_films">Superman Films</string>
+    <string name="hbomax_col_lgbtq_voices">LGBTQ+ Voices</string>
+    <string name="hbomax_col_api_voices">API Voices</string>
+    <string name="hbomax_col_black_voices">Black Voices</string>
+    <string name="hbomax_col_friends">Friends</string>
+    <string name="hbomax_col_a24">A24</string>
+    <string name="hbomax_col_middle_earth">Middle-earth</string>
+    <string name="hbomax_col_sex_and_the_city">Sex and the City</string>
+    <string name="hbomax_col_godzilla">Godzilla</string>
+    <string name="hbomax_col_sopranos">The Sopranos</string>
+    <string name="hbomax_col_barbie_land">Barbie Land</string>
+    <string name="hbomax_col_batman_1989_1997">Batman 1989–1997</string>
+    <string name="hbomax_col_dark_knight_trilogy">The Dark Knight Trilogy</string>
 </resources>

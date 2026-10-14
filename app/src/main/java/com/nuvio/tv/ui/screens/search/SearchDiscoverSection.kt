@@ -528,12 +528,18 @@ internal fun DiscoverGrid(
     val totalCells = items.size + if (actionType != DiscoverGridAction.None) 1 else 0
     val hasActionCell = actionType != DiscoverGridAction.None
 
-    // Horizontal 16:9 cards with the title on the picture, like every page.
-    val adaptiveStyle = remember(posterCardStyle) {
-        posterCardStyle.copy(
-            width = com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
-            height = com.nuvio.tv.ui.components.AppleLandscapeCardHeight
-        )
+    // Horizontal 16:9 cards with the title on the picture, unless the website sets Search
+    // ("search" page) to vertical posters.
+    val verticalGrid = com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.SEARCH)
+    val adaptiveStyle = remember(posterCardStyle, verticalGrid) {
+        if (verticalGrid) {
+            posterCardStyle.copy(width = posterCardStyle.width, height = posterCardStyle.width * 1.5f)
+        } else {
+            posterCardStyle.copy(
+                width = com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
+                height = com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+            )
+        }
     }
 
     LaunchedEffect(effectiveShouldRestoreFocusedItem, effectiveFocusedItemIndex, totalCells) {
@@ -663,23 +669,39 @@ internal fun DiscoverGrid(
                 focusResults && index == 0 -> firstItemFocusRequester
                 else -> itemFocusReq
             }
-            com.nuvio.tv.ui.components.AppleLandscapeCard(
-                item = item,
-                onClick = { onItemClick(index, item) },
-                onLongPress = { onItemLongPress(item) },
-                cornerRadius = adaptiveStyle.cornerRadius,
-                isWatched = run {
-                    val isSeries = item.apiType.equals("series", ignoreCase = true) || item.apiType.equals("tv", ignoreCase = true)
-                    if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds
-                },
-                modifier = Modifier
-                    .padding(top = 3.dp)
-                    .width(adaptiveStyle.width),
-                focusRequester = focusReq,
-                onFocus = {
-                    onItemFocused(index)
-                }
-            )
+            val itemWatched = run {
+                val isSeries = item.apiType.equals("series", ignoreCase = true) || item.apiType.equals("tv", ignoreCase = true)
+                if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds
+            }
+            if (verticalGrid) {
+                GridContentCard(
+                    item = item,
+                    onClick = { onItemClick(index, item) },
+                    onLongPress = { onItemLongPress(item) },
+                    posterCardStyle = adaptiveStyle,
+                    isWatched = itemWatched,
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .width(adaptiveStyle.width),
+                    focusRequester = focusReq,
+                    onFocused = { onItemFocused(index) }
+                )
+            } else {
+                com.nuvio.tv.ui.components.AppleLandscapeCard(
+                    item = item,
+                    onClick = { onItemClick(index, item) },
+                    onLongPress = { onItemLongPress(item) },
+                    cornerRadius = adaptiveStyle.cornerRadius,
+                    isWatched = itemWatched,
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .width(adaptiveStyle.width),
+                    focusRequester = focusReq,
+                    onFocus = {
+                        onItemFocused(index)
+                    }
+                )
+            }
         }
 
         if (hasActionCell) {

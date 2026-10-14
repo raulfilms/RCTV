@@ -300,7 +300,13 @@ private fun TmdbEntityBrowseContent(
                 onLoadMore = { onLoadMoreRail(seeAllRail.mediaType, seeAllRail.railType) },
                 logoRes = platformLogoRes,
                 logoUrl = data.header.logo,
-                logoDescription = data.header.name
+                logoDescription = data.header.name,
+                // Vertical when the website set this rail to vertical.
+                vertical = com.nuvio.tv.ui.components.LocalRowLayout.current.isVertical(
+                    com.nuvio.tv.ui.components.RowLayoutPages.BROWSE,
+                    seeAllRailKey,
+                    railTitle(seeAllRail)
+                )
             )
         } else if (data.rails.isEmpty()) {
             EmptyScreenState(
@@ -634,9 +640,18 @@ private fun EntityRailRow(
             }
     }
 
+    // Horizontal cards unless the website set this rail to vertical ("browse" page, by id or name).
+    val title = railTitle(rail)
+    val vertical = com.nuvio.tv.ui.components.LocalRowLayout.current.isVertical(
+        com.nuvio.tv.ui.components.RowLayoutPages.BROWSE,
+        "${rail.mediaType.value}_${rail.railType.value}",
+        title
+    )
+    val verticalStyle = com.nuvio.tv.ui.components.AppleVerticalPosterStyle
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = railTitle(rail),
+            text = title,
             style = MaterialTheme.typography.titleLarge.copy(
                 fontWeight = FontWeight.SemiBold
             ),
@@ -694,31 +709,46 @@ private fun EntityRailRow(
                         itemIndex == 0 -> firstItemFocusRequester
                         else -> itemFocusRequesters.getOrPut(itemIndex) { FocusRequester() }
                     }
-                    // Horizontal 16:9 cards with the title on the picture, like every page.
-                    com.nuvio.tv.ui.components.AppleLandscapeCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onLongPress = { onItemLongPress(item) },
-                        cornerRadius = posterCardStyle.cornerRadius,
-                        isWatched = if (rail.mediaType == TmdbEntityMediaType.TV) {
-                            item.id in watchedSeriesIds
-                        } else {
-                            item.id in watchedMovieIds
-                        },
-                        focusRequester = requester,
-                        onFocus = {
-                            onFocusedItemIndexChanged(itemIndex)
-                            if (isRestoreTarget && restoreFocusToken > 0) {
-                                restorePending = false
-                                onRestoreFocusHandled()
-                            }
+                    val itemWatched = if (rail.mediaType == TmdbEntityMediaType.TV) {
+                        item.id in watchedSeriesIds
+                    } else {
+                        item.id in watchedMovieIds
+                    }
+                    val onCardFocused: () -> Unit = {
+                        onFocusedItemIndexChanged(itemIndex)
+                        if (isRestoreTarget && restoreFocusToken > 0) {
+                            restorePending = false
+                            onRestoreFocusHandled()
                         }
-                    )
+                    }
+                    if (vertical) {
+                        GridContentCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = { onItemLongPress(item) },
+                            posterCardStyle = verticalStyle,
+                            showLabel = false,
+                            isWatched = itemWatched,
+                            focusRequester = requester,
+                            onFocused = onCardFocused
+                        )
+                    } else {
+                        // Horizontal 16:9 cards with the title on the picture, like every page.
+                        com.nuvio.tv.ui.components.AppleLandscapeCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = { onItemLongPress(item) },
+                            cornerRadius = posterCardStyle.cornerRadius,
+                            isWatched = itemWatched,
+                            focusRequester = requester,
+                            onFocus = { onCardFocused() }
+                        )
+                    }
                 }
                 if (showSeeAll) {
                     item(key = "see_all") {
                         ClassicSeeAllCard(
-                            posterCardStyle = posterCardStyle.copy(
+                            posterCardStyle = if (vertical) verticalStyle else posterCardStyle.copy(
                                 width = com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
                                 height = com.nuvio.tv.ui.components.AppleLandscapeCardHeight
                             ),

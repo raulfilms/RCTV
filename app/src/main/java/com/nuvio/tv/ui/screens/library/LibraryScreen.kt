@@ -271,9 +271,13 @@ fun LibraryScreen(
 
     val lastKeyRepeatTime = remember { longArrayOf(0L) }
 
-    // Horizontal 16:9 cards with the title on the picture, like every page.
+    // Horizontal 16:9 cards with the title on the picture, unless the website sets the Library
+    // ("library" page) to vertical posters.
+    val verticalGrid = com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.LIBRARY)
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = com.nuvio.tv.ui.components.AppleLandscapeCardWidth),
+        columns = GridCells.Adaptive(
+            minSize = if (verticalGrid) posterCardStyle.width else com.nuvio.tv.ui.components.AppleLandscapeCardWidth
+        ),
         state = gridState,
         modifier = Modifier
             .fillMaxSize()
@@ -456,26 +460,43 @@ fun LibraryScreen(
                 val previewForLongPress = remember(item) {
                     item.toMetaPreview().copy(posterShape = PosterShape.POSTER)
                 }
-                com.nuvio.tv.ui.components.AppleLandscapeCard(
-                    item = previewForLongPress,
-                    cornerRadius = posterCardStyle.cornerRadius,
-                    isWatched = if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds,
-                    focusRequester = posterFocusRequesters[focusKey],
-                    onFocus = {
-                        lastFocusedPosterKey = focusKey
-                        viewModel.prefetchMetaOnFocus(item.id, item.type)
-                    },
-                    onClick = {
-                        lastFocusedPosterKey = focusKey
-                        val backdrop = viewModel.getCachedBackdrop(item.id, item.type)
-                        HeroBackdropState.update(backdrop)
-                        onNavigateToDetail(item.id, item.type, item.addonBaseUrl)
-                    },
-                    onLongPress = {
-                        lastFocusedPosterKey = focusKey
-                        viewModel.posterOptions.show(previewForLongPress, item.addonBaseUrl)
-                    }
-                )
+                val onCardFocused: () -> Unit = {
+                    lastFocusedPosterKey = focusKey
+                    viewModel.prefetchMetaOnFocus(item.id, item.type)
+                }
+                val onCardClick: () -> Unit = {
+                    lastFocusedPosterKey = focusKey
+                    val backdrop = viewModel.getCachedBackdrop(item.id, item.type)
+                    HeroBackdropState.update(backdrop)
+                    onNavigateToDetail(item.id, item.type, item.addonBaseUrl)
+                }
+                val onCardLongPress: () -> Unit = {
+                    lastFocusedPosterKey = focusKey
+                    viewModel.posterOptions.show(previewForLongPress, item.addonBaseUrl)
+                }
+                val itemWatched = if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds
+                if (verticalGrid) {
+                    GridContentCard(
+                        item = previewForLongPress,
+                        posterCardStyle = posterCardStyle,
+                        isWatched = itemWatched,
+                        focusRequester = posterFocusRequesters[focusKey],
+                        showLabel = true,
+                        onFocused = onCardFocused,
+                        onClick = onCardClick,
+                        onLongPress = onCardLongPress
+                    )
+                } else {
+                    com.nuvio.tv.ui.components.AppleLandscapeCard(
+                        item = previewForLongPress,
+                        cornerRadius = posterCardStyle.cornerRadius,
+                        isWatched = itemWatched,
+                        focusRequester = posterFocusRequesters[focusKey],
+                        onFocus = { onCardFocused() },
+                        onClick = onCardClick,
+                        onLongPress = onCardLongPress
+                    )
+                }
             }
         } else {
             item(span = { GridItemSpan(maxLineSpan) }) {

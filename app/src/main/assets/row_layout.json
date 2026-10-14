@@ -1,0 +1,226 @@
+{
+  "_help": [
+    "RCTV row layout: which rows show vertical posters and which show horizontal cards.",
+    "Every row is horizontal unless this file says \"vertical\". Values: \"vertical\" or \"horizontal\".",
+    "Name a row by the title you see on the TV (for example \"Disney Classics\") or by its id. Capitals don't matter.",
+    "\"pages\" changes rows on one page only. \"rows\" changes a row with that name on every page.",
+    "A page can also get a \"default\" (for example \"library\": {\"default\": \"vertical\"}) for all its rows or its grid.",
+    "When a row is vertical, its See All page is vertical too.",
+    "Save the change here (or from the website) and the TVs pick it up the next time the app is opened. No new build needed."
+  ],
+  "_example": {
+    "pages": {
+      "home": {
+        "rows": {
+          "Popular Movies": "vertical"
+        }
+      },
+      "disneyplus": {
+        "rows": {
+          "Disney Classics": "vertical"
+        }
+      },
+      "channel": {
+        "rows": {
+          "movies": "vertical"
+        }
+      }
+    }
+  },
+  "default": "horizontal",
+  "rows": {},
+  "pages": {
+    "home": {
+      "default": "horizontal",
+      "rows": {}
+    },
+    "disneyplus": {
+      "rows": {}
+    },
+    "paramount": {
+      "rows": {}
+    },
+    "discovery": {
+      "rows": {}
+    },
+    "hbomax": {
+      "rows": {}
+    },
+    "peacock": {
+      "rows": {}
+    },
+    "channel": {
+      "rows": {}
+    },
+    "browse": {
+      "rows": {}
+    },
+    "collection": {
+      "rows": {}
+    },
+    "search": {
+      "default": "horizontal",
+      "rows": {}
+    },
+    "library": {
+      "default": "horizontal"
+    },
+    "cast": {
+      "default": "horizontal"
+    }
+  },
+  "_page_names": {
+    "Home": [
+      "home"
+    ],
+    "Channel profiles (rows: tv_shows, movies)": [
+      "channel"
+    ],
+    "TMDB studio / network / person pages (rows: movie_popular, tv_popular, movie_top_rated, tv_top_rated, movie_recent, tv_recent)": [
+      "browse"
+    ],
+    "Search": [
+      "search"
+    ],
+    "Collections (folders)": [
+      "collection"
+    ],
+    "Library grid": [
+      "library"
+    ],
+    "Cast / filmography": [
+      "cast"
+    ],
+    "Disney+ pages": [
+      "disneyplus",
+      "disney",
+      "pixar",
+      "marvel",
+      "star_wars",
+      "national_geographic",
+      "hulu",
+      "espn"
+    ],
+    "Disney+ collections pages": [
+      "collection_wdas",
+      "collection_disney_jr",
+      "collection_disney_channel",
+      "collection_disney_xd",
+      "collection_disneynature",
+      "collection_dcom",
+      "collection_toy_story",
+      "collection_cars",
+      "collection_incredibles",
+      "collection_inside_out",
+      "collection_pixar_shorts",
+      "collection_sparkshorts",
+      "collection_forky",
+      "collection_infinity_saga",
+      "collection_avengers",
+      "collection_iron_suit",
+      "collection_spider_man",
+      "collection_thor",
+      "collection_black_panther",
+      "collection_black_widow",
+      "collection_ant_man",
+      "collection_doctor_strange",
+      "collection_loki",
+      "collection_wanda_vision",
+      "collection_falcon_winter_soldier",
+      "collection_daredevil",
+      "collection_skywalker_saga",
+      "collection_mandalorian_grogu",
+      "collection_darth_vader",
+      "collection_obi_wan",
+      "collection_star_wars_tales",
+      "collection_lucasfilm_animation",
+      "collection_star_wars_vintage",
+      "collection_ng_animals_nature",
+      "collection_ng_exploring",
+      "collection_ng_space",
+      "collection_ng_earth_month",
+      "collection_ng_our_home",
+      "collection_ng_vets_pets",
+      "collection_ng_sharks",
+      "collection_disney100",
+      "collection_avatar",
+      "collection_bluey",
+      "collection_simpsons",
+      "collection_treehouse_of_horror",
+      "collection_phineas_ferb",
+      "collection_lilo_stitch",
+      "collection_zootopia",
+      "collection_descendants",
+      "collection_chip_dale",
+      "collection_disney_fairies",
+      "collection_tron",
+      "collection_air_bud",
+      "collection_princesses",
+      "collection_throwbacks",
+      "collection_musicals",
+      "collection_pride",
+      "collection_black_stories",
+      "collection_halloween",
+      "collection_disney_parks",
+      "collection_disney_plus_insider"
+    ],
+    "Paramount+ pages": [
+      "paramount",
+      "paramount_cbs",
+      "paramount_bet",
+      "paramount_comedy_central",
+      "paramount_mtv",
+      "paramount_nickelodeon",
+      "paramount_smithsonian",
+      "paramount_universe_star_trek",
+      "paramount_universe_taylor_sheridan",
+      "paramount_universe_mission_impossible",
+      "paramount_universe_tyler_perry",
+      "paramount_universe_quiet_place_scream",
+      "paramount_universe_dexter",
+      "paramount_universe_ncis",
+      "paramount_universe_csi",
+      "paramount_universe_criminal_minds",
+      "paramount_universe_spongebob",
+      "paramount_universe_south_park",
+      "paramount_universe_challenge"
+    ],
+    "discovery+ pages": [
+      "discovery",
+      "discovery_originals",
+      "discovery_hgtv",
+      "discovery_food_network",
+      "discovery_tlc",
+      "discovery_id",
+      "discovery_own",
+      "discovery_animal_planet",
+      "discovery_magnolia"
+    ],
+    "HBO Max pages": [
+      "hbomax",
+      "hbomax_hbo",
+      "hbomax_max_originals",
+      "hbomax_dc",
+      "hbomax_looney_tunes",
+      "hbomax_wb_animation",
+      "hbomax_sesame_workshop",
+      "hbomax_tcm",
+      "hbomax_crunchyroll"
+    ],
+    "Peacock pages": [
+      "peacock",
+      "peacock_originals",
+      "peacock_nbc",
+      "peacock_bravo",
+      "peacock_telemundo",
+      "peacock_wwe",
+      "peacock_nbc_sports",
+      "peacock_universal",
+      "peacock_illumination",
+      "peacock_dreamworks",
+      "peacock_focus_features",
+      "peacock_working_title",
+      "peacock_amblin"
+    ]
+  }
+}

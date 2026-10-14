@@ -760,6 +760,7 @@ fun SearchScreen(
                                 )
                             }
                             CatalogRowSection(
+                                layoutPage = com.nuvio.tv.ui.components.RowLayoutPages.SEARCH,
                                 catalogRow = skeletonRow,
                                 onItemClick = { _, _, _ -> },
                                 posterCardStyle = posterCardStyle,
@@ -812,6 +813,7 @@ fun SearchScreen(
                             val entryFocusRequester = searchRowEntryFocusRequesters.getOrPut(catalogKey) { FocusRequester() }
 
                             CatalogRowSection(
+                                layoutPage = com.nuvio.tv.ui.components.RowLayoutPages.SEARCH,
                                 catalogRow = catalogRow,
                                 posterCardStyle = posterCardStyle,
                                 showSeeAll = hasEnoughForSeeAll,
@@ -920,6 +922,7 @@ fun SearchScreen(
                                     )
                                 }
                                 CatalogRowSection(
+                                    layoutPage = com.nuvio.tv.ui.components.RowLayoutPages.SEARCH,
                                     catalogRow = skeletonRow,
                                     onItemClick = { _, _, _ -> },
                                     posterCardStyle = posterCardStyle,

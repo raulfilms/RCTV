@@ -337,7 +337,8 @@ class DisneyPlusRepository @Inject constructor(
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
                 withoutGenres = source.withoutGenres,
                 withRuntimeGte = source.runtimeGte,
-                withRuntimeLte = source.runtimeLte
+                withRuntimeLte = source.runtimeLte,
+                withOriginalLanguage = source.originalLanguage
             )
             TmdbCollectionMediaType.TV -> tmdbApi.discoverTv(
                 apiKey = apiKey,
@@ -354,7 +355,8 @@ class DisneyPlusRepository @Inject constructor(
                 watchRegion = if (usesProviders) "US" else null,
                 withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
-                withoutGenres = source.withoutGenres
+                withoutGenres = source.withoutGenres,
+                withOriginalLanguage = source.originalLanguage
             )
         }
         // An error answer (TMDB still busy after retries) is a failure, not "no more titles".

@@ -119,9 +119,12 @@ fun GridHomeContent(
     onFocusedRowKeyChanged: (String?) -> Unit = {},
     scrollToTopTrigger: Int = 0
 ) {
-    // Horizontal 16:9 cards with the title on the picture, like every page.
-    val posterCardStyle = remember(basePosterCardStyle) {
-        basePosterCardStyle.copy(width = AppleLandscapeCardWidth, height = AppleLandscapeCardHeight)
+    // Horizontal 16:9 cards with the title on the picture, unless the website sets Home ("home")
+    // to vertical posters.
+    val verticalHome = com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.HOME)
+    val posterCardStyle = remember(basePosterCardStyle, verticalHome) {
+        if (verticalHome) basePosterCardStyle
+        else basePosterCardStyle.copy(width = AppleLandscapeCardWidth, height = AppleLandscapeCardHeight)
     }
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = gridFocusState.verticalScrollIndex,
@@ -724,42 +727,82 @@ fun GridHomeContent(
                         } else {
                             null
                         }
-                        AppleLandscapeCard(
-                            item = gridItem.item,
-                            focusRequester = focusRequester ?: focusRequesters.getOrPut(itemKey) { FocusRequester() },
-                            cornerRadius = posterCardStyle.cornerRadius,
-                            isWatched = isCatalogItemWatched(gridItem.item),
-                            onFocus = remember(itemKey, gridItem.item) {
-                                { _: com.nuvio.tv.domain.model.MetaPreview ->
-                                    lastFocusedGridItemKey.value = itemKey
-                                    activeCwRowKey.value = null
-                                    // No rows here, but a card still belongs to one.
-                                    onFocusedRowKeyChanged(
-                                        catalogRowStableKey(
-                                            gridItem.addonId,
-                                            gridItem.addonBaseUrl,
-                                            gridItem.item.apiType,
-                                            gridItem.catalogId
+                        if (verticalHome) {
+                            GridContentCard(
+                                item = gridItem.item,
+                                focusRequester = focusRequester ?: focusRequesters.getOrPut(itemKey) { FocusRequester() },
+                                posterCardStyle = posterCardStyle,
+                                showLabel = uiState.posterLabelsEnabled,
+                                isWatched = isCatalogItemWatched(gridItem.item),
+                                onFocused = remember(itemKey, gridItem.item) {
+                                    {
+                                        lastFocusedGridItemKey.value = itemKey
+                                        activeCwRowKey.value = null
+                                        // No rows here, but a card still belongs to one.
+                                        onFocusedRowKeyChanged(
+                                            catalogRowStableKey(
+                                                gridItem.addonId,
+                                                gridItem.addonBaseUrl,
+                                                gridItem.item.apiType,
+                                                gridItem.catalogId
+                                            )
                                         )
-                                    )
-                                    onItemFocus(gridItem.item)
+                                        onItemFocus(gridItem.item)
+                                    }
+                                },
+                                onClick = remember(gridItem.item, gridItem.addonBaseUrl) {
+                                    {
+                                        onNavigateToDetail(
+                                            gridItem.item.id,
+                                            gridItem.item.apiType,
+                                            gridItem.addonBaseUrl
+                                        )
+                                    }
+                                },
+                                onLongPress = remember(gridItem.item, gridItem.addonBaseUrl) {
+                                    {
+                                        onCatalogItemLongPress(gridItem.item, gridItem.addonBaseUrl)
+                                    }
                                 }
-                            },
-                            onClick = remember(gridItem.item, gridItem.addonBaseUrl) {
-                                {
-                                    onNavigateToDetail(
-                                        gridItem.item.id,
-                                        gridItem.item.apiType,
-                                        gridItem.addonBaseUrl
-                                    )
+                            )
+                        } else {
+                            AppleLandscapeCard(
+                                item = gridItem.item,
+                                focusRequester = focusRequester ?: focusRequesters.getOrPut(itemKey) { FocusRequester() },
+                                cornerRadius = posterCardStyle.cornerRadius,
+                                isWatched = isCatalogItemWatched(gridItem.item),
+                                onFocus = remember(itemKey, gridItem.item) {
+                                    { _: com.nuvio.tv.domain.model.MetaPreview ->
+                                        lastFocusedGridItemKey.value = itemKey
+                                        activeCwRowKey.value = null
+                                        // No rows here, but a card still belongs to one.
+                                        onFocusedRowKeyChanged(
+                                            catalogRowStableKey(
+                                                gridItem.addonId,
+                                                gridItem.addonBaseUrl,
+                                                gridItem.item.apiType,
+                                                gridItem.catalogId
+                                            )
+                                        )
+                                        onItemFocus(gridItem.item)
+                                    }
+                                },
+                                onClick = remember(gridItem.item, gridItem.addonBaseUrl) {
+                                    {
+                                        onNavigateToDetail(
+                                            gridItem.item.id,
+                                            gridItem.item.apiType,
+                                            gridItem.addonBaseUrl
+                                        )
+                                    }
+                                },
+                                onLongPress = remember(gridItem.item, gridItem.addonBaseUrl) {
+                                    {
+                                        onCatalogItemLongPress(gridItem.item, gridItem.addonBaseUrl)
+                                    }
                                 }
-                            },
-                            onLongPress = remember(gridItem.item, gridItem.addonBaseUrl) {
-                                {
-                                    onCatalogItemLongPress(gridItem.item, gridItem.addonBaseUrl)
-                                }
-                            }
-                        )
+                            )
+                        }
                     }
 
                     is GridItem.SeeAll -> {

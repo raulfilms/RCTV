@@ -324,6 +324,9 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
 
+    @Inject
+    lateinit var rowLayoutRepository: com.nuvio.tv.data.layout.RowLayoutRepository
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -390,8 +393,13 @@ open class MainActivity : ComponentActivity() {
         captureDeepLinkIntent(intent)
 
         setContent {
-            // Every horizontal card in the app finds its title art (TMDB backdrop with the name on it).
-            CompositionLocalProvider(com.nuvio.tv.ui.components.LocalTitleArtResolver provides titleArtService) {
+            // Every horizontal card in the app finds its title art (TMDB backdrop with the name on it),
+            // and every row follows the website's layout (vertical or horizontal).
+            val rowLayout by rowLayoutRepository.config.collectAsState()
+            CompositionLocalProvider(
+                com.nuvio.tv.ui.components.LocalTitleArtResolver provides titleArtService,
+                com.nuvio.tv.ui.components.LocalRowLayout provides rowLayout
+            ) {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
             var startupSession by remember { mutableIntStateOf(0) }
             // Triggered immediately on profile click (before system confirms selection).
@@ -1277,6 +1285,8 @@ open class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
+        // Picks up row layout changes made on the website (vertical / horizontal rows).
+        rowLayoutRepository.refresh()
         memberAccessRepository.refreshIfStale()
         lifecycleScope.launch {
             deviceSessionRegistration.requestForegroundRegistration()

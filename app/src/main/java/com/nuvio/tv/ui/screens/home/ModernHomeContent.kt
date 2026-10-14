@@ -148,8 +148,8 @@ fun ModernHomeContent(
     val sidebarExpanded = LocalSidebarExpanded.current
     val isSidebarExpanded = remember(sidebarExpanded) { derivedStateOf { sidebarExpanded } }
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Horizontal cards everywhere in the app, whatever the old landscape-posters setting says.
-    val useLandscapePosters = true
+    // Horizontal cards, unless the website sets Home ("home") to vertical posters.
+    val useLandscapePosters = !com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.HOME)
     val fullScreenBackdrop = uiState.modernHeroFullScreenBackdropEnabled
     val trailerPlaybackTarget = uiState.focusedPosterBackdropTrailerPlaybackTarget
     val effectiveAutoplayEnabled =

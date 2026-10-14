@@ -72,7 +72,9 @@ fun TitlesSeeAllPage(
     modifier: Modifier = Modifier,
     logoUrl: String? = null,
     @DrawableRes logoRes: Int? = null,
-    logoDescription: String? = null
+    logoDescription: String? = null,
+    /** Vertical 2:3 posters instead of horizontal cards (the row was set to vertical on the website). */
+    vertical: Boolean = false
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -262,7 +264,7 @@ fun TitlesSeeAllPage(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
+                columns = GridCells.Fixed(if (vertical) 6 else 4),
                 state = gridState,
                 contentPadding = PaddingValues(
                     start = AppleTvSpacing.SafeX,
@@ -275,16 +277,29 @@ fun TitlesSeeAllPage(
                 modifier = Modifier.fillMaxSize()
             ) {
                 itemsIndexed(shownItems, key = { _, item -> item.id }) { index, item ->
-                    AppleLandscapeCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        width = AppleLandscapeCardWidth,
-                        height = AppleLandscapeCardHeight,
-                        cornerRadius = AppleTvRadius.Poster,
-                        focusRequester = if (index == focusIndex) focusRequester else null,
-                        onFocus = { focusIndex = index },
-                        onLongPress = { onItemLongPress(item) }
-                    )
+                    if (vertical) {
+                        ContentCard(
+                            item = item,
+                            posterCardStyle = AppleVerticalPosterStyle,
+                            showLabels = false,
+                            appleStyle = true,
+                            focusRequester = if (index == focusIndex) focusRequester else null,
+                            onFocus = { focusIndex = index },
+                            onLongPress = { onItemLongPress(item) },
+                            onClick = { onItemClick(item) }
+                        )
+                    } else {
+                        AppleLandscapeCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            width = AppleLandscapeCardWidth,
+                            height = AppleLandscapeCardHeight,
+                            cornerRadius = AppleTvRadius.Poster,
+                            focusRequester = if (index == focusIndex) focusRequester else null,
+                            onFocus = { focusIndex = index },
+                            onLongPress = { onItemLongPress(item) }
+                        )
+                    }
                 }
                 if (isLoadingMore) {
                     item(span = { GridItemSpan(maxLineSpan) }) {

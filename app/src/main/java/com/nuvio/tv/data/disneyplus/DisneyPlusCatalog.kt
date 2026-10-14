@@ -245,6 +245,11 @@ object HboMaxIds {
 
     // TMDB genre ids used on the HBO Max pages
     const val G_DRAMA = "18"
+    const val G_HORROR = "27"
+    const val G_TV_MYSTERY = "9648"
+
+    /** A24 on TMDB (its films on HBO Max get their own collection). */
+    const val CO_A24 = "41077"
 
     /** Warner Bros. / HBO companies and networks, used to decide what counts as HBO Max content. */
     val COMPANY_IDS: Set<Int> = emptySet()
@@ -514,6 +519,38 @@ enum class DisneyPlusHub(
     H_TCM("hbomax_tcm", R.string.hbomax_brand_tcm, HubService.HBO_MAX),
     H_CRUNCHYROLL("hbomax_crunchyroll", R.string.hbomax_brand_crunchyroll, HubService.HBO_MAX),
 
+    // HBO Max collection pages, opened from the "Discover Our Collections" row on the HBO Max page.
+    HC_HORROR_COMES_HOME("hbomax_collection_horror_comes_home", R.string.hbomax_col_horror_comes_home, HubService.HBO_MAX),
+    HC_NUESTRAS_VOCES("hbomax_collection_nuestras_voces", R.string.hbomax_col_nuestras_voces, HubService.HBO_MAX),
+    HC_AWARDS_ACCLAIM("hbomax_collection_awards_acclaim", R.string.hbomax_col_awards_acclaim, HubService.HBO_MAX),
+    HC_HARD_KNOCKS("hbomax_collection_hard_knocks", R.string.hbomax_col_hard_knocks, HubService.HBO_MAX),
+    HC_BIG_BANG_THEORY("hbomax_collection_big_bang_theory", R.string.hbomax_col_big_bang_theory, HubService.HBO_MAX),
+    HC_ASL("hbomax_collection_asl", R.string.hbomax_col_asl, HubService.HBO_MAX),
+    HC_STREAM_IN_SPANISH("hbomax_collection_stream_in_spanish", R.string.hbomax_col_stream_in_spanish, HubService.HBO_MAX),
+    HC_WORLD_OF_WESTEROS("hbomax_collection_world_of_westeros", R.string.hbomax_col_world_of_westeros, HubService.HBO_MAX),
+    HC_MORTAL_KOMBAT("hbomax_collection_mortal_kombat", R.string.hbomax_col_mortal_kombat, HubService.HBO_MAX),
+    HC_AUDIO_DESCRIPTION("hbomax_collection_audio_description", R.string.hbomax_col_audio_description, HubService.HBO_MAX),
+    HC_RICK_AND_MORTY("hbomax_collection_rick_and_morty", R.string.hbomax_col_rick_and_morty, HubService.HBO_MAX),
+    HC_FORTRESS_OF_SOLITUDE("hbomax_collection_fortress_of_solitude", R.string.hbomax_col_fortress_of_solitude, HubService.HBO_MAX),
+    HC_WHATS_NEW("hbomax_collection_whats_new", R.string.hbomax_col_whats_new, HubService.HBO_MAX),
+    HC_IN_HER_VOICE("hbomax_collection_in_her_voice", R.string.hbomax_col_in_her_voice, HubService.HBO_MAX),
+    HC_PODCASTS("hbomax_collection_podcasts", R.string.hbomax_col_podcasts, HubService.HBO_MAX),
+    HC_HARRY_POTTER("hbomax_collection_harry_potter", R.string.hbomax_col_harry_potter, HubService.HBO_MAX),
+    HC_CONJURING_UNIVERSE("hbomax_collection_conjuring_universe", R.string.hbomax_col_conjuring_universe, HubService.HBO_MAX),
+    HC_SUPERMAN_FILMS("hbomax_collection_superman_films", R.string.hbomax_col_superman_films, HubService.HBO_MAX),
+    HC_LGBTQ_VOICES("hbomax_collection_lgbtq_voices", R.string.hbomax_col_lgbtq_voices, HubService.HBO_MAX),
+    HC_API_VOICES("hbomax_collection_api_voices", R.string.hbomax_col_api_voices, HubService.HBO_MAX),
+    HC_BLACK_VOICES("hbomax_collection_black_voices", R.string.hbomax_col_black_voices, HubService.HBO_MAX),
+    HC_FRIENDS("hbomax_collection_friends", R.string.hbomax_col_friends, HubService.HBO_MAX),
+    HC_A24("hbomax_collection_a24", R.string.hbomax_col_a24, HubService.HBO_MAX),
+    HC_MIDDLE_EARTH("hbomax_collection_middle_earth", R.string.hbomax_col_middle_earth, HubService.HBO_MAX),
+    HC_SEX_AND_THE_CITY("hbomax_collection_sex_and_the_city", R.string.hbomax_col_sex_and_the_city, HubService.HBO_MAX),
+    HC_GODZILLA("hbomax_collection_godzilla", R.string.hbomax_col_godzilla, HubService.HBO_MAX),
+    HC_SOPRANOS("hbomax_collection_sopranos", R.string.hbomax_col_sopranos, HubService.HBO_MAX),
+    HC_BARBIE_LAND("hbomax_collection_barbie_land", R.string.hbomax_col_barbie_land, HubService.HBO_MAX),
+    HC_BATMAN_1989_1997("hbomax_collection_batman_1989_1997", R.string.hbomax_col_batman_1989_1997, HubService.HBO_MAX),
+    HC_DARK_KNIGHT_TRILOGY("hbomax_collection_dark_knight_trilogy", R.string.hbomax_col_dark_knight_trilogy, HubService.HBO_MAX),
+
     // Peacock: its main page, then one page per brand tile.
     PEACOCK_MAIN("peacock", R.string.peacock_title, HubService.PEACOCK),
     PK_ORIGINALS("peacock_originals", R.string.peacock_brand_originals, HubService.PEACOCK),
@@ -584,7 +621,9 @@ sealed interface DisneyRowSource {
         val releaseDateLte: String? = null,
         val voteCountGte: Int? = null,
         val runtimeGte: Int? = null,
-        val runtimeLte: Int? = null
+        val runtimeLte: Int? = null,
+        /** Original language (ISO 639-1, e.g. "es"): only titles first made in that language. */
+        val originalLanguage: String? = null
     ) : DisneyRowSource
 
     data class Curated(val titles: List<CuratedTitle>) : DisneyRowSource
@@ -3037,13 +3076,315 @@ object DisneyPlusCatalog {
         series("Baby Looney Tunes", 2001)
     )
 
+    // ------------------------------------------------------------------ HBO Max collections
+
+    private val HBO_HORROR_COMES_HOME = listOf(
+        movie("Weapons", 2025),
+        movie("Final Destination Bloodlines", 2025),
+        movie("It", 2017),
+        movie("It Chapter Two", 2019),
+        series("IT: Welcome to Derry", 2025),
+        movie("Evil Dead Rise", 2023),
+        movie("The Conjuring: Last Rites", 2025),
+        movie("Salem's Lot", 2024),
+        movie("Malignant", 2021),
+        movie("Lights Out", 2016),
+        series("Lovecraft Country", 2020),
+        series("The Outsider", 2020),
+        series("True Blood", 2008),
+        movie("Pearl", 2022),
+        movie("X", 2022),
+        movie("Talk to Me", 2023)
+    )
+
+    private val HBO_NUESTRAS_VOCES = listOf(
+        movie("In the Heights", 2021),
+        movie("Blue Beetle", 2023),
+        series("Los Espookys", 2019),
+        series("Gordita Chronicles", 2022),
+        series("Selena + Chef", 2020),
+        movie("Father of the Bride", 2022),
+        movie("The Curse of La Llorona", 2019),
+        series("Like Water for Chocolate", 2024)
+    )
+
+    private val HBO_AWARDS_ACCLAIM = listOf(
+        series("The Pitt", 2025),
+        series("Succession", 2018),
+        series("The Last of Us", 2023),
+        series("The White Lotus", 2021),
+        series("Hacks", 2021),
+        series("The Penguin", 2024),
+        series("Chernobyl", 2019),
+        series("Mare of Easttown", 2021),
+        series("Barry", 2018),
+        series("Euphoria", 2019),
+        series("Game of Thrones", 2011),
+        series("The Sopranos", 1999),
+        movie("Sinners", 2025),
+        movie("One Battle After Another", 2025),
+        movie("Dune: Part Two", 2024),
+        movie("Mad Max: Fury Road", 2015),
+        movie("Casablanca", 1942)
+    )
+
+    private val HBO_HARD_KNOCKS = listOf(
+        series("Hard Knocks", 2001),
+        CuratedTitle("Hard Knocks: In Season", null, TV),
+        CuratedTitle("Hard Knocks: Offseason", null, TV),
+        series("Real Sports with Bryant Gumbel", 1995),
+        series("24/7", 2007)
+    )
+
+    private val HBO_BIG_BANG_THEORY = listOf(
+        series("The Big Bang Theory", 2007),
+        series("Young Sheldon", 2017),
+        series("Georgie & Mandy's First Marriage", 2024),
+        CuratedTitle("Stuart Fails to Save the Universe", null, TV)
+    )
+
+    private val HBO_ASL = listOf(
+        movie("CODA", 2021),
+        movie("Sound of Metal", 2019),
+        movie("A Quiet Place", 2018),
+        movie("Children of a Lesser God", 1986),
+        series("Switched at Birth", 2011)
+    )
+
+    private val HBO_STREAM_IN_SPANISH = listOf(
+        series("Like Water for Chocolate", 2024),
+        series("30 Coins", 2020),
+        series("Patria", 2020),
+        series("Los Espookys", 2019)
+    )
+
+    private val HBO_WORLD_OF_WESTEROS = GAME_OF_THRONES + listOf(
+        movie("Game of Thrones: The Last Watch", 2019),
+        CuratedTitle("Game of Thrones: Conquest & Rebellion", null, MOVIE)
+    )
+
+    private val HBO_MORTAL_KOMBAT = listOf(
+        movie("Mortal Kombat", 2021),
+        movie("Mortal Kombat II", 2026),
+        movie("Mortal Kombat", 1995),
+        movie("Mortal Kombat: Annihilation", 1997),
+        movie("Mortal Kombat Legends: Scorpion's Revenge", 2020),
+        movie("Mortal Kombat Legends: Battle of the Realms", 2021),
+        movie("Mortal Kombat Legends: Snow Blind", 2022),
+        movie("Mortal Kombat Legends: Cage Match", 2023),
+        series("Mortal Kombat: Conquest", 1998),
+        series("Mortal Kombat: Legacy", 2011)
+    )
+
+    private val HBO_AUDIO_DESCRIPTION = listOf(
+        series("The Penguin", 2024),
+        series("The Last of Us", 2023),
+        series("House of the Dragon", 2022),
+        series("The White Lotus", 2021),
+        series("The Pitt", 2025),
+        series("Euphoria", 2019),
+        movie("Superman", 2025),
+        movie("Dune: Part Two", 2024),
+        movie("Barbie", 2023),
+        movie("Sinners", 2025)
+    )
+
+    private val HBO_RICK_AND_MORTY = listOf(
+        series("Rick and Morty", 2013),
+        series("Rick and Morty: The Anime", 2024)
+    )
+
+    private val HBO_FORTRESS_OF_SOLITUDE = listOf(
+        movie("Superman", 2025),
+        movie("Supergirl", 2026),
+        movie("Man of Steel", 2013),
+        movie("Batman v Superman: Dawn of Justice", 2016),
+        movie("Superman Returns", 2006),
+        movie("Super/Man: The Christopher Reeve Story", 2024),
+        series("Superman & Lois", 2021),
+        series("My Adventures with Superman", 2023),
+        series("Smallville", 2001),
+        series("Lois & Clark: The New Adventures of Superman", 1993),
+        series("Superman: The Animated Series", 1996),
+        movie("Superman", 1978)
+    )
+
+    private val HBO_IN_HER_VOICE = listOf(
+        series("Hacks", 2021),
+        series("Big Little Lies", 2017),
+        series("Sex and the City", 1998),
+        series("Insecure", 2016),
+        series("Girls", 2012),
+        series("The Gilded Age", 2022),
+        series("Mare of Easttown", 2021),
+        series("Sharp Objects", 2018),
+        series("The Flight Attendant", 2020),
+        series("The Sex Lives of College Girls", 2021),
+        movie("Barbie", 2023)
+    )
+
+    private val HBO_PODCASTS = listOf(
+        series("Last Week Tonight with John Oliver", 2014),
+        series("Real Time with Bill Maher", 2003)
+    )
+
+    private val HBO_HARRY_POTTER = WIZARDING_WORLD + listOf(
+        movie("Harry Potter 20th Anniversary: Return to Hogwarts", 2022),
+        series("Harry Potter: Wizards of Baking", 2024),
+        series("Harry Potter: Hogwarts Tournament of Houses", 2021),
+        CuratedTitle("Harry Potter", 2027, TV)
+    )
+
+    private val HBO_CONJURING_UNIVERSE = listOf(
+        movie("The Conjuring", 2013),
+        movie("Annabelle", 2014),
+        movie("The Conjuring 2", 2016),
+        movie("Annabelle: Creation", 2017),
+        movie("The Nun", 2018),
+        movie("The Curse of La Llorona", 2019),
+        movie("Annabelle Comes Home", 2019),
+        movie("The Conjuring: The Devil Made Me Do It", 2021),
+        movie("The Nun II", 2023),
+        movie("The Conjuring: Last Rites", 2025)
+    )
+
+    private val HBO_SUPERMAN_FILMS = listOf(
+        movie("Superman", 1978),
+        movie("Superman II", 1980),
+        movie("Superman II: The Richard Donner Cut", 2006),
+        movie("Superman III", 1983),
+        movie("Superman IV: The Quest for Peace", 1987),
+        movie("Superman Returns", 2006),
+        movie("Man of Steel", 2013),
+        movie("Batman v Superman: Dawn of Justice", 2016),
+        movie("Justice League", 2017),
+        movie("Zack Snyder's Justice League", 2021),
+        movie("Superman", 2025)
+    )
+
+    private val HBO_LGBTQ_VOICES = listOf(
+        series("Looking", 2014),
+        series("We're Here", 2020),
+        series("Veneno", 2020),
+        series("Legendary", 2020),
+        series("Sort Of", 2021),
+        series("Gentleman Jack", 2019),
+        series("Angels in America", 2003),
+        movie("The Normal Heart", 2014),
+        movie("Behind the Candelabra", 2013),
+        movie("Equal", 2020)
+    )
+
+    private val HBO_API_VOICES = listOf(
+        series("Warrior", 2019),
+        series("Tokyo Vice", 2022),
+        series("The Sympathizer", 2024),
+        movie("Crazy Rich Asians", 2018),
+        movie("Everything Everywhere All at Once", 2022),
+        movie("Past Lives", 2023),
+        movie("Minari", 2020)
+    )
+
+    private val HBO_BLACK_VOICES = listOf(
+        movie("Sinners", 2025),
+        series("Insecure", 2016),
+        series("Lovecraft Country", 2020),
+        series("Watchmen", 2019),
+        series("A Black Lady Sketch Show", 2019),
+        series("Rap Sh!t", 2022),
+        series("The Fresh Prince of Bel-Air", 1990),
+        movie("Judas and the Black Messiah", 2021),
+        movie("King Richard", 2021),
+        movie("The Color Purple", 2023),
+        movie("Creed", 2015),
+        movie("Between the World and Me", 2020)
+    )
+
+    private val HBO_FRIENDS = listOf(
+        series("Friends", 1994),
+        movie("Friends: The Reunion", 2021),
+        series("Joey", 2004)
+    )
+
+    private val HBO_A24 = listOf(
+        movie("Sing Sing", 2024),
+        movie("Civil War", 2024),
+        movie("The Iron Claw", 2023),
+        movie("Heretic", 2024),
+        movie("Materialists", 2025),
+        movie("Warfare", 2025),
+        movie("Talk to Me", 2023),
+        movie("Past Lives", 2023),
+        movie("Priscilla", 2023),
+        movie("Everything Everywhere All at Once", 2022),
+        movie("Pearl", 2022),
+        movie("MaXXXine", 2024)
+    )
+
+    private val HBO_MIDDLE_EARTH = listOf(
+        movie("The Lord of the Rings: The Fellowship of the Ring", 2001),
+        movie("The Lord of the Rings: The Two Towers", 2002),
+        movie("The Lord of the Rings: The Return of the King", 2003),
+        movie("The Hobbit: An Unexpected Journey", 2012),
+        movie("The Hobbit: The Desolation of Smaug", 2013),
+        movie("The Hobbit: The Battle of the Five Armies", 2014),
+        movie("The Lord of the Rings: The War of the Rohirrim", 2024),
+        movie("The Lord of the Rings", 1978),
+        movie("The Return of the King", 1980),
+        movie("The Hobbit", 1977)
+    )
+
+    private val HBO_SEX_AND_THE_CITY = listOf(
+        series("Sex and the City", 1998),
+        movie("Sex and the City", 2008),
+        movie("Sex and the City 2", 2010),
+        series("And Just Like That...", 2021),
+        series("The Carrie Diaries", 2013)
+    )
+
+    private val HBO_GODZILLA = listOf(
+        movie("Godzilla", 2014),
+        movie("Kong: Skull Island", 2017),
+        movie("Godzilla: King of the Monsters", 2019),
+        movie("Godzilla vs. Kong", 2021),
+        movie("Godzilla x Kong: The New Empire", 2024),
+        movie("Godzilla", 1998)
+    )
+
+    private val HBO_SOPRANOS = listOf(
+        series("The Sopranos", 1999),
+        movie("The Many Saints of Newark", 2021),
+        series("Wise Guy: David Chase and The Sopranos", 2024)
+    )
+
+    private val HBO_BARBIE_LAND = listOf(
+        movie("Barbie", 2023)
+    )
+
+    private val HBO_BATMAN_1989_1997 = listOf(
+        movie("Batman", 1989),
+        movie("Batman Returns", 1992),
+        movie("Batman Forever", 1995),
+        movie("Batman & Robin", 1997),
+        movie("Batman: Mask of the Phantasm", 1993),
+        series("Batman: The Animated Series", 1992)
+    )
+
+    private val HBO_DARK_KNIGHT_TRILOGY = listOf(
+        movie("Batman Begins", 2005),
+        movie("The Dark Knight", 2008),
+        movie("The Dark Knight Rises", 2012)
+    )
+
     private fun onHboMax(
         mediaType: TmdbCollectionMediaType,
         sortBy: String = POPULAR,
         genres: String? = null,
         keywordQuery: String? = null,
         voteCountGte: Int? = null,
-        releaseDateLte: String? = null
+        releaseDateLte: String? = null,
+        originalLanguage: String? = null,
+        companies: String? = null
     ) = DisneyRowSource.Discover(
         mediaType = mediaType,
         sortBy = sortBy,
@@ -3051,7 +3392,9 @@ object DisneyPlusCatalog {
         genres = genres,
         keywordQuery = keywordQuery,
         voteCountGte = voteCountGte,
-        releaseDateLte = releaseDateLte
+        releaseDateLte = releaseDateLte,
+        originalLanguage = originalLanguage,
+        companies = companies
     )
 
     /** One source per DC company name (DC Comics, DC Entertainment, DC Studios); their results get interleaved. */
@@ -3117,6 +3460,43 @@ object DisneyPlusCatalog {
                 )
             ),
             DisneyRowSpec("hm_trending", R.string.disney_row_trending, listOf(onHboMax(MOVIE), onHboMax(TV))),
+            // HBO Max's collections, as wide tiles that open each one's page.
+            DisneyRowSpec(
+                "hm_collections", R.string.hbomax_row_collections,
+                kind = DisneyRowKind.COLLECTIONS,
+                collections = listOf(
+                    DisneyPlusHub.HC_HORROR_COMES_HOME,
+                    DisneyPlusHub.HC_NUESTRAS_VOCES,
+                    DisneyPlusHub.HC_AWARDS_ACCLAIM,
+                    DisneyPlusHub.HC_HARD_KNOCKS,
+                    DisneyPlusHub.HC_BIG_BANG_THEORY,
+                    DisneyPlusHub.HC_ASL,
+                    DisneyPlusHub.HC_STREAM_IN_SPANISH,
+                    DisneyPlusHub.HC_WORLD_OF_WESTEROS,
+                    DisneyPlusHub.HC_MORTAL_KOMBAT,
+                    DisneyPlusHub.HC_AUDIO_DESCRIPTION,
+                    DisneyPlusHub.HC_RICK_AND_MORTY,
+                    DisneyPlusHub.HC_FORTRESS_OF_SOLITUDE,
+                    DisneyPlusHub.HC_WHATS_NEW,
+                    DisneyPlusHub.HC_IN_HER_VOICE,
+                    DisneyPlusHub.HC_PODCASTS,
+                    DisneyPlusHub.HC_HARRY_POTTER,
+                    DisneyPlusHub.HC_CONJURING_UNIVERSE,
+                    DisneyPlusHub.HC_SUPERMAN_FILMS,
+                    DisneyPlusHub.HC_LGBTQ_VOICES,
+                    DisneyPlusHub.HC_API_VOICES,
+                    DisneyPlusHub.HC_BLACK_VOICES,
+                    DisneyPlusHub.HC_FRIENDS,
+                    DisneyPlusHub.HC_A24,
+                    DisneyPlusHub.HC_MIDDLE_EARTH,
+                    DisneyPlusHub.HC_SEX_AND_THE_CITY,
+                    DisneyPlusHub.HC_GODZILLA,
+                    DisneyPlusHub.HC_SOPRANOS,
+                    DisneyPlusHub.HC_BARBIE_LAND,
+                    DisneyPlusHub.HC_BATMAN_1989_1997,
+                    DisneyPlusHub.HC_DARK_KNIGHT_TRILOGY
+                )
+            ),
             DisneyRowSpec("hm_hbo", R.string.hbomax_row_hbo_originals, listOf(net(HboMaxIds.NET_HBO))),
             DisneyRowSpec("hm_max_originals", R.string.hbomax_brand_max_originals, listOf(net(HboMaxIds.NET_HBO_MAX))),
             DisneyRowSpec("hm_got", R.string.hbomax_row_game_of_thrones, listOf(curated(GAME_OF_THRONES))),
@@ -4382,7 +4762,103 @@ object DisneyPlusCatalog {
         collectionPage(DisneyPlusHub.PU_CRIMINAL_MINDS, CRIMINAL_MINDS_UNIVERSE),
         collectionPage(DisneyPlusHub.PU_SPONGEBOB, SPONGEBOB_UNIVERSE),
         collectionPage(DisneyPlusHub.PU_SOUTH_PARK, SOUTH_PARK_UNIVERSE),
-        collectionPage(DisneyPlusHub.PU_CHALLENGE, CHALLENGE_UNIVERSE)
+        collectionPage(DisneyPlusHub.PU_CHALLENGE, CHALLENGE_UNIVERSE),
+        // HBO Max "Discover Our Collections": hand-picked titles first, then everything on HBO Max
+        // that fits the collection (its See All goes through the whole TMDB catalog).
+        collectionPage(
+            DisneyPlusHub.HC_HORROR_COMES_HOME, HBO_HORROR_COMES_HOME,
+            extraSources = listOf(onHboMax(MOVIE, genres = HboMaxIds.G_HORROR), onHboMax(TV, keywordQuery = "horror")),
+            seeAll = listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, genres = HboMaxIds.G_HORROR, providers = HboMaxIds.PROVIDERS))
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_NUESTRAS_VOCES, HBO_NUESTRAS_VOCES,
+            extraSources = listOf(onHboMax(MOVIE, keywordQuery = "latino"), onHboMax(TV, keywordQuery = "latino")),
+            seeAll = keywordCatalog("latino").toList()
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_AWARDS_ACCLAIM, HBO_AWARDS_ACCLAIM,
+            extraSources = listOf(onHboMax(TV, sortBy = TOP_RATED, voteCountGte = 500), onHboMax(MOVIE, sortBy = TOP_RATED, voteCountGte = 2000))
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_HARD_KNOCKS, HBO_HARD_KNOCKS,
+            extraSources = listOf(net(HboMaxIds.NET_HBO, genres = DisneyPlusIds.G_DOCUMENTARY, keywordQuery = "american football"))
+        ),
+        collectionPage(DisneyPlusHub.HC_BIG_BANG_THEORY, HBO_BIG_BANG_THEORY),
+        collectionPage(
+            DisneyPlusHub.HC_ASL, HBO_ASL,
+            extraSources = listOf(onHboMax(MOVIE, keywordQuery = "sign language"), onHboMax(TV, keywordQuery = "sign language")),
+            seeAll = keywordCatalog("sign language").toList() + keywordCatalog("deaf").toList()
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_STREAM_IN_SPANISH, HBO_STREAM_IN_SPANISH,
+            extraSources = listOf(onHboMax(TV, originalLanguage = "es"), onHboMax(MOVIE, originalLanguage = "es")),
+            seeAll = listOf(
+                DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, providers = HboMaxIds.PROVIDERS, originalLanguage = "es"),
+                DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, providers = HboMaxIds.PROVIDERS, originalLanguage = "es")
+            )
+        ),
+        collectionPage(DisneyPlusHub.HC_WORLD_OF_WESTEROS, HBO_WORLD_OF_WESTEROS),
+        collectionPage(DisneyPlusHub.HC_MORTAL_KOMBAT, HBO_MORTAL_KOMBAT, seeAll = keywordCatalog("mortal kombat").toList()),
+        collectionPage(
+            DisneyPlusHub.HC_AUDIO_DESCRIPTION, HBO_AUDIO_DESCRIPTION,
+            extraSources = listOf(onHboMax(TV), onHboMax(MOVIE))
+        ),
+        collectionPage(DisneyPlusHub.HC_RICK_AND_MORTY, HBO_RICK_AND_MORTY, extraSources = listOf(net(null, HboMaxIds.ADULT_SWIM))),
+        collectionPage(DisneyPlusHub.HC_FORTRESS_OF_SOLITUDE, HBO_FORTRESS_OF_SOLITUDE, seeAll = keywordCatalog("superman").toList()),
+        collectionPage(
+            DisneyPlusHub.HC_WHATS_NEW, emptyList(),
+            extraSources = listOf(
+                onHboMax(MOVIE, sortBy = RECENT, voteCountGte = 10, releaseDateLte = TODAY),
+                onHboMax(TV, sortBy = RECENT_TV, voteCountGte = 5, releaseDateLte = TODAY)
+            )
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_IN_HER_VOICE, HBO_IN_HER_VOICE,
+            extraSources = listOf(onHboMax(TV, keywordQuery = "female protagonist"), onHboMax(MOVIE, keywordQuery = "female protagonist")),
+            seeAll = listOf(
+                DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, providers = HboMaxIds.PROVIDERS, keywordQuery = "female protagonist"),
+                DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, providers = HboMaxIds.PROVIDERS, keywordQuery = "female protagonist")
+            )
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_PODCASTS, HBO_PODCASTS,
+            extraSources = listOf(onHboMax(TV, keywordQuery = "podcast"), onHboMax(TV, genres = ParamountPlusIds.G_TV_TALK)),
+            seeAll = keywordCatalog("podcast").toList()
+        ),
+        collectionPage(DisneyPlusHub.HC_HARRY_POTTER, HBO_HARRY_POTTER, seeAll = keywordCatalog("wizarding world").toList()),
+        collectionPage(DisneyPlusHub.HC_CONJURING_UNIVERSE, HBO_CONJURING_UNIVERSE, seeAll = keywordCatalog("conjuring universe").toList()),
+        collectionPage(DisneyPlusHub.HC_SUPERMAN_FILMS, HBO_SUPERMAN_FILMS),
+        collectionPage(
+            DisneyPlusHub.HC_LGBTQ_VOICES, HBO_LGBTQ_VOICES,
+            extraSources = listOf(onHboMax(TV, keywordQuery = "lgbt"), onHboMax(MOVIE, keywordQuery = "lgbt")),
+            seeAll = keywordCatalog("lgbt").toList()
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_API_VOICES, HBO_API_VOICES,
+            extraSources = listOf(onHboMax(MOVIE, keywordQuery = "asian american"), onHboMax(TV, keywordQuery = "asian american")),
+            seeAll = keywordCatalog("asian american").toList()
+        ),
+        collectionPage(
+            DisneyPlusHub.HC_BLACK_VOICES, HBO_BLACK_VOICES,
+            extraSources = listOf(onHboMax(MOVIE, keywordQuery = "african american"), onHboMax(TV, keywordQuery = "african american")),
+            seeAll = keywordCatalog("african american").toList()
+        ),
+        collectionPage(DisneyPlusHub.HC_FRIENDS, HBO_FRIENDS),
+        collectionPage(
+            DisneyPlusHub.HC_A24, HBO_A24,
+            extraSources = listOf(onHboMax(MOVIE, companies = HboMaxIds.CO_A24)),
+            seeAll = listOf(company(MOVIE, HboMaxIds.CO_A24, sortBy = MOST_VOTED))
+        ),
+        collectionPage(DisneyPlusHub.HC_MIDDLE_EARTH, HBO_MIDDLE_EARTH),
+        collectionPage(DisneyPlusHub.HC_SEX_AND_THE_CITY, HBO_SEX_AND_THE_CITY),
+        collectionPage(DisneyPlusHub.HC_GODZILLA, HBO_GODZILLA, seeAll = keywordCatalog("godzilla").toList()),
+        collectionPage(DisneyPlusHub.HC_SOPRANOS, HBO_SOPRANOS),
+        collectionPage(
+            DisneyPlusHub.HC_BARBIE_LAND, HBO_BARBIE_LAND,
+            extraSources = listOf(DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, keywordQuery = "barbie"))
+        ),
+        collectionPage(DisneyPlusHub.HC_BATMAN_1989_1997, HBO_BATMAN_1989_1997),
+        collectionPage(DisneyPlusHub.HC_DARK_KNIGHT_TRILOGY, HBO_DARK_KNIGHT_TRILOGY)
     ).associateBy { it.hub }
 
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */

@@ -370,6 +370,10 @@ fun HomeScreen(
                                 )
                         }
                     ) {
+                        // Home rows follow the website's layout for the "home" page (vertical or horizontal).
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            com.nuvio.tv.ui.components.LocalRowLayoutPage provides com.nuvio.tv.ui.components.RowLayoutPages.HOME
+                        ) {
                         when (uiState.homeLayout) {
                             HomeLayout.CLASSIC -> ClassicHomeRoute(
                                 viewModel = viewModel,
@@ -415,6 +419,7 @@ fun HomeScreen(
                                 isCatalogItemWatched = isCatalogItemWatched,
                                 onCatalogItemLongPress = onCatalogItemLongPress
                             )
+                        }
                         }
                     }
                 }

@@ -272,7 +272,11 @@ fun ChannelProfileScreen(
     DisposableEffect(Unit) { onDispose { liveTvViewModel.dismissProgramDetails() } }
 
     // The horizontal title cards (rows and See All) find their title art as they appear.
-    CompositionLocalProvider(com.nuvio.tv.ui.components.LocalTitleArtResolver provides viewModel.titleArt) {
+    CompositionLocalProvider(
+        com.nuvio.tv.ui.components.LocalTitleArtResolver provides viewModel.titleArt,
+        // The website's layout for channel profiles ("channel" page: rows "tv_shows" and "movies").
+        com.nuvio.tv.ui.components.LocalRowLayoutPage provides com.nuvio.tv.ui.components.RowLayoutPages.CHANNEL
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -551,6 +555,7 @@ private fun ChannelProfileContent(
                         // Ten horizontal cards, then "See All" with every show of the channel.
                         appleMaxItems = CHANNEL_ROW_VISIBLE,
                         appleLandscape = true,
+                        layoutRowId = "tv_shows",
                         onSeeAll = { onSeeAll(ChannelTitlesKind.TV_SHOWS) },
                         entryFocusRequester = tvShowsEntry
                     )
@@ -572,6 +577,7 @@ private fun ChannelProfileContent(
                         // Ten horizontal cards, then "See All" with every movie of the channel.
                         appleMaxItems = CHANNEL_ROW_VISIBLE,
                         appleLandscape = true,
+                        layoutRowId = "movies",
                         onSeeAll = { onSeeAll(ChannelTitlesKind.MOVIES) },
                         entryFocusRequester = moviesEntry
                     )
@@ -1143,11 +1149,12 @@ private fun ChannelSeeAllPage(
     onItemLongPress: (MetaPreview) -> Unit,
     onLoadMore: () -> Unit
 ) {
+    val title = stringResource(
+        if (state.kind == ChannelTitlesKind.TV_SHOWS) R.string.channel_profile_tv_shows
+        else R.string.channel_profile_movies
+    )
     TitlesSeeAllPage(
-        title = stringResource(
-            if (state.kind == ChannelTitlesKind.TV_SHOWS) R.string.channel_profile_tv_shows
-            else R.string.channel_profile_movies
-        ),
+        title = title,
         stateKey = "channel_${state.kind.name}",
         items = state.items,
         isLoadingMore = state.isLoadingMore,
@@ -1155,6 +1162,11 @@ private fun ChannelSeeAllPage(
         onItemLongPress = onItemLongPress,
         onLoadMore = onLoadMore,
         logoUrl = logoUrl,
-        logoDescription = brandName
+        logoDescription = brandName,
+        // Vertical when the website set that row to vertical.
+        vertical = com.nuvio.tv.ui.components.isRowVertical(
+            if (state.kind == ChannelTitlesKind.TV_SHOWS) "tv_shows" else "movies",
+            title
+        )
     )
 }

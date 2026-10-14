@@ -80,6 +80,7 @@ import androidx.compose.ui.res.painterResource
 import com.nuvio.tv.ui.components.ROW_MAX_ITEMS
 import com.nuvio.tv.ui.components.TitlesSeeAllPage
 import com.nuvio.tv.ui.components.LocalTitleArtResolver
+import com.nuvio.tv.ui.components.rowLayoutPage
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.withFrameNanos
 import com.nuvio.tv.ui.components.HubLogoHeader
@@ -162,8 +163,12 @@ fun DisneyPlusScreen(
         returnFocusRowId = null
     }
 
-    // Horizontal title cards (rows and See All) find their title art as they appear.
-    CompositionLocalProvider(LocalTitleArtResolver provides viewModel.titleArt) {
+    // Horizontal title cards (rows and See All) find their title art as they appear. Rows follow the
+    // website's layout for this page (vertical or horizontal).
+    CompositionLocalProvider(
+        LocalTitleArtResolver provides viewModel.titleArt,
+        com.nuvio.tv.ui.components.LocalRowLayoutPage provides uiState.hub.rowLayoutPage()
+    ) {
     Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
         when {
             seeAll != null -> {
@@ -176,7 +181,13 @@ fun DisneyPlusScreen(
                     onItemLongPress = { item -> posterOptionsController.show(item, "") },
                     onLoadMore = viewModel::loadMoreSeeAll,
                     logoRes = uiState.hub.headerLogoRes(),
-                    logoDescription = stringResource(uiState.hub.titleRes)
+                    logoDescription = stringResource(uiState.hub.titleRes),
+                    // A row set to vertical on the website keeps vertical posters on its See All page.
+                    vertical = com.nuvio.tv.ui.components.isRowVertical(
+                        seeAll.rowId,
+                        "disney_${uiState.hub.key}_${seeAll.rowId}",
+                        seeAll.title
+                    )
                 )
             }
 
@@ -332,6 +343,9 @@ fun DisneyPlusScreen(
                                 appleRankNumbers = false,
                                 contentStart = if (landscapeTitles) NuvioTheme.spacing.xxxl else null,
                                 appleSpaciousTitle = true,
+                                // The website can set this row to vertical posters (by its id or name).
+                                layoutRowId = rowId,
+                                verticalPosterCardStyle = com.nuvio.tv.ui.components.AppleVerticalPosterStyle,
                                 // Rows get more room between them, like Disney+.
                                 modifier = Modifier.padding(top = HubRowExtraSpacing),
                                 onSeeAll = { viewModel.openSeeAll(rowId) },
@@ -469,7 +483,7 @@ private fun DisneyPlusHub.brandLogoRes(): Int = when (this) {
 
 /** A collection's tile picture (bundled, as on Disney+); null draws the tinted backdrop card instead. */
 @DrawableRes
-private fun DisneyPlusHub.collectionArtRes(): Int? = when (this) {
+internal fun DisneyPlusHub.collectionArtRes(): Int? = when (this) {
     DisneyPlusHub.COL_WDAS -> R.drawable.disney_collection_wdas
     DisneyPlusHub.COL_DISNEY_JR -> R.drawable.disney_collection_disney_jr
     DisneyPlusHub.COL_DISNEY_CHANNEL -> R.drawable.disney_collection_disney_channel
@@ -543,6 +557,36 @@ private fun DisneyPlusHub.collectionArtRes(): Int? = when (this) {
     DisneyPlusHub.PU_SPONGEBOB -> R.drawable.paramount_collection_spongebob
     DisneyPlusHub.PU_SOUTH_PARK -> R.drawable.paramount_collection_south_park
     DisneyPlusHub.PU_CHALLENGE -> R.drawable.paramount_collection_challenge
+    DisneyPlusHub.HC_HORROR_COMES_HOME -> R.drawable.hbomax_collection_horror_comes_home
+    DisneyPlusHub.HC_NUESTRAS_VOCES -> R.drawable.hbomax_collection_nuestras_voces
+    DisneyPlusHub.HC_AWARDS_ACCLAIM -> R.drawable.hbomax_collection_awards_acclaim
+    DisneyPlusHub.HC_HARD_KNOCKS -> R.drawable.hbomax_collection_hard_knocks
+    DisneyPlusHub.HC_BIG_BANG_THEORY -> R.drawable.hbomax_collection_big_bang_theory
+    DisneyPlusHub.HC_ASL -> R.drawable.hbomax_collection_asl
+    DisneyPlusHub.HC_STREAM_IN_SPANISH -> R.drawable.hbomax_collection_stream_in_spanish
+    DisneyPlusHub.HC_WORLD_OF_WESTEROS -> R.drawable.hbomax_collection_world_of_westeros
+    DisneyPlusHub.HC_MORTAL_KOMBAT -> R.drawable.hbomax_collection_mortal_kombat
+    DisneyPlusHub.HC_AUDIO_DESCRIPTION -> R.drawable.hbomax_collection_audio_description
+    DisneyPlusHub.HC_RICK_AND_MORTY -> R.drawable.hbomax_collection_rick_and_morty
+    DisneyPlusHub.HC_FORTRESS_OF_SOLITUDE -> R.drawable.hbomax_collection_fortress_of_solitude
+    DisneyPlusHub.HC_WHATS_NEW -> R.drawable.hbomax_collection_whats_new
+    DisneyPlusHub.HC_IN_HER_VOICE -> R.drawable.hbomax_collection_in_her_voice
+    DisneyPlusHub.HC_PODCASTS -> R.drawable.hbomax_collection_podcasts
+    DisneyPlusHub.HC_HARRY_POTTER -> R.drawable.hbomax_collection_harry_potter
+    DisneyPlusHub.HC_CONJURING_UNIVERSE -> R.drawable.hbomax_collection_conjuring_universe
+    DisneyPlusHub.HC_SUPERMAN_FILMS -> R.drawable.hbomax_collection_superman_films
+    DisneyPlusHub.HC_LGBTQ_VOICES -> R.drawable.hbomax_collection_lgbtq_voices
+    DisneyPlusHub.HC_API_VOICES -> R.drawable.hbomax_collection_api_voices
+    DisneyPlusHub.HC_BLACK_VOICES -> R.drawable.hbomax_collection_black_voices
+    DisneyPlusHub.HC_FRIENDS -> R.drawable.hbomax_collection_friends
+    DisneyPlusHub.HC_A24 -> R.drawable.hbomax_collection_a24
+    DisneyPlusHub.HC_MIDDLE_EARTH -> R.drawable.hbomax_collection_middle_earth
+    DisneyPlusHub.HC_SEX_AND_THE_CITY -> R.drawable.hbomax_collection_sex_and_the_city
+    DisneyPlusHub.HC_GODZILLA -> R.drawable.hbomax_collection_godzilla
+    DisneyPlusHub.HC_SOPRANOS -> R.drawable.hbomax_collection_sopranos
+    DisneyPlusHub.HC_BARBIE_LAND -> R.drawable.hbomax_collection_barbie_land
+    DisneyPlusHub.HC_BATMAN_1989_1997 -> R.drawable.hbomax_collection_batman_1989_1997
+    DisneyPlusHub.HC_DARK_KNIGHT_TRILOGY -> R.drawable.hbomax_collection_dark_knight_trilogy
     else -> null
 }
 

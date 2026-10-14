@@ -396,11 +396,23 @@ fun CatalogSeeAllScreen(
         if (hasItems) {
             // filteredItems is only non-empty when catalogRow is non-null (see genreYearFilter above).
             val row = checkNotNull(catalogRow)
+            // Same as the row it came from: horizontal 16:9 cards with the title on the picture, or
+            // vertical posters when the website set that row to vertical.
+            val rowLayout = com.nuvio.tv.ui.components.LocalRowLayout.current
+            val verticalGrid = remember(rowLayout, isSearchMode, row.catalogId, row.catalogName) {
+                rowLayout.isVertical(
+                    if (isSearchMode) com.nuvio.tv.ui.components.RowLayoutPages.SEARCH
+                    else com.nuvio.tv.ui.components.RowLayoutPages.HOME,
+                    row.catalogId,
+                    row.catalogName
+                )
+            }
+            val gridCardWidth = if (verticalGrid) posterCardStyle.width else com.nuvio.tv.ui.components.AppleLandscapeCardWidth
+            val gridCardHeight = if (verticalGrid) posterCardStyle.height else com.nuvio.tv.ui.components.AppleLandscapeCardHeight
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyVerticalGrid(
                     state = gridState,
-                    // Horizontal 16:9 cards with the title on the picture, like every page.
-                    columns = GridCells.Adaptive(minSize = com.nuvio.tv.ui.components.AppleLandscapeCardWidth),
+                    columns = GridCells.Adaptive(minSize = gridCardWidth),
                     modifier = Modifier.dpadRepeatThrottle(),
                     contentPadding = PaddingValues(
                         start = AppleTvContentStart,
@@ -426,6 +438,41 @@ fun CatalogSeeAllScreen(
                         }
                         val itemFocusKey = catalogItemFocusKey(item)
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                        val onCardFocus: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {
+                            // While restoring after Details/resume, ignore transient focus on the
+                            // first/leftmost cell so it cannot overwrite the saved poster key.
+                            if (!(shouldRestoreFocus &&
+                                    focusedItemKey != null &&
+                                    itemFocusKey != focusedItemKey)
+                            ) {
+                                focusedItemKey = itemFocusKey
+                            }
+                        }
+                        val onCardClick: () -> Unit = {
+                            focusedItemKey = itemFocusKey
+                            onNavigateToDetail(
+                                item.id,
+                                item.apiType,
+                                row.addonBaseUrl
+                            )
+                        }
+                        val onCardLongPress: () -> Unit = {
+                            focusedItemKey = itemFocusKey
+                            posterOptionsController.show(item, row.addonBaseUrl)
+                        }
+                        if (verticalGrid) {
+                            ContentCard(
+                                item = item,
+                                posterCardStyle = posterCardStyle,
+                                showLabels = false,
+                                isWatched = isWatched,
+                                appleStyle = true,
+                                focusRequester = if (index == focusedItemIndex) restoreFocusRequester else null,
+                                onFocus = onCardFocus,
+                                onClick = onCardClick,
+                                onLongPress = onCardLongPress
+                            )
+                        } else
                         com.nuvio.tv.ui.components.AppleLandscapeCard(
                             item = item,
                             cornerRadius = posterCardStyle.cornerRadius,
@@ -465,13 +512,13 @@ fun CatalogSeeAllScreen(
                             val cardDepthStyle = com.nuvio.tv.ui.components.LocalCardDepthStyle.current
                             Column(
                                 modifier = Modifier
-                                    .width(com.nuvio.tv.ui.components.AppleLandscapeCardWidth)
+                                    .width(gridCardWidth)
                             ) {
                                 androidx.tv.material3.Card(
                                     onClick = {},
                                     modifier = Modifier
-                                        .width(com.nuvio.tv.ui.components.AppleLandscapeCardWidth)
-                                        .height(com.nuvio.tv.ui.components.AppleLandscapeCardHeight)
+                                        .width(gridCardWidth)
+                                        .height(gridCardHeight)
                                         .then(Modifier.focusProperties { canFocus = false }),
                                     shape = androidx.tv.material3.CardDefaults.shape(shape = cardShape),
                                     colors = androidx.tv.material3.CardDefaults.colors(

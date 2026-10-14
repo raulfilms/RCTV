@@ -129,7 +129,13 @@ fun CatalogRowSection(
     /** Left margin of the row's title and first card; null = the style's default. */
     contentStart: Dp? = null,
     /** Apple TV look: bold row name with more space before the cards (the streaming hubs, like Disney+). */
-    appleSpaciousTitle: Boolean = false
+    appleSpaciousTitle: Boolean = false,
+    /** The row's id in the website's layout file (default: the catalog id; the row's name also works). */
+    layoutRowId: String? = null,
+    /** The row's page in the layout file (default: the screen's [LocalRowLayoutPage]). */
+    layoutPage: String? = null,
+    /** Poster size when the website sets this row to vertical (default: [posterCardStyle]). */
+    verticalPosterCardStyle: PosterCardStyle? = null
 ) {
     val rowStartPadding = contentStart ?: if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
     // Apple TV style rows show a handful of titles and then a "See All" card.
@@ -304,8 +310,14 @@ fun CatalogRowSection(
     val showRankNumbers = remember(appleStyle, appleRankNumbers, catalogRow.catalogName) {
         appleStyle && appleRankNumbers && isRankedCatalogName(catalogRow.catalogName)
     }
-    // Every row in the app uses horizontal 16:9 cards (with the title on the picture), never vertical posters.
-    val useLandscapeCards = true
+    // Horizontal 16:9 cards (with the title on the picture) unless the website sets this row to
+    // vertical posters. The row is found by its id or by its name on this page.
+    val rowLayout = LocalRowLayout.current
+    val rowLayoutPage = layoutPage ?: LocalRowLayoutPage.current
+    val useLandscapeCards = remember(rowLayout, rowLayoutPage, layoutRowId, catalogRow.catalogId, catalogRow.catalogName, catalogTitle) {
+        !rowLayout.isVertical(rowLayoutPage, layoutRowId, catalogRow.catalogId, catalogRow.catalogName, catalogTitle)
+    }
+    val rowPosterStyle = if (useLandscapeCards) posterCardStyle else (verticalPosterCardStyle ?: posterCardStyle)
 
     Column(modifier = modifier.fillMaxWidth().then(
         if (blockingFocusExit.value) {
@@ -483,7 +495,7 @@ fun CatalogRowSection(
                 } else
                 ContentCard(
                     item = item,
-                    posterCardStyle = posterCardStyle,
+                    posterCardStyle = rowPosterStyle,
                     showLabels = showPosterLabels,
                     showImdbRatings = showImdbRatings,
                     placeholderShimmerOffsetState = placeholderShimmerOffsetState,
@@ -520,8 +532,8 @@ fun CatalogRowSection(
                     Card(
                         onClick = {},
                         modifier = Modifier
-                            .width(if (useLandscapeCards) AppleLandscapeCardWidth else posterCardStyle.width)
-                            .height(if (useLandscapeCards) AppleLandscapeCardHeight else posterCardStyle.height)
+                            .width(if (useLandscapeCards) AppleLandscapeCardWidth else rowPosterStyle.width)
+                            .height(if (useLandscapeCards) AppleLandscapeCardHeight else rowPosterStyle.height)
                             .focusProperties { canFocus = false },
                         shape = CardDefaults.shape(shape = seeAllCardShape),
                         colors = CardDefaults.colors(
@@ -549,9 +561,9 @@ fun CatalogRowSection(
                 item(key = "${catalogRow.type}_${catalogRow.catalogId}_see_all") {
                     AppleSeeAllCard(
                         label = seeAllLabel ?: stringResource(R.string.action_see_all),
-                        width = if (useLandscapeCards) AppleLandscapeCardWidth else posterCardStyle.width,
-                        height = if (useLandscapeCards) AppleLandscapeCardHeight else posterCardStyle.height,
-                        cornerRadius = posterCardStyle.cornerRadius,
+                        width = if (useLandscapeCards) AppleLandscapeCardWidth else rowPosterStyle.width,
+                        height = if (useLandscapeCards) AppleLandscapeCardHeight else rowPosterStyle.height,
+                        cornerRadius = rowPosterStyle.cornerRadius,
                         onClick = { latestOnSeeAll() },
                         modifier = directionalFocusModifier
                     )
@@ -562,7 +574,7 @@ fun CatalogRowSection(
                         posterCardStyle = if (useLandscapeCards) {
                             posterCardStyle.copy(width = AppleLandscapeCardWidth, height = AppleLandscapeCardHeight)
                         } else {
-                            posterCardStyle
+                            rowPosterStyle
                         },
                         label = seeAllLabel ?: stringResource(R.string.action_see_all),
                         onClick = onSeeAll,

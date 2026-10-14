@@ -569,6 +569,8 @@ private fun FilmographyRow(
     val restoreFocusRequester = remember { FocusRequester() }
     var restorePending by remember { mutableStateOf(false) }
     val lazyListState = rememberLazyListState()
+    // Horizontal cards unless the website sets the cast page ("cast") to vertical posters.
+    val verticalCards = com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.CAST)
 
     LaunchedEffect(restoreFocusToken) {
         if (restoreFocusToken <= 0 || restoreItemId == null) {
@@ -604,31 +606,47 @@ private fun FilmographyRow(
                 else -> null
             }
 
-            // Horizontal 16:9 cards with the title on the picture, like every page.
-            com.nuvio.tv.ui.components.AppleLandscapeCard(
-                item = item,
-                onClick = { onItemClick(item) },
-                onLongPress = { onItemLongPress(item) },
-                isWatched = isItemWatched(item),
-                modifier = if (isFirstItem) {
-                    Modifier.onGloballyPositioned {
-                        if (!hasRequestedInitialFocus.value) {
-                            hasRequestedInitialFocus.value = true
-                            runCatching { firstItemFocusRequester.requestFocus() }
-                        }
-                    }
-                } else {
-                    Modifier
-                },
-                cornerRadius = posterCardStyle.cornerRadius,
-                focusRequester = itemFocusRequester,
-                onFocus = {
-                    if (isRestoreTarget && restoreFocusToken > 0) {
-                        onRestoreFocusHandled()
-                        restorePending = false
+            val cardModifier = if (isFirstItem) {
+                Modifier.onGloballyPositioned {
+                    if (!hasRequestedInitialFocus.value) {
+                        hasRequestedInitialFocus.value = true
+                        runCatching { firstItemFocusRequester.requestFocus() }
                     }
                 }
-            )
+            } else {
+                Modifier
+            }
+            val onCardFocused: () -> Unit = {
+                if (isRestoreTarget && restoreFocusToken > 0) {
+                    onRestoreFocusHandled()
+                    restorePending = false
+                }
+            }
+            if (verticalCards) {
+                GridContentCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onLongPress = { onItemLongPress(item) },
+                    isWatched = isItemWatched(item),
+                    modifier = cardModifier,
+                    posterCardStyle = posterCardStyle,
+                    showLabel = true,
+                    focusRequester = itemFocusRequester,
+                    onFocused = onCardFocused
+                )
+            } else {
+                // Horizontal 16:9 cards with the title on the picture, like every page.
+                com.nuvio.tv.ui.components.AppleLandscapeCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onLongPress = { onItemLongPress(item) },
+                    isWatched = isItemWatched(item),
+                    modifier = cardModifier,
+                    cornerRadius = posterCardStyle.cornerRadius,
+                    focusRequester = itemFocusRequester,
+                    onFocus = { onCardFocused() }
+                )
+            }
         }
     }
 }

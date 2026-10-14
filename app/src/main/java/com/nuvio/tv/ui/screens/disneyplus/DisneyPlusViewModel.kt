@@ -262,7 +262,10 @@ class DisneyPlusViewModel @Inject constructor(
     }
 
     private suspend fun loadCollectionArt() {
+        // Tiles with their own bundled picture don't need backdrops from TMDB (saves dozens of
+        // lookups on pages with big collection rows, like HBO Max's).
         val hubs = hubSpec.rows.filter { it.kind == DisneyRowKind.COLLECTIONS }.flatMap { it.collections }.distinct()
+            .filter { it.collectionArtRes() == null }
         if (hubs.isEmpty()) return
         coroutineScope {
             hubs.map { collectionHub ->

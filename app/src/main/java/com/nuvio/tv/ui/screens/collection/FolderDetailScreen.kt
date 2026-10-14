@@ -943,6 +943,7 @@ private fun RowsContent(
                         }
                         val rowFocusRequester = rowFocusRequesters.getOrPut(rowKey) { FocusRequester() }
                         CatalogRowSection(
+                            layoutPage = com.nuvio.tv.ui.components.RowLayoutPages.COLLECTION,
                             catalogRow = catalogRow,
                             onItemClick = onNavigateToDetail,
                             onItemLongPress = onItemLongPress,
