@@ -294,7 +294,7 @@ fun HomeChannelRow(
 
 /** A card in the Apple TV style (no ring: it grows and lifts on focus). */
 @Composable
-private fun HomeCard(
+internal fun HomeCard(
     onClick: () -> Unit,
     width: Dp,
     height: Dp,
@@ -322,7 +322,7 @@ private fun HomeCard(
  * returning to Home).
  */
 @Composable
-private fun HomeTileRow(
+internal fun HomeTileRow(
     title: String,
     count: Int,
     keyOf: (Int) -> String,
@@ -330,13 +330,18 @@ private fun HomeTileRow(
     initialFocusIndex: Int,
     onItemFocused: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** Where the name and the first card start (the streaming hubs line up further in). */
+    contentStart: Dp = AppleTvContentStart,
+    /** Space between the name and the cards. */
+    titleBottomGap: Dp = 10.dp,
+    /** A bold name, like the streaming hubs' rows. */
+    boldTitle: Boolean = false,
     tile: @Composable (index: Int, modifier: Modifier) -> Unit
 ) {
     if (count == 0) return
     val itemRequesters = remember(count) { List(count) { FocusRequester() } }
     var lastFocusedIndex by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
-    val contentStart = AppleTvContentStart
 
     LaunchedEffect(initialFocusIndex, count) {
         val target = initialFocusIndex
@@ -365,7 +370,7 @@ private fun HomeTileRow(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        AppleRowTitle(text = title)
+        AppleRowTitle(text = title, contentStart = contentStart, bottomGap = titleBottomGap, bold = boldTitle)
         CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalSpec) {
             LazyRow(
                 state = listState,

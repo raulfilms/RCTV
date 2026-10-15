@@ -43,6 +43,8 @@ private const val ROW_ITEM_CAP = 30
 /** TMDB release types: theatrical (limited, then wide). */
 private const val THEATRICAL_RELEASE_TYPES = "2|3"
 private const val HERO_ITEM_COUNT = 6
+/** Titles in a Top 10 row. */
+private const val RANKED_ROW_SIZE = 10
 /** The See All Year menu never goes back further than this. */
 private const val OLDEST_YEAR = 1900
 
@@ -89,6 +91,11 @@ class DisneyPlusRepository @Inject constructor(
     private val totalCache = ConcurrentHashMap<String, Int>()
     /** The year of a discover query's oldest title (0: it has none), for the See All Year menu. */
     private val earliestYearCache = ConcurrentHashMap<String, Int>()
+    /** A person's photo (null: none), by TMDB person id. */
+    private val personPhotoCache = ConcurrentHashMap<Int, Optional<String>>()
+    /** Every US watch provider's logo, by provider id (loaded once). */
+    @Volatile private var providerLogoCache: Map<Int, String>? = null
+    private val providerLogoMutex = Mutex()
 
     /** Tiny nullable holder so "looked it up, found nothing" can be cached (ConcurrentHashMap rejects nulls). */
     private data class Optional<T>(val value: T?)
@@ -140,7 +147,14 @@ class DisneyPlusRepository @Inject constructor(
                 }
                 // A row made only of hand-picked titles (a saga, a timeline...) keeps all of them.
                 val cap = if (spec.sources.all { it is DisneyRowSource.Curated }) Int.MAX_VALUE else ROW_ITEM_CAP
-                interleave(perSource, cap).also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
+                val merged = interleave(perSource, cap)
+                // A Top 10: the ten most popular of all its titles, movies and series together.
+                val shown = if (spec.ranked) {
+                    merged.sortedByDescending { it.popularity ?: 0.0 }.take(RANKED_ROW_SIZE)
+                } else {
+                    merged
+                }
+                shown.also { if (it.isNotEmpty()) rowCache[cacheKey] = it }
             }
             // The row shows as soon as its titles are known; each horizontal card finds its title art
             // as it appears on screen (LocalTitleArtResolver), so nothing waits on those lookups.
@@ -374,6 +388,48 @@ class DisneyPlusRepository @Inject constructor(
                 }
             }
         }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+    }
+
+    /** A person's photo on TMDB (a filmmaker's card), null when there's none. */
+    suspend fun personPhoto(personId: Int): String? = withContext(Dispatchers.IO) {
+        personPhotoCache[personId]?.let { return@withContext it.value }
+        val result = runCatching {
+            lookupLimiter.withPermit {
+                val response = tmdbApi.getPersonDetails(personId, apiKey)
+                if (!response.isSuccessful) throw java.io.IOException("TMDB person HTTP ${response.code()}")
+                response.body()?.profilePath?.let { "https://image.tmdb.org/t/p/w342$it" }
+            }
+        }.onFailure { if (it is CancellationException) throw it }
+        if (result.isSuccess) personPhotoCache[personId] = Optional(result.getOrNull())
+        result.getOrNull()
+    }
+
+    /** A watch provider's logo (an Amazon channel's card), from TMDB's US provider lists. */
+    suspend fun providerLogo(providerId: Int): String? = withContext(Dispatchers.IO) {
+        providerLogos()[providerId]
+    }
+
+    private suspend fun providerLogos(): Map<Int, String> = providerLogoMutex.withLock {
+        providerLogoCache?.let { return@withLock it }
+        val logos = HashMap<Int, String>()
+        var failed = false
+        for (isTv in listOf(true, false)) {
+            val list = runCatching {
+                val response = if (isTv) tmdbApi.getTvWatchProviders(apiKey, "US") else tmdbApi.getMovieWatchProviders(apiKey, "US")
+                if (!response.isSuccessful) throw java.io.IOException("TMDB providers HTTP ${response.code()}")
+                response.body()?.results.orEmpty()
+            }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+            if (list == null) {
+                failed = true
+                continue
+            }
+            list.forEach { entry ->
+                val path = entry.logoPath ?: return@forEach
+                logos.putIfAbsent(entry.providerId, "https://image.tmdb.org/t/p/w300$path")
+            }
+        }
+        if (!failed) providerLogoCache = logos
+        logos
     }
 
     /** A TV network's logo on TMDB (null: none, or TMDB couldn't be reached). */
@@ -743,6 +799,11 @@ class DisneyPlusRepository @Inject constructor(
             listOfNotNull(source.providers, resolved.toString()).joinToString("|")
         } ?: source.providers
         val usesProviders = !providers.isNullOrBlank()
+        // Keyword ids checked on TMDB, plus a keyword looked up by name: any of them.
+        val keywords = listOfNotNull(source.keywords, resolvedKeywordId?.toString())
+            .filter { it.isNotBlank() }
+            .joinToString("|")
+            .ifBlank { null }
         val response = when (source.mediaType) {
             TmdbCollectionMediaType.MOVIE -> tmdbApi.discoverMovies(
                 apiKey = apiKey,
@@ -762,7 +823,8 @@ class DisneyPlusRepository @Inject constructor(
                 voteCountLte = source.voteCountLte,
                 voteAverageGte = source.voteAverageGte,
                 withOriginCountry = source.originCountry,
-                withKeywords = resolvedKeywordId?.toString(),
+                withKeywords = keywords,
+                withCrew = source.crew,
                 watchRegion = if (usesProviders) "US" else null,
                 withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
@@ -788,7 +850,7 @@ class DisneyPlusRepository @Inject constructor(
                 withOriginCountry = source.originCountry,
                 airDateGte = airGte,
                 airDateLte = airLte,
-                withKeywords = resolvedKeywordId?.toString(),
+                withKeywords = keywords,
                 watchRegion = if (usesProviders) "US" else null,
                 withWatchProviders = providers,
                 withWatchMonetizationTypes = if (usesProviders) "flatrate" else null,
@@ -1019,7 +1081,8 @@ class DisneyPlusRepository @Inject constructor(
             imdbRating = voteAverage?.toFloat()?.takeIf { it > 0f },
             voteCount = voteCount,
             // Names for the See All page's Genre filter.
-            genres = genreIds.orEmpty().mapNotNull { genreNames[it] }
+            genres = genreIds.orEmpty().mapNotNull { genreNames[it] },
+            popularity = popularity
         )
     }
 

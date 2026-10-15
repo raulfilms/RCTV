@@ -152,12 +152,19 @@ fun DisneyPlusScreen(
     var returnFocusRowId by remember { mutableStateOf<String?>(null) }
     val seeAll = uiState.seeAll
 
-    // Back on a See All page goes back to the row it came from.
+    // A list opened from a card: the card row it belongs to, to go back to.
+    val cardRowOf = remember(uiState.rows) {
+        uiState.rows.filter { it.spec.kind == DisneyRowKind.CARDS }
+            .flatMap { row -> row.spec.cards.map { it.rowId to row.spec.id } }
+            .toMap()
+    }
+
+    // Back on a See All page goes back to the row it came from (or the card that opened it).
     BackHandler(enabled = seeAll != null) {
         if (viewModel.isDirectSeeAll) {
             onBack()
         } else {
-            returnFocusRowId = seeAll?.rowId
+            returnFocusRowId = seeAll?.rowId?.let { cardRowOf[it] ?: it }
             viewModel.closeSeeAll()
         }
     }
@@ -222,15 +229,14 @@ fun DisneyPlusScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     EmptyScreenState(
-                        title = stringResource(
-                            when (uiState.hub.service) {
-                                HubService.DISNEY -> R.string.disney_empty_title
-                                HubService.PARAMOUNT -> R.string.paramount_empty_title
-                                HubService.DISCOVERY -> R.string.discovery_empty_title
-                                HubService.HBO_MAX -> R.string.hbomax_empty_title
-                                HubService.PEACOCK -> R.string.peacock_empty_title
-                            }
-                        ),
+                        title = when (uiState.hub.service) {
+                            HubService.DISNEY -> stringResource(R.string.disney_empty_title)
+                            HubService.PARAMOUNT -> stringResource(R.string.paramount_empty_title)
+                            HubService.DISCOVERY -> stringResource(R.string.discovery_empty_title)
+                            HubService.HBO_MAX -> stringResource(R.string.hbomax_empty_title)
+                            HubService.PEACOCK -> stringResource(R.string.peacock_empty_title)
+                            else -> stringResource(R.string.svc_empty_title, stringResource(uiState.hub.titleRes))
+                        },
                         subtitle = stringResource(R.string.disney_empty_subtitle),
                         icon = Icons.Default.Movie,
                         height = 240.dp
@@ -299,7 +305,7 @@ fun DisneyPlusScreen(
                         }
                     }
 
-                    if (isMain) {
+                    if (isMain && DisneyPlusHub.brandTiles(uiState.hub.service).isNotEmpty()) {
                         item(key = "brand_tiles") {
                             DisneyBrandTiles(service = uiState.hub.service, onOpenHub = onOpenHub)
                         }
@@ -344,6 +350,20 @@ fun DisneyPlusScreen(
                             }
                             return@forEach
                         }
+                        if (rowState.spec.kind == DisneyRowKind.CARDS) {
+                            val cardRowId = rowState.spec.id
+                            item(key = "row_$cardRowId") {
+                                HubCardsRow(
+                                    title = rowState.title,
+                                    cards = rowState.spec.cards,
+                                    art = rowState.cardArt,
+                                    onClick = { card -> viewModel.openSeeAll(card.rowId) },
+                                    rowFocusRequester = rowFocusRequesters.getOrPut(cardRowId) { FocusRequester() },
+                                    modifier = Modifier.padding(top = HubRowExtraSpacing)
+                                )
+                            }
+                            return@forEach
+                        }
                         val row = rowState.row ?: return@forEach
                         val rowId = rowState.spec.id
                         item(key = "row_$rowId") {
@@ -357,7 +377,8 @@ fun DisneyPlusScreen(
                                 appleStyle = landscapeTitles,
                                 appleLandscape = landscapeTitles,
                                 appleMaxItems = ROW_MAX_ITEMS,
-                                appleRankNumbers = false,
+                                // A Top 10 row numbers its titles.
+                                appleRankNumbers = rowState.spec.ranked,
                                 contentStart = if (landscapeTitles) NuvioTheme.spacing.xxxl else null,
                                 appleSpaciousTitle = true,
                                 // The website can set this row to vertical posters (by its id or name).
@@ -445,6 +466,14 @@ private fun DisneyPlusHub.headerLogoRes(): Int? = when {
         HubService.DISCOVERY -> R.drawable.streaming_logo_discovery
         HubService.HBO_MAX -> R.drawable.streaming_logo_hbomax
         HubService.PEACOCK -> R.drawable.streaming_logo_peacock
+        HubService.NETFLIX -> R.drawable.streaming_logo_netflix
+        HubService.PRIME_VIDEO -> R.drawable.streaming_logo_prime
+        HubService.APPLE_TV -> R.drawable.streaming_logo_appletv
+        HubService.A24 -> R.drawable.streaming_logo_a24
+        HubService.ANGEL -> R.drawable.streaming_logo_angel
+        HubService.SHUDDER -> R.drawable.streaming_logo_shudder
+        HubService.BLUMHOUSE -> R.drawable.streaming_logo_blumhouse
+        HubService.FOX_NATION -> R.drawable.streaming_logo_foxnation
     }
     // Its tile is a full picture, so the page header uses the discovery+ logo.
     this == DisneyPlusHub.D_ORIGINALS -> R.drawable.streaming_logo_discovery

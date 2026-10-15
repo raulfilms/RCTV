@@ -464,7 +464,17 @@ enum class HubService(
     PARAMOUNT(ParamountPlusIds.PROVIDERS),
     DISCOVERY(DiscoveryPlusIds.PROVIDERS),
     HBO_MAX(HboMaxIds.PROVIDERS),
-    PEACOCK(PeacockIds.PROVIDERS);
+    PEACOCK(PeacockIds.PROVIDERS),
+
+    // Services whose page is made of TMDB rows only (no brand tiles): see [ServiceHubs].
+    NETFLIX(ServiceHubIds.NETFLIX_PROVIDERS),
+    PRIME_VIDEO(ServiceHubIds.PRIME_PROVIDERS),
+    APPLE_TV(ServiceHubIds.APPLE_PROVIDERS),
+    A24(""),
+    ANGEL(ServiceHubIds.ANGEL_PROVIDERS),
+    SHUDDER(ServiceHubIds.SHUDDER_PROVIDERS),
+    BLUMHOUSE(""),
+    FOX_NATION("");
 
     val ownership: HubOwnership
         get() = when (this) {
@@ -498,6 +508,9 @@ enum class HubService(
                 PeacockIds.COMPANY_NAME_FRAGMENTS,
                 PeacockIds.NETWORK_NAMES
             )
+            // Their pages have no Continue Watching row, so nothing needs to count as theirs.
+            NETFLIX, PRIME_VIDEO, APPLE_TV, A24, ANGEL, SHUDDER, BLUMHOUSE, FOX_NATION ->
+                HubOwnership(emptySet(), emptySet(), emptyList(), emptySet())
         }
 }
 
@@ -682,14 +695,30 @@ enum class DisneyPlusHub(
     PK_AMBLIN("peacock_amblin", R.string.peacock_brand_amblin, HubService.PEACOCK),
 
     /** Home's TMDB rows (Trending Now, New Releases...): their See All pages and franchise lists. */
-    HOME("home", R.string.home_rows_page_title);
+    HOME("home", R.string.home_rows_page_title),
+
+    // Pages of TMDB rows for the other services on Home (see [ServiceHubs]).
+    NETFLIX_MAIN("netflix", R.string.service_netflix, HubService.NETFLIX),
+    PRIME_MAIN("prime", R.string.service_prime_video, HubService.PRIME_VIDEO),
+    APPLETV_MAIN("appletv", R.string.service_apple_tv, HubService.APPLE_TV),
+    A24_MAIN("a24", R.string.service_a24, HubService.A24),
+    ANGEL_MAIN("angel", R.string.service_angel, HubService.ANGEL),
+    SHUDDER_MAIN("shudder", R.string.service_shudder, HubService.SHUDDER),
+    BLUMHOUSE_MAIN("blumhouse", R.string.service_blumhouse, HubService.BLUMHOUSE),
+    FOXNATION_MAIN("foxnation", R.string.service_fox_nation, HubService.FOX_NATION);
 
     /** A service's main page (hero, brand tiles, Continue Watching...), as opposed to a brand page. */
     val isMain: Boolean
         get() = this == MAIN || this == PARAMOUNT_MAIN || this == DISCOVERY_MAIN || this == HBOMAX_MAIN ||
-            this == PEACOCK_MAIN
+            this == PEACOCK_MAIN || this in SERVICE_MAINS
 
     companion object {
+        /** The main pages of the services made of TMDB rows only (Netflix, Prime Video...). */
+        val SERVICE_MAINS: Set<DisneyPlusHub> = setOf(
+            NETFLIX_MAIN, PRIME_MAIN, APPLETV_MAIN, A24_MAIN, ANGEL_MAIN, SHUDDER_MAIN, BLUMHOUSE_MAIN,
+            FOXNATION_MAIN
+        )
+
         fun fromKey(key: String?): DisneyPlusHub =
             entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: MAIN
 
@@ -708,6 +737,8 @@ enum class DisneyPlusHub(
                 PK_ORIGINALS, PK_NBC, PK_BRAVO, PK_TELEMUNDO, PK_WWE, PK_NBC_SPORTS,
                 PK_UNIVERSAL, PK_ILLUMINATION, PK_DREAMWORKS, PK_FOCUS, PK_WORKING_TITLE, PK_AMBLIN
             )
+            HubService.NETFLIX, HubService.PRIME_VIDEO, HubService.APPLE_TV, HubService.A24, HubService.ANGEL,
+            HubService.SHUDDER, HubService.BLUMHOUSE, HubService.FOX_NATION -> emptyList()
         }
     }
 }
@@ -759,7 +790,11 @@ sealed interface DisneyRowSource {
          */
         val theatrical: Boolean = false,
         /** The page the row starts from (a row that shows a different stretch each day). See All starts at 1. */
-        val startPage: Int = 1
+        val startPage: Int = 1,
+        /** TMDB keyword ids, checked on themoviedb.org ("|": any of them, ",": all of them). */
+        val keywords: String? = null,
+        /** Movies: TMDB person ids of someone in the crew (director, writer...), "|" for any of several. */
+        val crew: String? = null
     ) : DisneyRowSource
 
     /**
@@ -802,6 +837,12 @@ enum class DisneyRowKind {
     /** Home: TV networks ([DisneyRowSpec.channelTiles]); each opens the network's page. */
     CHANNELS,
 
+    /**
+     * A row of cards ([DisneyRowSpec.cards]): genres, collections, filmmakers, "Discover More"...
+     * Each card opens the whole list of a [HIDDEN] row of the same page.
+     */
+    CARDS,
+
     /** Not shown as a row: a list opened from a tile (a franchise's movies). */
     HIDDEN
 }
@@ -812,6 +853,30 @@ data class GenreTile(
     val mediaType: TmdbCollectionMediaType,
     val genreId: Int
 )
+
+/** A card of a [DisneyRowKind.CARDS] row: opens the list of hidden row [rowId] (same page). */
+data class HubCard(
+    val rowId: String,
+    @StringRes val labelRes: Int = 0,
+    /** The card's name when it isn't a string resource (a collection, a filmmaker, a channel). */
+    val label: String? = null,
+    val art: HubCardArt = HubCardArt.Tile
+)
+
+/** What a [HubCard] shows. */
+sealed interface HubCardArt {
+    /** A colored card with the name (genres, "Discover More"). */
+    data object Tile : HubCardArt
+
+    /** A TMDB franchise collection's picture, found by its name ("Extraction"). */
+    data class Collection(val query: String) : HubCardArt
+
+    /** A filmmaker's photo (TMDB person id). */
+    data class Person(val personId: Int) : HubCardArt
+
+    /** A channel's logo (TMDB watch provider id, e.g. an Amazon channel). */
+    data class Provider(val providerId: Int) : HubCardArt
+}
 
 /** A TV network card on Home ([networkId]: its TMDB id). */
 data class ChannelTile(
@@ -839,7 +904,13 @@ data class DisneyRowSpec(
     /** [DisneyRowKind.CHANNELS]: the cards. */
     val channelTiles: List<ChannelTile> = emptyList(),
     /** [DisneyRowKind.FRANCHISES]: the ids of the hidden rows (one per franchise) the cards open. */
-    val franchiseRows: List<String> = emptyList()
+    val franchiseRows: List<String> = emptyList(),
+    /** [DisneyRowKind.CARDS]: the cards. */
+    val cards: List<HubCard> = emptyList(),
+    /** A Top 10: its ten most popular titles (movies and series together), numbered. */
+    val ranked: Boolean = false,
+    /** New titles get "NEW", the ones still to come "COMING SOON" (newest first, then the soonest). */
+    val premiereBadges: Boolean = false
 )
 
 /** Gives a row its complete catalog for See All (see [DisneyRowSpec.seeAll]). */
@@ -5656,6 +5727,14 @@ object DisneyPlusCatalog {
 
     fun hub(hub: DisneyPlusHub): DisneyHubSpec = when (hub) {
         DisneyPlusHub.MAIN -> main
+        DisneyPlusHub.NETFLIX_MAIN -> ServiceHubs.netflix
+        DisneyPlusHub.PRIME_MAIN -> ServiceHubs.primeVideo
+        DisneyPlusHub.APPLETV_MAIN -> ServiceHubs.appleTv
+        DisneyPlusHub.A24_MAIN -> ServiceHubs.a24
+        DisneyPlusHub.ANGEL_MAIN -> ServiceHubs.angel
+        DisneyPlusHub.SHUDDER_MAIN -> ServiceHubs.shudder
+        DisneyPlusHub.BLUMHOUSE_MAIN -> ServiceHubs.blumhouse
+        DisneyPlusHub.FOXNATION_MAIN -> ServiceHubs.foxNation
         DisneyPlusHub.DISNEY -> disney
         DisneyPlusHub.PIXAR -> pixar
         DisneyPlusHub.MARVEL -> marvel

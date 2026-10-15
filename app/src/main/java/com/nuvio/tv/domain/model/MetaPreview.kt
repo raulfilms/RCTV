@@ -40,7 +40,9 @@ data class MetaPreview(
     /** A label on the card ("NEW", "PREMIERE", "COMING SOON"), e.g. on Home's Premieres row. */
     val badge: String? = null,
     /** The [badge] is for a title still to come (styled apart). */
-    val badgeUpcoming: Boolean = false
+    val badgeUpcoming: Boolean = false,
+    /** TMDB's popularity score, when known (a Top 10 row ranks its titles by it). */
+    val popularity: Double? = null
 ) {
     val apiType: String
         get() = type.toApiString(rawType)

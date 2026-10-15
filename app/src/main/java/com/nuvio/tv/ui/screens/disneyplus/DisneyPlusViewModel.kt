@@ -15,6 +15,8 @@ import com.nuvio.tv.data.disneyplus.DisneyPlusRepository
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
 import com.nuvio.tv.data.disneyplus.DisneyRowSource
 import com.nuvio.tv.data.disneyplus.DisneyRowSpec
+import com.nuvio.tv.data.disneyplus.HubCardArt
+import com.nuvio.tv.data.disneyplus.withPremiereBadges
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.TmdbCollectionMediaType
@@ -46,6 +48,9 @@ private const val SEE_ALL_ROUNDS = 60
 /** How long a page waits for its banner's title logos before opening without them (they follow). */
 private const val HERO_LOGO_WAIT_MS = 1_200L
 
+/** Release rows label as "NEW" what came out this many days ago or less. */
+private const val NEW_BADGE_DAYS = 14L
+
 /** A wide collection card (e.g. "Disney Jr. — Collection"). [backdrops] fill in once loaded. */
 data class DisneyCollectionTile(
     val hub: DisneyPlusHub,
@@ -58,8 +63,14 @@ data class DisneyPlusRowState(
     val title: String,
     val row: CatalogRow? = null,
     val isLoading: Boolean = true,
-    val collectionTiles: List<DisneyCollectionTile> = emptyList()
+    val collectionTiles: List<DisneyCollectionTile> = emptyList(),
+    /** A row of cards: each card's picture (collection, filmmaker, channel logo) by the list it opens. */
+    val cardArt: Map<String, String> = emptyMap()
 )
+
+/** Rows that load titles from TMDB (the others are cards, or lists opened from a card). */
+private val DisneyRowSpec.loadsTitles: Boolean
+    get() = kind == DisneyRowKind.CATALOG || kind == DisneyRowKind.RECOMMENDED
 
 /**
  * A row's See All page: everything the row has, then further TMDB pages as the person scrolls.
@@ -102,7 +113,7 @@ data class DisneyPlusUiState(
 
     val hasAnyContent: Boolean
         get() = heroItems.isNotEmpty() || continueWatching.isNotEmpty() ||
-            rows.any { it.row != null || it.collectionTiles.isNotEmpty() }
+            rows.any { it.row != null || it.collectionTiles.isNotEmpty() || it.spec.kind == DisneyRowKind.CARDS }
 
     val isFinishedLoading: Boolean
         get() = !isHeroLoading && rows.none { it.isLoading }
@@ -147,8 +158,9 @@ class DisneyPlusViewModel @Inject constructor(
                     DisneyPlusRowState(
                         spec = spec,
                         title = spec.title ?: context.getString(spec.titleRes),
-                        // Collection tiles show right away with their names; artwork fills in afterwards.
-                        isLoading = !isCollections,
+                        // Collection tiles and cards show right away with their names; artwork fills in
+                        // afterwards. Lists opened from a card load when opened.
+                        isLoading = spec.loadsTitles,
                         collectionTiles = if (isCollections) spec.collections.map { DisneyCollectionTile(it) } else emptyList()
                     )
                 }
@@ -430,7 +442,7 @@ class DisneyPlusViewModel @Inject constructor(
                 isHeroLoading = true,
                 rows = state.rows.map {
                     it.copy(
-                        isLoading = it.spec.kind != DisneyRowKind.COLLECTIONS,
+                        isLoading = it.spec.loadsTitles,
                         row = if (forceRefresh) null else it.row
                     )
                 }
@@ -438,11 +450,12 @@ class DisneyPlusViewModel @Inject constructor(
         }
         loadJob = viewModelScope.launch {
             launch { loadCollectionArt() }
+            launch { loadCardArt() }
             // The banner and every row load at the same time. The page opens once the banner is
             // there; it waits a moment for the titles' logos, never longer (they're added after).
             launch {
                 val heroSpec = hubSpec.rows.firstOrNull { it.id == hubSpec.heroRowId }
-                val heroRow = heroSpec?.let { spec -> safeResolve(spec, forceRefresh) }
+                val heroRow = heroSpec?.let { spec -> safeResolve(spec, forceRefresh)?.let { badged(spec, it) } }
                 heroSpec?.let { setRow(it.id, heroRow) }
                 val picks = repository.heroPicks(heroRow?.items.orEmpty())
                 val withLogos = safeLogos { withTimeoutOrNull(HERO_LOGO_WAIT_MS) { repository.withLogos(picks) } }
@@ -460,7 +473,7 @@ class DisneyPlusViewModel @Inject constructor(
                     .map { spec ->
                         async {
                             rowLimiter.withPermit {
-                                setRow(spec.id, safeResolve(spec, forceRefresh))
+                                setRow(spec.id, safeResolve(spec, forceRefresh)?.let { badged(spec, it) })
                             }
                         }
                     }
@@ -502,6 +515,50 @@ class DisneyPlusViewModel @Inject constructor(
                     }
                 }
             }.awaitAll()
+        }
+    }
+
+    /** Release rows: "NEW" on what came out these last two weeks, "COMING SOON" on what's to come. */
+    private fun badged(spec: DisneyRowSpec, row: CatalogRow): CatalogRow =
+        if (!spec.premiereBadges) row
+        else row.withPremiereBadges(
+            newLabel = context.getString(com.nuvio.tv.R.string.home_badge_new),
+            premiereLabel = null,
+            comingLabel = context.getString(com.nuvio.tv.R.string.home_badge_coming_soon),
+            newDays = NEW_BADGE_DAYS
+        )
+
+    /** The pictures of the card rows: collections' backdrops, filmmakers' photos, channels' logos. */
+    private suspend fun loadCardArt() {
+        val cards = hubSpec.rows.filter { it.kind == DisneyRowKind.CARDS }.flatMap { spec -> spec.cards.map { spec.id to it } }
+        if (cards.isEmpty()) return
+        val limiter = Semaphore(4)
+        coroutineScope {
+            cards.forEach { (rowId, card) ->
+                if (card.art == HubCardArt.Tile) return@forEach
+                launch {
+                    val image = limiter.withPermit {
+                        try {
+                            when (val art = card.art) {
+                                is HubCardArt.Collection -> repository.franchiseArt(art.query)?.second
+                                is HubCardArt.Person -> repository.personPhoto(art.personId)
+                                is HubCardArt.Provider -> repository.providerLogo(art.providerId)
+                                HubCardArt.Tile -> null
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } ?: return@launch
+                    _uiState.update { state ->
+                        state.copy(rows = state.rows.map { rowState ->
+                            if (rowState.spec.id != rowId) rowState
+                            else rowState.copy(cardArt = rowState.cardArt + (card.rowId to image))
+                        })
+                    }
+                }
+            }
         }
     }
 

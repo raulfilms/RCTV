@@ -9,8 +9,8 @@ import com.nuvio.tv.data.disneyplus.DisneyPlusHub
 import com.nuvio.tv.data.disneyplus.DisneyPlusRepository
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
 import com.nuvio.tv.data.disneyplus.DisneyRowSpec
+import com.nuvio.tv.data.disneyplus.withPremiereBadges
 import com.nuvio.tv.domain.model.CatalogRow
-import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.repository.TitleArtResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.time.LocalDate
 import javax.inject.Inject
 
 /**
@@ -89,7 +88,7 @@ class HomeDiscoverViewModel @Inject constructor(
                             null
                         }
                     }
-                    val shown = if (spec.id == PREMIERES_ROW_ID) row?.let(::withPremiereBadges) else row
+                    val shown = if (spec.id == PREMIERES_ROW_ID) row?.let(::badged) else row
                     update(spec.id) { it.copy(row = shown, isLoading = false) }
                 }
 
@@ -122,25 +121,12 @@ class HomeDiscoverViewModel @Inject constructor(
      * Premieres: what came out these last 30 days first (newest first; "NEW" this past week, else
      * "PREMIERE"), then what's coming (soonest first, "COMING SOON").
      */
-    private fun withPremiereBadges(row: CatalogRow): CatalogRow {
-        val today = LocalDate.now()
-        val newLabel = context.getString(R.string.home_badge_new)
-        val premiereLabel = context.getString(R.string.home_badge_premiere)
-        val comingLabel = context.getString(R.string.home_badge_coming_soon)
-        fun MetaPreview.date(): LocalDate? = released?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
-        val (upcoming, out) = row.items.partition { item -> item.date()?.isAfter(today) == true }
-        val released = out
-            .sortedByDescending { it.date() ?: LocalDate.MIN }
-            .map { item ->
-                val date = item.date()
-                val isNew = date != null && !date.isBefore(today.minusDays(NEW_BADGE_DAYS))
-                item.copy(badge = if (isNew) newLabel else premiereLabel, badgeUpcoming = false)
-            }
-        val coming = upcoming
-            .sortedBy { it.date() ?: LocalDate.MAX }
-            .map { it.copy(badge = comingLabel, badgeUpcoming = true) }
-        return row.copy(items = released + coming)
-    }
+    private fun badged(row: CatalogRow): CatalogRow = row.withPremiereBadges(
+        newLabel = context.getString(R.string.home_badge_new),
+        premiereLabel = context.getString(R.string.home_badge_premiere),
+        comingLabel = context.getString(R.string.home_badge_coming_soon),
+        newDays = NEW_BADGE_DAYS
+    )
 
     private fun update(rowId: String, change: (HomeDiscoverRowState) -> HomeDiscoverRowState) {
         _rows.update { rows -> rows.map { if (it.spec.id == rowId) change(it) else it } }

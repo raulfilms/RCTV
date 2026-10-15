@@ -195,6 +195,8 @@ interface TmdbApi {
         @Query("with_original_language") withOriginalLanguage: String? = null,
         @Query("with_origin_country") withOriginCountry: String? = null,
         @Query("with_keywords") withKeywords: String? = null,
+        /** People in the crew (director, writer...), TMDB person ids; "|" for any of them. */
+        @Query("with_crew") withCrew: String? = null,
         /**
          * RCTV: a Year filter means the movie came out that year. TMDB's "year" also matches any later
          * release (a 2026 re-release of The Dark Knight), so its primary release year is asked for.
