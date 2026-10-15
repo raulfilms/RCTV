@@ -148,11 +148,12 @@ private enum class RestoreTarget {
 }
 
 /**
- * The tabs under the hero, as on Disney+: Suggested (titles like this one), Extras (its YouTube
- * videos, then its collection), Details (creators and cast, then the production companies and
- * networks). Series can also have Ratings (episode ratings).
+ * The tabs under the hero, as on Disney+: Episodes (a series' seasons and episodes), Suggested
+ * (titles like this one), Extras (its YouTube videos, then its collection), Details (creators and
+ * cast, then the production companies and networks). Series can also have Ratings (episode ratings).
  */
 private enum class PeopleSectionTab {
+    EPISODES,
     SUGGESTED,
     EXTRAS,
     DETAILS,
@@ -161,6 +162,7 @@ private enum class PeopleSectionTab {
 
 /** The tab that holds what focus goes back to after returning from another page. */
 private fun restoreTabFor(target: RestoreTarget?): PeopleSectionTab? = when (target) {
+    RestoreTarget.EPISODE -> PeopleSectionTab.EPISODES
     RestoreTarget.MORE_LIKE_THIS -> PeopleSectionTab.SUGGESTED
     RestoreTarget.COLLECTION, RestoreTarget.TRAILER -> PeopleSectionTab.EXTRAS
     RestoreTarget.CAST_MEMBER, RestoreTarget.COMPANY_OR_NETWORK -> PeopleSectionTab.DETAILS
@@ -1278,6 +1280,7 @@ private fun MetaDetailsContent(
     val selectedSeasonFocusRequester = remember { FocusRequester() }
     val heroPlayFocusRequester = remember { FocusRequester() }
     val castTabFocusRequester = remember { FocusRequester() }
+    val episodesTabFocusRequester = remember { FocusRequester() }
     val moreLikeTabFocusRequester = remember { FocusRequester() }
     val trailerTabFocusRequester = remember { FocusRequester() }
     val ratingsTabFocusRequester = remember { FocusRequester() }
@@ -1621,7 +1624,8 @@ private fun MetaDetailsContent(
                     markEpisodeRestore(step.episodeId, restoreOnResume = false)
                     restoreFocusToken += 1
                     if (seasons.isNotEmpty()) {
-                        // Ensure the episodes row is composed before requesting focus on a card.
+                        // Ensure the episodes row is composed before requesting focus on a card
+                        // (index 1: the tab bar, with the Episodes tab's rows right below it).
                         listState.scrollToItem(1)
                     }
                 }
@@ -1723,6 +1727,11 @@ private fun MetaDetailsContent(
     val visibleMdbListRatings = mdbListRatings.takeIf { isMdbListRatingsActive }
     val hasRatingsSection = isTvShow && showEpisodeImdbRatings
     val strTabCast = stringResource(R.string.detail_tab_cast)
+    val strTabEpisodes = stringResource(R.string.detail_tab_episodes)
+    // A series' seasons and episodes: the first tab (Episodes), as on Disney+.
+    val hasEpisodesSection = isSeries && seasons.isNotEmpty()
+    val showSeasonTabs = hasEpisodesSection &&
+        !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
     val strTabRatings = stringResource(R.string.detail_tab_ratings)
     val strTabSuggested = stringResource(R.string.detail_tab_suggested)
     val strTabExtras = stringResource(R.string.detail_tab_extras)
@@ -1737,6 +1746,8 @@ private fun MetaDetailsContent(
         null -> null
     }
     val peopleTabItems = remember(
+        hasEpisodesSection,
+        episodesTabFocusRequester,
         hasMoreLikeThisSection,
         hasExtrasSection,
         hasDetailsSection,
@@ -1747,6 +1758,15 @@ private fun MetaDetailsContent(
         trailerTabFocusRequester
     ) {
         buildList {
+            if (hasEpisodesSection) {
+                add(
+                    PeopleTabItem(
+                        tab = PeopleSectionTab.EPISODES,
+                        label = strTabEpisodes,
+                        focusRequester = episodesTabFocusRequester
+                    )
+                )
+            }
             if (hasMoreLikeThisSection) {
                 add(
                     PeopleTabItem(
@@ -1790,24 +1810,17 @@ private fun MetaDetailsContent(
     val hasVisiblePeopleSection = visiblePeopleTabItems.isNotEmpty()
     // The tab bar always shows (even with a single tab), as on Disney+.
     val hasVisiblePeopleTabs = hasVisiblePeopleSection
-    val commentsItemIndex = remember(
-        isSeries,
-        seasons,
-        hasVisiblePeopleSection,
-        hasVisiblePeopleTabs
-    ) {
-        var index = 1
-        if (isSeries && seasons.isNotEmpty()) {
-            index += 2
-        }
-        if (hasVisiblePeopleSection) {
-            if (hasVisiblePeopleTabs) index += 1
-            index += 1
-        }
-        index
-    }
     val initialPeopleTab = availablePeopleTabs.firstOrNull() ?: PeopleSectionTab.RATINGS
     var activePeopleTab by rememberSaveable(meta.id) { mutableStateOf(initialPeopleTab) }
+    // The list: the hero, the tab bar, then the open tab (Episodes: season tabs and episodes).
+    val isEpisodesTabOpen = hasEpisodesSection && activePeopleTab == PeopleSectionTab.EPISODES
+    /** Where the episodes row is in the page's list. */
+    val episodesItemIndex = 1 + (if (hasVisiblePeopleTabs) 1 else 0) + (if (showSeasonTabs) 1 else 0)
+    val commentsItemIndex = 1 + (if (hasVisiblePeopleTabs) 1 else 0) + when {
+        !hasVisiblePeopleSection -> 0
+        isEpisodesTabOpen -> (if (showSeasonTabs) 1 else 0) + 1
+        else -> 1
+    }
     var seasonOptionsDialogSeason by remember { mutableStateOf<Int?>(null) }
     // Tracks whether the initial auto-scroll to the "next to play" episode has fired.
     // Once it fires, no more auto-scrolls happen for the lifetime of this detail screen.
@@ -1837,21 +1850,9 @@ private fun MetaDetailsContent(
             ?: episodesForSeason.firstOrNull()?.id?.let { seasonEpisodeFocusRequesters[it] }
     }
 
-    val activePeopleTabFocusRequester = visiblePeopleTabItems
-        .firstOrNull { it.tab == activePeopleTab }
-        ?.focusRequester
-        ?: if (activePeopleTab == PeopleSectionTab.RATINGS && !hasVisiblePeopleTabs) {
-            ratingsContentFocusRequester
-        } else {
-            castTabFocusRequester
-        }
-    val episodesDownFocusRequester = when {
-        hasVisiblePeopleTabs -> activePeopleTabFocusRequester
-        activePeopleTab == PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
-        else -> null
-    }
     val commentsUpFocusRequester: FocusRequester? = when {
         hasVisiblePeopleSection -> when (activePeopleTab) {
+            PeopleSectionTab.EPISODES -> seasonDownFocusRequester ?: heroPlayFocusRequester
             PeopleSectionTab.SUGGESTED -> moreLikeSectionFocusRequester
             // The tab's last row: its collection, else its videos.
             PeopleSectionTab.EXTRAS -> if (collection.isNotEmpty()) collectionSectionFocusRequester else trailerSectionFocusRequester
@@ -1865,11 +1866,14 @@ private fun MetaDetailsContent(
     val canToggleEpisodeComments = isSeries && episodesForSeason.isNotEmpty()
     val commentsSelectedModeFocusRequester =
         if (commentsMode == CommentsMode.EPISODE) commentsEpisodeModeFocusRequester else commentsTitleModeFocusRequester
+    // Down from the episodes: the comments, when they show.
+    val episodesDownFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null
 
     val visiblePeopleTabsList = visiblePeopleTabItems.map { it.tab }
     LaunchedEffect(visiblePeopleTabsList, pendingRestoreType) {
         if (visiblePeopleTabsList.isEmpty() || activePeopleTab in visiblePeopleTabsList) return@LaunchedEffect
         if (pendingRestoreType == RestoreTarget.MORE_LIKE_THIS ||
+            pendingRestoreType == RestoreTarget.EPISODE ||
             pendingRestoreType == RestoreTarget.COLLECTION ||
             pendingRestoreType == RestoreTarget.CAST_MEMBER ||
             pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK
@@ -2203,10 +2207,28 @@ private fun MetaDetailsContent(
                 }
             }
 
-            // Season tabs and episodes for series
-            val showSeasonTabs = isSeries && seasons.isNotEmpty() && !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
-            val showEpisodesRow = isSeries && seasons.isNotEmpty()
-            if (showSeasonTabs) {
+            // The tab bar, right under the hero (Disney+): EPISODES  SUGGESTED  EXTRAS  DETAILS
+            if (hasVisiblePeopleTabs) {
+                item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
+                    PeopleSectionTabs(
+                        activeTab = activePeopleTab,
+                        tabs = visiblePeopleTabItems,
+                        upFocusRequester = heroPlayFocusRequester,
+                        ratingsDownFocusRequester = ratingsContentFocusRequester,
+                        episodesDownFocusRequester = if (showSeasonTabs) selectedSeasonFocusRequester else seasonDownFocusRequester,
+                        onTabFocused = { tab ->
+                            val lockedTab = restoreTabFor(pendingRestoreType)
+                            if (lockedTab == null || tab == lockedTab) {
+                                activePeopleTab = tab
+                            }
+                        }
+                    )
+                }
+            }
+
+            // Episodes tab: the season tabs, then the season's episodes
+            val showEpisodesRow = isEpisodesTabOpen
+            if (showSeasonTabs && isEpisodesTabOpen) {
                 item(key = "season_tabs", contentType = "season_tabs") {
                     Box(modifier = Modifier.bringIntoViewResponder(detailRowBringIntoViewResponder)) {
                         SeasonTabs(
@@ -2215,7 +2237,7 @@ private fun MetaDetailsContent(
                             onSeasonSelected = onSeasonSelected,
                             onSeasonLongPress = { seasonOptionsDialogSeason = it },
                             selectedTabFocusRequester = selectedSeasonFocusRequester,
-                            upFocusRequester = heroPlayFocusRequester,
+                            upFocusRequester = episodesTabFocusRequester,
                             downFocusRequester = seasonDownFocusRequester,
                             isFocusEnabled = pendingRestoreType != RestoreTarget.EPISODE
                         )
@@ -2259,7 +2281,7 @@ private fun MetaDetailsContent(
                             onOpenEpisodeComments = episodeCommentsClick,
                             showOpenEpisodeComments = shouldShowCommentsSection,
                             onMarkPreviousEpisodesWatched = onMarkPreviousEpisodesWatched,
-                            upFocusRequester = if (showSeasonTabs) selectedSeasonFocusRequester else heroPlayFocusRequester,
+                            upFocusRequester = if (showSeasonTabs) selectedSeasonFocusRequester else episodesTabFocusRequester,
                             downFocusRequester = episodesDownFocusRequester,
                             episodeFocusRequesters = seasonEpisodeFocusRequesters,
                             restoreEpisodeId = visibleEpisodeRestoreId,
@@ -2277,7 +2299,7 @@ private fun MetaDetailsContent(
                             onEpisodeFocused = { episodeId ->
                                 lastFocusedEpisodeIdBySeason[selectedSeason] = episodeId
                                 if (lastDetailDpadKey == KeyEvent.KEYCODE_DPAD_UP) {
-                                    val episodeListItemIndex = 1 + if (showSeasonTabs) 1 else 0
+                                    val episodeListItemIndex = episodesItemIndex
                                     val episodeItem = listState.layoutInfo.visibleItemsInfo
                                         .firstOrNull { it.index == episodeListItemIndex }
                                     if (episodeItem == null || episodeItem.offset < 0) {
@@ -2314,25 +2336,8 @@ private fun MetaDetailsContent(
             }
         }
 
-        // Cast / More like this section
-        if (hasVisiblePeopleSection) {
-                if (hasVisiblePeopleTabs) {
-                    item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
-                        PeopleSectionTabs(
-                            activeTab = activePeopleTab,
-                            tabs = visiblePeopleTabItems,
-                            upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
-                            ratingsDownFocusRequester = ratingsContentFocusRequester,
-                            onTabFocused = { tab ->
-                                val lockedTab = restoreTabFor(pendingRestoreType)
-                                if (lockedTab == null || tab == lockedTab) {
-                                    activePeopleTab = tab
-                                }
-                            }
-                        )
-                    }
-                }
-
+        // The open tab (Suggested, Extras, Details, Ratings); Episodes' rows are above.
+        if (hasVisiblePeopleSection && !isEpisodesTabOpen) {
                 item(key = "cast_or_more_like", contentType = "horizontal_row") {
                     val visiblePeopleTabsList = visiblePeopleTabItems.map { it.tab }
                     val visiblePeopleSection = if (hasVisiblePeopleTabs) {
@@ -2499,6 +2504,9 @@ private fun MetaDetailsContent(
                                     }
                                 }
                             }
+
+                            // Shown above as the season tabs and episodes rows.
+                            PeopleSectionTab.EPISODES -> Unit
 
                             PeopleSectionTab.RATINGS -> {
                                 EpisodeRatingsSection(
@@ -2761,6 +2769,7 @@ private fun PeopleSectionTabs(
     tabs: List<PeopleTabItem>,
     upFocusRequester: FocusRequester? = null,
     ratingsDownFocusRequester: FocusRequester? = null,
+    episodesDownFocusRequester: FocusRequester? = null,
     onTabFocused: (PeopleSectionTab) -> Unit
 ) {
     val defaultRequester = tabs.first().focusRequester
@@ -2781,7 +2790,11 @@ private fun PeopleSectionTabs(
                 focusRequester = item.focusRequester,
                 activeFocusRequester = if (activeTab != item.tab) restorerRequester else null,
                 upFocusRequester = upFocusRequester,
-                downFocusRequester = if (item.tab == PeopleSectionTab.RATINGS) ratingsDownFocusRequester else null,
+                downFocusRequester = when (item.tab) {
+                    PeopleSectionTab.RATINGS -> ratingsDownFocusRequester
+                    PeopleSectionTab.EPISODES -> episodesDownFocusRequester
+                    else -> null
+                },
                 onFocused = { onTabFocused(item.tab) }
             )
         }

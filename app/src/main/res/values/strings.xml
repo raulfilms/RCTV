@@ -233,6 +233,7 @@
     <string name="detail_tab_ratings">Ratings</string>
     <string name="detail_tab_more_like_this">More like this</string>
     <string name="detail_tab_trailer">Trailer</string>
+    <string name="detail_tab_episodes">Episodes</string>
     <string name="detail_tab_suggested">Suggested</string>
     <string name="detail_tab_extras">Extras</string>
     <string name="detail_tab_details">Details</string>
