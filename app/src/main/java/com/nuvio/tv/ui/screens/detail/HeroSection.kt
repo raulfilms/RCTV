@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -46,6 +47,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.unit.sp
+import com.nuvio.tv.domain.model.MetaCompany
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -137,34 +141,33 @@ fun HeroContentSection(
         context = context,
         rawRes = com.nuvio.tv.R.raw.trailer_play_button
     )
-    val strCreator = stringResource(R.string.hero_creator)
-    val strDirector = stringResource(R.string.hero_director)
-    val strWriter = stringResource(R.string.hero_writer)
-    val creditLine = remember(meta.director, meta.writer, isSeriesApi) {
-        val directorLine = meta.director.takeIf { it.isNotEmpty() }?.joinToString(", ")
-        val writerLine = meta.writer.takeIf { it.isNotEmpty() }?.joinToString(", ")
-        when {
-            !directorLine.isNullOrBlank() -> {
-                if (isSeriesApi) strCreator.format(directorLine) else strDirector.format(directorLine)
-            }
-            !writerLine.isNullOrBlank() -> strWriter.format(writerLine)
-            else -> null
-        }
+    // The studio (or, for a series, the network) that made the title, shown small above its logo
+    // like Disney+'s "Disney · Pixar".
+    val brandCompanies = remember(meta.productionCompanies, meta.networks, isSeriesApi) {
+        heroBrandCompanies(meta, isSeriesApi)
+    }
+    // Up from the buttons goes to the description above them (when it's long enough to open).
+    val descriptionFocusRequester = remember { FocusRequester() }
+    var isDescriptionTruncated by remember(meta.description) { mutableStateOf(false) }
+    val buttonsUpTarget = if (isDescriptionTruncated && !meta.description.isNullOrBlank()) {
+        descriptionFocusRequester
+    } else {
+        FocusRequester.Cancel
     }
 
     // Animate logo properties for trailer mode
     val logoHeight by animateDpAsState(
-        targetValue = if (isTrailerPlaying) 60.dp else 100.dp,
+        targetValue = if (isTrailerPlaying) 60.dp else 130.dp,
         animationSpec = tween(600),
         label = "logoHeight"
     )
     val logoBottomPadding by animateDpAsState(
-        targetValue = if (isTrailerPlaying) NuvioTheme.spacing.xl else NuvioTheme.spacing.lg,
+        targetValue = if (isTrailerPlaying) NuvioTheme.spacing.xl else NuvioTheme.spacing.md,
         animationSpec = tween(600),
         label = "logoPadding"
     )
     val logoMaxWidth by animateFloatAsState(
-        targetValue = if (isTrailerPlaying) 0.25f else 0.4f,
+        targetValue = if (isTrailerPlaying) 0.25f else 0.45f,
         animationSpec = tween(600),
         label = "logoWidth"
     )
@@ -172,7 +175,7 @@ fun HeroContentSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(540.dp),
+            .height(HERO_HEIGHT),
         verticalArrangement = Arrangement.Bottom
     ) {
         Column(
@@ -184,6 +187,18 @@ fun HeroContentSection(
                 .padding(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, bottom = NuvioTheme.spacing.lg),
             verticalArrangement = Arrangement.Bottom
         ) {
+            // The studio's small logo above the title (hidden while the trailer plays)
+            AnimatedVisibility(
+                visible = !isTrailerPlaying && brandCompanies.isNotEmpty(),
+                enter = fadeIn(tween(NuvioMotion.tokens.durations.overlay)),
+                exit = fadeOut(tween(NuvioMotion.tokens.durations.overlay))
+            ) {
+                HeroBrandLogos(
+                    companies = brandCompanies,
+                    modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
+                )
+            }
+
             // Logo/Title — always visible during trailer, animates size
             if (shouldShowLogo) {
                 AsyncImage(
@@ -234,6 +249,36 @@ fun HeroContentSection(
                 exit = fadeOut(tween(NuvioMotion.tokens.durations.overlay))
             ) {
                 Column {
+                    // Rating • runtime • country • language, then genres • date • TMDB score
+                    MetaInfoRow(
+                        meta = meta,
+                        hideImdbRating = hideMetaInfoImdb,
+                        showFullReleaseDate = showFullReleaseDate,
+                        tmdbRating = tmdbRating
+                    )
+
+                    if (mdbListRatings?.isEmpty() == false) {
+                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+                        MDBListRatingsRow(ratings = mdbListRatings)
+                    }
+
+                    meta.description?.takeIf { it.isNotBlank() }?.let { description ->
+                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                        SynopsisDescription(
+                            description = description,
+                            onShowFullDescription = onShowFullDescription,
+                            maxLines = HERO_DESCRIPTION_MAX_LINES,
+                            focusRequester = descriptionFocusRequester,
+                            upFocusRequester = FocusRequester.Cancel,
+                            downFocusRequester = playButtonFocusRequester,
+                            onFocused = onHeroActionFocused,
+                            onTruncationChanged = { isDescriptionTruncated = it },
+                            modifier = Modifier.fillMaxWidth(0.55f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                         verticalAlignment = Alignment.CenterVertically
@@ -244,6 +289,7 @@ fun HeroContentSection(
                             onClick = onPlayClick,
                             onLongPress = onPlayLongPress,
                             focusRequester = playButtonFocusRequester,
+                            upFocusRequester = buttonsUpTarget,
                             restoreFocusToken = restorePlayFocusToken,
                             onFocusRestored = {
                                 onHeroActionFocused()
@@ -261,6 +307,7 @@ fun HeroContentSection(
                             contentDescription = if (isInLibrary) stringResource(R.string.hero_remove_from_library) else stringResource(R.string.hero_add_to_library),
                             onClick = onToggleLibrary,
                             onLongPress = onLibraryLongPress,
+                            upFocusRequester = buttonsUpTarget,
                             onFocused = onHeroActionFocused
                         )
 
@@ -281,6 +328,7 @@ fun HeroContentSection(
                                 selected = isMovieWatched,
                                 selectedContainerColor = Color.White,
                                 selectedContentColor = Color.Black,
+                                upFocusRequester = buttonsUpTarget,
                                 onFocused = onHeroActionFocused
                             )
                         }
@@ -290,54 +338,97 @@ fun HeroContentSection(
                                 painter = trailerPainter,
                                 contentDescription = stringResource(R.string.hero_play_trailer),
                                 onClick = onTrailerClick,
+                                upFocusRequester = buttonsUpTarget,
                                 onFocused = onHeroActionFocused
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
-
-                    // Director/Writer line above description
-                    if (!creditLine.isNullOrBlank()) {
-                        Text(
-                            text = creditLine,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = NuvioTheme.extendedColors.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth(0.6f)
-                        )
-                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                    }
-
-                    if (mdbListRatings?.isEmpty() == false) {
-                        MDBListRatingsRow(ratings = mdbListRatings)
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
-
-                    meta.description?.let { description ->
-                        SynopsisDescription(
-                            description = description,
-                            onShowFullDescription = onShowFullDescription,
-                            upFocusRequester = playButtonFocusRequester,
-                            onFocused = onHeroActionFocused,
-                            modifier = Modifier
-                                .fillMaxWidth(0.6f)
-                                .padding(bottom = NuvioTheme.spacing.md)
-                        )
-                    }
-
-                    MetaInfoRow(
-                        meta = meta,
-                        hideImdbRating = hideMetaInfoImdb,
-                        showFullReleaseDate = showFullReleaseDate,
-                        tmdbRating = tmdbRating
-                    )
                 }
             }
         }
     }
 }
+
+/** The hero's height: the tabs (Suggested, Extras, Details) peek in below it, as on Disney+. */
+internal val HERO_HEIGHT = 480.dp
+
+/** How many lines of the description the hero shows (the rest opens on click). */
+private const val HERO_DESCRIPTION_MAX_LINES = 3
+
+/** At most this many studio logos above the title (Disney · Pixar). */
+private const val MAX_HERO_BRAND_LOGOS = 2
+
+/**
+ * Who made the title, for the small logos above its own: a series' network (HBO, Netflix...) when
+ * TMDB has one, else the production companies, those with a logo first. Up to two.
+ */
+private fun heroBrandCompanies(meta: Meta, isSeries: Boolean): List<MetaCompany> {
+    val primary = if (isSeries && meta.networks.isNotEmpty()) meta.networks else meta.productionCompanies
+    val withLogo = primary.filter { !it.logo.isNullOrBlank() }
+    return if (withLogo.isNotEmpty()) withLogo.take(MAX_HERO_BRAND_LOGOS) else primary.take(1)
+}
+
+/**
+ * The studios' logos side by side, in white like Disney+'s "Disney · Pixar" (TMDB's logos are
+ * single-color marks on a transparent background, so they're tinted white to show on the backdrop).
+ * A studio without a logo shows its name in small capitals.
+ */
+@Composable
+private fun HeroBrandLogos(
+    companies: List<MetaCompany>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        companies.forEachIndexed { index, company ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .width(NuvioTheme.spacing.hairline)
+                        .height(18.dp)
+                        .background(Color.White.copy(alpha = 0.45f))
+                )
+            }
+            var logoFailed by remember(company.logo) { mutableStateOf(false) }
+            val logoModel = remember(context, company.logo) {
+                company.logo?.takeIf { it.isNotBlank() }?.let { logo ->
+                    ImageRequest.Builder(context)
+                        .data(logo)
+                        .crossfade(true)
+                        .build()
+                }
+            }
+            if (logoModel != null && !logoFailed) {
+                AsyncImage(
+                    model = logoModel,
+                    contentDescription = company.name,
+                    onError = { logoFailed = true },
+                    colorFilter = ColorFilter.tint(Color.White),
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.CenterStart,
+                    modifier = Modifier
+                        .height(HERO_BRAND_LOGO_HEIGHT)
+                        .widthIn(max = 150.dp)
+                )
+            } else {
+                Text(
+                    text = company.name.uppercase(),
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.5.sp),
+                    color = Color.White.copy(alpha = 0.9f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 260.dp)
+                )
+            }
+        }
+    }
+}
+
+private val HERO_BRAND_LOGO_HEIGHT = 28.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -347,6 +438,7 @@ private fun PlayButton(
     onClick: () -> Unit,
     onLongPress: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
+    upFocusRequester: FocusRequester = FocusRequester.Cancel,
     restoreFocusToken: Int = 0,
     onFocusRestored: () -> Unit = {}
 ) {
@@ -409,7 +501,7 @@ private fun PlayButton(
                 }
                 false
             }
-            .focusProperties { up = FocusRequester.Cancel },
+            .focusProperties { up = upFocusRequester },
         colors = ButtonDefaults.colors(
             containerColor = androidx.compose.ui.graphics.Color.White,
             focusedContainerColor = androidx.compose.ui.graphics.Color.White,
@@ -462,6 +554,7 @@ private fun ActionIconButtonPainter(
     painter: Painter,
     contentDescription: String,
     onClick: () -> Unit,
+    upFocusRequester: FocusRequester = FocusRequester.Cancel,
     onFocused: () -> Unit = {},
     enabled: Boolean = true
 ) {
@@ -473,7 +566,7 @@ private fun ActionIconButtonPainter(
             .onFocusChanged { state ->
                 if (state.isFocused) onFocused()
             }
-            .focusProperties { up = FocusRequester.Cancel },
+            .focusProperties { up = upFocusRequester },
         colors = IconButtonDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,
@@ -510,6 +603,7 @@ private fun ActionIconButton(
     selected: Boolean = false,
     selectedContainerColor: Color = Color(0xFF7CFF9B),
     selectedContentColor: Color = Color.Black,
+    upFocusRequester: FocusRequester = FocusRequester.Cancel,
     onFocused: () -> Unit = {}
 ) {
     var longPressTriggered by remember { mutableStateOf(false) }
@@ -558,7 +652,7 @@ private fun ActionIconButton(
                 }
                 false
             }
-            .focusProperties { up = FocusRequester.Cancel },
+            .focusProperties { up = upFocusRequester },
         colors = IconButtonDefaults.colors(
             containerColor = if (selected) selectedContainerColor else NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,
@@ -660,113 +754,123 @@ private fun MetaInfoRow(
         }
     }
 
+    // A movie's "Released" says nothing; other statuses (In Production, Ended...) still show.
+    val visibleStatusBadge = statusBadge?.takeIf { !meta.status.equals("released", ignoreCase = true) }
+    val hasPrimaryRow = ageRatingBadge != null || visibleStatusBadge != null || secondaryItems.isNotEmpty()
+    val hasSecondaryRow = meta.genres.isNotEmpty() || yearText != null || shouldShowImdbRating || shouldShowTmdbRating
+
     Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-        // Primary row: Genres, Release, Ratings
-        Row(
-            modifier = if (reserveImdbRatingHeight) Modifier.height(30.dp) else Modifier,
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (meta.genres.isNotEmpty()) {
-                Text(
-                    text = genresText,
-                    modifier = Modifier.weight(1f, fill = false),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = NuvioTheme.extendedColors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (yearText != null || shouldShowImdbRating || shouldShowTmdbRating) {
-                    MetaInfoDivider()
-                }
-            }
-
-            yearText?.let { year ->
-                Text(
-                    text = year,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = NuvioTheme.extendedColors.textSecondary
-                )
-                if (shouldShowImdbRating || shouldShowTmdbRating) {
-                    MetaInfoDivider()
-                }
-            }
-
-            imdbRating?.let { rating ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                ) {
-                    ImdbRatingSourceLabel(
-                        logoModifier = Modifier.size(30.dp),
-                        textStyle = MaterialTheme.typography.labelLarge,
-                        textColor = NuvioTheme.extendedColors.textSecondary
-                    )
-                    val ratingText = remember(rating) { String.format("%.1f", rating) }
-                    Text(
-                        text = ratingText,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.extendedColors.textSecondary
-                    )
-                }
-            }
-
-            tmdbRating?.let { rating ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                ) {
-                    AsyncImage(
-                        model = tmdbModel,
-                        contentDescription = null,
-                        modifier = Modifier.size(NuvioTheme.spacing.xl),
-                        contentScale = ContentScale.Fit
-                    )
-                    val ratingText = remember(rating) { (rating * 10).toInt().toString() }
-                    Text(
-                        text = ratingText,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.extendedColors.textSecondary
-                    )
-                }
-            }
-        }
-
-        // Secondary row: Runtime, Age Rating, Status, Country, Language
-        if (ageRatingBadge != null || statusBadge != null || secondaryItems.isNotEmpty()) {
+        // First row, as on Disney+: rating (PG-13, R...) • runtime • country • language
+        if (hasPrimaryRow) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (ageRatingBadge != null && statusBadge != null) {
+                if (ageRatingBadge != null && visibleStatusBadge != null) {
                     CombinedMetaBadge(
                         leftText = ageRatingBadge,
-                        leftColor = NuvioTheme.colors.TextSecondary,
-                        rightText = statusBadge,
+                        leftColor = NuvioTheme.colors.TextPrimary,
+                        rightText = visibleStatusBadge,
                         rightColor = NuvioTheme.colors.TextPrimary
                     )
                 } else {
                     ageRatingBadge?.let { badge ->
-                        HeroMetaBadge(text = badge)
+                        HeroMetaBadge(text = badge, contentColor = NuvioTheme.colors.TextPrimary)
                     }
-                    statusBadge?.let { badge ->
+                    visibleStatusBadge?.let { badge ->
                         HeroMetaBadge(
                             text = badge,
                             contentColor = NuvioTheme.colors.TextPrimary
                         )
                     }
                 }
-                if ((ageRatingBadge != null || statusBadge != null) && secondaryItems.isNotEmpty()) {
+                if ((ageRatingBadge != null || visibleStatusBadge != null) && secondaryItems.isNotEmpty()) {
                     MetaInfoDivider()
                 }
                 secondaryItems.forEachIndexed { index, value ->
                     Text(
                         text = value,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         color = NuvioTheme.colors.TextPrimary
                     )
                     if (index < secondaryItems.lastIndex) {
                         MetaInfoDivider()
+                    }
+                }
+            }
+        }
+
+        // Second row, smaller: genres • release date • ratings (IMDb, TMDB)
+        if (hasSecondaryRow) {
+            Row(
+                modifier = if (reserveImdbRatingHeight) Modifier.height(26.dp) else Modifier,
+                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (meta.genres.isNotEmpty()) {
+                    Text(
+                        text = genresText,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NuvioTheme.extendedColors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (yearText != null || shouldShowImdbRating || shouldShowTmdbRating) {
+                        MetaInfoDivider()
+                    }
+                }
+
+                yearText?.let { year ->
+                    Text(
+                        text = year,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NuvioTheme.extendedColors.textSecondary
+                    )
+                    if (shouldShowImdbRating || shouldShowTmdbRating) {
+                        MetaInfoDivider()
+                    }
+                }
+
+                imdbRating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                    ) {
+                        ImdbRatingSourceLabel(
+                            logoModifier = Modifier.size(26.dp),
+                            textStyle = MaterialTheme.typography.labelMedium,
+                            textColor = NuvioTheme.extendedColors.textSecondary
+                        )
+                        val ratingText = remember(rating) { String.format("%.1f", rating) }
+                        Text(
+                            text = ratingText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
+                    }
+                    if (shouldShowTmdbRating) {
+                        MetaInfoDivider()
+                    }
+                }
+
+                tmdbRating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                    ) {
+                        AsyncImage(
+                            model = tmdbModel,
+                            contentDescription = null,
+                            modifier = Modifier.size(NuvioTheme.spacing.lg),
+                            contentScale = ContentScale.Fit
+                        )
+                        val ratingText = remember(rating) { (rating * 10).toInt().toString() }
+                        Text(
+                            text = ratingText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
                     }
                 }
             }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -67,6 +68,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -144,12 +147,24 @@ private enum class RestoreTarget {
     COMPANY_OR_NETWORK
 }
 
+/**
+ * The tabs under the hero, as on Disney+: Suggested (titles like this one), Extras (its YouTube
+ * videos, then its collection), Details (creators and cast, then the production companies and
+ * networks). Series can also have Ratings (episode ratings).
+ */
 private enum class PeopleSectionTab {
-    CAST,
-    RATINGS,
-    MORE_LIKE_THIS,
-    TRAILER,
-    COLLECTION
+    SUGGESTED,
+    EXTRAS,
+    DETAILS,
+    RATINGS
+}
+
+/** The tab that holds what focus goes back to after returning from another page. */
+private fun restoreTabFor(target: RestoreTarget?): PeopleSectionTab? = when (target) {
+    RestoreTarget.MORE_LIKE_THIS -> PeopleSectionTab.SUGGESTED
+    RestoreTarget.COLLECTION, RestoreTarget.TRAILER -> PeopleSectionTab.EXTRAS
+    RestoreTarget.CAST_MEMBER, RestoreTarget.COMPANY_OR_NETWORK -> PeopleSectionTab.DETAILS
+    else -> null
 }
 
 private data class PeopleTabItem(
@@ -1265,7 +1280,6 @@ private fun MetaDetailsContent(
     val castTabFocusRequester = remember { FocusRequester() }
     val moreLikeTabFocusRequester = remember { FocusRequester() }
     val trailerTabFocusRequester = remember { FocusRequester() }
-    val collectionTabFocusRequester = remember { FocusRequester() }
     val ratingsTabFocusRequester = remember { FocusRequester() }
     val ratingsContentFocusRequester = remember { FocusRequester() }
     val ratingsGridFocusRequester = remember { FocusRequester() }
@@ -1710,33 +1724,52 @@ private fun MetaDetailsContent(
     val hasRatingsSection = isTvShow && showEpisodeImdbRatings
     val strTabCast = stringResource(R.string.detail_tab_cast)
     val strTabRatings = stringResource(R.string.detail_tab_ratings)
-    val strTabMoreLikeThis = stringResource(R.string.detail_tab_more_like_this)
-    val strTabTrailer = stringResource(R.string.detail_tab_trailer)
+    val strTabSuggested = stringResource(R.string.detail_tab_suggested)
+    val strTabExtras = stringResource(R.string.detail_tab_extras)
+    val strTabDetails = stringResource(R.string.detail_tab_details)
     val strTabCollection = stringResource(R.string.tmdb_collections_title)
+    val hasCompaniesSection = meta.productionCompanies.isNotEmpty() || meta.networks.isNotEmpty()
+    val hasExtrasSection = hasTrailerSection || collection.isNotEmpty()
+    val hasDetailsSection = hasCastSection || hasCompaniesSection
     val moreLikeThisSourceLabel = when (moreLikeThisSource) {
         MoreLikeThisSource.TMDB -> stringResource(R.string.detail_more_like_this_powered_by_tmdb)
         MoreLikeThisSource.TRAKT -> stringResource(R.string.detail_more_like_this_powered_by_trakt)
         null -> null
     }
     val peopleTabItems = remember(
-        hasCastSection,
         hasMoreLikeThisSection,
-        hasTrailerSection,
+        hasExtrasSection,
+        hasDetailsSection,
         hasRatingsSection,
-        collection,
         castTabFocusRequester,
         ratingsTabFocusRequester,
         moreLikeTabFocusRequester,
-        trailerTabFocusRequester,
-        collectionTabFocusRequester,
-        collectionName
+        trailerTabFocusRequester
     ) {
         buildList {
-            if (hasCastSection) {
+            if (hasMoreLikeThisSection) {
                 add(
                     PeopleTabItem(
-                        tab = PeopleSectionTab.CAST,
-                        label = strTabCast,
+                        tab = PeopleSectionTab.SUGGESTED,
+                        label = strTabSuggested,
+                        focusRequester = moreLikeTabFocusRequester
+                    )
+                )
+            }
+            if (hasExtrasSection) {
+                add(
+                    PeopleTabItem(
+                        tab = PeopleSectionTab.EXTRAS,
+                        label = strTabExtras,
+                        focusRequester = trailerTabFocusRequester
+                    )
+                )
+            }
+            if (hasDetailsSection) {
+                add(
+                    PeopleTabItem(
+                        tab = PeopleSectionTab.DETAILS,
+                        label = strTabDetails,
                         focusRequester = castTabFocusRequester
                     )
                 )
@@ -1750,40 +1783,13 @@ private fun MetaDetailsContent(
                     )
                 )
             }
-            if (hasMoreLikeThisSection) {
-                add(
-                    PeopleTabItem(
-                        tab = PeopleSectionTab.MORE_LIKE_THIS,
-                        label = strTabMoreLikeThis,
-                        focusRequester = moreLikeTabFocusRequester
-                    )
-                )
-            }
-            if (hasTrailerSection) {
-                add(
-                    PeopleTabItem(
-                        tab = PeopleSectionTab.TRAILER,
-                        label = strTabTrailer,
-                        focusRequester = trailerTabFocusRequester
-                    )
-                )
-            }
-            if (collection.isNotEmpty()) {
-                add(
-                    PeopleTabItem(
-                        tab = PeopleSectionTab.COLLECTION,
-                        label = collectionName ?: strTabCollection,
-                        focusRequester = collectionTabFocusRequester
-                    )
-                )
-            }
         }
     }
     val availablePeopleTabs = remember(peopleTabItems) { peopleTabItems.map { it.tab } }
-    val shouldSplitCollection = peopleTabItems.size > 3 && peopleTabItems.any { it.tab == PeopleSectionTab.COLLECTION }
-    val visiblePeopleTabItems = if (shouldSplitCollection) peopleTabItems.filterNot { it.tab == PeopleSectionTab.COLLECTION } else peopleTabItems
+    val visiblePeopleTabItems = peopleTabItems
     val hasVisiblePeopleSection = visiblePeopleTabItems.isNotEmpty()
-    val hasVisiblePeopleTabs = visiblePeopleTabItems.size > 1
+    // The tab bar always shows (even with a single tab), as on Disney+.
+    val hasVisiblePeopleTabs = hasVisiblePeopleSection
     val commentsItemIndex = remember(
         isSeries,
         seasons,
@@ -1800,11 +1806,7 @@ private fun MetaDetailsContent(
         }
         index
     }
-    val initialPeopleTab = when {
-        availablePeopleTabs.contains(PeopleSectionTab.CAST) -> PeopleSectionTab.CAST
-        availablePeopleTabs.isNotEmpty() -> availablePeopleTabs.first()
-        else -> PeopleSectionTab.RATINGS
-    }
+    val initialPeopleTab = availablePeopleTabs.firstOrNull() ?: PeopleSectionTab.RATINGS
     var activePeopleTab by rememberSaveable(meta.id) { mutableStateOf(initialPeopleTab) }
     var seasonOptionsDialogSeason by remember { mutableStateOf<Int?>(null) }
     // Tracks whether the initial auto-scroll to the "next to play" episode has fired.
@@ -1848,13 +1850,13 @@ private fun MetaDetailsContent(
         activePeopleTab == PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
         else -> null
     }
-    val commentsUpFocusRequester = when {
-        shouldSplitCollection && collection.isNotEmpty() -> collectionSectionFocusRequester
+    val commentsUpFocusRequester: FocusRequester? = when {
         hasVisiblePeopleSection -> when (activePeopleTab) {
-            PeopleSectionTab.CAST -> castSectionFocusRequester
-            PeopleSectionTab.MORE_LIKE_THIS -> moreLikeSectionFocusRequester
-            PeopleSectionTab.TRAILER -> trailerSectionFocusRequester
-            PeopleSectionTab.COLLECTION -> collectionSectionFocusRequester
+            PeopleSectionTab.SUGGESTED -> moreLikeSectionFocusRequester
+            // The tab's last row: its collection, else its videos.
+            PeopleSectionTab.EXTRAS -> if (collection.isNotEmpty()) collectionSectionFocusRequester else trailerSectionFocusRequester
+            // The company rows have no section requester: up from the comments finds them on its own.
+            PeopleSectionTab.DETAILS -> if (hasCompaniesSection) null else castSectionFocusRequester
             PeopleSectionTab.RATINGS -> ratingsGridFocusRequester
         }
         isSeries -> seasonDownFocusRequester ?: heroPlayFocusRequester
@@ -1868,24 +1870,21 @@ private fun MetaDetailsContent(
     LaunchedEffect(visiblePeopleTabsList, pendingRestoreType) {
         if (visiblePeopleTabsList.isEmpty() || activePeopleTab in visiblePeopleTabsList) return@LaunchedEffect
         if (pendingRestoreType == RestoreTarget.MORE_LIKE_THIS ||
-            pendingRestoreType == RestoreTarget.COLLECTION
+            pendingRestoreType == RestoreTarget.COLLECTION ||
+            pendingRestoreType == RestoreTarget.CAST_MEMBER ||
+            pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK
         ) {
             return@LaunchedEffect
         }
         activePeopleTab = visiblePeopleTabsList.first()
     }
 
-    // Switch to the correct people tab when restoring focus after navigation
+    // Switch to the correct tab when restoring focus after navigation
     LaunchedEffect(restoreFocusToken, pendingRestoreType) {
         if (restoreFocusToken <= 0 || pendingRestoreType == null) return@LaunchedEffect
-        when (pendingRestoreType) {
-            RestoreTarget.MORE_LIKE_THIS -> activePeopleTab = PeopleSectionTab.MORE_LIKE_THIS
-            RestoreTarget.COLLECTION -> activePeopleTab = PeopleSectionTab.COLLECTION
-            RestoreTarget.CAST_MEMBER -> if (PeopleSectionTab.CAST in visiblePeopleTabsList) {
-                activePeopleTab = PeopleSectionTab.CAST
-            }
-            else -> Unit
-        }
+        restoreTabFor(pendingRestoreType)
+            ?.takeIf { it in visiblePeopleTabsList }
+            ?.let { activePeopleTab = it }
     }
 
     // Backdrop alpha for crossfade
@@ -2325,12 +2324,7 @@ private fun MetaDetailsContent(
                             upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
                             ratingsDownFocusRequester = ratingsContentFocusRequester,
                             onTabFocused = { tab ->
-                                val lockedTab = when (pendingRestoreType) {
-                                    RestoreTarget.MORE_LIKE_THIS -> PeopleSectionTab.MORE_LIKE_THIS
-                                    RestoreTarget.COLLECTION -> PeopleSectionTab.COLLECTION
-                                    RestoreTarget.CAST_MEMBER -> PeopleSectionTab.CAST
-                                    else -> null
-                                }
+                                val lockedTab = restoreTabFor(pendingRestoreType)
                                 if (lockedTab == null || tab == lockedTab) {
                                     activePeopleTab = tab
                                 }
@@ -2346,9 +2340,9 @@ private fun MetaDetailsContent(
                     } else {
                         visiblePeopleTabsList.first()
                     }
-                    val hasItemsBelow = meta.networks.isNotEmpty() || meta.productionCompanies.isNotEmpty() || (shouldSplitCollection && collection.isNotEmpty())
                     var castSectionHeightPx by remember { mutableIntStateOf(0) }
                     val castSectionHeight = with(LocalDensity.current) { castSectionHeightPx.toDp() }
+                    val commentsDownFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null
 
                     Crossfade(
                         targetState = visiblePeopleSection,
@@ -2356,46 +2350,15 @@ private fun MetaDetailsContent(
                         label = "peopleSectionSwitch"
                     ) { section ->
                         when (section) {
-                            PeopleSectionTab.CAST -> {
-                                CastSection(
-                                    cast = normalCastMembers,
-                                    listState = castRowListState,
-                                    title = if (hasVisiblePeopleTabs) "" else strTabCast,
-                                    leadingCast = directorWriterMembers,
-                                    upFocusRequester = if (hasVisiblePeopleTabs) castTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
-                                    downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,
-                                    sectionFocusRequester = castSectionFocusRequester,
-                                    restorePersonId = if (pendingRestoreType == RestoreTarget.CAST_MEMBER) pendingRestoreCastPersonId else null,
-                                    restoreFocusToken = if (pendingRestoreType == RestoreTarget.CAST_MEMBER) restoreFocusToken else 0,
-                                    lastFocusedPersonKey = lastFocusedCastKey,
-                                    onLastFocusedPersonKeyChange = { lastFocusedCastKey = it },
-                                    onRestoreFocusHandled = {
-                                        clearPendingRestore()
-                                    },
-                                    onCastMemberFocused = {
-                                        restorePinnedDetailPageIfNudge()
-                                    },
-                                    onCastMemberClick = { member ->
-                                        member.tmdbId?.let { id ->
-                                            markCastMemberRestore(id)
-                                            val preferCrew = member.character.equals("Creator", ignoreCase = true) ||
-                                                member.character.equals("Director", ignoreCase = true) ||
-                                                member.character.equals("Writer", ignoreCase = true)
-                                            onNavigateToCastDetail(id, member.name, preferCrew)
-                                        }
-                                    },
-                                    modifier = Modifier.onSizeChanged { castSectionHeightPx = it.height }
-                                )
-                            }
-
-                            PeopleSectionTab.MORE_LIKE_THIS -> {
+                            // Suggested: titles like this one (TMDB / Trakt recommendations)
+                            PeopleSectionTab.SUGGESTED -> {
                                 MoreLikeThisSection(
                                     items = moreLikeThis,
                                     listState = moreLikeThisListState,
                                     sourceLabel = moreLikeThisSourceLabel,
                                     posterCardCornerRadius = posterCardCornerRadiusDp.dp,
-                                    upFocusRequester = if (hasVisiblePeopleTabs) moreLikeTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
-                                    downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,
+                                    upFocusRequester = moreLikeTabFocusRequester,
+                                    downFocusRequester = commentsDownFocusRequester,
                                     sectionFocusRequester = moreLikeSectionFocusRequester,
                                     restoreItemId = if (pendingRestoreType == RestoreTarget.MORE_LIKE_THIS) pendingRestoreMoreLikeItemId else null,
                                     restoreFocusToken = if (pendingRestoreType == RestoreTarget.MORE_LIKE_THIS) restoreFocusToken else 0,
@@ -2418,48 +2381,123 @@ private fun MetaDetailsContent(
                                 )
                             }
 
-                            PeopleSectionTab.TRAILER -> {
-                                TrailerSection(
-                                    trailers = meta.trailers,
-                                    posterCardCornerRadius = posterCardCornerRadiusDp.dp,
-                                    upFocusRequester = if (hasVisiblePeopleTabs) trailerTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
-                                    sectionFocusRequester = trailerSectionFocusRequester,
-                                    restoreTrailerId = if (restoreSharedTrailerFocusToken > 0) selectedSharedTrailer?.ytId else null,
-                                    restoreFocusToken = restoreSharedTrailerFocusToken,
-                                    onRestoreFocusHandled = onSharedTrailerFocusRestored,
-                                    onTrailerClick = { trailer ->
-                                        onSharedTrailerSelected(trailer)
+                            // Extras: every YouTube video of the title (trailers, teasers, clips,
+                            // featurettes, behind the scenes...), then its collection.
+                            PeopleSectionTab.EXTRAS -> {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    if (hasTrailerSection) {
+                                        TrailerSection(
+                                            trailers = meta.trailers,
+                                            posterCardCornerRadius = posterCardCornerRadiusDp.dp,
+                                            upFocusRequester = trailerTabFocusRequester,
+                                            sectionFocusRequester = trailerSectionFocusRequester,
+                                            restoreTrailerId = if (restoreSharedTrailerFocusToken > 0) selectedSharedTrailer?.ytId else null,
+                                            restoreFocusToken = restoreSharedTrailerFocusToken,
+                                            onRestoreFocusHandled = onSharedTrailerFocusRestored,
+                                            onTrailerClick = { trailer ->
+                                                onSharedTrailerSelected(trailer)
+                                            }
+                                        )
                                     }
-                                )
+                                    if (collection.isNotEmpty()) {
+                                        CollectionSection(
+                                            items = collection,
+                                            listState = collectionListState,
+                                            title = collectionName ?: strTabCollection,
+                                            posterCardCornerRadius = posterCardCornerRadiusDp.dp,
+                                            upFocusRequester = if (hasTrailerSection) trailerSectionFocusRequester else trailerTabFocusRequester,
+                                            downFocusRequester = commentsDownFocusRequester,
+                                            sectionFocusRequester = collectionSectionFocusRequester,
+                                            restoreItemId = if (pendingRestoreType == RestoreTarget.COLLECTION) pendingRestoreCollectionItemId else null,
+                                            restoreFocusToken = if (pendingRestoreType == RestoreTarget.COLLECTION) restoreFocusToken else 0,
+                                            lastFocusedItemId = lastFocusedCollectionItemId,
+                                            onLastFocusedItemIdChange = { lastFocusedCollectionItemId = it },
+                                            onRestoreFocusHandled = {
+                                                clearPendingRestore()
+                                            },
+                                            isItemWatched = { item -> relatedWatchedStatus["${item.id}|${item.apiType}"] == true },
+                                            onItemFocused = {
+                                                restorePinnedDetailPageIfNudge()
+                                            },
+                                            onItemClick = { item ->
+                                                markCollectionRestore(item.id)
+                                                onNavigateToDetail(item.id, item.apiType, null)
+                                            },
+                                            onItemLongPress = { item ->
+                                                onPosterLongPress(item)
+                                            }
+                                        )
+                                    }
+                                }
                             }
-                            
-                            PeopleSectionTab.COLLECTION -> {
-                                CollectionSection(
-                                    items = collection,
-                                    listState = collectionListState,
-                                    posterCardCornerRadius = posterCardCornerRadiusDp.dp,
-                                    upFocusRequester = if (hasVisiblePeopleTabs) collectionTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
-                                    downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,
-                                    sectionFocusRequester = collectionSectionFocusRequester,
-                                    restoreItemId = if (pendingRestoreType == RestoreTarget.COLLECTION) pendingRestoreCollectionItemId else null,
-                                    restoreFocusToken = if (pendingRestoreType == RestoreTarget.COLLECTION) restoreFocusToken else 0,
-                                    lastFocusedItemId = lastFocusedCollectionItemId,
-                                    onLastFocusedItemIdChange = { lastFocusedCollectionItemId = it },
-                                    onRestoreFocusHandled = {
-                                        clearPendingRestore()
-                                    },
-                                    isItemWatched = { item -> relatedWatchedStatus["${item.id}|${item.apiType}"] == true },
-                                    onItemFocused = {
-                                        restorePinnedDetailPageIfNudge()
-                                    },
-                                    onItemClick = { item ->
-                                        markCollectionRestore(item.id)
-                                        onNavigateToDetail(item.id, item.apiType, null)
-                                    },
-                                    onItemLongPress = { item ->
-                                        onPosterLongPress(item)
+
+                            // Details: the creators and the whole cast, then who produced it
+                            // (production companies, and a series' networks).
+                            PeopleSectionTab.DETAILS -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onSizeChanged { castSectionHeightPx = it.height }
+                                ) {
+                                    if (hasCastSection) {
+                                        CastSection(
+                                            cast = normalCastMembers,
+                                            listState = castRowListState,
+                                            title = "",
+                                            leadingCast = directorWriterMembers,
+                                            upFocusRequester = castTabFocusRequester,
+                                            // With company rows below, down finds them on its own.
+                                            downFocusRequester = if (hasCompaniesSection) null else commentsDownFocusRequester,
+                                            sectionFocusRequester = castSectionFocusRequester,
+                                            restorePersonId = if (pendingRestoreType == RestoreTarget.CAST_MEMBER) pendingRestoreCastPersonId else null,
+                                            restoreFocusToken = if (pendingRestoreType == RestoreTarget.CAST_MEMBER) restoreFocusToken else 0,
+                                            lastFocusedPersonKey = lastFocusedCastKey,
+                                            onLastFocusedPersonKeyChange = { lastFocusedCastKey = it },
+                                            onRestoreFocusHandled = {
+                                                clearPendingRestore()
+                                            },
+                                            onCastMemberFocused = {
+                                                restorePinnedDetailPageIfNudge()
+                                            },
+                                            onCastMemberClick = { member ->
+                                                member.tmdbId?.let { id ->
+                                                    markCastMemberRestore(id)
+                                                    val preferCrew = member.character.equals("Creator", ignoreCase = true) ||
+                                                        member.character.equals("Director", ignoreCase = true) ||
+                                                        member.character.equals("Writer", ignoreCase = true)
+                                                    onNavigateToCastDetail(id, member.name, preferCrew)
+                                                }
+                                            }
+                                        )
                                     }
-                                )
+                                    // A series' networks first, then its production companies; a
+                                    // movie's production companies first.
+                                    val companyRows = if (isTvShow) {
+                                        listOf("network" to meta.networks, "company" to meta.productionCompanies)
+                                    } else {
+                                        listOf("company" to meta.productionCompanies, "network" to meta.networks)
+                                    }
+                                    companyRows.forEach { (kind, companies) ->
+                                        if (companies.isNotEmpty()) {
+                                            CompanyLogosSection(
+                                                title = stringResource(
+                                                    if (kind == "network") R.string.detail_section_network else R.string.detail_section_production
+                                                ),
+                                                companies = companies,
+                                                restoreCompanyId = if (companyRestoreToken > 0 && pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) pendingRestoreCompanyId else null,
+                                                restoreFocusToken = if (pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) restoreFocusToken else 0,
+                                                onRestoreFocusHandled = { clearPendingRestore() },
+                                                onCompanyFocused = { overflow -> onCompanyRowFocused(overflow) },
+                                                onCompanyClick = { company ->
+                                                    company.tmdbId?.let { entityId ->
+                                                        markCompanyRestore(entityId)
+                                                        onNavigateToTmdbEntityBrowse(kind, entityId, company.name, meta.apiType)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
                             PeopleSectionTab.RATINGS -> {
@@ -2468,62 +2506,16 @@ private fun MetaDetailsContent(
                                     ratings = visibleEpisodeImdbRatings,
                                     isLoading = isEpisodeRatingsLoading,
                                     error = episodeRatingsError,
-                                    title = if (hasVisiblePeopleTabs) "" else strTabRatings,
-                                    upFocusRequester = if (hasVisiblePeopleTabs) {
-                                        ratingsTabFocusRequester
-                                    } else {
-                                        seasonDownFocusRequester ?: heroPlayFocusRequester
-                                    },
-                                    downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,
+                                    title = "",
+                                    upFocusRequester = ratingsTabFocusRequester,
+                                    downFocusRequester = commentsDownFocusRequester,
                                     firstItemFocusRequester = ratingsContentFocusRequester,
                                     ratingsGridFocusRequester = ratingsGridFocusRequester,
-                                    modifier = Modifier.heightIn(min = if (!hasItemsBelow) castSectionHeight else NuvioTheme.spacing.none)
+                                    modifier = Modifier.heightIn(min = castSectionHeight)
                                 )
                             }
                         }
                     }
-                }
-            }
-            
-            // Collection as separate section when there are too many tabs
-            if (shouldSplitCollection && collection.isNotEmpty()) {
-                item(key = "collection_section", contentType = "horizontal_row") {
-                    CollectionSection(
-                        items = collection,
-                        listState = collectionListState,
-                        title = collectionName ?: strTabCollection,
-                        posterCardCornerRadius = posterCardCornerRadiusDp.dp,
-                        upFocusRequester = if (hasVisiblePeopleSection) {
-                            when (activePeopleTab) {
-                                PeopleSectionTab.CAST -> castSectionFocusRequester
-                                PeopleSectionTab.MORE_LIKE_THIS -> moreLikeSectionFocusRequester
-                                PeopleSectionTab.TRAILER -> trailerSectionFocusRequester
-                                PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
-                                else -> seasonDownFocusRequester ?: heroPlayFocusRequester
-                            }
-                        } else {
-                            seasonDownFocusRequester ?: heroPlayFocusRequester
-                        },
-                        sectionFocusRequester = collectionSectionFocusRequester,
-                        restoreItemId = if (pendingRestoreType == RestoreTarget.COLLECTION) pendingRestoreCollectionItemId else null,
-                        restoreFocusToken = if (pendingRestoreType == RestoreTarget.COLLECTION) restoreFocusToken else 0,
-                        lastFocusedItemId = lastFocusedCollectionItemId,
-                        onLastFocusedItemIdChange = { lastFocusedCollectionItemId = it },
-                        onRestoreFocusHandled = {
-                            clearPendingRestore()
-                        },
-                        onItemFocused = {
-                            restorePinnedDetailPageIfNudge()
-                        },
-                        onItemClick = { item ->
-                            markCollectionRestore(item.id)
-                            onNavigateToDetail(item.id, item.apiType, null)
-                        },
-                        isItemWatched = { item -> relatedWatchedStatus["${item.id}|${item.apiType}"] == true },
-                        onItemLongPress = { item ->
-                            onPosterLongPress(item)
-                        }
-                    )
                 }
             }
 
@@ -2558,83 +2550,6 @@ private fun MetaDetailsContent(
                 }
             }
 
-            if (isTvShow) {
-                if (meta.networks.isNotEmpty()) {
-                    item(key = "networks", contentType = "horizontal_row") {
-                        CompanyLogosSection(
-                            title = stringResource(R.string.detail_section_network),
-                            companies = meta.networks,
-                            restoreCompanyId = if (companyRestoreToken > 0 && pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) pendingRestoreCompanyId else null,
-                            restoreFocusToken = if (pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) restoreFocusToken else 0,
-                            onRestoreFocusHandled = { clearPendingRestore() },
-                            onCompanyFocused = { overflow -> onCompanyRowFocused(overflow) },
-                            onCompanyClick = { company ->
-                                company.tmdbId?.let { entityId ->
-                                    markCompanyRestore(entityId)
-                                    onNavigateToTmdbEntityBrowse("network", entityId, company.name, meta.apiType)
-                                }
-                            }
-                        )
-                    }
-                }
-
-                if (meta.productionCompanies.isNotEmpty()) {
-                    item(key = "production", contentType = "horizontal_row") {
-                        CompanyLogosSection(
-                            title = stringResource(R.string.detail_section_production),
-                            companies = meta.productionCompanies,
-                            restoreCompanyId = if (companyRestoreToken > 0 && pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) pendingRestoreCompanyId else null,
-                            restoreFocusToken = if (pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) restoreFocusToken else 0,
-                            onRestoreFocusHandled = { clearPendingRestore() },
-                            onCompanyFocused = { overflow -> onCompanyRowFocused(overflow) },
-                            onCompanyClick = { company ->
-                                company.tmdbId?.let { entityId ->
-                                    markCompanyRestore(entityId)
-                                    onNavigateToTmdbEntityBrowse("company", entityId, company.name, meta.apiType)
-                                }
-                            }
-                        )
-                    }
-                }
-            } else {
-                if (meta.productionCompanies.isNotEmpty()) {
-                    item(key = "production", contentType = "horizontal_row") {
-                        CompanyLogosSection(
-                            title = stringResource(R.string.detail_section_production),
-                            companies = meta.productionCompanies,
-                            restoreCompanyId = if (companyRestoreToken > 0 && pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) pendingRestoreCompanyId else null,
-                            restoreFocusToken = if (pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) restoreFocusToken else 0,
-                            onRestoreFocusHandled = { clearPendingRestore() },
-                            onCompanyFocused = { overflow -> onCompanyRowFocused(overflow) },
-                            onCompanyClick = { company ->
-                                company.tmdbId?.let { entityId ->
-                                    markCompanyRestore(entityId)
-                                    onNavigateToTmdbEntityBrowse("company", entityId, company.name, meta.apiType)
-                                }
-                            }
-                        )
-                    }
-                }
-
-                if (meta.networks.isNotEmpty()) {
-                    item(key = "networks", contentType = "horizontal_row") {
-                        CompanyLogosSection(
-                            title = stringResource(R.string.detail_section_network),
-                            companies = meta.networks,
-                            restoreCompanyId = if (companyRestoreToken > 0 && pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) pendingRestoreCompanyId else null,
-                            restoreFocusToken = if (pendingRestoreType == RestoreTarget.COMPANY_OR_NETWORK) restoreFocusToken else 0,
-                            onRestoreFocusHandled = { clearPendingRestore() },
-                            onCompanyFocused = { overflow -> onCompanyRowFocused(overflow) },
-                            onCompanyClick = { company ->
-                                company.tmdbId?.let { entityId ->
-                                    markCompanyRestore(entityId)
-                                    onNavigateToTmdbEntityBrowse("network", entityId, company.name, meta.apiType)
-                                }
-                            }
-                        )
-                    }
-                }
-            }
         }
         }
 
@@ -2851,40 +2766,24 @@ private fun PeopleSectionTabs(
     val defaultRequester = tabs.first().focusRequester
     val restorerRequester = tabs.firstOrNull { it.tab == activeTab }?.focusRequester ?: defaultRequester
 
-    Column(
+    // Disney+ style: SUGGESTED  EXTRAS  DETAILS, the open one white and underlined.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 20.dp, start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+        horizontalArrangement = Arrangement.spacedBy(36.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        @Composable
-        fun androidx.compose.foundation.layout.RowScope.renderTabs(items: List<PeopleTabItem>) {
-            items.forEachIndexed { index, item ->
-                if (index > 0) {
-                    Text(
-                        text = "|",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = NuvioTheme.colors.TextPrimary.copy(alpha = 0.45f),
-                        modifier = Modifier.padding(horizontal = 10.dp)
-                    )
-                }
-
-                PeopleSectionTabButton(
-                    label = item.label,
-                    selected = activeTab == item.tab,
-                    focusRequester = item.focusRequester,
-                    activeFocusRequester = if (activeTab != item.tab) restorerRequester else null,
-                    upFocusRequester = upFocusRequester,
-                    downFocusRequester = if (item.tab == PeopleSectionTab.RATINGS) ratingsDownFocusRequester else null,
-                    onFocused = { onTabFocused(item.tab) }
-                )
-            }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            renderTabs(tabs)
+        tabs.forEach { item ->
+            PeopleSectionTabButton(
+                label = item.label,
+                selected = activeTab == item.tab,
+                focusRequester = item.focusRequester,
+                activeFocusRequester = if (activeTab != item.tab) restorerRequester else null,
+                upFocusRequester = upFocusRequester,
+                downFocusRequester = if (item.tab == PeopleSectionTab.RATINGS) ratingsDownFocusRequester else null,
+                onFocused = { onTabFocused(item.tab) }
+            )
         }
     }
 }
@@ -2937,18 +2836,43 @@ private fun PeopleSectionTabButton(
                 shape = RoundedCornerShape(NuvioTheme.radii.xl)
             )
         ),
-        scale = CardDefaults.scale(focusedScale = 1.03f)
+        scale = CardDefaults.scale(focusedScale = 1.05f)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleLarge,
-            color = when {
-                isFocused -> NuvioTheme.colors.TextPrimary
-                selected -> NuvioTheme.colors.TextPrimary.copy(alpha = 0.92f)
-                else -> NuvioTheme.colors.TextPrimary.copy(alpha = 0.55f)
-            },
-            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxs, vertical = NuvioTheme.spacing.xxs)
-        )
+        Column(
+            modifier = Modifier
+                .width(IntrinsicSize.Max)
+                .padding(horizontal = NuvioTheme.spacing.xxs, vertical = NuvioTheme.spacing.xxs),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.6.sp
+                ),
+                maxLines = 1,
+                color = when {
+                    isFocused -> NuvioTheme.colors.TextPrimary
+                    selected -> NuvioTheme.colors.TextPrimary.copy(alpha = 0.95f)
+                    else -> NuvioTheme.colors.TextPrimary.copy(alpha = 0.5f)
+                }
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            // The open tab's underline (brighter while focused)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(
+                        color = when {
+                            selected && isFocused -> Color.White
+                            selected -> Color.White.copy(alpha = 0.85f)
+                            else -> Color.Transparent
+                        },
+                        shape = RoundedCornerShape(2.dp)
+                    )
+            )
+        }
     }
 }
 

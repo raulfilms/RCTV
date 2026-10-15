@@ -512,16 +512,22 @@ class TmdbMetadataService(
         tmdbType: String,
         preferredLanguage: String
     ): List<MetaTrailer> {
+        // Every video of the title (trailers, teasers, clips, featurettes, behind the scenes...) in
+        // the user's language, English, and with no language, for the detail page's Extras.
+        val languageCode = preferredLanguage.substringBefore('-').lowercase(Locale.US)
+        val videoLanguages = listOf(languageCode, TMDB_TRAILER_FALLBACK_LANGUAGE.substringBefore('-').lowercase(Locale.US), "null")
+            .distinct()
+            .joinToString(",")
         val localizedResults = when (tmdbType) {
             "tv" -> runCatching {
-                tmdbApi.getTvVideos(tmdbId, TMDB_API_KEY, preferredLanguage).body()?.results.orEmpty()
+                tmdbApi.getTvVideos(tmdbId, TMDB_API_KEY, preferredLanguage, videoLanguages).body()?.results.orEmpty()
             }.getOrElse {
                 Log.w(TAG, "Failed to fetch localized TV trailers for $tmdbId: ${it.message}")
                 emptyList()
             }
 
             else -> runCatching {
-                tmdbApi.getMovieVideos(tmdbId, TMDB_API_KEY, preferredLanguage).body()?.results.orEmpty()
+                tmdbApi.getMovieVideos(tmdbId, TMDB_API_KEY, preferredLanguage, videoLanguages).body()?.results.orEmpty()
             }.getOrElse {
                 Log.w(TAG, "Failed to fetch localized movie trailers for $tmdbId: ${it.message}")
                 emptyList()
@@ -554,7 +560,7 @@ class TmdbMetadataService(
             localizedResults + fallbackResults
         }
 
-        return rankTmdbTrailers(mergedResults)
+        return rankTmdbTrailers(mergedResults, languageCode)
             .mapNotNull { video ->
                 val ytId = video.key?.trim()?.takeIf { YOUTUBE_VIDEO_ID_REGEX.matches(it) } ?: return@mapNotNull null
                 MetaTrailer(
@@ -568,7 +574,7 @@ class TmdbMetadataService(
             .distinctBy { it.ytId }
     }
 
-    private fun rankTmdbTrailers(results: List<TmdbVideoResult>): List<TmdbVideoResult> {
+    private fun rankTmdbTrailers(results: List<TmdbVideoResult>, languageCode: String? = null): List<TmdbVideoResult> {
         fun typePriority(type: String?): Int = when (type?.trim()?.lowercase(Locale.US)) {
             "trailer" -> 0
             "teaser" -> 1
@@ -585,6 +591,8 @@ class TmdbMetadataService(
             }
             .sortedWith(
                 compareBy<TmdbVideoResult> { typePriority(it.type) }
+                    // The user's language first within each kind of video.
+                    .thenBy { if (languageCode != null && it.iso6391.equals(languageCode, ignoreCase = true)) 0 else 1 }
                     .thenByDescending { it.official == true }
                     .thenByDescending { it.publishedAt.orEmpty() }
             )

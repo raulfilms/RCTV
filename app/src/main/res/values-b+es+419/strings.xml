@@ -3315,4 +3315,7 @@
     <string name="stream_test_video_bitrate">Tasa de bits promedio del video: %1$s</string>
     <string name="stream_test_error_connection">La conexión falló. Es posible que el enlace de la última transmisión reproducida haya expirado o no esté disponible. Reproduce el video nuevamente e inténtalo otra vez.</string>
 
-    </resources>
+        <string name="detail_tab_suggested">Sugerencias</string>
+    <string name="detail_tab_extras">Extras</string>
+    <string name="detail_tab_details">Detalles</string>
+</resources>
