@@ -337,7 +337,9 @@ internal fun TmdbDiscoverSection(
         DiscoverOption(stringResource(R.string.discover_category_trending), com.nuvio.tv.data.discover.DiscoverCategory.TRENDING.name),
         DiscoverOption(stringResource(R.string.discover_category_new), com.nuvio.tv.data.discover.DiscoverCategory.NEW.name),
         // Every title TMDB has.
-        DiscoverOption(stringResource(R.string.discover_category_all), com.nuvio.tv.data.discover.DiscoverCategory.ALL.name)
+        DiscoverOption(stringResource(R.string.discover_category_all), com.nuvio.tv.data.discover.DiscoverCategory.ALL.name),
+        // Best rated first (among titles enough people rated).
+        DiscoverOption(stringResource(R.string.discover_category_top_rated), com.nuvio.tv.data.discover.DiscoverCategory.TOP_RATED.name)
     )
     val allGenres = stringResource(R.string.discover_genre_all)
     val genreOptions = buildList {

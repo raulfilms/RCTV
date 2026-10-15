@@ -25,7 +25,7 @@ import javax.inject.Singleton
  * The Discover page's "Category" menu. [ALL] is every title TMDB has, with nothing left out (no
  * minimum votes, no date limit): the best-known titles of all time first, then everything else.
  */
-enum class DiscoverCategory { POPULAR, TRENDING, NEW, ALL }
+enum class DiscoverCategory { POPULAR, TRENDING, NEW, ALL, TOP_RATED }
 
 /** The Discover page's "Type" menu. */
 enum class DiscoverMediaFilter { ALL, MOVIES, SHOWS }
@@ -137,6 +137,8 @@ class TmdbDiscoverRepository @Inject constructor(
         val isTv = mediaType == TmdbCollectionMediaType.TV
         val isNew = category == DiscoverCategory.NEW
         val isAll = category == DiscoverCategory.ALL
+        // Top Rated: best rated first, among titles enough people rated.
+        val isTopRated = category == DiscoverCategory.TOP_RATED
         val response = if (isTv) {
             tmdbApi.discoverTv(
                 apiKey = apiKey,
@@ -145,13 +147,18 @@ class TmdbDiscoverRepository @Inject constructor(
                 sortBy = when {
                     isNew -> "first_air_date.desc"
                     isAll -> "vote_count.desc"
+                    isTopRated -> "vote_average.desc"
                     else -> "popularity.desc"
                 },
                 withGenres = genreId?.toString(),
                 firstAirDateGte = from?.toString(),
                 firstAirDateLte = to?.toString(),
                 // Newest first: skip shows no one has rated yet (thousands of unknown uploads).
-                voteCountGte = if (isNew) NEW_MIN_VOTES_TV else null
+                voteCountGte = when {
+                    isNew -> NEW_MIN_VOTES_TV
+                    isTopRated -> TOP_RATED_MIN_VOTES_TV
+                    else -> null
+                }
             )
         } else {
             tmdbApi.discoverMovies(
@@ -161,12 +168,17 @@ class TmdbDiscoverRepository @Inject constructor(
                 sortBy = when {
                     isNew -> "primary_release_date.desc"
                     isAll -> "vote_count.desc"
+                    isTopRated -> "vote_average.desc"
                     else -> "popularity.desc"
                 },
                 withGenres = genreId?.toString(),
                 releaseDateGte = from?.toString(),
                 releaseDateLte = to?.toString(),
-                voteCountGte = if (isNew) NEW_MIN_VOTES_MOVIE else null
+                voteCountGte = when {
+                    isNew -> NEW_MIN_VOTES_MOVIE
+                    isTopRated -> TOP_RATED_MIN_VOTES_MOVIE
+                    else -> null
+                }
             )
         }
         if (!response.isSuccessful) throw IOException("TMDB discover HTTP ${response.code()}")
@@ -200,9 +212,9 @@ class TmdbDiscoverRepository @Inject constructor(
                 language = language,
                 page = page
             )
-            DiscoverCategory.POPULAR, DiscoverCategory.NEW, DiscoverCategory.ALL -> {
+            DiscoverCategory.POPULAR, DiscoverCategory.NEW, DiscoverCategory.ALL, DiscoverCategory.TOP_RATED -> {
                 val isNew = category == DiscoverCategory.NEW
-                val isAll = category == DiscoverCategory.ALL
+                val isAll = category == DiscoverCategory.ALL || category == DiscoverCategory.TOP_RATED
                 if (isTv) {
                     tmdbApi.discoverTv(
                         apiKey = apiKey,
@@ -305,6 +317,8 @@ class TmdbDiscoverRepository @Inject constructor(
         const val TMDB_MAX_PAGE = 500
         private const val NEW_MIN_VOTES_MOVIE = 5
         private const val NEW_MIN_VOTES_TV = 3
+        private const val TOP_RATED_MIN_VOTES_MOVIE = 300
+        private const val TOP_RATED_MIN_VOTES_TV = 200
 
         /** Movie genres whose TV counterpart has another id on TMDB. */
         private val MOVIE_TO_TV_GENRE = mapOf(

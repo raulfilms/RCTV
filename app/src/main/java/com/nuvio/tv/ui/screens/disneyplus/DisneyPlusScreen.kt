@@ -112,6 +112,8 @@ private val HubRowExtraSpacing = 16.dp
 @Composable
 fun DisneyPlusScreen(
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String) -> Unit,
+    /** Leaves the page (Back on a See All page that was opened on its own, from Home). */
+    onBack: () -> Unit = {},
     onOpenHub: (DisneyPlusHub) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
     viewModel: DisneyPlusViewModel = hiltViewModel(),
@@ -152,8 +154,12 @@ fun DisneyPlusScreen(
 
     // Back on a See All page goes back to the row it came from.
     BackHandler(enabled = seeAll != null) {
-        returnFocusRowId = seeAll?.rowId
-        viewModel.closeSeeAll()
+        if (viewModel.isDirectSeeAll) {
+            onBack()
+        } else {
+            returnFocusRowId = seeAll?.rowId
+            viewModel.closeSeeAll()
+        }
     }
     LaunchedEffect(seeAll == null, returnFocusRowId) {
         val rowId = returnFocusRowId ?: return@LaunchedEffect

@@ -1314,6 +1314,15 @@ fun AppleLandscapeCard(
                         .padding(start = 8.dp)
                 )
             }
+            item.badge?.let { badge ->
+                TitleBadge(
+                    text = badge,
+                    upcoming = item.badgeUpcoming,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 8.dp, top = 8.dp)
+                )
+            }
             if (isWatched) {
                 WatchedMarker(
                     modifier = Modifier

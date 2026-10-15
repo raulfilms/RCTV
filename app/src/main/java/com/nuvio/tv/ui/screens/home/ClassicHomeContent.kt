@@ -60,6 +60,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import com.nuvio.tv.ui.components.CatalogRowSection
+import com.nuvio.tv.ui.components.LocalTitleArtResolver
+import com.nuvio.tv.data.disneyplus.DisneyRowKind
+import com.nuvio.tv.domain.repository.TitleArtResolver
 import com.nuvio.tv.ui.components.CollectionRowSection
 import com.nuvio.tv.ui.components.ContinueWatchingSection
 import com.nuvio.tv.core.poster.withCustomPosterUrls
@@ -101,6 +104,9 @@ private val APPLE_CW_CARD_HEIGHT = 138.dp
 private const val STREAMING_SERVICES_ROW_KEY = "streaming_services"
 // Saved-focus row index for the services row; catalog rows use 0 and up, Continue Watching -1, the hero -2.
 private const val STREAMING_SERVICES_ROW_INDEX = -3
+// Saved-focus row index for Home's TMDB rows: -100, -101... (never a catalog row's index).
+private const val DISCOVER_ROW_INDEX_BASE = -100
+private const val DISCOVER_ROW_KEY_PREFIX = "home_discover_"
 private val CLASSIC_IMMERSIVE_FADE_DISTANCE = 180.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -133,7 +139,11 @@ fun ClassicHomeContent(
     isHeroItemInLibrary: (MetaPreview) -> Boolean = { false },
     onHeroItemShown: (MetaPreview) -> Unit = {},
     streamingServices: List<StreamingService> = emptyList(),
-    onStreamingServiceClick: (StreamingService) -> Unit = {}
+    onStreamingServiceClick: (StreamingService) -> Unit = {},
+    /** Home's TMDB rows (Trending Now, New Releases...), shown under the streaming services. */
+    discoverRows: List<HomeDiscoverRowState> = emptyList(),
+    discoverTitleArt: TitleArtResolver? = null,
+    onOpenHomeLink: (HomeLink) -> Unit = {}
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val density = LocalDensity.current
@@ -269,6 +279,9 @@ fun ClassicHomeContent(
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val cwRowFocusRequester = remember { FocusRequester() }
     val servicesRowFocusRequester = remember { FocusRequester() }
+    // Home's TMDB rows, by their list key ("home_discover_<row id>").
+    val discoverRowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val discoverRowStates = remember { mutableMapOf<String, LazyListState>() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
     // Saveable so the rows come back where they were left after navigating away and
     // returning. The restorer picks the first visible card when the remembered one is
@@ -476,6 +489,9 @@ fun ClassicHomeContent(
     val latestOnRequestLazyCatalogLoad = rememberUpdatedState(onRequestLazyCatalogLoad)
     val latestVisibleHomeRows = rememberUpdatedState(visibleHomeRows)
     val latestStreamingServices = rememberUpdatedState(streamingServices)
+    // Home's TMDB rows that show (they come before the catalog rows in the list).
+    val shownDiscoverRows = discoverRows.filter { it.isShown() }
+    val latestDiscoverItemCount = rememberUpdatedState(shownDiscoverRows.size)
     LaunchedEffect(columnListState) {
         val prefetchAhead = 1
         snapshotFlow {
@@ -493,7 +509,7 @@ fun ClassicHomeContent(
             val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
             val cwOffset = if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) 1 else 0
             val servicesOffset = if (latestStreamingServices.value.isNotEmpty()) 1 else 0
-            val rowsOffset = heroOffset + cwOffset + servicesOffset
+            val rowsOffset = heroOffset + cwOffset + servicesOffset + latestDiscoverItemCount.value
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAhead)) {
                 val rowIdx = idx - rowsOffset
                 val row = rows.getOrNull(rowIdx) ?: continue
@@ -603,6 +619,7 @@ fun ClassicHomeContent(
                         k == null -> null
                         k == "hero_carousel" -> heroFocusRequester
                         k == STREAMING_SERVICES_ROW_KEY -> servicesRowFocusRequester
+                        discoverRowFocusRequesters.containsKey(k) -> discoverRowFocusRequesters[k]
                         rowFocusRequesters.containsKey(k) -> rowFocusRequesters[k]
                         else -> {
                             val baseKey = k.substringBeforeLast('_')
@@ -753,6 +770,91 @@ fun ClassicHomeContent(
                         onFocusedRowKeyChanged(null)
                     }
                 )
+            }
+        }
+
+
+        // Home's TMDB rows, right under the streaming services: Trending Now, New Releases, Premieres...
+        shownDiscoverRows.forEachIndexed { discoverIndex, rowState ->
+            val spec = rowState.spec
+            val rowKey = DISCOVER_ROW_KEY_PREFIX + spec.id
+            item(key = rowKey, contentType = "home_discover_${spec.kind.name.lowercase()}") {
+                val rowFocusRequester = discoverRowFocusRequesters.getOrPut(rowKey) { FocusRequester() }
+                val restoreIndex = if (restoringFocus && focusState.focusedRowKey == rowKey) focusState.focusedItemIndex else -1
+                val onFocusedAt: (Int) -> Unit = { itemIndex ->
+                    if (restoringFocus) restoringFocus = false
+                    currentFocusSnapshot.rowIndex = DISCOVER_ROW_INDEX_BASE - discoverIndex
+                    currentFocusSnapshot.itemIndex = itemIndex
+                    currentFocusSnapshot.rowKey = rowKey
+                    activeRowKeyState.value = null
+                    onFocusedRowKeyChanged(null)
+                }
+                when (spec.kind) {
+                    DisneyRowKind.GENRES -> HomeGenreRow(
+                        title = rowState.title,
+                        tiles = spec.genreTiles,
+                        onClick = { tile -> onOpenHomeLink(HomeLink.Genre(tile)) },
+                        rowFocusRequester = rowFocusRequester,
+                        initialFocusIndex = restoreIndex,
+                        onItemFocused = onFocusedAt
+                    )
+                    DisneyRowKind.FRANCHISES -> HomeFranchiseRow(
+                        title = rowState.title,
+                        rowIds = spec.franchiseRows,
+                        art = rowState.franchiseArt,
+                        onClick = { rowId -> onOpenHomeLink(HomeLink.SeeAll(rowId)) },
+                        rowFocusRequester = rowFocusRequester,
+                        initialFocusIndex = restoreIndex,
+                        onItemFocused = onFocusedAt
+                    )
+                    DisneyRowKind.CHANNELS -> HomeChannelRow(
+                        title = rowState.title,
+                        tiles = spec.channelTiles,
+                        logos = rowState.channelLogos,
+                        onClick = { tile -> onOpenHomeLink(HomeLink.Channel(tile)) },
+                        rowFocusRequester = rowFocusRequester,
+                        initialFocusIndex = restoreIndex,
+                        onItemFocused = onFocusedAt
+                    )
+                    else -> {
+                        val loaded = rowState.row ?: return@item
+                        // Discover Something New: only titles the person hasn't watched.
+                        val catalogRow = remember(loaded) {
+                            if (spec.id == HomeDiscoverViewModel.DISCOVER_NEW_ROW_ID) {
+                                loaded.copy(items = loaded.items.filterNot(isCatalogItemWatched))
+                            } else {
+                                loaded
+                            }
+                        }
+                        val listState = discoverRowStates.getOrPut(rowKey) { LazyListState() }
+                        CompositionLocalProvider(LocalTitleArtResolver provides discoverTitleArt) {
+                            CatalogRowSection(
+                                catalogRow = catalogRow,
+                                posterCardStyle = classicCatalogPosterCardStyle,
+                                showPosterLabels = false,
+                                appleStyle = true,
+                                showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
+                                showAddonName = false,
+                                showCatalogTypeSuffix = false,
+                                onItemFocus = handleMetaFocus,
+                                isItemWatched = isCatalogItemWatched,
+                                onItemLongPress = onCatalogItemLongPress,
+                                seeAllLabel = catalogSeeAllLabel,
+                                // Every row has its whole TMDB list (with filters) on its See All page.
+                                showSeeAll = true,
+                                onItemClick = { id, type, addonBaseUrl -> onNavigateToDetail(id, type, addonBaseUrl) },
+                                onSeeAll = { onOpenHomeLink(HomeLink.SeeAll(spec.id)) },
+                                rowFocusRequester = rowFocusRequester,
+                                listState = listState,
+                                enableRowFocusRestorer = true,
+                                focusedItemIndex = restoreIndex,
+                                restorerFocusedIndex = restoreIndex,
+                                layoutRowId = spec.id,
+                                onItemFocused = onFocusedAt
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -978,6 +1080,13 @@ fun ClassicHomeContent(
     }
     }
     } // CompositionLocalProvider
+}
+
+/** A TMDB row shows once it has titles; card rows (genres, franchises, channels) right away. */
+private fun HomeDiscoverRowState.isShown(): Boolean = when (spec.kind) {
+    DisneyRowKind.GENRES, DisneyRowKind.FRANCHISES, DisneyRowKind.CHANNELS -> true
+    DisneyRowKind.CATALOG -> row?.items?.isNotEmpty() == true
+    else -> false
 }
 
 internal fun MetaPreview.toClassicFocusArtwork(useBackdrop: Boolean): ClassicFocusArtwork {

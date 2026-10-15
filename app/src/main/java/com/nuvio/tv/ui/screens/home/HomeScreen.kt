@@ -102,7 +102,9 @@ fun HomeScreen(
     /** Play button on the Apple TV style hero: opens the title and starts playback. */
     onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") },
     /** A tile in the "Streaming Services" row was chosen. */
-    onOpenStreamingService: (StreamingService) -> Unit = {}
+    onOpenStreamingService: (StreamingService) -> Unit = {},
+    /** A card or See All of Home's TMDB rows (Trending Now, Browse by Genre, Top Channels...). */
+    onOpenHomeLink: (HomeLink) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -389,7 +391,8 @@ fun HomeScreen(
                                 isCatalogItemWatched = isCatalogItemWatched,
                                 onCatalogItemLongPress = onCatalogItemLongPress,
                                 onPlayFromHero = onPlayFromHero,
-                                onOpenStreamingService = onOpenStreamingService
+                                onOpenStreamingService = onOpenStreamingService,
+                                onOpenHomeLink = onOpenHomeLink
                             )
 
                             HomeLayout.GRID -> GridHomeRoute(
@@ -549,11 +552,14 @@ private fun ClassicHomeRoute(
     onCatalogItemLongPress: (MetaPreview, String) -> Unit,
     onPlayFromHero: (String, String) -> Unit = { itemId, itemType -> onNavigateToDetail(itemId, itemType, "") },
     onOpenStreamingService: (StreamingService) -> Unit = {},
-    streamingServicesViewModel: StreamingServicesViewModel = hiltViewModel()
+    onOpenHomeLink: (HomeLink) -> Unit = {},
+    streamingServicesViewModel: StreamingServicesViewModel = hiltViewModel(),
+    homeDiscoverViewModel: HomeDiscoverViewModel = hiltViewModel()
 ) {
     val focusState by viewModel.focusState.collectAsStateWithLifecycle()
     val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsStateWithLifecycle()
     val streamingServices by streamingServicesViewModel.services.collectAsStateWithLifecycle()
+    val discoverRows by homeDiscoverViewModel.rows.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val libraryMembership = uiState.posterLibraryMembership
     val librarySourceMode = uiState.librarySourceMode
@@ -571,6 +577,9 @@ private fun ClassicHomeRoute(
         },
         onHeroItemShown = { item -> viewModel.refreshPosterLibraryStatus(item) },
         streamingServices = streamingServices,
+        discoverRows = discoverRows,
+        discoverTitleArt = homeDiscoverViewModel.titleArt,
+        onOpenHomeLink = onOpenHomeLink,
         onStreamingServiceClick = { service ->
             if (service.appHub != null || service.group != null || service.target != null) {
                 onOpenStreamingService(service)

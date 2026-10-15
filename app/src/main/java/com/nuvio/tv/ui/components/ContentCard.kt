@@ -557,6 +557,16 @@ fun ContentCard(
                     )
                 }
 
+                item.badge?.let { badge ->
+                    TitleBadge(
+                        text = badge,
+                        upcoming = item.badgeUpcoming,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = NuvioTheme.spacing.sm, top = NuvioTheme.spacing.sm)
+                            .zIndex(2f)
+                    )
+                }
                 if (isWatched) {
                     WatchedMarker(
                         modifier = Modifier

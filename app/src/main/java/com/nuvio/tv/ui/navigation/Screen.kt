@@ -149,8 +149,14 @@ sealed class Screen(val route: String) {
     }
     data object DisneyPlus : Screen("disney_plus")
     /** A Disney+ brand page (Disney, Pixar...) or a Paramount+ / discovery+ page (main or a brand). [hub] is a DisneyPlusHub key. */
-    data object DisneyPlusBrand : Screen("disney_plus/{hub}") {
-        fun createRoute(hub: String): String = "disney_plus/$hub"
+    data object DisneyPlusBrand : Screen("disney_plus/{hub}?seeAll={seeAll}") {
+        /** [seeAll]: open straight on that row's See All page (Home's rows); Back then closes the page. */
+        fun createRoute(hub: String, seeAll: String? = null): String =
+            "disney_plus/$hub" + (seeAll?.let { "?seeAll=" + URLEncoder.encode(it, "UTF-8") } ?: "")
+    }
+    /** Discover opened on one genre (from Home's genre cards): [type] "all" or "shows", TMDB genre id. */
+    data object DiscoverGenre : Screen("discover_genre/{type}/{genreId}") {
+        fun createRoute(type: String, genreId: Int): String = "discover_genre/$type/$genreId"
     }
     /** A page of studio tiles opened from a Home tile (e.g. Independent Film Company). */
     data object StudioGroup : Screen("studio_group/{group}") {

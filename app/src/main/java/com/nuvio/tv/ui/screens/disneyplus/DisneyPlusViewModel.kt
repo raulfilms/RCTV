@@ -127,6 +127,10 @@ class DisneyPlusViewModel @Inject constructor(
     val hub: DisneyPlusHub = DisneyPlusHub.fromKey(savedStateHandle.get<String>("hub"))
     private val hubSpec = DisneyPlusCatalog.hub(hub)
 
+    /** The row whose See All the page opened straight on (Home's rows); Back then closes the page. */
+    private val directSeeAllRow: String? = savedStateHandle.get<String>("seeAll")?.takeIf { it.isNotBlank() }
+    val isDirectSeeAll: Boolean get() = directSeeAllRow != null
+
     /**
      * Title art for cards that find it as they appear: the See All grid (every hub) and any row title
      * whose art wasn't found up front.
@@ -142,7 +146,7 @@ class DisneyPlusViewModel @Inject constructor(
                     val isCollections = spec.kind == DisneyRowKind.COLLECTIONS
                     DisneyPlusRowState(
                         spec = spec,
-                        title = context.getString(spec.titleRes),
+                        title = spec.title ?: context.getString(spec.titleRes),
                         // Collection tiles show right away with their names; artwork fills in afterwards.
                         isLoading = !isCollections,
                         collectionTiles = if (isCollections) spec.collections.map { DisneyCollectionTile(it) } else emptyList()
@@ -157,8 +161,15 @@ class DisneyPlusViewModel @Inject constructor(
     private val rowLimiter = Semaphore(6)
 
     init {
-        load(forceRefresh = false)
-        if (hubSpec.rows.any { it.kind == DisneyRowKind.CONTINUE_WATCHING }) {
+        val seeAllRow = directSeeAllRow
+        if (seeAllRow != null) {
+            // Just the row's See All page: nothing else of the page loads.
+            _uiState.update { it.copy(isHeroLoading = false) }
+            openSeeAll(seeAllRow)
+        } else {
+            load(forceRefresh = false)
+        }
+        if (seeAllRow == null && hubSpec.rows.any { it.kind == DisneyRowKind.CONTINUE_WATCHING }) {
             observeContinueWatching()
         }
     }
@@ -356,6 +367,8 @@ class DisneyPlusViewModel @Inject constructor(
                 is DisneyRowSource.Discover -> found += source.mediaType
                 is DisneyRowSource.Curated -> source.titles.forEach { found += it.mediaType }
                 is DisneyRowSource.TmdbCollection -> found += TmdbCollectionMediaType.MOVIE
+                is DisneyRowSource.Trending -> source.mediaType?.let { found += it }
+                    ?: found.addAll(listOf(TmdbCollectionMediaType.MOVIE, TmdbCollectionMediaType.TV))
             }
         }
         if (items.any { it.type == com.nuvio.tv.domain.model.ContentType.SERIES }) found += TmdbCollectionMediaType.TV

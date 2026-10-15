@@ -36,7 +36,11 @@ data class MetaPreview(
     val voteCount: Int? = null,
     val sourceAddonBaseUrl: String? = null,
     /** True when [landscapePoster] already has the title's name on it (a TMDB "title card" backdrop). */
-    val landscapeHasTitle: Boolean = false
+    val landscapeHasTitle: Boolean = false,
+    /** A label on the card ("NEW", "PREMIERE", "COMING SOON"), e.g. on Home's Premieres row. */
+    val badge: String? = null,
+    /** The [badge] is for a title still to come (styled apart). */
+    val badgeUpcoming: Boolean = false
 ) {
     val apiType: String
         get() = type.toApiString(rawType)

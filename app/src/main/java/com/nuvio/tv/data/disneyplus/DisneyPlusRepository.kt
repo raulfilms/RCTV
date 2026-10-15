@@ -40,6 +40,8 @@ import javax.inject.Singleton
 
 private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
+/** TMDB release types: theatrical (limited, then wide). */
+private const val THEATRICAL_RELEASE_TYPES = "2|3"
 private const val HERO_ITEM_COUNT = 6
 /** The See All Year menu never goes back further than this. */
 private const val OLDEST_YEAR = 1900
@@ -120,9 +122,12 @@ class DisneyPlusRepository @Inject constructor(
                         async {
                             try {
                                 when (source) {
-                                    is DisneyRowSource.Discover -> discover(source, language)
+                                    is DisneyRowSource.Discover -> discover(source, language, page = source.startPage)
                                     is DisneyRowSource.Curated -> curated(source, language)
                                     is DisneyRowSource.TmdbCollection -> tmdbCollection(source.query, language)
+                                    // Two pages: a row's worth after repeats are skipped.
+                                    is DisneyRowSource.Trending ->
+                                        trendingPage(source, language, 1).items + trendingPage(source, language, 2).items
                                 }
                             } catch (e: CancellationException) {
                                 throw e
@@ -219,7 +224,10 @@ class DisneyPlusRepository @Inject constructor(
          */
         suspend fun next(): List<MetaPreview> = withContext(Dispatchers.IO) {
             val language = sessionLanguage ?: language().also { sessionLanguage = it }
-            val allPagers = pagers ?: seeAllDiscoverSources(spec, filter).map { deepPager(it, language) }.also { pagers = it }
+            val allPagers = pagers ?: (
+                seeAllDiscoverSources(spec, filter).map { deepPager(it, language) } +
+                    seeAllTrendingSources(spec, filter).map { trendingPager(it, filter, language) }
+                ).also { pagers = it }
             val active = allPagers.filterNot { it.isDone }
             val localJobs = if (localPending) localJobs(spec, language) else emptyList()
             val jobCount = active.size + localJobs.size
@@ -271,11 +279,8 @@ class DisneyPlusRepository @Inject constructor(
     /** One discover query of a row, paged with no limit, a stretch of time at a time past 10,000. */
     private fun deepPager(source: DisneyRowSource.Discover, language: String): TmdbDeepPager<MetaPreview> {
         val today = LocalDate.now()
-        fun date(value: String?): LocalDate? = when (value) {
-            null -> null
-            DisneyPlusCatalog.TODAY -> today
-            else -> runCatching { LocalDate.parse(value) }.getOrNull()
-        }
+        fun date(value: String?): LocalDate? =
+            DisneyPlusCatalog.resolveDate(value, today)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val order = when {
             source.sortBy.endsWith("date.desc") -> TmdbDeepPager.DateOrder.NEWEST_FIRST
             source.sortBy.endsWith("date.asc") -> TmdbDeepPager.DateOrder.OLDEST_FIRST
@@ -300,6 +305,85 @@ class DisneyPlusRepository @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * A trending list's pages (TMDB keeps it to a few hundred titles), with [filter] applied here:
+     * TMDB can't filter trending titles.
+     */
+    private fun trendingPager(
+        source: DisneyRowSource.Trending,
+        filter: TmdbSeeAllFilter,
+        language: String
+    ): TmdbDeepPager<MetaPreview> = TmdbDeepPager(
+        from = null,
+        to = null,
+        dateOrder = TmdbDeepPager.DateOrder.NONE,
+        idOf = { "${it.apiType}:${it.id}" }
+    ) { page, _, _ ->
+        val result = trendingPage(source, language, page)
+        TmdbDeepPager.DeepPage(result.items.filter { it.matches(filter) }, result.totalPages)
+    }
+
+    /** The row's trending lists for See All (none when [filter] picks a kind of title they don't have). */
+    private fun seeAllTrendingSources(spec: DisneyRowSpec, filter: TmdbSeeAllFilter): List<DisneyRowSource.Trending> =
+        (spec.sources + spec.seeAll)
+            .filterIsInstance<DisneyRowSource.Trending>()
+            .filter { filter.mediaType == null || it.mediaType == null || it.mediaType == filter.mediaType }
+            .distinct()
+
+    private data class TrendingPage(val items: List<MetaPreview>, val totalPages: Int)
+
+    /** One page of TMDB's trending titles (movies and series together when the source says so). */
+    private suspend fun trendingPage(source: DisneyRowSource.Trending, language: String, page: Int): TrendingPage {
+        val path = when (source.mediaType) {
+            TmdbCollectionMediaType.MOVIE -> "movie"
+            TmdbCollectionMediaType.TV -> "tv"
+            null -> "all"
+        }
+        val response = tmdbApi.getTrending(path, source.window, apiKey, language, page)
+        if (!response.isSuccessful) throw java.io.IOException("TMDB trending HTTP ${response.code()}")
+        val body = response.body()
+        val movieGenres = genreMap(TmdbCollectionMediaType.MOVIE, language)
+        val tvGenres = genreMap(TmdbCollectionMediaType.TV, language)
+        val items = body?.results.orEmpty().mapNotNull { result ->
+            val mediaType = when (source.mediaType) {
+                null -> when (result.mediaType) {
+                    "movie" -> TmdbCollectionMediaType.MOVIE
+                    "tv" -> TmdbCollectionMediaType.TV
+                    else -> null // people
+                }
+                else -> source.mediaType
+            } ?: return@mapNotNull null
+            result.toPreview(mediaType, if (mediaType == TmdbCollectionMediaType.TV) tvGenres else movieGenres)
+        }
+        return TrendingPage(items, body?.totalPages ?: page)
+    }
+
+    /** A TMDB franchise collection's name and backdrop, for its card on Home (found by name). */
+    suspend fun franchiseArt(query: String): Pair<String, String?>? = withContext(Dispatchers.IO) {
+        runCatching {
+            lookupLimiter.withPermit {
+                val results = tmdbApi.searchCollections(apiKey, query).body()?.results.orEmpty()
+                val wanted = normalizeTitle(query).removeSuffix("collection")
+                val match = results.firstOrNull { normalizeTitle(it.name.orEmpty()).removeSuffix("collection") == wanted }
+                    ?: results.firstOrNull { normalizeTitle(it.name.orEmpty()).startsWith(wanted) }
+                match?.let { found ->
+                    val name = found.name?.removeSuffix(" Collection")?.trim().orEmpty().ifBlank { query }
+                    name to (found.backdropPath ?: found.posterPath)?.let { "https://image.tmdb.org/t/p/w780$it" }
+                }
+            }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+    }
+
+    /** A TV network's logo on TMDB (null: none, or TMDB couldn't be reached). */
+    suspend fun networkLogo(networkId: Int): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            lookupLimiter.withPermit {
+                tmdbApi.getNetworkDetails(networkId, apiKey).body()?.logoPath
+                    ?.let { "https://image.tmdb.org/t/p/w300$it" }
+            }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
     }
 
     /**
@@ -332,7 +416,7 @@ class DisneyPlusRepository @Inject constructor(
         val first = (earliest + localYears).minOrNull()?.coerceAtLeast(OLDEST_YEAR) ?: OLDEST_YEAR
         val sourceLast = sources.maxOf { source ->
             source.releaseDateLte?.let { lte ->
-                if (lte == DisneyPlusCatalog.TODAY) currentYear else lte.take(4).toIntOrNull()
+                DisneyPlusCatalog.resolveDate(lte)?.take(4)?.toIntOrNull()
             } ?: (currentYear + 1)
         }
         val last = maxOf(sourceLast.coerceAtMost(currentYear + 1), localYears.maxOrNull() ?: sourceLast)
@@ -373,8 +457,8 @@ class DisneyPlusRepository @Inject constructor(
         if (filter.mediaType != null && filter.mediaType != mediaType) return emptyList()
         var narrowed = this
         filter.year?.let { year ->
-            val gte = releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
-            val lte = releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
+            val gte = DisneyPlusCatalog.resolveDate(releaseDateGte)
+            val lte = DisneyPlusCatalog.resolveDate(releaseDateLte)
             val from = maxOf(gte ?: "0000-01-01", "$year-01-01")
             val to = minOf(lte ?: "9999-12-31", "$year-12-31")
             if (from > to) return emptyList()
@@ -650,8 +734,10 @@ class DisneyPlusRepository @Inject constructor(
             listOfNotNull(source.networks, resolved.toString()).joinToString("|")
         } ?: source.networks
         val today = LocalDate.now().toString()
-        val releaseLte = source.releaseDateLte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
-        val releaseGte = source.releaseDateGte?.let { if (it == DisneyPlusCatalog.TODAY) today else it }
+        val releaseLte = DisneyPlusCatalog.resolveDate(source.releaseDateLte)
+        val releaseGte = DisneyPlusCatalog.resolveDate(source.releaseDateGte)
+        val airGte = DisneyPlusCatalog.resolveDate(source.airDateGte)
+        val airLte = DisneyPlusCatalog.resolveDate(source.airDateLte)
         val providers = source.providerQuery?.let { query ->
             val resolved = providerId(query) ?: return null
             listOfNotNull(source.providers, resolved.toString()).joinToString("|")
@@ -664,10 +750,18 @@ class DisneyPlusRepository @Inject constructor(
                 page = page,
                 sortBy = source.sortBy,
                 withCompanies = companies,
-                releaseDateLte = releaseLte,
+                // In theaters: the dates are the theatrical release's (US), not the first release's.
+                releaseDateLte = if (source.theatrical) null else releaseLte,
                 voteCountGte = source.voteCountGte,
                 withGenres = source.genres,
-                releaseDateGte = releaseGte,
+                releaseDateGte = if (source.theatrical) null else releaseGte,
+                anyReleaseDateGte = if (source.theatrical) releaseGte else null,
+                anyReleaseDateLte = if (source.theatrical) releaseLte else null,
+                withReleaseType = if (source.theatrical) THEATRICAL_RELEASE_TYPES else null,
+                region = if (source.theatrical) "US" else null,
+                voteCountLte = source.voteCountLte,
+                voteAverageGte = source.voteAverageGte,
+                withOriginCountry = source.originCountry,
                 withKeywords = resolvedKeywordId?.toString(),
                 watchRegion = if (usesProviders) "US" else null,
                 withWatchProviders = providers,
@@ -689,6 +783,11 @@ class DisneyPlusRepository @Inject constructor(
                 voteCountGte = source.voteCountGte,
                 withGenres = source.genres,
                 firstAirDateGte = releaseGte,
+                voteCountLte = source.voteCountLte,
+                voteAverageGte = source.voteAverageGte,
+                withOriginCountry = source.originCountry,
+                airDateGte = airGte,
+                airDateLte = airLte,
                 withKeywords = resolvedKeywordId?.toString(),
                 watchRegion = if (usesProviders) "US" else null,
                 withWatchProviders = providers,

@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.search
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.discover.DiscoverCategory
@@ -47,10 +48,20 @@ data class TmdbDiscoverUiState(
  */
 @HiltViewModel
 class TmdbDiscoverViewModel @Inject constructor(
-    private val repository: TmdbDiscoverRepository
+    private val repository: TmdbDiscoverRepository,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(TmdbDiscoverUiState())
+    /**
+     * Opened from one of Home's genre cards: the TMDB genre to pick once the Genre menu is known
+     * (a series genre opens with Type set to TV Shows).
+     */
+    private val startShows = savedStateHandle.get<String>("type") == "shows"
+    private var pendingGenreId: Int? = savedStateHandle.get<Int>("genreId")
+
+    private val _uiState = MutableStateFlow(
+        TmdbDiscoverUiState(mediaFilter = if (startShows) DiscoverMediaFilter.SHOWS else DiscoverMediaFilter.ALL)
+    )
     val uiState: StateFlow<TmdbDiscoverUiState> = _uiState.asStateFlow()
 
     /**
@@ -73,8 +84,9 @@ class TmdbDiscoverViewModel @Inject constructor(
     private var genresJob: Job? = null
 
     init {
-        loadGenres(DiscoverMediaFilter.ALL)
-        restart()
+        loadGenres(_uiState.value.mediaFilter)
+        // With a genre to pick, the list starts once it's picked (when the Genre menu is known).
+        if (pendingGenreId == null) restart()
     }
 
     fun selectMediaFilter(filter: DiscoverMediaFilter) {
@@ -119,12 +131,28 @@ class TmdbDiscoverViewModel @Inject constructor(
             val genres = runCatching { repository.genres(filter, repository.language()) }
                 .onFailure { if (it is CancellationException) throw it }
                 .getOrDefault(emptyList())
-            if (genres.isEmpty()) return@launch
+            val wanted = pendingGenreId
+            if (genres.isEmpty()) {
+                // The genre can't be picked without the menu: show everything rather than nothing.
+                if (wanted != null) {
+                    pendingGenreId = null
+                    restart()
+                }
+                return@launch
+            }
             val previous = _uiState.value.selectedGenre
-            // Same genre on the new list (by name, e.g. "Action"), or none if that Type doesn't have it.
-            val kept = previous?.let { old -> genres.firstOrNull { it.label == old.label } }
+            // The genre card's genre; else the same genre on the new list (by name, e.g. "Action"),
+            // or none if that Type doesn't have it.
+            val kept = if (wanted != null) {
+                pendingGenreId = null
+                genres.firstOrNull { genre ->
+                    if (filter == DiscoverMediaFilter.SHOWS) genre.tvId == wanted else genre.movieId == wanted
+                }
+            } else {
+                previous?.let { old -> genres.firstOrNull { it.label == old.label } }
+            }
             _uiState.update { it.copy(genres = genres, selectedGenre = kept) }
-            if (kept != previous) restart()
+            if (kept != previous || wanted != null) restart()
         }
     }
 

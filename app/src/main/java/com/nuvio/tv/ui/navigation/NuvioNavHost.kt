@@ -1136,6 +1136,23 @@ private fun PlaybackNavHost(
             )
         }
 
+        // Discover on one genre (Home's genre cards): the same page, with Type and Genre already picked.
+        composable(
+            route = Screen.DiscoverGenre.route,
+            arguments = listOf(
+                navArgument("type") { type = NavType.StringType },
+                navArgument("genreId") { type = NavType.IntType }
+            )
+        ) {
+            DiscoverScreen(
+                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = addonBaseUrl)
+                    )
+                }
+            )
+        }
+
         composable(Screen.Discover.route) {
             DiscoverScreen(
                 showBuiltInHeader = !hideBuiltInHeaders,
@@ -1278,9 +1295,17 @@ private fun PlaybackNavHost(
 
         composable(
             route = Screen.DisneyPlusBrand.route,
-            arguments = listOf(navArgument("hub") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("hub") { type = NavType.StringType },
+                navArgument("seeAll") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ) {
             DisneyPlusScreen(
+                onBack = { navController.popBackStack() },
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     navController.navigate(
                         Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = addonBaseUrl)
@@ -1770,6 +1795,30 @@ private fun HomeRouteContent(
                     playOnLoad = true
                 )
             )
+        },
+        onOpenHomeLink = { link ->
+            when (link) {
+                // A row's whole list (or a franchise's movies), on the hub See All page; Back returns to Home.
+                is com.nuvio.tv.ui.screens.home.HomeLink.SeeAll -> navController.navigate(
+                    Screen.DisneyPlusBrand.createRoute(com.nuvio.tv.data.disneyplus.DisneyPlusHub.HOME.key, seeAll = link.rowId)
+                )
+                // Discover on that genre: movies and series for a movie genre, series for a series genre.
+                is com.nuvio.tv.ui.screens.home.HomeLink.Genre -> navController.navigate(
+                    Screen.DiscoverGenre.createRoute(
+                        type = if (link.tile.mediaType == com.nuvio.tv.domain.model.TmdbCollectionMediaType.TV) "shows" else "all",
+                        genreId = link.tile.genreId
+                    )
+                )
+                // The network's page (its series).
+                is com.nuvio.tv.ui.screens.home.HomeLink.Channel -> navController.navigate(
+                    Screen.TmdbEntityBrowse.createRoute(
+                        entityKind = "network",
+                        entityId = link.tile.networkId,
+                        entityName = link.tile.name,
+                        sourceType = "tv"
+                    )
+                )
+            }
         },
         onOpenStreamingService = { service ->
             val appHub = service.appHub

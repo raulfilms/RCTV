@@ -679,7 +679,10 @@ enum class DisneyPlusHub(
     PK_DREAMWORKS("peacock_dreamworks", R.string.peacock_brand_dreamworks, HubService.PEACOCK),
     PK_FOCUS("peacock_focus_features", R.string.peacock_brand_focus, HubService.PEACOCK),
     PK_WORKING_TITLE("peacock_working_title", R.string.peacock_brand_working_title, HubService.PEACOCK),
-    PK_AMBLIN("peacock_amblin", R.string.peacock_brand_amblin, HubService.PEACOCK);
+    PK_AMBLIN("peacock_amblin", R.string.peacock_brand_amblin, HubService.PEACOCK),
+
+    /** Home's TMDB rows (Trending Now, New Releases...): their See All pages and franchise lists. */
+    HOME("home", R.string.home_rows_page_title);
 
     /** A service's main page (hero, brand tiles, Continue Watching...), as opposed to a brand page. */
     val isMain: Boolean
@@ -741,7 +744,31 @@ sealed interface DisneyRowSource {
         /** Original language (ISO 639-1, e.g. "es"): only titles first made in that language. */
         val originalLanguage: String? = null,
         /** Leave out titles from these companies (e.g. Pixar from Disney's animation catalog). */
-        val withoutCompanies: String? = null
+        val withoutCompanies: String? = null,
+        /** Country of origin (ISO 3166-1, "|" for any of several: "FR|IT|DE"). */
+        val originCountry: String? = null,
+        /** Series with an episode aired in these dates (new seasons and episodes), yyyy-MM-dd or relative. */
+        val airDateGte: String? = null,
+        val airDateLte: String? = null,
+        /** At most this many votes (with [voteCountGte]: well rated but little known). */
+        val voteCountLte: Int? = null,
+        val voteAverageGte: Double? = null,
+        /**
+         * Movies in theaters (US): [releaseDateGte] / [releaseDateLte] are then the theatrical release
+         * dates, not the first release.
+         */
+        val theatrical: Boolean = false,
+        /** The page the row starts from (a row that shows a different stretch each day). See All starts at 1. */
+        val startPage: Int = 1
+    ) : DisneyRowSource
+
+    /**
+     * TMDB's trending titles ([mediaType] null: movies and series together), today's ("day") or this
+     * week's ("week").
+     */
+    data class Trending(
+        val mediaType: TmdbCollectionMediaType? = null,
+        val window: String = "day"
     ) : DisneyRowSource
 
     data class Curated(val titles: List<CuratedTitle>) : DisneyRowSource
@@ -764,8 +791,33 @@ enum class DisneyRowKind {
     RECOMMENDED,
 
     /** A row of wide collection tiles ([DisneyRowSpec.collections]); each opens its own collection page. */
-    COLLECTIONS
+    COLLECTIONS,
+
+    /** Home: genre cards ([DisneyRowSpec.genreTiles]); each opens Discover with that genre. */
+    GENRES,
+
+    /** Home: TMDB franchise collections ([DisneyRowSpec.franchiseRows]); each opens its titles. */
+    FRANCHISES,
+
+    /** Home: TV networks ([DisneyRowSpec.channelTiles]); each opens the network's page. */
+    CHANNELS,
+
+    /** Not shown as a row: a list opened from a tile (a franchise's movies). */
+    HIDDEN
 }
+
+/** A genre card on Home: TMDB's genre [genreId] for movies or series ([mediaType]). */
+data class GenreTile(
+    val label: String,
+    val mediaType: TmdbCollectionMediaType,
+    val genreId: Int
+)
+
+/** A TV network card on Home ([networkId]: its TMDB id). */
+data class ChannelTile(
+    val name: String,
+    val networkId: Int
+)
 
 data class DisneyRowSpec(
     val id: String,
@@ -779,7 +831,15 @@ data class DisneyRowSpec(
      * film. Rows built from TMDB queries already page through everything they match. (Hand-picked
      * movies also bring every other movie of their TMDB franchise collections into See All.)
      */
-    val seeAll: List<DisneyRowSource> = emptyList()
+    val seeAll: List<DisneyRowSource> = emptyList(),
+    /** The row's name when it isn't a string resource (a franchise: "Star Wars"); else [titleRes]. */
+    val title: String? = null,
+    /** [DisneyRowKind.GENRES]: the cards. */
+    val genreTiles: List<GenreTile> = emptyList(),
+    /** [DisneyRowKind.CHANNELS]: the cards. */
+    val channelTiles: List<ChannelTile> = emptyList(),
+    /** [DisneyRowKind.FRANCHISES]: the ids of the hidden rows (one per franchise) the cards open. */
+    val franchiseRows: List<String> = emptyList()
 )
 
 /** Gives a row its complete catalog for See All (see [DisneyRowSpec.seeAll]). */
@@ -5196,8 +5256,403 @@ object DisneyPlusCatalog {
         collectionPage(DisneyPlusHub.HC_DARK_KNIGHT_TRILOGY, HBO_DARK_KNIGHT_TRILOGY, seeAll = listOf(franchise("The Dark Knight")))
     ).associateBy { it.hub }
 
+    // ================================================================== Home's TMDB rows
+
+    /** Genre cards on Home: TMDB's movie genres, then its series-only genres. */
+    private val HOME_GENRES = listOf(
+        GenreTile("Action", MOVIE, 28),
+        GenreTile("Adventure", MOVIE, 12),
+        GenreTile("Animation", MOVIE, 16),
+        GenreTile("Comedy", MOVIE, 35),
+        GenreTile("Crime", MOVIE, 80),
+        GenreTile("Documentary", MOVIE, 99),
+        GenreTile("Drama", MOVIE, 18),
+        GenreTile("Family", MOVIE, 10751),
+        GenreTile("Fantasy", MOVIE, 14),
+        GenreTile("History", MOVIE, 36),
+        GenreTile("Horror", MOVIE, 27),
+        GenreTile("Music", MOVIE, 10402),
+        GenreTile("Mystery", MOVIE, 9648),
+        GenreTile("Romance", MOVIE, 10749),
+        GenreTile("Science Fiction", MOVIE, 878),
+        GenreTile("TV Movie", MOVIE, 10770),
+        GenreTile("Thriller", MOVIE, 53),
+        GenreTile("War", MOVIE, 10752),
+        GenreTile("Western", MOVIE, 37),
+        GenreTile("Action & Adventure", TV, 10759),
+        GenreTile("Kids", TV, 10762),
+        GenreTile("News", TV, 10763),
+        GenreTile("Reality", TV, 10764),
+        GenreTile("Sci-Fi & Fantasy", TV, 10765),
+        GenreTile("Soap", TV, 10766),
+        GenreTile("Talk", TV, 10767),
+        GenreTile("War & Politics", TV, 10768)
+    )
+
+    /** TV networks on Home (TMDB network ids, checked on themoviedb.org). */
+    private val HOME_CHANNELS = listOf(
+        ChannelTile("HBO", 49),
+        ChannelTile("Netflix", 213),
+        ChannelTile("NBC", 6),
+        ChannelTile("ABC", 2),
+        ChannelTile("CBS", 16),
+        ChannelTile("FOX", 19),
+        ChannelTile("AMC", 174),
+        ChannelTile("FX", 88),
+        ChannelTile("Showtime", 67),
+        ChannelTile("STARZ", 318),
+        ChannelTile("The CW", 71),
+        ChannelTile("Prime Video", 1024),
+        ChannelTile("Apple TV", 2552),
+        ChannelTile("Disney+", 2739),
+        ChannelTile("Hulu", 453),
+        ChannelTile("Paramount+", 4330),
+        ChannelTile("Peacock", 3353),
+        ChannelTile("HBO Max", 3186),
+        ChannelTile("BBC One", 4),
+        ChannelTile("BBC Two", 332),
+        ChannelTile("ITV1", 9),
+        ChannelTile("Channel 4", 26),
+        ChannelTile("Disney Channel", 54),
+        ChannelTile("Nickelodeon", 13),
+        ChannelTile("Cartoon Network", 56),
+        ChannelTile("Adult Swim", 80),
+        ChannelTile("Comedy Central", 47),
+        ChannelTile("MTV", 33),
+        ChannelTile("USA Network", 30),
+        ChannelTile("TNT", 41),
+        ChannelTile("TBS", 68),
+        ChannelTile("Syfy", 77),
+        ChannelTile("Bravo", 74),
+        ChannelTile("Discovery", 64),
+        ChannelTile("National Geographic", 43),
+        ChannelTile("History", 65),
+        ChannelTile("A&E", 129),
+        ChannelTile("Lifetime", 34),
+        ChannelTile("Freeform", 1267),
+        ChannelTile("PBS", 14),
+        ChannelTile("Telemundo", 193)
+    )
+
+    /** Franchises on Home: TMDB collections, found by name (each card opens all its movies). */
+    private val HOME_FRANCHISES = listOf(
+        "Star Wars", "Harry Potter", "The Lord of the Rings", "The Hobbit", "The Avengers", "Spider-Man",
+        "X-Men", "The Dark Knight", "Jurassic Park", "The Fast and the Furious", "Mission: Impossible",
+        "James Bond", "John Wick", "Indiana Jones", "Back to the Future", "The Matrix", "The Terminator",
+        "Alien", "Pirates of the Caribbean", "Transformers", "The Hunger Games", "The Twilight",
+        "The Godfather", "The Bourne", "Rocky", "Mad Max", "Planet of the Apes", "Avatar", "Dune",
+        "Toy Story", "Shrek", "Despicable Me", "Ice Age", "Kung Fu Panda", "How to Train Your Dragon",
+        "Frozen", "Fantastic Beasts", "The Chronicles of Narnia", "Jumanji", "Ghostbusters", "Men in Black",
+        "Home Alone", "Die Hard", "Bad Boys", "Ocean's", "Deadpool", "The Conjuring", "Scream",
+        "Halloween", "Saw"
+    )
+
+    private fun franchiseRowId(name: String): String =
+        "franchise_" + name.lowercase(java.util.Locale.US).replace(Regex("[^a-z0-9]+"), "_").trim('_')
+
+    /** Oscar Best Picture winners and Emmy best series winners (newest first, movies and series mixed). */
+    private val HOME_AWARD_WINNERS = listOf(
+        movie("Anora", 2024),
+        series("The Pitt", 2025),
+        series("The Studio", 2025),
+        series("Adolescence", 2025),
+        movie("Oppenheimer", 2023),
+        series("Shōgun", 2024),
+        series("Hacks", 2021),
+        series("Baby Reindeer", 2024),
+        movie("Everything Everywhere All at Once", 2022),
+        series("Succession", 2018),
+        series("The Bear", 2022),
+        series("Beef", 2023),
+        movie("CODA", 2021),
+        series("Ted Lasso", 2020),
+        series("The White Lotus", 2021),
+        movie("Nomadland", 2020),
+        series("The Crown", 2016),
+        series("The Queen's Gambit", 2020),
+        movie("Parasite", 2019),
+        series("Schitt's Creek", 2015),
+        series("Watchmen", 2019),
+        movie("Green Book", 2018),
+        series("Game of Thrones", 2011),
+        series("Fleabag", 2016),
+        series("Chernobyl", 2019),
+        movie("The Shape of Water", 2017),
+        series("The Marvelous Mrs. Maisel", 2017),
+        movie("Moonlight", 2016),
+        series("The Handmaid's Tale", 2017),
+        series("Veep", 2012),
+        movie("Spotlight", 2015),
+        movie("Birdman or (The Unexpected Virtue of Ignorance)", 2014),
+        series("Breaking Bad", 2008),
+        movie("12 Years a Slave", 2013),
+        series("Modern Family", 2009),
+        movie("Argo", 2012),
+        series("Homeland", 2011),
+        movie("The Artist", 2011),
+        series("Mad Men", 2007),
+        movie("The King's Speech", 2010),
+        movie("The Hurt Locker", 2008),
+        movie("Slumdog Millionaire", 2008),
+        movie("No Country for Old Men", 2007),
+        movie("The Departed", 2006),
+        movie("Crash", 2004),
+        movie("Million Dollar Baby", 2004),
+        movie("The Lord of the Rings: The Return of the King", 2003),
+        movie("Chicago", 2002),
+        movie("A Beautiful Mind", 2001),
+        movie("Gladiator", 2000),
+        movie("American Beauty", 1999),
+        movie("Titanic", 1997)
+    )
+
+    /** International: titles first made in these languages (not English). */
+    private const val INTERNATIONAL_LANGUAGES =
+        "ko|ja|es|fr|hi|it|de|pt|zh|cn|tr|th|da|sv|no|pl|nl|fa|ar|ru|te|ta|ml|id|tl|he"
+    private const val EUROPEAN_COUNTRIES = "FR|IT|DE|ES|SE|DK|NO|FI|NL|BE|PL|IE|PT|AT|CH|CZ|IS|GR|HU|RO"
+    /** Brazilian, Turkish, Arab, African and other markets' series. */
+    private const val GLOBAL_SERIES_COUNTRIES =
+        "BR|TR|EG|SA|AE|LB|MA|NG|ZA|KE|GH|JO|SY|KW|QA|DZ|TN|IL|IR|PH|TH|ID|VN|PK"
+    /** News, talk and soap episodes air every day; New Releases leaves them out. */
+    private const val DAILY_TV_GENRES = "10763,10767,10766"
+
+    /** Discover Something New: a different mix each day (genres and how deep into the list). */
+    private val homeDay = java.time.LocalDate.now().dayOfYear
+    private val DISCOVER_MOVIE_GENRES = listOf(878, 14, 36, 10402, 37, 9648, 10752, 99, 16, 80, 53, 10749, 12, 35)
+    private val DISCOVER_TV_GENRES = listOf(10765, 9648, 80, 99, 10768, 16, 18, 35, 10759)
+
+    private val homeRows = DisneyHubSpec(
+        hub = DisneyPlusHub.HOME,
+        heroRowId = "home_trending",
+        rows = buildList {
+            add(
+                DisneyRowSpec(
+                    "home_trending", R.string.home_row_trending_now,
+                    listOf(DisneyRowSource.Trending(null, "day"))
+                ).withSeeAll(
+                    DisneyRowSource.Trending(null, "week"),
+                    DisneyRowSource.Discover(MOVIE, sortBy = POPULAR),
+                    DisneyRowSource.Discover(TV, sortBy = POPULAR)
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_new_releases", R.string.home_row_new_releases,
+                    listOf(
+                        DisneyRowSource.Discover(
+                            MOVIE, sortBy = RECENT, voteCountGte = 10,
+                            releaseDateGte = daysFromToday(-60), releaseDateLte = TODAY
+                        ),
+                        // Series with new episodes these last two weeks (new seasons too).
+                        DisneyRowSource.Discover(
+                            TV, sortBy = POPULAR, voteCountGte = 20, withoutGenres = DAILY_TV_GENRES,
+                            airDateGte = daysFromToday(-14), airDateLte = TODAY
+                        )
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_premieres", R.string.home_row_premieres,
+                    listOf(
+                        // Out these last 30 days...
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, releaseDateGte = daysFromToday(-30), releaseDateLte = TODAY),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, releaseDateGte = daysFromToday(-30), releaseDateLte = TODAY),
+                        // ...and coming in the next three months.
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, releaseDateGte = daysFromToday(1), releaseDateLte = daysFromToday(90)),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, releaseDateGte = daysFromToday(1), releaseDateLte = daysFromToday(90))
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_most_popular", R.string.home_row_most_popular,
+                    listOf(DisneyRowSource.Discover(MOVIE, sortBy = POPULAR), DisneyRowSource.Discover(TV, sortBy = POPULAR))
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_top_rated", R.string.home_row_top_rated,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = TOP_RATED, voteCountGte = 2000),
+                        DisneyRowSource.Discover(TV, sortBy = TOP_RATED, voteCountGte = 1000)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_in_theaters", R.string.home_row_in_theaters,
+                    listOf(
+                        DisneyRowSource.Discover(
+                            MOVIE, sortBy = POPULAR, theatrical = true,
+                            releaseDateGte = daysFromToday(-45), releaseDateLte = TODAY
+                        )
+                    )
+                )
+            )
+            add(DisneyRowSpec("home_popular_tv", R.string.home_row_popular_tv, listOf(DisneyRowSource.Discover(TV, sortBy = POPULAR))))
+            add(DisneyRowSpec("home_popular_movies", R.string.home_row_popular_movies, listOf(DisneyRowSource.Discover(MOVIE, sortBy = POPULAR))))
+            add(
+                DisneyRowSpec(
+                    "home_genres", R.string.home_row_genres,
+                    kind = DisneyRowKind.GENRES,
+                    genreTiles = HOME_GENRES
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_international", R.string.home_row_international,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originalLanguage = INTERNATIONAL_LANGUAGES, voteCountGte = 300),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originalLanguage = INTERNATIONAL_LANGUAGES, voteCountGte = 100)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_korean", R.string.home_row_korean,
+                    listOf(
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originalLanguage = "ko", voteCountGte = 30),
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originalLanguage = "ko", voteCountGte = 50)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_spanish", R.string.home_row_spanish,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originalLanguage = "es", voteCountGte = 50),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originalLanguage = "es", voteCountGte = 20)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_anime", R.string.home_row_anime,
+                    listOf(
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originalLanguage = "ja", genres = DisneyPlusIds.G_ANIMATION, voteCountGte = 50),
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originalLanguage = "ja", voteCountGte = 100),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originalLanguage = "ja", withoutGenres = DisneyPlusIds.G_ANIMATION, voteCountGte = 20)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_indian", R.string.home_row_indian,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originCountry = "IN", voteCountGte = 50),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originCountry = "IN", voteCountGte = 10)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_british", R.string.home_row_british,
+                    listOf(
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originCountry = "GB", voteCountGte = 50),
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originCountry = "GB", voteCountGte = 200)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_european", R.string.home_row_european,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = POPULAR, originCountry = EUROPEAN_COUNTRIES, voteCountGte = 200),
+                        DisneyRowSource.Discover(TV, sortBy = POPULAR, originCountry = EUROPEAN_COUNTRIES, voteCountGte = 50)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_global_series", R.string.home_row_global_series,
+                    listOf(DisneyRowSource.Discover(TV, sortBy = POPULAR, originCountry = GLOBAL_SERIES_COUNTRIES, voteCountGte = 10))
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_classics", R.string.home_row_classics,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = MOST_VOTED, releaseDateLte = "1979-12-31"),
+                        DisneyRowSource.Discover(TV, sortBy = MOST_VOTED, releaseDateLte = "1989-12-31")
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_franchises", R.string.home_row_franchises,
+                    kind = DisneyRowKind.FRANCHISES,
+                    franchiseRows = HOME_FRANCHISES.map(::franchiseRowId)
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_channels", R.string.home_row_channels,
+                    kind = DisneyRowKind.CHANNELS,
+                    channelTiles = HOME_CHANNELS
+                )
+            )
+            add(DisneyRowSpec("home_awards", R.string.home_row_awards, listOf(curated(HOME_AWARD_WINNERS))))
+            add(
+                DisneyRowSpec(
+                    "home_hidden_gems", R.string.home_row_hidden_gems,
+                    listOf(
+                        DisneyRowSource.Discover(MOVIE, sortBy = TOP_RATED, voteCountGte = 200, voteCountLte = 1500, voteAverageGte = 7.2),
+                        DisneyRowSource.Discover(TV, sortBy = TOP_RATED, voteCountGte = 100, voteCountLte = 800, voteAverageGte = 7.5)
+                    )
+                )
+            )
+            add(
+                DisneyRowSpec(
+                    "home_discover_new", R.string.home_row_discover_new,
+                    listOf(
+                        DisneyRowSource.Discover(
+                            MOVIE, sortBy = MOST_VOTED, voteCountGte = 300,
+                            genres = DISCOVER_MOVIE_GENRES[homeDay % DISCOVER_MOVIE_GENRES.size].toString(),
+                            startPage = 2 + homeDay % 5
+                        ),
+                        DisneyRowSource.Discover(
+                            TV, sortBy = MOST_VOTED, voteCountGte = 100,
+                            genres = DISCOVER_TV_GENRES[homeDay % DISCOVER_TV_GENRES.size].toString(),
+                            startPage = 2 + homeDay % 3
+                        ),
+                        DisneyRowSource.Discover(
+                            MOVIE, sortBy = MOST_VOTED, voteCountGte = 300,
+                            genres = DISCOVER_MOVIE_GENRES[(homeDay + 7) % DISCOVER_MOVIE_GENRES.size].toString(),
+                            startPage = 3 + homeDay % 4
+                        )
+                    )
+                )
+            )
+            // One hidden list per franchise card: all of that TMDB collection's movies.
+            HOME_FRANCHISES.forEach { name ->
+                add(
+                    DisneyRowSpec(
+                        franchiseRowId(name), R.string.home_row_franchises,
+                        title = name,
+                        sources = listOf(franchise(name)),
+                        kind = DisneyRowKind.HIDDEN
+                    )
+                )
+            }
+        }
+    )
+
     /** Sentinel replaced with today's date (yyyy-MM-dd) when the row is resolved. */
     const val TODAY = "__today__"
+
+    /** A date [days] from today (negative: in the past), worked out when the row is resolved. */
+    fun daysFromToday(days: Int): String = "__today${if (days >= 0) "+" else ""}${days}__"
+
+    private val relativeDate = Regex("__today([+-]\\d+)?__")
+
+    /** [value] as a date (yyyy-MM-dd): [TODAY] and [daysFromToday] become real dates; others stay. */
+    fun resolveDate(value: String?, today: java.time.LocalDate = java.time.LocalDate.now()): String? {
+        if (value == null) return null
+        val match = relativeDate.matchEntire(value) ?: return value
+        val days = match.groupValues[1].takeIf { it.isNotEmpty() }?.removePrefix("+")?.toLongOrNull() ?: 0L
+        return today.plusDays(days).toString()
+    }
 
     fun hub(hub: DisneyPlusHub): DisneyHubSpec = when (hub) {
         DisneyPlusHub.MAIN -> main
@@ -5255,6 +5710,7 @@ object DisneyPlusCatalog {
         DisneyPlusHub.PK_FOCUS -> peacockFocus
         DisneyPlusHub.PK_WORKING_TITLE -> peacockWorkingTitle
         DisneyPlusHub.PK_AMBLIN -> peacockAmblin
+        DisneyPlusHub.HOME -> homeRows
         else -> collectionPages[hub] ?: main
     }
 }

@@ -209,6 +209,12 @@ interface TmdbApi {
         @Query("without_watch_providers") withoutWatchProviders: String? = null,
         @Query("with_runtime.gte") withRuntimeGte: Int? = null,
         @Query("with_runtime.lte") withRuntimeLte: Int? = null,
+        @Query("vote_count.lte") voteCountLte: Int? = null,
+        /** Any release (with [withReleaseType], e.g. theatrical in [region]), not just the first one. */
+        @Query("release_date.gte") anyReleaseDateGte: String? = null,
+        @Query("release_date.lte") anyReleaseDateLte: String? = null,
+        @Query("with_release_type") withReleaseType: String? = null,
+        @Query("region") region: String? = null,
         /**
          * RCTV: TMDB leaves out titles it flags as "video" (shorts and specials released on video,
          * like Walt Disney Animation's) unless asked; its company and network pages count them, so
@@ -264,7 +270,11 @@ interface TmdbApi {
         @Query("without_companies") withoutCompanies: String? = null,
         @Query("without_genres") withoutGenres: String? = null,
         @Query("without_keywords") withoutKeywords: String? = null,
-        @Query("without_watch_providers") withoutWatchProviders: String? = null
+        @Query("without_watch_providers") withoutWatchProviders: String? = null,
+        @Query("vote_count.lte") voteCountLte: Int? = null,
+        /** Series with an episode aired in these dates (new seasons and episodes). */
+        @Query("air_date.gte") airDateGte: String? = null,
+        @Query("air_date.lte") airDateLte: String? = null
     ): Response<TmdbDiscoverResponse>
 
     @GET("list/{list_id}")
@@ -679,7 +689,9 @@ data class TmdbDiscoverResult(
     @Json(name = "vote_average") val voteAverage: Double? = null,
     @Json(name = "vote_count") val voteCount: Int? = null,
     @Json(name = "popularity") val popularity: Double? = null,
-    @Json(name = "genre_ids") val genreIds: List<Int>? = null
+    @Json(name = "genre_ids") val genreIds: List<Int>? = null,
+    /** "movie", "tv" or "person": only on lists that mix them (trending/all). */
+    @Json(name = "media_type") val mediaType: String? = null
 )
 
 @JsonClass(generateAdapter = true)
