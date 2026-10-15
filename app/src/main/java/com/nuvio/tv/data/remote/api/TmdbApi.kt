@@ -195,7 +195,11 @@ interface TmdbApi {
         @Query("with_original_language") withOriginalLanguage: String? = null,
         @Query("with_origin_country") withOriginCountry: String? = null,
         @Query("with_keywords") withKeywords: String? = null,
-        @Query("year") year: Int? = null,
+        /**
+         * RCTV: a Year filter means the movie came out that year. TMDB's "year" also matches any later
+         * release (a 2026 re-release of The Dark Knight), so its primary release year is asked for.
+         */
+        @Query("primary_release_year") year: Int? = null,
         @Query("watch_region") watchRegion: String? = null,
         @Query("with_watch_providers") withWatchProviders: String? = null,
         @Query("with_watch_monetization_types") withWatchMonetizationTypes: String? = null,
