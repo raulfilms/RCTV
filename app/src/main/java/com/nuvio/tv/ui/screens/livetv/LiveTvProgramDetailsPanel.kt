@@ -67,7 +67,7 @@ import java.util.Date
 import java.util.Locale
 
 /** The details panel's share of the screen's width (it slides over the guide's right side). */
-private const val PANEL_WIDTH_FRACTION = 0.44f
+private const val PANEL_WIDTH_FRACTION = 0.40f
 
 /**
  * A program's details, over the right side of the guide (a later show chosen in the guide, or one
@@ -117,7 +117,7 @@ internal fun LiveTvProgramDetailsOverlay(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 28.dp),
+                    .padding(horizontal = 22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val details = listOfNotNull(
@@ -129,7 +129,7 @@ internal fun LiveTvProgramDetailsOverlay(
                     Text(
                         text = details,
                         color = AppleTvColors.Label,
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
@@ -139,28 +139,28 @@ internal fun LiveTvProgramDetailsOverlay(
                 Text(
                     text = "${channel.name} · ${airingLabel(program)}",
                     color = AppleTvColors.LabelOnContrast,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = 1.dp)
                 )
                 val description = program.description?.takeIf { it.isNotBlank() } ?: match?.overview
                 if (!description.isNullOrBlank()) {
                     Text(
                         text = description,
                         color = AppleTvColors.Label,
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
-                        maxLines = 4,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 10.dp)
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // The actions, focus starting on the first one.
             val actions = buildList {
@@ -202,8 +202,8 @@ internal fun LiveTvProgramDetailsOverlay(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 actions.forEachIndexed { index, action ->
                     DetailsActionButton(
@@ -258,7 +258,7 @@ private fun ProgramDetailsArt(channel: LiveTvChannel, program: EpgProgram, tmdb:
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 64.dp, vertical = 36.dp)
+                    .padding(horizontal = 56.dp, vertical = 32.dp)
             )
         }
         if (!titleOnImage) {
@@ -280,7 +280,7 @@ private fun ProgramDetailsArt(channel: LiveTvChannel, program: EpgProgram, tmdb:
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
+                    .padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 val logo = art?.logo
@@ -292,14 +292,14 @@ private fun ProgramDetailsArt(channel: LiveTvChannel, program: EpgProgram, tmdb:
                         alignment = Alignment.BottomCenter,
                         onError = { logoFailed = true },
                         modifier = Modifier
-                            .height(64.dp)
-                            .widthIn(max = 320.dp)
+                            .height(46.dp)
+                            .widthIn(max = 240.dp)
                     )
                 } else {
                     Text(
                         text = name,
                         color = AppleTvColors.Label,
-                        fontSize = 26.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
@@ -310,7 +310,7 @@ private fun ProgramDetailsArt(channel: LiveTvChannel, program: EpgProgram, tmdb:
             }
         }
     }
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(6.dp))
 }
 
 private data class DetailsAction(
@@ -324,13 +324,13 @@ private data class DetailsAction(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailsActionButton(action: DetailsAction, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(10.dp)
     Surface(
         onClick = action.onClick,
         enabled = action.enabled,
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .height(38.dp),
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,
@@ -345,18 +345,18 @@ private fun DetailsActionButton(action: DetailsAction, modifier: Modifier = Modi
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = action.icon,
                 contentDescription = null,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = action.label,
-                fontSize = 17.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
