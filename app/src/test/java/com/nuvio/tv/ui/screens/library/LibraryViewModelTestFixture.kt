@@ -11,6 +11,9 @@ import com.nuvio.tv.core.tracking.TrackingProviderId
 import com.nuvio.tv.data.local.DebridSettingsDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.LibraryPreferences
+import com.nuvio.tv.data.local.LiveTvDataStore
+import com.nuvio.tv.data.local.SportsLibraryStore
+import com.nuvio.tv.data.local.SportsPreferencesDataStore
 import com.nuvio.tv.data.local.WatchedSeriesStateHolder
 import com.nuvio.tv.domain.model.AuthState
 import com.nuvio.tv.domain.model.DebridSettings
@@ -70,6 +73,19 @@ internal class LibraryViewModelTestFixture(sorter: TrackingLibrarySorter? = null
         watchProgressRepository = mockk<WatchProgressRepository> { every { observeWatchedMovieIds() } returns flowOf(emptySet()) },
         watchedSeriesStateHolder = mockk<WatchedSeriesStateHolder> { every { fullyWatchedSeriesIds } returns MutableStateFlow(emptySet()) },
         profileManager = mockk<ProfileManager> { every { activeProfileId } returns profile },
-        posterOptions = mockk(relaxed = true), context = mockk(relaxed = true)
+        posterOptions = mockk(relaxed = true),
+        sportsLibraryStore = mockk<SportsLibraryStore>(relaxed = true) {
+            every { teams } returns MutableStateFlow(emptyList())
+            every { leagues } returns MutableStateFlow(emptyList())
+            every { eventDetails } returns MutableStateFlow(emptyMap())
+        },
+        sportsPreferences = mockk<SportsPreferencesDataStore>(relaxed = true) {
+            every { favoriteTeamIds } returns MutableStateFlow(emptySet())
+        },
+        liveTvDataStore = mockk<LiveTvDataStore>(relaxed = true) {
+            every { customChannels } returns MutableStateFlow(emptyList())
+            every { customChannelIds } returns MutableStateFlow(emptySet())
+        },
+        context = mockk(relaxed = true)
     )
 }
