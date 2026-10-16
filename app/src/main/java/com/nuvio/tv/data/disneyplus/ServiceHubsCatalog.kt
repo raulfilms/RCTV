@@ -462,11 +462,6 @@ internal object ServiceHubs {
     /** Blumhouse's directors: Jordan Peele, James Wan, Leigh Whannell, Scott Derrickson, Mike Flanagan, Christopher Landon, David Gordon Green. */
     private const val BLUMHOUSE_DIRECTORS = "291263|2127|2128|55499|551463|54248|64141"
 
-    /** Prime Video Channels (Amazon channels on TMDB): name and watch provider id. */
-    private val PRIME_CHANNELS = listOf(
-        "HBO Max" to 1825, "Paramount+" to 582, "MGM+" to 583, "STARZ" to 1794, "AMC+" to 528,
-        "Crunchyroll" to 1968, "discovery+" to 584, "BritBox" to 197, "Shudder" to 204
-    )
 
     // ------------------------------------------------------------------ Netflix
 
@@ -538,14 +533,6 @@ internal object ServiceHubs {
                         upcomingSeries(networks = ServiceHubIds.NET_NETFLIX, untilDays = 365).copy(sortBy = SOONEST),
                         upcomingMovies(ServiceHubIds.CO_NETFLIX, untilDays = 365, sort = SOONEST)
                     )
-                )
-                card(
-                    "anime", R.string.svc_card_anime_animation,
-                    sources = netflixCatalog.both { copy(keywords = K_ANIME) } + netflixCatalog.both { copy(genres = "16") }
-                )
-                card(
-                    "kids", R.string.svc_card_kids_family,
-                    sources = listOfNotNull(netflixCatalog.movies { copy(genres = "10751") }, netflixCatalog.series { copy(genres = "10762|10751") })
                 )
                 card("reality", R.string.svc_card_reality_competition, sources = listOfNotNull(netflixCatalog.series { copy(genres = "10764") }))
                 card("collections", R.string.svc_card_all_collections, sources = NETFLIX_FRANCHISES.map(::collection))
@@ -627,12 +614,6 @@ internal object ServiceHubs {
                     sources = listOfNotNull(primeCatalog.movies { copy(genres = "10751") }, primeCatalog.series { copy(genres = "10762|10751") })
                 )
                 card("reality", R.string.svc_card_reality_competition, sources = listOfNotNull(primeCatalog.series { copy(genres = "10764") }))
-                PRIME_CHANNELS.forEach { (name, providerId) ->
-                    card(
-                        "channel_$providerId", name = name, art = HubCardArt.Provider(providerId),
-                        sources = providers(providerId.toString()).both()
-                    )
-                }
                 card("collections", R.string.svc_card_all_collections, sources = PRIME_FRANCHISES.map { collection(it.second) })
             })
         }
