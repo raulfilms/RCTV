@@ -43,11 +43,11 @@ import com.nuvio.tv.ui.screens.home.HomeTileRow
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 /** The Sports rows that open a See All page here (Teams opens the teams page). */
-private enum class SportsSeeAll { LIVE, UPCOMING, LEAGUES, SPORTS_TALK, MY_SPORTS, MY_TEAMS }
+private enum class SportsSeeAll { LIVE, UPCOMING, PICKED, LEAGUES, SPORTS_TALK, MY_SPORTS, MY_TEAMS }
 
 /**
  * The Sports page: the banner (the games on now, else the next ones), then Continue Watching, Live
- * Games, Upcoming Games, Top Leagues, Teams, Sports Talk, My Sports and My Teams. Each row shows ten
+ * Games, Upcoming Games, Picked For You, Top Leagues, Teams, Sports Talk, My Sports and My Teams. Each row shows ten
  * cards and "See All" when it has more.
  */
 @Composable
@@ -286,6 +286,21 @@ private fun SportsContent(
                     onPlayEvent = onPlayEvent,
                     onShowFavoriteOptions = onShowFavoriteOptions,
                     onSeeAll = { onOpenSeeAll(SportsSeeAll.UPCOMING) },
+                    modifier = rowGap
+                )
+            }
+        }
+
+        // Picked For You: the games of the person's teams (else the next big games).
+        if (uiState.pickedForYou.isNotEmpty()) {
+            item(key = "picked_for_you") {
+                GamesRow(
+                    title = stringResource(R.string.sports_row_picked_for_you),
+                    games = uiState.pickedForYou,
+                    rowFocusRequester = requester(SportsSeeAll.PICKED.name),
+                    onPlayEvent = onPlayEvent,
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.PICKED) },
                     modifier = rowGap
                 )
             }
@@ -548,10 +563,20 @@ private fun SportsSeeAllPage(
     val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { it.id }.toSet() }
     val favoriteLeagueIds = remember(uiState.favoriteLeagues) { uiState.favoriteLeagues.map { it.id }.toSet() }
     when (which) {
-        SportsSeeAll.LIVE, SportsSeeAll.UPCOMING -> {
-            val games = if (which == SportsSeeAll.LIVE) uiState.liveNow else uiState.upcomingGames
+        SportsSeeAll.LIVE, SportsSeeAll.UPCOMING, SportsSeeAll.PICKED -> {
+            val games = when (which) {
+                SportsSeeAll.LIVE -> uiState.liveNow
+                SportsSeeAll.PICKED -> uiState.pickedForYou
+                else -> uiState.upcomingGames
+            }
             SportsGridPage(
-                title = stringResource(if (which == SportsSeeAll.LIVE) R.string.sports_row_live_games else R.string.sports_row_upcoming_games),
+                title = stringResource(
+                    when (which) {
+                        SportsSeeAll.LIVE -> R.string.sports_row_live_games
+                        SportsSeeAll.PICKED -> R.string.sports_row_picked_for_you
+                        else -> R.string.sports_row_upcoming_games
+                    }
+                ),
                 count = games.size,
                 columns = 3,
                 keyOf = { games[it].id }
