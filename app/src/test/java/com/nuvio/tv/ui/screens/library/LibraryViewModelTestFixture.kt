@@ -86,6 +86,7 @@ internal class LibraryViewModelTestFixture(sorter: TrackingLibrarySorter? = null
             every { customChannels } returns MutableStateFlow(emptyList())
             every { customChannelIds } returns MutableStateFlow(emptySet())
         },
+        liveProgramLibrary = mockk(relaxed = true),
         context = mockk(relaxed = true)
     )
 }

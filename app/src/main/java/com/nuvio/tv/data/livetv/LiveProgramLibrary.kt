@@ -1,24 +1,37 @@
 package com.nuvio.tv.data.livetv
 
 import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.core.tracking.providerId
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
 import com.nuvio.tv.data.remote.api.TmdbEpisode
 import com.nuvio.tv.domain.model.EpgProgram
+import com.nuvio.tv.domain.model.LibraryEntry
 import com.nuvio.tv.domain.model.LibraryEntryInput
+import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.PosterShape
 import com.nuvio.tv.domain.repository.LibraryRepository
+import com.nuvio.tv.domain.repository.MetaRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.Normalizer
 import java.time.Instant
 import java.time.LocalDate
@@ -69,7 +82,9 @@ enum class LiveLibraryResult { ADDED, ALREADY_IN_LIBRARY, ADDED_SERIES_INSTEAD, 
 class LiveProgramLibrary @Inject constructor(
     private val tmdbApi: TmdbApi,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
-    private val libraryRepository: LibraryRepository
+    private val libraryRepository: LibraryRepository,
+    private val tmdbService: TmdbService,
+    private val metaRepository: MetaRepository
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
     private val limiter = Semaphore(4)
@@ -168,12 +183,167 @@ class LiveProgramLibrary @Inject constructor(
         seasonEpisodes(tvId, season, language()).mapNotNull { it.toLiveEpisode(season) }
     }
 
-    /** Whether the movie or the series is in the library. */
-    fun isInLibrary(match: LiveProgramMatch): kotlinx.coroutines.flow.Flow<Boolean> =
-        libraryRepository.isInLibrary(match.itemId, match.itemType)
+    /**
+     * Whether the movie or the series is in the library: under the id its page keeps it under (its
+     * IMDb id), or under the "tmdb:" id the guide used to save it with.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun isInLibrary(match: LiveProgramMatch): Flow<Boolean> =
+        flow { emit(libraryId(match)) }
+            .flatMapLatest { id ->
+                if (id == match.itemId) {
+                    libraryRepository.isInLibrary(id, match.itemType)
+                } else {
+                    combine(
+                        libraryRepository.isInLibrary(id, match.itemType),
+                        libraryRepository.isInLibrary(match.itemId, match.itemType)
+                    ) { canonical, legacy -> canonical || legacy }
+                }
+            }
+            .distinctUntilChanged()
 
-    /** Adds the movie or the series to the library (nothing is taken out if it's already there). */
-    suspend fun addTitle(match: LiveProgramMatch): LiveLibraryResult = add(match.toInput())
+    /**
+     * Adds the movie or the series to the library as the same title its page adds (its IMDb id and
+     * the catalog's artwork), so it's one entry wherever it's added from. Nothing is taken out if
+     * it's already there.
+     */
+    suspend fun addTitle(match: LiveProgramMatch): LiveLibraryResult {
+        val id = libraryId(match)
+        if (id != match.itemId) {
+            // Saved by the guide before under its "tmdb:" id: it becomes the title's own entry.
+            val legacyInLibrary = runCatching { libraryRepository.isInLibrary(match.itemId, match.itemType).first() }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(false)
+            if (legacyInLibrary) {
+                mergeGuideEntries()
+                return LiveLibraryResult.ALREADY_IN_LIBRARY
+            }
+        }
+        return add(catalogInput(id, match.itemType, fallback = match.toInput(id)))
+    }
+
+    /**
+     * The id the rest of the app keeps a title under (its page, the catalogs, the library): its IMDb
+     * id, else "tmdb:<id>" when TMDB doesn't know it (or can't be reached).
+     */
+    private suspend fun libraryId(match: LiveProgramMatch): String =
+        imdbIdFor(match.tmdbId, match.itemType) ?: match.itemId
+
+    private val imdbIds = ConcurrentHashMap<String, String>()
+
+    private suspend fun imdbIdFor(tmdbId: Int, type: String): String? {
+        val key = "$type:$tmdbId"
+        imdbIds[key]?.let { return it }
+        val imdb = withTimeoutOrNull(IMDB_LOOKUP_TIMEOUT_MS) {
+            try {
+                tmdbService.tmdbToImdb(tmdbId, type)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        }?.takeIf { it.startsWith("tt") }
+        if (imdb != null) imdbIds[key] = imdb
+        return imdb
+    }
+
+    /**
+     * The library entry for [id] as its page makes it: the catalog's name and artwork (poster, logo,
+     * backdrop), else [fallback] (TMDB's) when no catalog has it.
+     */
+    private suspend fun catalogInput(id: String, type: String, fallback: LibraryEntryInput): LibraryEntryInput {
+        val meta = catalogMeta(id, type) ?: return fallback
+        val year = Regex("(\\d{4})").find(meta.releaseInfo ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
+        return LibraryEntryInput(
+            itemId = id,
+            itemType = type,
+            title = meta.name.ifBlank { fallback.title },
+            year = year ?: fallback.year,
+            imdbId = id.takeIf { it.startsWith("tt") },
+            tmdbId = fallback.tmdbId,
+            poster = meta.poster ?: fallback.poster,
+            posterShape = meta.posterShape,
+            background = meta.background ?: fallback.background,
+            logo = meta.logo,
+            description = meta.description ?: fallback.description,
+            releaseInfo = meta.releaseInfo ?: fallback.releaseInfo,
+            imdbRating = meta.imdbRating ?: fallback.imdbRating,
+            genres = meta.genres.ifEmpty { fallback.genres }
+        )
+    }
+
+    private suspend fun catalogMeta(id: String, type: String): Meta? {
+        if (!id.startsWith("tt")) return null
+        return withTimeoutOrNull(CATALOG_LOOKUP_TIMEOUT_MS) {
+            try {
+                when (val result = metaRepository.getMetaFromAllAddons(type = type, id = id).first { it !is NetworkResult.Loading }) {
+                    is NetworkResult.Success -> result.data
+                    else -> null
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    private val mergeMutex = Mutex()
+
+    /**
+     * The movies and series the guide saved under their "tmdb:" id become the titles' own entries
+     * (their IMDb id, as their page saves them): one entry per title. When the title's own entry is
+     * there too, the guide's copy just goes. Only the app's own library (a Trakt, Simkl or MDBList
+     * library keeps its titles by their ids already).
+     */
+    suspend fun mergeGuideEntries() {
+        if (!mergeMutex.tryLock()) return
+        try {
+            if (libraryRepository.sourceMode.first().providerId != null) return
+            val items = libraryRepository.libraryItems.first()
+            val legacy = items.filter { entry ->
+                LEGACY_TITLE_ID.matches(entry.id) &&
+                    (entry.type.equals("movie", ignoreCase = true) || entry.type.equals("series", ignoreCase = true))
+            }
+            for (entry in legacy) {
+                val type = entry.type.lowercase(Locale.ROOT)
+                val tmdbId = entry.id.substringAfter(':').toIntOrNull() ?: continue
+                val imdb = imdbIdFor(tmdbId, type) ?: continue
+                // (Toggling adds what isn't there and takes out what is: each is checked right before.)
+                if (!libraryRepository.isInLibrary(imdb, type).first()) {
+                    libraryRepository.toggleDefault(catalogInput(imdb, type, fallback = entry.toInput(imdb, type, tmdbId)))
+                }
+                if (libraryRepository.isInLibrary(imdb, type).first() &&
+                    libraryRepository.isInLibrary(entry.id, entry.type).first()
+                ) {
+                    libraryRepository.toggleDefault(LibraryEntryInput(itemId = entry.id, itemType = entry.type, title = entry.name))
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Tried again next time.
+        } finally {
+            mergeMutex.unlock()
+        }
+    }
+
+    private fun LibraryEntry.toInput(id: String, type: String, tmdbId: Int) = LibraryEntryInput(
+        itemId = id,
+        itemType = type,
+        title = name,
+        year = Regex("(\\d{4})").find(releaseInfo ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull(),
+        imdbId = id,
+        tmdbId = tmdbId,
+        poster = poster,
+        posterShape = posterShape,
+        background = background,
+        logo = logo,
+        description = description,
+        releaseInfo = releaseInfo,
+        imdbRating = imdbRating,
+        genres = genres
+    )
 
     /**
      * Adds the episode airing. A library synced with Trakt, Simkl or MDBList keeps whole series, so
@@ -183,7 +353,8 @@ class LiveProgramLibrary @Inject constructor(
         val episode = match.episode ?: return LiveLibraryResult.NOT_FOUND
         val syncedProvider = runCatching { libraryRepository.sourceMode.first().providerId }.getOrNull()
         if (syncedProvider != null) {
-            return when (val result = add(match.toInput())) {
+            val id = libraryId(match)
+            return when (val result = add(catalogInput(id, match.itemType, fallback = match.toInput(id)))) {
                 LiveLibraryResult.ADDED -> LiveLibraryResult.ADDED_SERIES_INSTEAD
                 else -> result
             }
@@ -322,11 +493,12 @@ class LiveProgramLibrary @Inject constructor(
         )
     }
 
-    private fun LiveProgramMatch.toInput() = LibraryEntryInput(
-        itemId = itemId,
+    private fun LiveProgramMatch.toInput(id: String = itemId) = LibraryEntryInput(
+        itemId = id,
         itemType = itemType,
         title = name,
         year = year,
+        imdbId = id.takeIf { it.startsWith("tt") },
         tmdbId = tmdbId,
         poster = poster,
         posterShape = PosterShape.POSTER,
@@ -369,6 +541,10 @@ class LiveProgramLibrary @Inject constructor(
         /** The library type of an episode saved from the guide. */
         const val EPISODE_TYPE = "episode"
         private const val DAY_MS = 24L * 60 * 60 * 1000
+        private const val IMDB_LOOKUP_TIMEOUT_MS = 6_000L
+        private const val CATALOG_LOOKUP_TIMEOUT_MS = 8_000L
+        /** A movie or series the guide saved before it used the titles' own ids. */
+        private val LEGACY_TITLE_ID = Regex("""^tmdb:\d+$""")
         /** Seasons looked through for an episode's name. */
         private const val MAX_SEASONS = 40
         private val TRAILING_YEAR = Regex("""\s*\((\d{4})\)\s*$""")

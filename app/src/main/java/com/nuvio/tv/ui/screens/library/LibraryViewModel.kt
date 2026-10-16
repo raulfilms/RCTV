@@ -24,6 +24,7 @@ import com.nuvio.tv.core.poster.withCustomPosterUrls
 import com.nuvio.tv.data.local.DebridSettingsDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.LibraryPreferences
+import com.nuvio.tv.data.livetv.LiveProgramLibrary
 import com.nuvio.tv.data.local.LiveTvDataStore
 import com.nuvio.tv.data.local.SportsLibraryStore
 import com.nuvio.tv.data.remote.espn.EspnSportsClient
@@ -185,6 +186,7 @@ class LibraryViewModel @Inject constructor(
     private val sportsLibraryStore: SportsLibraryStore,
     private val sportsPreferences: com.nuvio.tv.data.local.SportsPreferencesDataStore,
     private val liveTvDataStore: LiveTvDataStore,
+    private val liveProgramLibrary: LiveProgramLibrary,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -214,6 +216,10 @@ class LibraryViewModel @Inject constructor(
             }
         }
         observeCloudLibrarySettings()
+        viewModelScope.launch {
+            // Titles the Live TV guide saved under their TMDB id become the titles' own entries.
+            profileManager.activeProfileId.collectLatest { liveProgramLibrary.mergeGuideEntries() }
+        }
         viewModelScope.launch {
             watchProgressRepository.observeWatchedMovieIds()
                 .collect { ids ->

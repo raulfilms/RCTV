@@ -394,6 +394,8 @@ class LiveTvViewModel @Inject constructor(
     private val playableUrlResolver: suspend (LiveTvChannel) -> String = { channel -> resolvePlaybackUrl(channel) }
 
     init {
+        // Titles the guide saved before under their TMDB id become the titles' own library entries.
+        viewModelScope.launch { liveProgramLibrary.mergeGuideEntries() }
         viewModelScope.launch {
             liveTvDataStore.sources.collect { sources ->
                 currentSources = sources
