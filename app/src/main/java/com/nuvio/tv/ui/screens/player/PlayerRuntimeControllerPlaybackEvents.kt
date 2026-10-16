@@ -1797,6 +1797,24 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                 }
             }
         }
+        is PlayerEvent.OnSelectVideoQuality -> {
+            // That height only (the player still adapts between its bitrates), or back to Auto.
+            _exoPlayer?.let { player ->
+                val height = event.height
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .apply {
+                        if (height == null) {
+                            clearVideoSizeConstraints()
+                            setMinVideoSize(0, 0)
+                        } else {
+                            setMaxVideoSize(Int.MAX_VALUE, height)
+                            setMinVideoSize(0, height)
+                        }
+                    }
+                    .build()
+            }
+            _uiState.update { it.copy(selectedVideoHeight = event.height) }
+        }
     }
 }
 

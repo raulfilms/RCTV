@@ -163,6 +163,20 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
     }
 
     currentStreamHasVideoTrack = hasVideoTrack
+    // The quality menu: the heights the stream offers (best first), and the one playing now.
+    val videoQualities = tracks.groups
+        .filter { it.type == C.TRACK_TYPE_VIDEO }
+        .flatMap { group ->
+            (0 until group.length)
+                .filter { group.isTrackSupported(it) }
+                .map { group.getTrackFormat(it) }
+        }
+        .filter { it.height > 0 }
+        .groupBy { it.height }
+        .map { (height, formats) -> VideoQualityOption(height, formats.maxOf { it.frameRate.coerceAtLeast(0f) }) }
+        .sortedByDescending { it.height }
+    val playingVideoHeight = selectedVideoFormat?.height?.takeIf { it > 0 }
+    _uiState.update { it.copy(videoQualities = videoQualities, playingVideoHeight = playingVideoHeight) }
     val effectiveVideoFormat = selectedVideoFormat ?: firstVideoFormat
     if (effectiveVideoFormat != null) {
         currentVideoTrackMimeType = effectiveVideoFormat.sampleMimeType

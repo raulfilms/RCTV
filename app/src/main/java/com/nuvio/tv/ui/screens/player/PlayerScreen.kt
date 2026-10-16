@@ -8,6 +8,7 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import kotlinx.coroutines.launch
 import com.nuvio.tv.ui.theme.accentBrush
 
 import android.util.Log
@@ -154,7 +155,12 @@ fun PlayerScreen(
     onPlaybackErrorBack: () -> Unit = { onBackPress(null, null, null, false, false) },
     onPlaybackEnded: ((nextVideoId: String?, nextSeason: Int?, nextEpisode: Int?, exitReason: PlayerExitReason?) -> Unit)? = null,
     onPlayRecommendation: (PostPlayRecommendation, manualSelection: Boolean) -> Unit = { _, _ -> },
-    onOpenRecommendationDetails: (PostPlayRecommendation) -> Unit = {}
+    onOpenRecommendationDetails: (PostPlayRecommendation) -> Unit = {},
+    /** Live TV: another channel chosen in the Networks row (its address already resolved). */
+    onPlayLiveChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = {},
+    /** Live TV: "More info" on what's on, its movie's or series' page. */
+    onOpenLiveTitle: (itemId: String, itemType: String) -> Unit = { _, _ -> },
+    liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val postPlayRecommendationState by viewModel.postPlayRecommendationUiState.collectAsState()
@@ -194,6 +200,25 @@ fun PlayerScreen(
                 timeline.duration > 0L &&
                 (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD)
         onBackPress(uiState.currentVideoId, uiState.currentSeason, uiState.currentEpisode, uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL, completed)
+    }
+    // Live TV: switching channels from the Networks row, and "More info" on what's on.
+    val liveScope = androidx.compose.runtime.rememberCoroutineScope()
+    val switchLiveChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = switchLiveChannel@{ channel ->
+        if (exitDispatched) return@switchLiveChannel
+        liveScope.launch {
+            val url = liveTvViewModel.playableUrl(channel)
+            if (!exitDispatched) {
+                exitDispatched = true
+                viewModel.stopAndRelease()
+                onPlayLiveChannel(channel.copy(streamUrl = url))
+            }
+        }
+    }
+    val openLiveTitle: (com.nuvio.tv.data.livetv.LiveProgramMatch) -> Unit = openLiveTitle@{ match ->
+        if (exitDispatched) return@openLiveTitle
+        exitDispatched = true
+        viewModel.stopAndRelease()
+        onOpenLiveTitle(match.itemId, match.itemType)
     }
     val exitPlayerFromError: () -> Unit = exitPlayerFromError@{
         if (exitDispatched) return@exitPlayerFromError
@@ -1277,7 +1302,22 @@ fun PlayerScreen(
             exit = fadeOut(animationSpec = tween(200))
         ) {
             val context = LocalContext.current
-            PlayerControlsOverlay(
+            // A Live TV channel: the live controls (what's on, Networks, quality, captions, library).
+            if (uiState.contentType.equals("live", ignoreCase = true)) {
+                LiveTvPlayerOverlay(
+                    uiState = uiState,
+                    liveViewModel = liveTvViewModel,
+                    initialFocusRequester = playPauseFocusRequester,
+                    onEvent = viewModel::onEvent,
+                    onResetHideTimer = {
+                        viewModel.scheduleHideControls()
+                        viewModel.onUserInteraction()
+                    },
+                    onHideControls = { viewModel.hideControls() },
+                    onPlayChannel = switchLiveChannel,
+                    onOpenTitle = openLiveTitle
+                )
+            } else PlayerControlsOverlay(
                 uiState = uiState,
                 viewModel = viewModel,
                 playPauseFocusRequester = playPauseFocusRequester,

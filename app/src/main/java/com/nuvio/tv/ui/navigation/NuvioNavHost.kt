@@ -1067,6 +1067,27 @@ private fun PlaybackNavHost(
                         playOnLoad = false
                     )
                 },
+                // Live TV: another channel from the Networks row replaces this one (Back still
+                // returns to the Guide).
+                onPlayLiveChannel = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    ) {
+                        popUpTo(Screen.Player.route) { inclusive = true }
+                    }
+                },
+                // Live TV: "More info" opens what's on as any title (Back returns to the Guide).
+                onOpenLiveTitle = { itemId, itemType ->
+                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType)) {
+                        popUpTo(Screen.Player.route) { inclusive = true }
+                    }
+                },
                 onPlaybackErrorBack = {
                     val returnedToStream = popBackToStream()
                     if (!returnedToStream) {

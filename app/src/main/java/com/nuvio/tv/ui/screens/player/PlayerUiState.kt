@@ -94,6 +94,12 @@ data class PlayerUiState(
     val showPauseOverlay: Boolean = false,
     val audioTracks: List<TrackInfo> = emptyList(),
     val subtitleTracks: List<TrackInfo> = emptyList(),
+    /** The video qualities the stream offers (Live TV's quality menu), best first; empty when unknown. */
+    val videoQualities: List<VideoQualityOption> = emptyList(),
+    /** The quality chosen in the quality menu, by its height (null: Auto). */
+    val selectedVideoHeight: Int? = null,
+    /** The height of the video playing now. */
+    val playingVideoHeight: Int? = null,
     val selectedAudioTrackIndex: Int = -1,
     val selectedSubtitleTrackIndex: Int = -1,
     val audioDelayMs: Int = 0,
@@ -238,6 +244,9 @@ data class PlaybackTimelineState(
     val watchedDurationMs: Long = 0L
 )
 
+/** A video quality the stream offers: its height (1080, 720...) and its best frame rate. */
+data class VideoQualityOption(val height: Int, val frameRate: Float)
+
 data class TrackInfo(
     val index: Int,
     val name: String,
@@ -283,6 +292,8 @@ sealed class PlayerEvent {
     data class OnSetPersistAudioAmplification(val enabled: Boolean) : PlayerEvent()
     data class OnSetCenterMixLevelDb(val db: Int) : PlayerEvent()
     data class OnSelectSubtitleTrack(val index: Int) : PlayerEvent()
+    /** Plays the stream at this height (null: Auto, the player picks). */
+    data class OnSelectVideoQuality(val height: Int?) : PlayerEvent()
     data object OnDisableSubtitles : PlayerEvent()
     data class OnSelectAddonSubtitle(val subtitle: Subtitle) : PlayerEvent()
     data class OnSetPlaybackSpeed(val speed: Float) : PlayerEvent()

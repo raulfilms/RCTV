@@ -181,7 +181,8 @@ class LiveTvViewModel @Inject constructor(
     private val stalkerClient: StalkerClient,
     @Named("addonPermissive") private val okHttpClient: OkHttpClient,
     private val liveProgramLibrary: LiveProgramLibrary,
-    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
+    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
+    private val playerSession: com.nuvio.tv.data.livetv.LiveTvPlayerSession
 ) : ViewModel() {
 
     // ------------------------------------------------------------------ guide artwork
@@ -389,6 +390,9 @@ class LiveTvViewModel @Inject constructor(
     /** The most recently seen source list, kept around so [retry] doesn't need a parameter. */
     private var currentSources: List<LiveTvSource> = emptyList()
 
+    /** How the Live TV player gets a channel's address (switching channels from its Networks row). */
+    private val playableUrlResolver: suspend (LiveTvChannel) -> String = { channel -> resolvePlaybackUrl(channel) }
+
     init {
         viewModelScope.launch {
             liveTvDataStore.sources.collect { sources ->
@@ -421,6 +425,24 @@ class LiveTvViewModel @Inject constructor(
                 _uiState.update { it.copy(customChannelIds = ids) }
             }
         }
+        // The Live TV player shows the Guide's channels and programs (what's on, the Networks row).
+        viewModelScope.launch {
+            _uiState
+                .map { state ->
+                    com.nuvio.tv.data.livetv.LiveTvPlayerSession.Guide(
+                        channels = state.channels,
+                        epgByChannel = state.epgByChannel,
+                        customChannelIds = state.customChannelIds,
+                        isPreview = state.isPreviewGuide
+                    )
+                }
+                .distinctUntilChanged { old, new ->
+                    old.channels === new.channels && old.epgByChannel === new.epgByChannel &&
+                        old.customChannelIds == new.customChannelIds && old.isPreview == new.isPreview
+                }
+                .collect { guide -> if (guide.channels.isNotEmpty()) playerSession.publish(guide) }
+        }
+        playerSession.resolver = playableUrlResolver
         // Home's Top Channels shows the "Custom" channels: keep their names and logos current.
         viewModelScope.launch {
             _uiState.map { it.channels }.distinctUntilChanged().collect { channels ->
@@ -447,6 +469,11 @@ class LiveTvViewModel @Inject constructor(
      * holds the portal's short-lived `cmd` token instead, so it's exchanged for a real URL here.
      * Falls back to the raw value on any failure so playback at least attempts to start.
      */
+    override fun onCleared() {
+        if (playerSession.resolver === playableUrlResolver) playerSession.resolver = null
+        super.onCleared()
+    }
+
     suspend fun resolvePlaybackUrl(channel: LiveTvChannel): String {
         val sourceId = channel.sourceId ?: return channel.streamUrl
         val connection = currentSources.firstOrNull { it.id == sourceId }?.connection

@@ -1326,6 +1326,16 @@
     <string name="livetv_library_episode_title">%1$s · T%2$d E%3$d</string>
     <string name="livetv_library_episode_unknown">%1$s · TMDB no indica qué episodio se está emitiendo</string>
     <string name="livetv_library_added">Agregado a tu biblioteca: %1$s</string>
+    <string name="player_live_badge">EN VIVO</string>
+    <string name="player_live_networks">Canales</string>
+    <string name="player_live_quality">Calidad</string>
+    <string name="player_live_quality_auto">Auto</string>
+    <string name="player_live_no_captions">Sin subtítulos</string>
+    <string name="player_live_caption_style">Editar estilo</string>
+    <string name="player_live_audio">Audio</string>
+    <string name="player_live_stats">Estadísticas</string>
+    <string name="player_live_added_to_library">En tu biblioteca</string>
+    <string name="player_live_more_info">Más info</string>
     <string name="livetv_details_in_library">En tu biblioteca</string>
     <string name="livetv_details_browse_episodes">Ver episodios</string>
     <string name="livetv_details_view_movie">Ver película</string>

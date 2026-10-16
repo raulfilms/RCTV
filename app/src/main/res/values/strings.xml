@@ -4052,6 +4052,16 @@
     <string name="livetv_library_episode_title">%1$s · S%2$d E%3$d</string>
     <string name="livetv_library_episode_unknown">%1$s · TMDB can\'t tell which episode is airing</string>
     <string name="livetv_library_added">Added to your library: %1$s</string>
+    <string name="player_live_badge">LIVE</string>
+    <string name="player_live_networks">Networks</string>
+    <string name="player_live_quality">Quality</string>
+    <string name="player_live_quality_auto">Auto</string>
+    <string name="player_live_no_captions">No captions</string>
+    <string name="player_live_caption_style">Edit style</string>
+    <string name="player_live_audio">Audio</string>
+    <string name="player_live_stats">Stats for nerds</string>
+    <string name="player_live_added_to_library">Added to library</string>
+    <string name="player_live_more_info">More info</string>
     <string name="livetv_details_in_library">In library</string>
     <string name="livetv_details_browse_episodes">Browse episodes</string>
     <string name="livetv_details_view_movie">View movie</string>
