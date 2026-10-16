@@ -122,6 +122,9 @@ fun LiveTvScreen(
                 onSetBrowse = viewModel::setGuideBrowse,
                 onSetCountry = viewModel::setGuideCountry,
                 onToggleCustom = viewModel::toggleCustomChannel,
+                // The focused program's artwork from TMDB (backdrop and logo), like every row.
+                cachedProgramArt = viewModel::cachedProgramArt,
+                programArt = viewModel::programArt,
                 onShowChannels = { viewModel.setShowGuide(false) },
                 onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else null,
                 onProgramClick = { channel, program ->

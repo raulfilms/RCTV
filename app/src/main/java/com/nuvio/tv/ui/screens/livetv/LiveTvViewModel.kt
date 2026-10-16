@@ -137,6 +137,24 @@ data class LiveTvUiState(
     }
 }
 
+/**
+ * A guide program's artwork from TMDB, as the rest of the app shows titles: a backdrop with the
+ * title already on it ([titledBackdrop]), else the plain [backdrop] with the title's [logo] (or its
+ * [name]) laid over it. [NONE]: TMDB has no such title (a newscast, a game...).
+ */
+data class GuideProgramArt(
+    val name: String,
+    val backdrop: String?,
+    val titledBackdrop: String?,
+    val logo: String?
+) {
+    val hasArt: Boolean get() = backdrop != null || titledBackdrop != null
+
+    companion object {
+        val NONE = GuideProgramArt(name = "", backdrop = null, titledBackdrop = null, logo = null)
+    }
+}
+
 /** Where the Guide puts focus when it shows again: a channel's logo, or what's on now on it. */
 data class GuideReturnFocus(val channelId: String, val onLogo: Boolean)
 
@@ -147,8 +165,67 @@ class LiveTvViewModel @Inject constructor(
     private val xtreamClient: XtreamClient,
     private val stalkerClient: StalkerClient,
     @Named("addonPermissive") private val okHttpClient: OkHttpClient,
-    private val liveProgramLibrary: LiveProgramLibrary
+    private val liveProgramLibrary: LiveProgramLibrary,
+    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
 ) : ViewModel() {
+
+    // ------------------------------------------------------------------ guide artwork
+
+    /** Each program title's TMDB artwork, once looked up (by its cleaned title). */
+    private val programArtCache = java.util.concurrent.ConcurrentHashMap<String, GuideProgramArt>()
+
+    private fun programArtKey(program: EpgProgram): String =
+        LiveProgramLibrary.cleanTitle(program.title).lowercase(java.util.Locale.ROOT) + "|" +
+            (program.categories + listOfNotNull(program.category)).any { "movie" in it.lowercase(java.util.Locale.ROOT) || "film" in it.lowercase(java.util.Locale.ROOT) }
+
+    /** The program's TMDB artwork if it was already looked up ([GuideProgramArt.NONE]: none); null if not yet. */
+    fun cachedProgramArt(program: EpgProgram): GuideProgramArt? = programArtCache[programArtKey(program)]
+
+    /**
+     * The program's TMDB artwork: its movie or series (by its exact name), with the backdrop, the
+     * title card and the logo the rest of the app uses. [GuideProgramArt.NONE] when TMDB has none.
+     */
+    suspend fun programArt(program: EpgProgram): GuideProgramArt {
+        val key = programArtKey(program)
+        programArtCache[key]?.let { return it }
+        val match = try {
+            liveProgramLibrary.findTitle(program)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // TMDB couldn't be reached: the guide's own picture for now, and it's asked again later.
+            return GuideProgramArt.NONE
+        } ?: return GuideProgramArt.NONE.also { programArtCache[key] = it }
+        val preview = com.nuvio.tv.domain.model.MetaPreview(
+            id = match.itemId,
+            type = if (match.isMovie) com.nuvio.tv.domain.model.ContentType.MOVIE else com.nuvio.tv.domain.model.ContentType.SERIES,
+            name = match.name,
+            poster = match.poster,
+            posterShape = com.nuvio.tv.domain.model.PosterShape.LANDSCAPE,
+            background = match.backdrop,
+            logo = null,
+            description = null,
+            releaseInfo = null,
+            imdbRating = null,
+            genres = emptyList()
+        )
+        val titleArt = try {
+            titleArtService.artFor(preview)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        val art = GuideProgramArt(
+            name = match.name,
+            backdrop = match.backdrop,
+            titledBackdrop = titleArt?.titledBackdrop,
+            logo = titleArt?.logo
+        )
+        // TMDB's images couldn't be reached: the backdrop shows now, and the logo is asked for again later.
+        if (titleArt != null) programArtCache[key] = art
+        return art
+    }
 
     // ------------------------------------------------------------------ add to library
 

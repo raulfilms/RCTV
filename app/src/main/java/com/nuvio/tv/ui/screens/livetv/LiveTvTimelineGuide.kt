@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.livetv
 import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -182,6 +183,10 @@ internal fun LiveTvTimelineGuide(
     /** Where to put focus when the guide shows again (after a channel page or the player). */
     returnFocus: GuideReturnFocus? = null,
     onReturnFocusUsed: () -> Unit = {},
+    /** The focused program's TMDB artwork, if already looked up (see [programArt]). */
+    cachedProgramArt: (EpgProgram) -> GuideProgramArt? = { null },
+    /** Looks up the focused program's TMDB artwork (backdrop, title card, logo). */
+    programArt: suspend (EpgProgram) -> GuideProgramArt = { GuideProgramArt.NONE },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -521,6 +526,8 @@ internal fun LiveTvTimelineGuide(
                 GuidePreviewPanel(
                     channel = previewChannel,
                     program = previewProgram,
+                    cachedProgramArt = cachedProgramArt,
+                    programArt = programArt,
                     nowMs = nowMs,
                     liveLabel = liveLabel,
                     nowLabel = nowLabel,
@@ -1071,11 +1078,82 @@ private fun isDarkOneColorLogo(bitmap: Bitmap): Boolean {
     return mean < 0.32 && variance < 0.02
 }
 
-/** The focused program: artwork, live/now badge, title, times and description. */
+/**
+ * A program's TMDB artwork, drawn like the app's landscape cards: a backdrop that already carries
+ * the title as is; otherwise the backdrop, shaded at the bottom, with the title's logo (or name).
+ */
+@Composable
+private fun GuideTmdbArt(art: GuideProgramArt) {
+    var titledFailed by remember(art.titledBackdrop) { mutableStateOf(false) }
+    val useTitled = art.titledBackdrop != null && !titledFailed
+    val image = if (useTitled) art.titledBackdrop else art.backdrop ?: art.titledBackdrop
+    var logoFailed by remember(art.logo) { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = image,
+            contentDescription = art.name,
+            contentScale = ContentScale.Crop,
+            onError = { if (useTitled) titledFailed = true },
+            modifier = Modifier.fillMaxSize()
+        )
+        if (!useTitled) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0f to Color.Transparent,
+                                0.45f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.72f)
+                            )
+                        )
+                    )
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 10.dp, end = 10.dp, bottom = 9.dp)
+            ) {
+                if (art.logo != null && !logoFailed) {
+                    AsyncImage(
+                        model = art.logo,
+                        contentDescription = art.name,
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.BottomStart,
+                        onError = { logoFailed = true },
+                        modifier = Modifier
+                            .height(34.dp)
+                            .widthIn(max = PreviewWidth * 0.7f)
+                    )
+                } else {
+                    Text(
+                        text = art.name,
+                        color = AppleTvColors.Label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = AppleTvType.Caption1.copy(shadow = com.nuvio.tv.ui.components.AppleTvTextShadow)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** How long focus has to rest on a program before its TMDB artwork is looked up. */
+private const val PREVIEW_ART_DELAY_MS = 250L
+
+/**
+ * The focused program: artwork, live/now badge, title, times and description. The artwork is the
+ * program's movie or series from TMDB, as everywhere else in the app (a title card, or a backdrop
+ * with the title's logo); the guide's own picture (or the channel's logo) when TMDB has none.
+ */
 @Composable
 private fun GuidePreviewPanel(
     channel: LiveTvChannel?,
     program: EpgProgram?,
+    cachedProgramArt: (EpgProgram) -> GuideProgramArt?,
+    programArt: suspend (EpgProgram) -> GuideProgramArt,
     nowMs: Long,
     liveLabel: String,
     nowLabel: String,
@@ -1091,23 +1169,42 @@ private fun GuidePreviewPanel(
                 .background(AppleTvColors.Surface1),
             contentAlignment = Alignment.Center
         ) {
-            val art = program?.imageUrl
-            if (!art.isNullOrBlank()) {
-                AsyncImage(
-                    model = art,
+            // The program's TMDB artwork: null while it's being looked up.
+            val artKey = program?.let { "${it.channelId}|${it.startMs}|${it.title}" }
+            var tmdbArt by remember(artKey) { mutableStateOf(program?.let(cachedProgramArt)) }
+            LaunchedEffect(artKey) {
+                val focused = program ?: return@LaunchedEffect
+                if (tmdbArt != null) return@LaunchedEffect
+                // Moving through the guide: only the program focus rests on is looked up.
+                kotlinx.coroutines.delay(PREVIEW_ART_DELAY_MS)
+                tmdbArt = programArt(focused)
+            }
+            val art = tmdbArt
+            val channelLogo: @Composable () -> Unit = {
+                if (!channel?.logoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = channel?.logoUrl,
+                        contentDescription = channel?.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(28.dp)
+                    )
+                }
+            }
+            when {
+                // On TMDB: its title card, or its backdrop with the title's logo, like every row.
+                art != null && art.hasArt -> GuideTmdbArt(art = art)
+                // Being looked up: the channel's logo meanwhile.
+                program != null && art == null -> channelLogo()
+                // Not on TMDB (a newscast, a game...): the guide's own picture.
+                !program?.imageUrl.isNullOrBlank() -> AsyncImage(
+                    model = program?.imageUrl,
                     contentDescription = program?.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else if (!channel?.logoUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = channel?.logoUrl,
-                    contentDescription = channel?.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(28.dp)
-                )
+                else -> channelLogo()
             }
             if (program != null && program.isAiringAt(nowMs)) {
                 LiveBadge(

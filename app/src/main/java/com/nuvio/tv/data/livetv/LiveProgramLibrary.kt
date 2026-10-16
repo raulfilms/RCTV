@@ -109,6 +109,32 @@ class LiveProgramLibrary @Inject constructor(
         match
     }
 
+    /**
+     * The program's movie or series on TMDB, by its exact name, without looking for the episode:
+     * what the guide shows its artwork from. Null when TMDB has no such title, when the title is a
+     * generic one ("News", "Paid Programming"). Throws when TMDB can't be reached (nothing is
+     * remembered then, so it's asked again next time).
+     */
+    suspend fun findTitle(program: EpgProgram): LiveProgramMatch? = withContext(Dispatchers.IO) {
+        val rawTitle = cleanTitle(program.title)
+        val year = TRAILING_YEAR.find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val title = rawTitle.replace(TRAILING_YEAR, "").trim()
+        if (title.length < 2 || normalize(title) in GENERIC_TITLES) return@withContext null
+        val looksLikeMovie = program.categoryWords().any { "movie" in it || "film" in it }
+        val key = "${normalize(title)}|$year|$looksLikeMovie"
+        titleCache[key]?.let { return@withContext it.value }
+        val language = language()
+        val found = if (looksLikeMovie) {
+            search(title, year, isTv = false, language) ?: search(title, year, isTv = true, language)
+        } else {
+            search(title, year, isTv = true, language) ?: search(title, year, isTv = false, language)
+        }
+        titleCache[key] = Optional(found)
+        found
+    }
+
+    private val titleCache = ConcurrentHashMap<String, Optional<LiveProgramMatch>>()
+
     /** Adds the movie or the series to the library (nothing is taken out if it's already there). */
     suspend fun addTitle(match: LiveProgramMatch): LiveLibraryResult = add(match.toInput())
 
@@ -309,6 +335,13 @@ class LiveProgramLibrary @Inject constructor(
         /** Seasons looked through for an episode's name. */
         private const val MAX_SEASONS = 40
         private val TRAILING_YEAR = Regex("""\s*\((\d{4})\)\s*$""")
+
+        /** Guide titles that aren't a show's name (TMDB could have something by that name). */
+        private val GENERIC_TITLES = setOf(
+            "news", "localnews", "thenews", "movie", "themovie", "film", "paidprogramming", "paidprogram",
+            "infomercial", "programming", "tba", "tobeannounced", "signoff", "offair", "weather",
+            "sports", "noinformation", "noprogram", "nodata", "specialprogramming"
+        )
         private val BRACKET_TAGS = Regex("""\s*\[\s*(new|live)\s*]""", RegexOption.IGNORE_CASE)
 
         /** A guide title without its badges and leading symbols ("🏈 Show [NEW]" -> "Show"). */
