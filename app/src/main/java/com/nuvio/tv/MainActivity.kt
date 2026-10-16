@@ -1855,6 +1855,14 @@ private fun ModernSidebarScaffold(
             sidebarCollapsePending = false
             pendingSidebarFocusRequest = true
         }
+        menuBridge.close = {
+            if (isSidebarExpanded) {
+                pendingSidebarFocusRequest = false
+                isSidebarExpanded = false
+                sidebarCollapsePending = false
+            }
+        }
+        menuBridge.isOpen = { isSidebarExpanded }
     }
 
     LaunchedEffect(menuRoute) {

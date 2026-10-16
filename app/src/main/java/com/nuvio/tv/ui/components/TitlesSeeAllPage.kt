@@ -19,8 +19,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -151,6 +154,49 @@ fun TitlesSeeAllPage(
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .collect { last -> if (last >= currentItems.size - 8) currentOnLoadMore() }
     }
+    // Back down the list goes all the way back up, to its first title; at the top it opens the app's
+    // menu; with the menu open, Back leaves the list (the page's own Back, which closes the menu too).
+    val menuBridge = LocalAppMenuBridge.current
+    val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
+    DisposableEffect(menuBridge) {
+        menuBridge?.registerPage()
+        onDispose {
+            menuBridge?.unregisterPage()
+            if (menuBridge?.isOpen?.invoke() == true) menuBridge.close()
+        }
+    }
+    val gridAtTop by remember {
+        derivedStateOf { gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0 }
+    }
+    val atListTop = shownItems.isEmpty() || (gridAtTop && focusIndex == 0)
+    BackHandler(enabled = !menuOpen && !atListTop) {
+        focusIndex = 0
+        scope.launch {
+            runCatching { gridState.scrollToItem(0) }
+            repeat(8) {
+                withFrameNanos { }
+                if (runCatching { focusRequester.requestFocus() }.getOrDefault(false)) return@launch
+            }
+        }
+    }
+    BackHandler(enabled = !menuOpen && atListTop && menuBridge != null) {
+        menuBridge?.open?.invoke()
+    }
+    // The menu closed without leaving the list (Right): focus back on the list.
+    var menuWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(menuOpen) {
+        if (menuOpen) {
+            menuWasOpen = true
+            return@LaunchedEffect
+        }
+        if (!menuWasOpen) return@LaunchedEffect
+        menuWasOpen = false
+        repeat(8) {
+            withFrameNanos { }
+            if (runCatching { focusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+
     fun filterChanged() {
         focusIndex = 0
         scope.launch { runCatching { gridState.scrollToItem(0) } }

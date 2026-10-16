@@ -83,8 +83,8 @@ fun StudioGroupScreen(
     val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
     val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
     DisposableEffect(menuBridge) {
-        menuBridge?.pageOpensMenu = true
-        onDispose { menuBridge?.pageOpensMenu = false }
+        menuBridge?.registerPage()
+        onDispose { menuBridge?.unregisterPage() }
     }
     BackHandler(enabled = menuBridge != null && !menuOpen) {
         menuBridge?.open?.invoke()

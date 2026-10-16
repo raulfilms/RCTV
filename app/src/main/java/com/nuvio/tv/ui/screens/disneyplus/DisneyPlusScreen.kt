@@ -178,8 +178,8 @@ fun DisneyPlusScreen(
     val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
     val isServiceHome = isMain && !viewModel.isDirectSeeAll
     DisposableEffect(menuBridge, isServiceHome) {
-        if (isServiceHome) menuBridge?.pageOpensMenu = true
-        onDispose { if (isServiceHome) menuBridge?.pageOpensMenu = false }
+        if (isServiceHome) menuBridge?.registerPage()
+        onDispose { if (isServiceHome) menuBridge?.unregisterPage() }
     }
     val hasHero = uiState.heroItems.isNotEmpty()
     val pageScrolled by remember {

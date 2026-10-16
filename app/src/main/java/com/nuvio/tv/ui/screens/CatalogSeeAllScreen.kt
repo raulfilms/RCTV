@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -289,6 +290,49 @@ fun CatalogSeeAllScreen(
             restoreFocusRequester.requestFocus()
             shouldRestoreFocus = false
         } catch (_: IllegalStateException) {
+        }
+    }
+
+    // Back down the list goes all the way back up, to its first title; at the top it opens the app's
+    // menu; with the menu open, Back leaves the list (back where it was opened from).
+    val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
+    val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
+    DisposableEffect(menuBridge) {
+        menuBridge?.registerPage()
+        onDispose {
+            menuBridge?.unregisterPage()
+            if (menuBridge?.isOpen?.invoke() == true) menuBridge.close()
+        }
+    }
+    val gridAtTop by remember {
+        derivedStateOf { gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0 }
+    }
+    val atListTop = filteredItems.isEmpty() || (gridAtTop && focusedItemIndex == 0)
+    BackHandler(enabled = !menuOpen && !atListTop) {
+        focusedItemKey = filteredItems.firstOrNull()?.let(::catalogItemFocusKey)
+        filterScope.launch {
+            runCatching { gridState.scrollToItem(0) }
+            repeat(8) {
+                withFrameNanos { }
+                if (runCatching { restoreFocusRequester.requestFocus(); true }.getOrDefault(false)) return@launch
+            }
+        }
+    }
+    BackHandler(enabled = !menuOpen && atListTop && menuBridge != null) {
+        menuBridge?.open?.invoke()
+    }
+    // The menu closed without leaving the list (Right): focus back on the list.
+    var menuWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(menuOpen) {
+        if (menuOpen) {
+            menuWasOpen = true
+            return@LaunchedEffect
+        }
+        if (!menuWasOpen) return@LaunchedEffect
+        menuWasOpen = false
+        repeat(8) {
+            withFrameNanos { }
+            if (runCatching { restoreFocusRequester.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
         }
     }
 
