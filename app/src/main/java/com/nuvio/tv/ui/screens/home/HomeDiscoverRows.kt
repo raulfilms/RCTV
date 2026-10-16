@@ -54,9 +54,9 @@ import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
-import com.nuvio.tv.data.disneyplus.ChannelTile
 import com.nuvio.tv.data.disneyplus.GenreTile
 import com.nuvio.tv.domain.model.TmdbCollectionMediaType
+import com.nuvio.tv.domain.model.CustomLiveChannel
 import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
 import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
 import com.nuvio.tv.ui.components.AppleRowTitle
@@ -76,8 +76,8 @@ sealed interface HomeLink {
     /** Discover on one genre: a movie genre (movies and series) or a series-only genre. */
     data class Genre(val tile: GenreTile) : HomeLink
 
-    /** A TV network's page. */
-    data class Channel(val tile: ChannelTile) : HomeLink
+    /** A live channel's page (one of the Guide's "Custom" channels, from Top Channels). */
+    data class LiveChannel(val channelId: String) : HomeLink
 }
 
 private val GenreTileWidth: Dp = AppleTvSpacing.Col5
@@ -231,13 +231,15 @@ fun HomeFranchiseRow(
     }
 }
 
-/** "Top Channels": one card per TV network (its logo on white); each opens the network's page. */
+/**
+ * "Top Channels": the channels the person put in the Guide's "Custom" list, each its logo on the
+ * Guide's logo-tile color (the logos are made for dark screens); each opens that channel's page.
+ */
 @Composable
-fun HomeChannelRow(
+fun HomeLiveChannelRow(
     title: String,
-    tiles: List<ChannelTile>,
-    logos: Map<Int, String>,
-    onClick: (ChannelTile) -> Unit,
+    channels: List<CustomLiveChannel>,
+    onClick: (CustomLiveChannel) -> Unit,
     rowFocusRequester: FocusRequester,
     initialFocusIndex: Int,
     onItemFocused: (Int) -> Unit,
@@ -245,42 +247,42 @@ fun HomeChannelRow(
 ) {
     HomeTileRow(
         title = title,
-        count = tiles.size,
-        keyOf = { "channel_${tiles[it].networkId}" },
+        count = channels.size,
+        keyOf = { "live_channel_${channels[it].id}" },
         rowFocusRequester = rowFocusRequester,
         initialFocusIndex = initialFocusIndex,
         onItemFocused = onItemFocused,
         modifier = modifier
     ) { index, itemModifier ->
-        val tile = tiles[index]
-        val logo = logos[tile.networkId]
+        val channel = channels[index]
+        val logo = channel.logoUrl
         var logoFailed by remember(logo) { mutableStateOf(false) }
         HomeCard(
-            onClick = { onClick(tile) },
+            onClick = { onClick(channel) },
             width = GenreTileWidth,
             height = GenreTileHeight,
-            containerColor = Color.White,
+            containerColor = AppleTvColors.Contrast,
             modifier = itemModifier
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (logo != null && !logoFailed) {
                     AsyncImage(
                         model = logo,
-                        contentDescription = tile.name,
+                        contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
                         onError = { logoFailed = true },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
                     Text(
-                        text = tile.name,
-                        color = Color.Black,
-                        fontSize = 14.sp,
+                        text = channel.name,
+                        color = Color.White,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         maxLines = 2,

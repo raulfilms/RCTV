@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.nuvio.tv.core.profile.ProfileManager
+import com.nuvio.tv.domain.model.CustomLiveChannel
+import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.LiveTvConnection
 import com.nuvio.tv.domain.model.LiveTvSource
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +57,9 @@ class LiveTvDataStore @Inject constructor(
     /** Channels the user put in the Guide's "Custom" list. */
     private val customChannelsKey = stringSetPreferencesKey("live_tv_custom_channel_ids")
 
+    /** Name, logo and Guide position of each "Custom" channel (JSON), for Home's Top Channels. */
+    private val customChannelsInfoKey = stringPreferencesKey("live_tv_custom_channels_info_json")
+
     // Legacy single-connection keys, from before this multi-source format existed. Only ever
     // read (to migrate a value saved by an older build) - new writes always go through
     // [sourcesJsonKey], and [clearConnection] wipes these too so a migrated-then-cleared profile
@@ -83,12 +88,94 @@ class LiveTvDataStore @Inject constructor(
         factory.get(pid, FEATURE).data.map { prefs -> prefs[customChannelsKey] ?: emptySet() }
     }.stateIn(scope, SharingStarted.Eagerly, emptySet())
 
-    /** Adds the channel to the "Custom" list, or takes it out if it's already there. */
-    suspend fun toggleCustomChannel(channelId: String) {
+    /**
+     * The "Custom" channels with their names and logos, in the Guide's order: Home's Top Channels.
+     * A channel added before names were kept shows once the Guide has loaded the channels.
+     */
+    val customChannels: StateFlow<List<CustomLiveChannel>> = profileManager.activeProfileId.flatMapLatest { pid ->
+        factory.get(pid, FEATURE).data.map { prefs ->
+            val ids = prefs[customChannelsKey] ?: emptySet()
+            parseCustomChannels(prefs[customChannelsInfoKey])
+                .filter { it.id in ids && it.name.isNotBlank() }
+                .sortedWith(compareBy<CustomLiveChannel> { it.position }.thenBy { it.name.lowercase() })
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * Adds the channel to the "Custom" list, or takes it out if it's already there. [info] (its
+     * name and logo) is kept with it for Home.
+     */
+    suspend fun toggleCustomChannel(channelId: String, info: CustomLiveChannel? = null) {
         store().edit { prefs ->
             val current = prefs[customChannelsKey] ?: emptySet()
-            prefs[customChannelsKey] = if (channelId in current) current - channelId else current + channelId
+            val adding = channelId !in current
+            prefs[customChannelsKey] = if (adding) current + channelId else current - channelId
+            val kept = parseCustomChannels(prefs[customChannelsInfoKey]).filterNot { it.id == channelId }
+            prefs[customChannelsInfoKey] = encodeCustomChannels(if (adding && info != null) kept + info else kept)
         }
+    }
+
+    /**
+     * Brings the "Custom" channels' names, logos and order up to date with the Guide's channels
+     * (and fills them in for channels added before they were kept). A channel the sources don't
+     * list right now keeps what was saved.
+     */
+    suspend fun refreshCustomChannels(channels: List<LiveTvChannel>, displayName: (String) -> String) {
+        if (channels.isEmpty()) return
+        store().edit { prefs ->
+            val ids = prefs[customChannelsKey] ?: emptySet()
+            val saved = parseCustomChannels(prefs[customChannelsInfoKey]).associateBy { it.id }
+            val fresh = HashMap<String, CustomLiveChannel>()
+            channels.forEachIndexed { index, channel ->
+                if (channel.id in ids && channel.id !in fresh) {
+                    fresh[channel.id] = CustomLiveChannel(
+                        id = channel.id,
+                        name = displayName(channel.name),
+                        logoUrl = channel.logoUrl,
+                        position = index
+                    )
+                }
+            }
+            val merged = ids.mapNotNull { id -> fresh[id] ?: saved[id] }.sortedBy { it.id }
+            if (merged != saved.values.filter { it.id in ids }.sortedBy { it.id }) {
+                prefs[customChannelsInfoKey] = encodeCustomChannels(merged)
+            }
+        }
+    }
+
+    private fun encodeCustomChannels(channels: List<CustomLiveChannel>): String {
+        val array = JSONArray()
+        channels.forEach { channel ->
+            array.put(
+                JSONObject()
+                    .put("id", channel.id)
+                    .put("name", channel.name)
+                    .put("position", channel.position)
+                    .apply { channel.logoUrl?.let { put("logo", it) } }
+            )
+        }
+        return array.toString()
+    }
+
+    private fun parseCustomChannels(json: String?): List<CustomLiveChannel> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(json)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val id = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    add(
+                        CustomLiveChannel(
+                            id = id,
+                            name = obj.optString("name"),
+                            logoUrl = obj.optString("logo").takeIf { it.isNotBlank() },
+                            position = obj.optInt("position", Int.MAX_VALUE)
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun sourcesFromPrefs(prefs: Preferences): List<LiveTvSource> =

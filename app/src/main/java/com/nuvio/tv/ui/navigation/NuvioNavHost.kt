@@ -1809,14 +1809,9 @@ private fun HomeRouteContent(
                         genreId = link.tile.genreId
                     )
                 )
-                // The network's page (its series).
-                is com.nuvio.tv.ui.screens.home.HomeLink.Channel -> navController.navigate(
-                    Screen.TmdbEntityBrowse.createRoute(
-                        entityKind = "network",
-                        entityId = link.tile.networkId,
-                        entityName = link.tile.name,
-                        sourceType = "tv"
-                    )
+                // Top Channels: the channel's page, as from its logo in the Guide.
+                is com.nuvio.tv.ui.screens.home.HomeLink.LiveChannel -> navController.navigate(
+                    Screen.ChannelProfile.createRoute(link.channelId)
                 )
             }
         },

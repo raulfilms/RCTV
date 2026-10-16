@@ -856,11 +856,11 @@ fun ClassicHomeContent(
                         initialFocusIndex = restoreIndex,
                         onItemFocused = onFocusedAt
                     )
-                    DisneyRowKind.CHANNELS -> HomeChannelRow(
+                    // The Guide's "Custom" channels, and nothing else.
+                    DisneyRowKind.CHANNELS -> HomeLiveChannelRow(
                         title = rowState.title,
-                        tiles = spec.channelTiles,
-                        logos = rowState.channelLogos,
-                        onClick = { tile -> onOpenHomeLink(HomeLink.Channel(tile)) },
+                        channels = rowState.liveChannels,
+                        onClick = { channel -> onOpenHomeLink(HomeLink.LiveChannel(channel.id)) },
                         rowFocusRequester = rowFocusRequester,
                         initialFocusIndex = restoreIndex,
                         onItemFocused = onFocusedAt
@@ -1131,9 +1131,13 @@ fun ClassicHomeContent(
     } // CompositionLocalProvider
 }
 
-/** A TMDB row shows once it has titles; card rows (genres, franchises, channels) right away. */
+/**
+ * A TMDB row shows once it has titles; card rows (genres, franchises) right away; Top Channels
+ * once the Guide's "Custom" list has channels.
+ */
 private fun HomeDiscoverRowState.isShown(): Boolean = when (spec.kind) {
-    DisneyRowKind.GENRES, DisneyRowKind.FRANCHISES, DisneyRowKind.CHANNELS -> true
+    DisneyRowKind.GENRES, DisneyRowKind.FRANCHISES -> true
+    DisneyRowKind.CHANNELS -> liveChannels.isNotEmpty()
     DisneyRowKind.CATALOG -> row?.items?.isNotEmpty() == true
     else -> false
 }

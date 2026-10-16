@@ -16,3 +16,15 @@ data class LiveTvChannel(
     /** Channel number from the playlist or guide ("7.1" is a broadcast sub-channel). */
     val number: String? = null
 )
+
+/**
+ * A channel in the Guide's "Custom" list as Home's Top Channels shows it: its name and logo are
+ * kept with the list, so Home doesn't have to load the IPTV sources.
+ */
+data class CustomLiveChannel(
+    val id: String,
+    val name: String,
+    val logoUrl: String? = null,
+    /** Its place in the Guide's channel list, so Home shows them in the Guide's order. */
+    val position: Int = Int.MAX_VALUE
+)

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.local.LiveTvDataStore
 import com.nuvio.tv.data.remote.stalker.StalkerClient
 import com.nuvio.tv.data.remote.xtream.XtreamClient
+import com.nuvio.tv.domain.model.CustomLiveChannel
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.LiveTvConnection
@@ -29,6 +30,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -326,6 +329,18 @@ class LiveTvViewModel @Inject constructor(
                 _uiState.update { it.copy(customChannelIds = ids) }
             }
         }
+        // Home's Top Channels shows the "Custom" channels: keep their names and logos current.
+        viewModelScope.launch {
+            _uiState.map { it.channels }.distinctUntilChanged().collect { channels ->
+                try {
+                    liveTvDataStore.refreshCustomChannels(channels) { name -> stripCountryTag(name) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Saving failed: Home keeps what it has.
+                }
+            }
+        }
         viewModelScope.launch {
             while (true) {
                 delay(60_000L)
@@ -422,9 +437,16 @@ class LiveTvViewModel @Inject constructor(
         _uiState.update { it.copy(guideBrowse = browse) }
     }
 
-    /** Adds the channel to the Guide's "Custom" list, or takes it out. */
+    /** Adds the channel to the Guide's "Custom" list (Home's Top Channels too), or takes it out. */
     fun toggleCustomChannel(channel: LiveTvChannel) {
-        viewModelScope.launch { liveTvDataStore.toggleCustomChannel(channel.id) }
+        val position = _uiState.value.channels.indexOfFirst { it.id == channel.id }
+        val info = CustomLiveChannel(
+            id = channel.id,
+            name = stripCountryTag(channel.name),
+            logoUrl = channel.logoUrl,
+            position = if (position >= 0) position else Int.MAX_VALUE
+        )
+        viewModelScope.launch { liveTvDataStore.toggleCustomChannel(channel.id, info) }
     }
 
     /** Sorts every channel into the Guide's categories from its programs, name and group. */

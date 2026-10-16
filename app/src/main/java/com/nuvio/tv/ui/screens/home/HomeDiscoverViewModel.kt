@@ -10,7 +10,9 @@ import com.nuvio.tv.data.disneyplus.DisneyPlusRepository
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
 import com.nuvio.tv.data.disneyplus.DisneyRowSpec
 import com.nuvio.tv.data.disneyplus.withPremiereBadges
+import com.nuvio.tv.data.local.LiveTvDataStore
 import com.nuvio.tv.domain.model.CatalogRow
+import com.nuvio.tv.domain.model.CustomLiveChannel
 import com.nuvio.tv.domain.repository.TitleArtResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,7 +29,8 @@ import javax.inject.Inject
 /**
  * One of Home's TMDB rows (Trending Now, New Releases... Discover Something New), in order.
  * [row] is null while loading or when it came back empty. Card rows fill in [franchiseArt]
- * (a franchise's name and picture, by its row id) and [channelLogos] (by TMDB network id).
+ * (a franchise's name and picture, by its row id). Top Channels holds [liveChannels]: the channels
+ * the person put in the Guide's "Custom" list, and nothing else.
  */
 data class HomeDiscoverRowState(
     val spec: DisneyRowSpec,
@@ -35,7 +38,7 @@ data class HomeDiscoverRowState(
     val row: CatalogRow? = null,
     val isLoading: Boolean = true,
     val franchiseArt: Map<String, Pair<String, String?>> = emptyMap(),
-    val channelLogos: Map<Int, String> = emptyMap()
+    val liveChannels: List<CustomLiveChannel> = emptyList()
 )
 
 /**
@@ -46,7 +49,8 @@ data class HomeDiscoverRowState(
 @HiltViewModel
 class HomeDiscoverViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val repository: DisneyPlusRepository
+    private val repository: DisneyPlusRepository,
+    private val liveTvDataStore: LiveTvDataStore
 ) : ViewModel() {
 
     private val hubSpec = DisneyPlusCatalog.hub(DisneyPlusHub.HOME)
@@ -103,12 +107,10 @@ class HomeDiscoverViewModel @Inject constructor(
                     }
                 }
 
+                // Top Channels: the Guide's "Custom" channels, as they're added or taken out.
                 DisneyRowKind.CHANNELS -> viewModelScope.launch {
-                    spec.channelTiles.forEach { tile ->
-                        launch {
-                            val logo = limiter.withPermit { repository.networkLogo(tile.networkId) } ?: return@launch
-                            update(spec.id) { it.copy(channelLogos = it.channelLogos + (tile.networkId to logo)) }
-                        }
+                    liveTvDataStore.customChannels.collect { channels ->
+                        update(spec.id) { it.copy(liveChannels = channels) }
                     }
                 }
 
