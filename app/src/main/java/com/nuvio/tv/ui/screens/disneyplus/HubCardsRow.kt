@@ -5,12 +5,26 @@ package com.nuvio.tv.ui.screens.disneyplus
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +51,8 @@ import com.nuvio.tv.data.disneyplus.HubCardArt
 import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
 import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
 import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.AppleTvSpacing
+import com.nuvio.tv.ui.components.AppleTvType
 import com.nuvio.tv.ui.components.GenreThumbnails
 import com.nuvio.tv.ui.screens.home.HomeCard
 import com.nuvio.tv.ui.screens.home.HomeTileRow
@@ -80,27 +96,109 @@ internal fun HubCardsRow(
         boldTitle = true
     ) { index, itemModifier ->
         val card = cards[index]
-        val label = card.label ?: stringResource(card.labelRes)
-        val image = art[card.rowId]
-        when (card.art) {
-            HubCardArt.Tile -> {
-                // A genre with a thumbnail (its name is on it); any other card is colored, with its name.
-                val thumbnail = card.genre?.let(GenreThumbnails::forKey)
-                if (thumbnail != null) {
-                    ThumbnailCard(label, thumbnail, onClick = { onClick(card) }, modifier = itemModifier)
-                } else {
-                    TileCard(label, card.rowId, onClick = { onClick(card) }, modifier = itemModifier)
-                }
+        HubCardView(card = card, image = art[card.rowId], onClick = { onClick(card) }, modifier = itemModifier)
+    }
+}
+
+/** One card of a cards row or of a page of cards: its picture, thumbnail or color, with its name. */
+@Composable
+private fun HubCardView(card: HubCard, image: String?, onClick: () -> Unit, modifier: Modifier) {
+    val label = card.label ?: stringResource(card.labelRes)
+    when (card.art) {
+        HubCardArt.Tile -> {
+            // A genre with a thumbnail (its name is on it); any other card is colored, with its name.
+            val thumbnail = card.genre?.let(GenreThumbnails::forKey)
+            if (thumbnail != null) {
+                ThumbnailCard(label, thumbnail, onClick = onClick, modifier = modifier)
+            } else {
+                TileCard(label, card.rowId, onClick = onClick, modifier = modifier)
             }
-            is HubCardArt.Collection -> PictureCard(
-                label = label,
-                caption = stringResource(R.string.disney_collection_label),
-                image = image,
-                onClick = { onClick(card) },
-                modifier = itemModifier
+        }
+        is HubCardArt.Collection -> PictureCard(
+            label = label,
+            caption = stringResource(R.string.disney_collection_label),
+            image = image,
+            onClick = onClick,
+            modifier = modifier
+        )
+        is HubCardArt.Person -> PersonCard(label, image, onClick = onClick, modifier = modifier)
+        is HubCardArt.Provider -> LogoCard(label, image, onClick = onClick, modifier = modifier)
+    }
+}
+
+/**
+ * A page of cards ("All Collections"): every collection's card, in a grid; choosing one opens its
+ * movies. Focus starts on [focusCardId] (the card last opened) or the first card.
+ */
+@Composable
+internal fun HubCardsPage(
+    title: String,
+    @DrawableRes logoRes: Int?,
+    logoDescription: String,
+    cards: List<HubCard>,
+    art: Map<String, String>,
+    focusCardId: String?,
+    onClick: (HubCard) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val gridState = rememberLazyGridState()
+    val focusIndex = remember(cards, focusCardId) {
+        cards.indexOfFirst { it.rowId == focusCardId }.coerceAtLeast(0)
+    }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(focusIndex) {
+        runCatching { gridState.scrollToItem(focusIndex) }
+        repeat(12) {
+            withFrameNanos { }
+            if (runCatching { focusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = AppleTvSpacing.SafeX, end = AppleTvSpacing.SafeX, top = AppleTvSpacing.SafeY),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (logoRes != null) {
+                Image(
+                    painter = painterResource(id = logoRes),
+                    contentDescription = logoDescription,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .height(30.dp)
+                        .widthIn(max = 120.dp)
+                )
+                Spacer(modifier = Modifier.width(AppleTvSpacing.Space3 + 2.dp))
+            }
+            Text(
+                text = title,
+                style = AppleTvType.Title2,
+                color = AppleTvColors.Label,
+                maxLines = 1
             )
-            is HubCardArt.Person -> PersonCard(label, image, onClick = { onClick(card) }, modifier = itemModifier)
-            is HubCardArt.Provider -> LogoCard(label, image, onClick = { onClick(card) }, modifier = itemModifier)
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            state = gridState,
+            contentPadding = PaddingValues(
+                start = AppleTvSpacing.SafeX,
+                end = AppleTvSpacing.SafeX,
+                top = 20.dp,
+                bottom = 48.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.GridGap),
+            verticalArrangement = Arrangement.spacedBy(28.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            itemsIndexed(cards, key = { _, card -> card.rowId }) { index, card ->
+                HubCardView(
+                    card = card,
+                    image = art[card.rowId],
+                    onClick = { onClick(card) },
+                    modifier = if (index == focusIndex) Modifier.focusRequester(focusRequester) else Modifier
+                )
+            }
         }
     }
 }

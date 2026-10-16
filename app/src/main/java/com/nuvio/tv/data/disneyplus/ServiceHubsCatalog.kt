@@ -224,6 +224,16 @@ internal object ServiceHubs {
             )
         )
 
+        /**
+         * A card opening a page of cards ([build]'s), each opening its own list: "All Collections" shows
+         * every collection's card, and each collection its movies.
+         */
+        fun cardsPage(key: String, @StringRes label: Int, build: Cards.() -> Unit) {
+            val page = Cards("${rowId}_$key", label).apply(build)
+            cards += HubCard("${rowId}_$key", label, subCards = page.cards)
+            lists += page.lists
+        }
+
         /** A TMDB franchise collection ([query] its name on TMDB), shown as [name]. */
         fun franchise(name: String, query: String = name) = card(
             key = slug(name), name = name, art = HubCardArt.Collection(query), sources = listOf(collection(query))
@@ -535,7 +545,7 @@ internal object ServiceHubs {
                     )
                 )
                 card("reality", R.string.svc_card_reality_competition, sources = listOfNotNull(netflixCatalog.series { copy(genres = "10764") }))
-                card("collections", R.string.svc_card_all_collections, sources = NETFLIX_FRANCHISES.map(::collection))
+                cardsPage("collections", R.string.svc_card_all_collections) { NETFLIX_FRANCHISES.forEach { franchise(it) } }
             })
         }
     )
@@ -614,7 +624,9 @@ internal object ServiceHubs {
                     sources = listOfNotNull(primeCatalog.movies { copy(genres = "10751") }, primeCatalog.series { copy(genres = "10762|10751") })
                 )
                 card("reality", R.string.svc_card_reality_competition, sources = listOfNotNull(primeCatalog.series { copy(genres = "10764") }))
-                card("collections", R.string.svc_card_all_collections, sources = PRIME_FRANCHISES.map { collection(it.second) })
+                cardsPage("collections", R.string.svc_card_all_collections) {
+                    PRIME_FRANCHISES.forEach { (name, query) -> franchise(name, query) }
+                }
             })
         }
     )

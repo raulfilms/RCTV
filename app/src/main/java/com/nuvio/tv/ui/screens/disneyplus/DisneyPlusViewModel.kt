@@ -15,6 +15,7 @@ import com.nuvio.tv.data.disneyplus.DisneyPlusRepository
 import com.nuvio.tv.data.disneyplus.DisneyRowKind
 import com.nuvio.tv.data.disneyplus.DisneyRowSource
 import com.nuvio.tv.data.disneyplus.DisneyRowSpec
+import com.nuvio.tv.data.disneyplus.HubCard
 import com.nuvio.tv.data.disneyplus.HubCardArt
 import com.nuvio.tv.data.disneyplus.withPremiereBadges
 import com.nuvio.tv.domain.model.CatalogRow
@@ -95,9 +96,22 @@ data class HubSeeAllState(
     val typeCounts: Map<TmdbCollectionMediaType, Int> = emptyMap()
 )
 
+/**
+ * A page of cards opened from a card ("All Collections"): each card opens its own list (a
+ * collection's movies). [art] is each card's picture by the list it opens, once found.
+ */
+data class HubCardsPageState(
+    val cardId: String,
+    val title: String,
+    val cards: List<HubCard>,
+    val art: Map<String, String> = emptyMap()
+)
+
 data class DisneyPlusUiState(
     val hub: DisneyPlusHub = DisneyPlusHub.MAIN,
     val seeAll: HubSeeAllState? = null,
+    /** The page of cards open (under any See All opened from it). */
+    val cardsPage: HubCardsPageState? = null,
     val heroItems: List<MetaPreview> = emptyList(),
     val isHeroLoading: Boolean = true,
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
@@ -224,6 +238,55 @@ class DisneyPlusViewModel @Inject constructor(
         seeAllSession = repository.seeAllSession(rowState.spec)
         loadSeeAllMenus(rowState.spec, mediaTypes)
         loadMoreSeeAll()
+    }
+
+    /** Pictures of the cards of the pages of cards, found once for the page's lifetime. */
+    private val subCardArt = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private var cardsPageArtJob: Job? = null
+
+    /** Opens a page of cards ("All Collections"), then finds their pictures (collections' backdrops). */
+    fun openCardsPage(card: HubCard) {
+        if (card.subCards.isEmpty()) return
+        val title = card.label ?: context.getString(card.labelRes)
+        _uiState.update {
+            it.copy(cardsPage = HubCardsPageState(card.rowId, title, card.subCards, art = subCardArt.toMap()))
+        }
+        cardsPageArtJob?.cancel()
+        cardsPageArtJob = viewModelScope.launch {
+            val limiter = Semaphore(4)
+            coroutineScope {
+                card.subCards.forEach { sub ->
+                    if (sub.art == HubCardArt.Tile || subCardArt.containsKey(sub.rowId)) return@forEach
+                    launch {
+                        val image = limiter.withPermit {
+                            try {
+                                when (val art = sub.art) {
+                                    is HubCardArt.Collection -> repository.franchiseArt(art.query)?.second
+                                    is HubCardArt.Person -> repository.personPhoto(art.personId)
+                                    is HubCardArt.Provider -> repository.providerLogo(art.providerId)
+                                    HubCardArt.Tile -> null
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } ?: return@launch
+                        subCardArt[sub.rowId] = image
+                        _uiState.update { state ->
+                            val page = state.cardsPage
+                            if (page == null || page.cardId != card.rowId) state
+                            else state.copy(cardsPage = page.copy(art = page.art + (sub.rowId to image)))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun closeCardsPage() {
+        cardsPageArtJob?.cancel()
+        _uiState.update { it.copy(cardsPage = null) }
     }
 
     fun closeSeeAll() {

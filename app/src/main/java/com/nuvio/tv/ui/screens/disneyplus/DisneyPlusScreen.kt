@@ -163,12 +163,17 @@ fun DisneyPlusScreen(
             .toMap()
     }
 
+    val cardsPage = uiState.cardsPage
+    /** The card last opened on the page of cards: focus goes back to it from its list. */
+    var cardsPageFocus by remember { mutableStateOf<String?>(null) }
+
     // Back on a See All page goes back to the row it came from (or the card that opened it).
     BackHandler(enabled = seeAll != null) {
         if (viewModel.isDirectSeeAll) {
             onBack()
         } else {
-            returnFocusRowId = seeAll?.rowId?.let { cardRowOf[it] ?: it }
+            // A list opened from the page of cards goes back to that page (its focus on the card).
+            if (cardsPage == null) returnFocusRowId = seeAll?.rowId?.let { cardRowOf[it] ?: it }
             viewModel.closeSeeAll()
         }
     }
@@ -187,7 +192,7 @@ fun DisneyPlusScreen(
     }
     val atPageTop = if (hasHero) heroFocused else !pageScrolled
     val pageScope = rememberCoroutineScope()
-    BackHandler(enabled = isServiceHome && seeAll == null && !menuOpen && !uiState.isInitialLoading && !atPageTop) {
+    BackHandler(enabled = isServiceHome && seeAll == null && cardsPage == null && !menuOpen && !uiState.isInitialLoading && !atPageTop) {
         pageScope.launch {
             runCatching { listState.scrollToItem(0) }
             repeat(8) {
@@ -205,8 +210,14 @@ fun DisneyPlusScreen(
             }
         }
     }
-    BackHandler(enabled = isServiceHome && seeAll == null && !menuOpen && atPageTop && menuBridge != null) {
+    BackHandler(enabled = isServiceHome && seeAll == null && cardsPage == null && !menuOpen && atPageTop && menuBridge != null) {
         menuBridge?.open?.invoke()
+    }
+    // Back on a page of cards ("All Collections") goes back to the card that opened it.
+    BackHandler(enabled = seeAll == null && cardsPage != null) {
+        returnFocusRowId = cardsPage?.cardId?.let { cardRowOf[it] }
+        cardsPageFocus = null
+        viewModel.closeCardsPage()
     }
     // The menu closed (Right, or a pick on this same page): focus back on the banner.
     var menuWasOpen by remember { mutableStateOf(false) }
@@ -223,9 +234,9 @@ fun DisneyPlusScreen(
         }
     }
 
-    LaunchedEffect(seeAll == null, returnFocusRowId) {
+    LaunchedEffect(seeAll == null, cardsPage == null, returnFocusRowId) {
         val rowId = returnFocusRowId ?: return@LaunchedEffect
-        if (seeAll != null) return@LaunchedEffect
+        if (seeAll != null || cardsPage != null) return@LaunchedEffect
         repeat(12) {
             withFrameNanos { }
             val requester = rowFocusRequesters[rowId]
@@ -266,6 +277,21 @@ fun DisneyPlusScreen(
                     remoteFilter = seeAll.remoteFilter(),
                     onRemoteFilterChange = viewModel::setSeeAllFilter,
                     onFilterMenuOpen = viewModel::loadSeeAllCounts
+                )
+            }
+
+            cardsPage != null -> {
+                HubCardsPage(
+                    title = cardsPage.title,
+                    logoRes = uiState.hub.headerLogoRes(),
+                    logoDescription = stringResource(uiState.hub.titleRes),
+                    cards = cardsPage.cards,
+                    art = cardsPage.art,
+                    focusCardId = cardsPageFocus,
+                    onClick = { card ->
+                        cardsPageFocus = card.rowId
+                        viewModel.openSeeAll(card.rowId)
+                    }
                 )
             }
 
@@ -412,7 +438,10 @@ fun DisneyPlusScreen(
                                     title = rowState.title,
                                     cards = rowState.spec.cards,
                                     art = rowState.cardArt,
-                                    onClick = { card -> viewModel.openSeeAll(card.rowId) },
+                                    onClick = { card ->
+                                        if (card.subCards.isNotEmpty()) viewModel.openCardsPage(card)
+                                        else viewModel.openSeeAll(card.rowId)
+                                    },
                                     rowFocusRequester = rowFocusRequesters.getOrPut(cardRowId) { FocusRequester() },
                                     modifier = Modifier.padding(top = HubRowExtraSpacing)
                                 )

@@ -862,7 +862,12 @@ data class HubCard(
     val label: String? = null,
     val art: HubCardArt = HubCardArt.Tile,
     /** A genre card's genre ("action", "scifi"...): its thumbnail shows instead of the colored card. */
-    val genre: String? = null
+    val genre: String? = null,
+    /**
+     * A card that opens a page of these cards instead of a list ("All Collections": each collection's
+     * card, which opens that collection's movies).
+     */
+    val subCards: List<HubCard> = emptyList()
 )
 
 /** What a [HubCard] shows. */
