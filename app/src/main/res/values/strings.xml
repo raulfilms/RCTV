@@ -4084,4 +4084,11 @@
     <string name="profile_edit_off">Off</string>
     <string name="profile_edit_avatars_soon_title">Avatars are coming soon</string>
     <string name="profile_edit_avatars_soon">For now, pick a color for this profile.</string>
+    <string name="sports_row_live_games">Live Games</string>
+    <string name="sports_row_top_leagues">Top Leagues</string>
+    <string name="sports_hero_live_now">Live Now</string>
+    <string name="sports_hero_up_next">Up Next</string>
+    <string name="sports_vs">VS</string>
+    <string name="sports_live">Live</string>
+    <string name="sports_final">Final</string>
 </resources>

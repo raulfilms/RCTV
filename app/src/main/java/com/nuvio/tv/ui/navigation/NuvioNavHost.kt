@@ -1404,6 +1404,9 @@ private fun PlaybackNavHost(
                             badgeUrl = league.badgeUrl
                         )
                     )
+                },
+                onOpenDetail = { itemId, itemType ->
+                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = ""))
                 }
             )
         }

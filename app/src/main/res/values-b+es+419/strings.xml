@@ -3551,4 +3551,11 @@
     <string name="profile_edit_off">Desactivado</string>
     <string name="profile_edit_avatars_soon_title">Pronto habrá avatares</string>
     <string name="profile_edit_avatars_soon">Por ahora, elige un color para este perfil.</string>
+    <string name="sports_row_live_games">Partidos en vivo</string>
+    <string name="sports_row_top_leagues">Ligas principales</string>
+    <string name="sports_hero_live_now">En vivo ahora</string>
+    <string name="sports_hero_up_next">A continuación</string>
+    <string name="sports_vs">VS</string>
+    <string name="sports_live">En vivo</string>
+    <string name="sports_final">Final</string>
 </resources>

@@ -258,6 +258,9 @@ class EspnSportsClient @Inject constructor(
             fun badgeOf(teamJson: JSONObject?): String? = teamJson?.optString("logo")?.takeIf { it.isNotBlank() }
             fun idOf(teamJson: JSONObject?): String? = teamJson?.optString("id")?.takeIf { it.isNotBlank() }
             fun scoreOf(competitor: JSONObject?): Int? = competitor?.optString("score")?.toIntOrNull()
+            fun abbreviationOf(teamJson: JSONObject?): String? = teamJson?.optString("abbreviation")?.takeIf { it.isNotBlank() }
+            fun colorOf(teamJson: JSONObject?): String? =
+                teamJson?.optString("color")?.removePrefix("#")?.takeIf { it.length == 6 }
 
             val homeTeamId = idOf(homeTeamJson)
             val awayTeamId = idOf(awayTeamJson)
@@ -269,13 +272,15 @@ class EspnSportsClient @Inject constructor(
             if (homeTeamId != null && homeTeamName.isNotBlank()) {
                 teams[homeTeamId] = SportsTeam(
                     id = homeTeamId, name = homeTeamName, shortName = homeTeamName,
-                    sportName = feed.sportLabel, leagueId = leagueId, leagueName = leagueName, badgeUrl = homeBadge
+                    sportName = feed.sportLabel, leagueId = leagueId, leagueName = leagueName, badgeUrl = homeBadge,
+                    color = colorOf(homeTeamJson)
                 )
             }
             if (awayTeamId != null && awayTeamName.isNotBlank()) {
                 teams[awayTeamId] = SportsTeam(
                     id = awayTeamId, name = awayTeamName, shortName = awayTeamName,
-                    sportName = feed.sportLabel, leagueId = leagueId, leagueName = leagueName, badgeUrl = awayBadge
+                    sportName = feed.sportLabel, leagueId = leagueId, leagueName = leagueName, badgeUrl = awayBadge,
+                    color = colorOf(awayTeamJson)
                 )
             }
 
@@ -300,7 +305,11 @@ class EspnSportsClient @Inject constructor(
                 startTimeMs = parseStartTimeMs(raw.optString("date")),
                 venue = competition.optJSONObject("venue")?.optString("fullName")?.takeIf { it.isNotBlank() },
                 status = status,
-                statusDetail = statusDetail
+                statusDetail = statusDetail,
+                homeTeamAbbreviation = abbreviationOf(homeTeamJson),
+                awayTeamAbbreviation = abbreviationOf(awayTeamJson),
+                homeTeamColor = colorOf(homeTeamJson),
+                awayTeamColor = colorOf(awayTeamJson)
             )
         }
 
@@ -448,7 +457,8 @@ class EspnSportsClient @Inject constructor(
                 sportName = feed.sportLabel,
                 leagueId = leagueId,
                 leagueName = feed.sportLabel,
-                badgeUrl = badge
+                badgeUrl = badge,
+                color = teamJson.optString("color")?.removePrefix("#")?.takeIf { it.length == 6 }
             )
         }
         return teams

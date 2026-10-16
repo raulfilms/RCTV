@@ -21,7 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,6 +61,12 @@ data class SportsUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val featuredEvent: SportsEvent? = null,
+    /** The banner's games: the live ones (up to five), else the next ones. */
+    val heroEvents: List<SportsEvent> = emptyList(),
+    /** Sports talk shows on TMDB (the most popular first), with their backdrops. */
+    val sportsTalkShows: List<com.nuvio.tv.domain.model.MetaPreview> = emptyList(),
+    val isLoadingMoreTalk: Boolean = false,
+    val hasMoreTalk: Boolean = true,
     val continueWatching: List<SportsContinueWatchingItem> = emptyList(),
     val liveNow: List<SportsEvent> = emptyList(),
     val upcomingGames: List<SportsEvent> = emptyList(),
@@ -94,8 +102,14 @@ class SportsViewModel @Inject constructor(
     private val preferences: SportsPreferencesDataStore,
     private val sportsAddonRepository: SportsAddonRepository,
     private val libraryPreferences: LibraryPreferences,
-    private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore
+    private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
+    private val tmdbApi: com.nuvio.tv.data.remote.api.TmdbApi,
+    private val tmdbSettingsDataStore: com.nuvio.tv.data.local.TmdbSettingsDataStore,
+    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
 ) : ViewModel() {
+
+    /** Title art for the Sports Talk cards (the show's name on its backdrop). */
+    val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = titleArtService
 
     private val _uiState = MutableStateFlow(SportsUiState())
     val uiState: StateFlow<SportsUiState> = _uiState.asStateFlow()
@@ -123,6 +137,103 @@ class SportsViewModel @Inject constructor(
             }
         }
         loadAddonEvents()
+        loadSportsTalk()
+    }
+
+    // ------------------------------------------------------------------ Sports Talk
+
+    private var talkPage = 0
+    private var talkTotalPages = 1
+    private var talkJob: kotlinx.coroutines.Job? = null
+
+    /** The most popular sports talk shows first, then TMDB's sports talk shows by popularity. */
+    private fun loadSportsTalk() {
+        talkJob = viewModelScope.launch {
+            val language = tmdbLanguage()
+            val curated = withContext(Dispatchers.IO) {
+                kotlinx.coroutines.coroutineScope {
+                    POPULAR_SPORTS_TALK.map { name ->
+                        async {
+                            runCatching {
+                                tmdbApi.searchTv(TMDB_API_KEY, name, language).body()?.results.orEmpty()
+                                    .firstOrNull { it.backdropPath != null && sameTitle(it.name ?: it.originalName, name) }
+                            }.getOrNull()
+                        }
+                    }.mapNotNull { it.await() }
+                }
+            }
+            _uiState.update { state ->
+                state.copy(sportsTalkShows = (curated.mapNotNull { it.toShow() } + state.sportsTalkShows).distinctBy { it.id })
+            }
+            loadMoreSportsTalkNow()
+        }
+    }
+
+    /** The next page of sports talk shows (See All, as it scrolls). */
+    fun loadMoreSportsTalk() {
+        if (talkJob?.isActive == true || !uiState.value.hasMoreTalk) return
+        talkJob = viewModelScope.launch { loadMoreSportsTalkNow() }
+    }
+
+    private suspend fun loadMoreSportsTalkNow() {
+        if (talkPage >= talkTotalPages) {
+            _uiState.update { it.copy(hasMoreTalk = false) }
+            return
+        }
+        _uiState.update { it.copy(isLoadingMoreTalk = true) }
+        val language = tmdbLanguage()
+        val response = withContext(Dispatchers.IO) {
+            runCatching {
+                tmdbApi.discoverTv(
+                    apiKey = TMDB_API_KEY,
+                    language = language,
+                    page = talkPage + 1,
+                    sortBy = "popularity.desc",
+                    withGenres = TMDB_TALK_GENRE,
+                    withKeywords = TMDB_SPORTS_TALK_KEYWORDS,
+                    withOriginalLanguage = "en"
+                ).body()
+            }.getOrNull()
+        }
+        if (response != null) {
+            talkPage = response.page ?: (talkPage + 1)
+            talkTotalPages = response.totalPages ?: talkPage
+        }
+        val shows = response?.results.orEmpty().filter { it.backdropPath != null }.mapNotNull { it.toShow() }
+        _uiState.update { state ->
+            state.copy(
+                sportsTalkShows = (state.sportsTalkShows + shows).distinctBy { it.id },
+                isLoadingMoreTalk = false,
+                hasMoreTalk = response != null && talkPage < talkTotalPages
+            )
+        }
+    }
+
+    private suspend fun tmdbLanguage(): String =
+        runCatching { tmdbSettingsDataStore.settings.first().language }.getOrNull()?.ifBlank { null } ?: "en"
+
+    private fun com.nuvio.tv.data.remote.api.TmdbDiscoverResult.toShow(): com.nuvio.tv.domain.model.MetaPreview? {
+        val title = (name ?: originalName)?.takeIf { it.isNotBlank() } ?: return null
+        val backdrop = backdropPath?.let { "https://image.tmdb.org/t/p/w780$it" }
+        return com.nuvio.tv.domain.model.MetaPreview(
+            id = "tmdb:$id",
+            type = com.nuvio.tv.domain.model.ContentType.SERIES,
+            name = title,
+            poster = backdrop,
+            posterShape = PosterShape.LANDSCAPE,
+            background = backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" },
+            logo = null,
+            description = overview?.takeIf { it.isNotBlank() },
+            releaseInfo = firstAirDate?.take(4),
+            imdbRating = voteAverage?.toFloat()?.takeIf { it > 0f },
+            genres = emptyList(),
+            rawPosterUrl = posterPath?.let { "https://image.tmdb.org/t/p/w500$it" }
+        )
+    }
+
+    private fun sameTitle(a: String?, b: String): Boolean {
+        fun norm(value: String) = value.lowercase(java.util.Locale.US).replace(Regex("[^a-z0-9]+"), "")
+        return a != null && norm(a) == norm(b)
     }
 
     /** Bookmarks or un-bookmarks a match to the Library. Local-only (see [SPORTS_EVENT_LIBRARY_TYPE]) - never touches Trakt/Simkl. */
@@ -226,11 +337,13 @@ class SportsViewModel @Inject constructor(
                     isLoading = false,
                     error = null,
                     featuredEvent = loaded.liveNow.firstOrNull() ?: loaded.upcomingGames.firstOrNull(),
+                    heroEvents = loaded.liveNow.take(5).ifEmpty { loaded.upcomingGames.take(5) },
                     liveNow = loaded.liveNow,
                     upcomingGames = loaded.upcomingGames,
                     pickedForYou = loaded.pickedForYou,
                     leagues = loaded.leagues,
-                    teams = loaded.homeTeamRowPicks,
+                    // The marquee teams first, then every other team of the leagues followed.
+                    teams = (loaded.homeTeamRowPicks + loaded.teams).distinctBy { team -> team.id },
                     browsableTeams = loaded.teams,
                     sportsTalk = mockSportsTalk(),
                     continueWatching = emptyList(),
@@ -285,6 +398,19 @@ class SportsViewModel @Inject constructor(
             teams = allTeams,
             homeTeamRowPicks = homeTeamRowPicks,
             favoriteTeams = favoriteTeams
+        )
+    }
+
+    private companion object {
+        val TMDB_API_KEY: String get() = com.nuvio.tv.BuildConfig.TMDB_API_KEY
+        /** TMDB's Talk genre (TV). */
+        const val TMDB_TALK_GENRE = "10767"
+        /** TMDB keywords "sports talk" or "sports". */
+        const val TMDB_SPORTS_TALK_KEYWORDS = "284973|6075"
+        /** The most watched sports talk shows, first in the row. */
+        val POPULAR_SPORTS_TALK = listOf(
+            "First Take", "Inside the NBA", "Pardon the Interruption", "The Pat McAfee Show", "Undisputed",
+            "Get Up", "The Herd with Colin Cowherd", "Around the Horn", "NFL Live", "Real Sports with Bryant Gumbel"
         )
     }
 

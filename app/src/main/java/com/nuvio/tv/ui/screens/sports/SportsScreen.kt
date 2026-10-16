@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,23 +9,47 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsLeague
-import com.nuvio.tv.domain.model.SportsTalkItem
+import com.nuvio.tv.domain.model.SportsTeam
 import com.nuvio.tv.domain.model.Stream
+import com.nuvio.tv.ui.components.AppleLandscapeCard
+import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
+import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.LocalTitleArtResolver
+import com.nuvio.tv.ui.components.TitlesSeeAllPage
+import com.nuvio.tv.ui.screens.home.HomeTileRow
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+/** The Sports rows that open a See All page here (Teams opens the teams page). */
+private enum class SportsSeeAll { LIVE, UPCOMING, LEAGUES, SPORTS_TALK, MY_SPORTS, MY_TEAMS }
+
+/**
+ * The Sports page: the banner (the games on now, else the next ones), then Continue Watching, Live
+ * Games, Upcoming Games, Top Leagues, Teams, Sports Talk, My Sports and My Teams. Each row shows ten
+ * cards and "See All" when it has more.
+ */
 @Composable
 fun SportsScreen(
     modifier: Modifier = Modifier,
@@ -32,78 +58,117 @@ fun SportsScreen(
     onOpenTeamsSeeAll: () -> Unit = {},
     onOpenFavoritesPicker: () -> Unit = {},
     onOpenLeagueDetail: (SportsLeague) -> Unit = {},
+    /** A title's page (a sports talk show): its id ("tmdb:123") and type ("series"). */
+    onOpenDetail: (String, String) -> Unit = { _, _ -> },
     viewModel: SportsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var seeAllName by rememberSaveable { mutableStateOf<String?>(null) }
+    val seeAll = seeAllName?.let { name -> SportsSeeAll.entries.firstOrNull { it.name == name } }
+    val rowRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    var returnRow by remember { mutableStateOf<String?>(null) }
+    // Kept here so the page keeps its place (and opens on the banner once) around See All pages.
+    val listState = rememberLazyListState()
+    var heroFocusDone by rememberSaveable { mutableStateOf(false) }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        when {
-            uiState.isLoading && uiState.leagues.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = stringResource(R.string.sports_loading),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NuvioTheme.colors.TextSecondary
-                    )
-                }
-            }
-            uiState.error != null && uiState.leagues.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    BackHandler(enabled = seeAll != null) {
+        returnRow = seeAll?.name
+        seeAllName = null
+    }
+    // Back from a See All page: focus on the row it was opened from.
+    LaunchedEffect(seeAll, returnRow) {
+        val row = returnRow ?: return@LaunchedEffect
+        if (seeAll != null) return@LaunchedEffect
+        rowRequesters[row]?.let { requestFocusSoon(it) }
+        returnRow = null
+    }
+
+    CompositionLocalProvider(LocalTitleArtResolver provides viewModel.titleArt) {
+        Box(modifier = modifier.fillMaxSize().background(AppleTvColors.Background)) {
+            when {
+                seeAll != null -> SportsSeeAllPage(
+                    which = seeAll,
+                    uiState = uiState,
+                    onPlayEvent = onPlayEvent,
+                    onOpenLeagueDetail = onOpenLeagueDetail,
+                    onOpenDetail = onOpenDetail,
+                    onShowFavoriteOptions = viewModel::showFavoriteOptions,
+                    onLoadMoreTalk = viewModel::loadMoreSportsTalk
+                )
+
+                uiState.isLoading && uiState.leagues.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            text = stringResource(R.string.sports_load_error),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = NuvioTheme.colors.TextPrimary
-                        )
-                        Text(
-                            text = uiState.error.orEmpty(),
-                            style = MaterialTheme.typography.bodySmall,
+                            text = stringResource(R.string.sports_loading),
+                            style = MaterialTheme.typography.bodyMedium,
                             color = NuvioTheme.colors.TextSecondary
                         )
                     }
                 }
-            }
-            else -> {
-                SportsContent(
+
+                uiState.error != null && uiState.leagues.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = stringResource(R.string.sports_load_error),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = NuvioTheme.colors.TextPrimary
+                            )
+                            Text(
+                                text = uiState.error.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NuvioTheme.colors.TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                else -> SportsContent(
                     uiState = uiState,
+                    listState = listState,
+                    heroFocusDone = heroFocusDone,
+                    onHeroFocusDone = { heroFocusDone = true },
+                    rowRequesters = rowRequesters,
                     onPlayEvent = onPlayEvent,
                     onOpenTeamsSeeAll = onOpenTeamsSeeAll,
                     onOpenFavoritesPicker = onOpenFavoritesPicker,
                     onOpenLeagueDetail = onOpenLeagueDetail,
+                    onOpenDetail = onOpenDetail,
+                    onOpenSeeAll = { seeAllName = it.name },
                     onToggleFavoriteTeam = viewModel::toggleFavoriteTeam,
                     onSelectAddonEvent = viewModel::selectAddonEvent,
                     onShowFavoriteOptions = viewModel::showFavoriteOptions,
                     onToggleLibraryEvent = viewModel::toggleLibraryEvent
                 )
             }
-        }
 
-        uiState.selectedAddonEvent?.let { selected ->
-            SportsAddonStreamPickerOverlay(
-                event = selected,
-                streams = uiState.addonEventStreams,
-                isLoading = uiState.isLoadingAddonStreams,
-                error = uiState.addonStreamsError,
-                onSelectStream = { stream ->
-                    viewModel.dismissAddonEventPicker()
-                    onPlayStream(stream)
-                },
-                onDismiss = viewModel::dismissAddonEventPicker
-            )
-        }
+            uiState.selectedAddonEvent?.let { selected ->
+                SportsAddonStreamPickerOverlay(
+                    event = selected,
+                    streams = uiState.addonEventStreams,
+                    isLoading = uiState.isLoadingAddonStreams,
+                    error = uiState.addonStreamsError,
+                    onSelectStream = { stream ->
+                        viewModel.dismissAddonEventPicker()
+                        onPlayStream(stream)
+                    },
+                    onDismiss = viewModel::dismissAddonEventPicker
+                )
+            }
 
-        uiState.favoriteOptionsTarget?.let { target ->
-            val eventTarget = target as? SportsFavoriteTarget.EventTarget
-            SportsFavoriteOptionsDialog(
-                target = target,
-                favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet(),
-                favoriteSportNames = uiState.favoriteSportNames,
-                onToggleTeam = viewModel::toggleFavoriteTeam,
-                onToggleSport = viewModel::toggleFavoriteSport,
-                onDismiss = viewModel::dismissFavoriteOptions,
-                isEventInLibrary = eventTarget?.event?.id?.let { it in uiState.libraryEventIds } ?: false,
-                onToggleLibrary = eventTarget?.let { { viewModel.toggleLibraryEvent(it.event) } }
-            )
+            uiState.favoriteOptionsTarget?.let { target ->
+                val eventTarget = target as? SportsFavoriteTarget.EventTarget
+                SportsFavoriteOptionsDialog(
+                    target = target,
+                    favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet(),
+                    favoriteSportNames = uiState.favoriteSportNames,
+                    onToggleTeam = viewModel::toggleFavoriteTeam,
+                    onToggleSport = viewModel::toggleFavoriteSport,
+                    onDismiss = viewModel::dismissFavoriteOptions,
+                    isEventInLibrary = eventTarget?.event?.id?.let { it in uiState.libraryEventIds } ?: false,
+                    onToggleLibrary = eventTarget?.let { { viewModel.toggleLibraryEvent(it.event) } }
+                )
+            }
         }
     }
 }
@@ -111,198 +176,434 @@ fun SportsScreen(
 @Composable
 private fun SportsContent(
     uiState: SportsUiState,
+    listState: LazyListState,
+    heroFocusDone: Boolean,
+    onHeroFocusDone: () -> Unit,
+    rowRequesters: MutableMap<String, FocusRequester>,
     onPlayEvent: (SportsEvent) -> Unit,
     onOpenTeamsSeeAll: () -> Unit,
     onOpenFavoritesPicker: () -> Unit,
     onOpenLeagueDetail: (SportsLeague) -> Unit,
+    onOpenDetail: (String, String) -> Unit,
+    onOpenSeeAll: (SportsSeeAll) -> Unit,
     onToggleFavoriteTeam: (String) -> Unit,
     onSelectAddonEvent: (com.nuvio.tv.domain.model.SportsAddonEvent) -> Unit,
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
     onToggleLibraryEvent: (SportsEvent) -> Unit
 ) {
-    val favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet()
+    val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { it.id }.toSet() }
+    val favoriteLeagueIds = remember(uiState.favoriteLeagues) { uiState.favoriteLeagues.map { it.id }.toSet() }
+    val heroRequester = remember { FocusRequester() }
+    val requester: (String) -> FocusRequester = { key -> rowRequesters.getOrPut(key) { FocusRequester() } }
+    // The page opens on the banner's Watch button (once).
+    LaunchedEffect(uiState.heroEvents.isNotEmpty()) {
+        if (heroFocusDone || uiState.heroEvents.isEmpty()) return@LaunchedEffect
+        onHeroFocusDone()
+        requestFocusSoon(heroRequester)
+    }
+    val rowGap = Modifier.padding(top = 26.dp)
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = NuvioTheme.spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)
+        contentPadding = PaddingValues(bottom = 56.dp)
     ) {
-        uiState.featuredEvent?.let { featured ->
+        if (uiState.heroEvents.isNotEmpty()) {
             item(key = "hero") {
-                SportsHeroBanner(
-                    event = featured,
-                    onWatchLive = { onPlayEvent(featured) },
-                    isInLibrary = featured.id in uiState.libraryEventIds,
-                    onToggleLibrary = { onToggleLibraryEvent(featured) },
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+                SportsHeroCarousel(
+                    events = uiState.heroEvents,
+                    libraryEventIds = uiState.libraryEventIds,
+                    primaryFocusRequester = heroRequester,
+                    onWatch = onPlayEvent,
+                    onToggleLibrary = onToggleLibraryEvent
                 )
             }
         }
 
-        if (uiState.addonEvents.isNotEmpty()) {
-            item(key = "live_streams") {
-                SportsRowSection(title = stringResource(R.string.sports_row_live_streams)) {
-                    items(uiState.addonEvents, key = { it.id }) { event ->
-                        SportsAddonEventCard(event = event, onClick = { onSelectAddonEvent(event) })
-                    }
-                }
-            }
-        }
-
+        // Continue Watching
         if (uiState.continueWatching.isNotEmpty()) {
             item(key = "continue_watching") {
-                SportsRowSection(title = stringResource(R.string.sports_row_continue_watching)) {
-                    items(uiState.continueWatching, key = { it.id }) { cw ->
-                        SportsTalkCard(
-                            item = SportsTalkItem(id = cw.id, title = cw.title, summary = cw.subtitle.orEmpty()),
-                            onClick = { cw.event?.let(onPlayEvent) }
-                        )
-                    }
+                val items = uiState.continueWatching
+                SportsRow(
+                    title = stringResource(R.string.sports_row_continue_watching),
+                    count = items.size.coerceAtMost(SPORTS_ROW_MAX),
+                    hasSeeAll = false,
+                    keyOf = { items[it].id },
+                    rowFocusRequester = requester("continue_watching"),
+                    seeAllWidth = SportsGameCardWidth,
+                    seeAllHeight = SportsGameCardHeight,
+                    onSeeAll = {},
+                    modifier = rowGap
+                ) { index, itemModifier ->
+                    val item = items[index]
+                    SportsContinueCard(item = item, onClick = { item.event?.let(onPlayEvent) }, modifier = itemModifier)
                 }
             }
         }
 
+        // Live Games
         if (uiState.liveNow.isNotEmpty()) {
-            item(key = "live_now") {
-                SportsRowSection(title = stringResource(R.string.sports_row_live_now)) {
-                    items(uiState.liveNow, key = { it.id }) { event ->
-                        ScoreboardCard(
-                            event = event,
-                            onClick = { onPlayEvent(event) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
-                        )
-                    }
+            item(key = "live_games") {
+                GamesRow(
+                    title = stringResource(R.string.sports_row_live_games),
+                    games = uiState.liveNow,
+                    rowFocusRequester = requester(SportsSeeAll.LIVE.name),
+                    onPlayEvent = onPlayEvent,
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.LIVE) },
+                    modifier = rowGap
+                )
+            }
+        }
+
+        // Games from the person's sports add-ons (they play here).
+        if (uiState.addonEvents.isNotEmpty()) {
+            item(key = "live_streams") {
+                val events = uiState.addonEvents
+                SportsRow(
+                    title = stringResource(R.string.sports_row_live_streams),
+                    count = events.size,
+                    hasSeeAll = false,
+                    keyOf = { events[it].id },
+                    rowFocusRequester = requester("live_streams"),
+                    seeAllWidth = SportsGameCardWidth,
+                    seeAllHeight = SportsGameCardHeight,
+                    onSeeAll = {},
+                    modifier = rowGap
+                ) { index, itemModifier ->
+                    SportsAddonEventCard(event = events[index], onClick = { onSelectAddonEvent(events[index]) }, modifier = itemModifier)
                 }
             }
         }
 
+        // Upcoming Games
         if (uiState.upcomingGames.isNotEmpty()) {
             item(key = "upcoming_games") {
-                SportsRowSection(title = stringResource(R.string.sports_row_upcoming_games)) {
-                    items(uiState.upcomingGames, key = { it.id }) { event ->
-                        ScoreboardCard(
-                            event = event,
-                            onClick = { onPlayEvent(event) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
-                        )
-                    }
-                }
+                GamesRow(
+                    title = stringResource(R.string.sports_row_upcoming_games),
+                    games = uiState.upcomingGames,
+                    rowFocusRequester = requester(SportsSeeAll.UPCOMING.name),
+                    onPlayEvent = onPlayEvent,
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.UPCOMING) },
+                    modifier = rowGap
+                )
             }
         }
 
-        if (uiState.pickedForYou.isNotEmpty()) {
-            item(key = "picked_for_you") {
-                SportsRowSection(title = stringResource(R.string.sports_row_picked_for_you)) {
-                    items(uiState.pickedForYou, key = { "picked_${it.id}" }) { event ->
-                        ScoreboardCard(
-                            event = event,
-                            onClick = { onPlayEvent(event) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
-                        )
-                    }
-                }
-            }
-        }
-
+        // Top Leagues
         if (uiState.leagues.isNotEmpty()) {
-            item(key = "leagues") {
-                SportsRowSection(title = stringResource(R.string.sports_row_leagues)) {
-                    items(uiState.leagues, key = { it.id }) { league ->
-                        LeagueCard(
-                            league = league,
-                            onClick = { onOpenLeagueDetail(league) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
-                        )
-                    }
-                }
+            item(key = "top_leagues") {
+                LeaguesRow(
+                    title = stringResource(R.string.sports_row_top_leagues),
+                    leagues = uiState.leagues,
+                    favoriteLeagueIds = favoriteLeagueIds,
+                    rowFocusRequester = requester(SportsSeeAll.LEAGUES.name),
+                    onOpenLeagueDetail = onOpenLeagueDetail,
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.LEAGUES) },
+                    modifier = rowGap
+                )
             }
         }
 
+        // Teams
         if (uiState.teams.isNotEmpty()) {
             item(key = "teams") {
-                SportsRowSection(
+                TeamsRow(
                     title = stringResource(R.string.sports_row_teams),
-                    onSeeAll = onOpenTeamsSeeAll
-                ) {
-                    items(uiState.teams, key = { it.id }) { team ->
-                        TeamCard(
-                            team = team,
-                            isFavorite = team.id in favoriteTeamIds,
-                            onClick = { onToggleFavoriteTeam(team.id) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
-                        )
-                    }
-                }
+                    teams = uiState.teams,
+                    favoriteTeamIds = favoriteTeamIds,
+                    rowFocusRequester = requester("teams"),
+                    onClick = { team -> onToggleFavoriteTeam(team.id) },
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = onOpenTeamsSeeAll,
+                    modifier = rowGap
+                )
             }
         }
 
-        if (uiState.sportsTalk.isNotEmpty()) {
+        // Sports Talk
+        if (uiState.sportsTalkShows.isNotEmpty()) {
             item(key = "sports_talk") {
-                SportsRowSection(title = stringResource(R.string.sports_row_sports_talk)) {
-                    items(uiState.sportsTalk, key = { it.id }) { talk ->
-                        SportsTalkCard(item = talk, onClick = { })
-                    }
+                val shows = uiState.sportsTalkShows
+                SportsRow(
+                    title = stringResource(R.string.sports_row_sports_talk),
+                    count = shows.size.coerceAtMost(SPORTS_ROW_MAX),
+                    hasSeeAll = shows.size > SPORTS_ROW_MAX || uiState.hasMoreTalk,
+                    keyOf = { shows[it].id },
+                    rowFocusRequester = requester(SportsSeeAll.SPORTS_TALK.name),
+                    seeAllWidth = AppleLandscapeCardWidth,
+                    seeAllHeight = AppleLandscapeCardHeight,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.SPORTS_TALK) },
+                    modifier = rowGap
+                ) { index, itemModifier ->
+                    val show = shows[index]
+                    AppleLandscapeCard(
+                        item = show,
+                        onClick = { onOpenDetail(show.id, show.apiType) },
+                        modifier = itemModifier
+                    )
                 }
             }
         }
 
+        // My Sports: the person's leagues (also the Library's Sports Leagues).
         item(key = "my_sports") {
-            SportsRowSection(title = stringResource(R.string.sports_row_my_sports)) {
-                if (uiState.favoriteLeagues.isEmpty() && uiState.favoriteSportNames.isEmpty()) {
-                    item(key = "my_sports_empty") {
-                        AddFavoritesCard(
-                            label = stringResource(R.string.sports_add_favorite_sports),
-                            onClick = onOpenFavoritesPicker
-                        )
-                    }
-                } else {
-                    // The leagues in "My Sports" (also the Library's Sports Leagues): each opens its page.
-                    items(uiState.favoriteLeagues, key = { "fav_league_${it.id}" }) { league ->
-                        LeagueCard(
-                            league = league,
-                            onClick = { onOpenLeagueDetail(league) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
-                        )
-                    }
-                    // Whole sports saved before "My Sports" held leagues.
-                    items(uiState.favoriteSportNames.toList(), key = { "sport_$it" }) { sportName ->
-                        val league = SportsLeague(id = sportName, name = sportName, sportName = sportName)
-                        LeagueCard(
-                            league = league,
-                            onClick = { },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
-                        )
-                    }
+            val leagues = uiState.favoriteLeagues
+            if (leagues.isEmpty()) {
+                SportsRow(
+                    title = stringResource(R.string.sports_row_my_sports),
+                    count = 1,
+                    hasSeeAll = false,
+                    keyOf = { "add_sports" },
+                    rowFocusRequester = requester(SportsSeeAll.MY_SPORTS.name),
+                    seeAllWidth = SportsTileWidth,
+                    seeAllHeight = SportsTileHeight,
+                    onSeeAll = {},
+                    modifier = rowGap
+                ) { _, itemModifier ->
+                    SportsAddTile(label = stringResource(R.string.sports_add_favorite_sports), onClick = onOpenFavoritesPicker, modifier = itemModifier)
                 }
+            } else {
+                LeaguesRow(
+                    title = stringResource(R.string.sports_row_my_sports),
+                    leagues = leagues,
+                    favoriteLeagueIds = favoriteLeagueIds,
+                    rowFocusRequester = requester(SportsSeeAll.MY_SPORTS.name),
+                    onOpenLeagueDetail = onOpenLeagueDetail,
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.MY_SPORTS) },
+                    modifier = rowGap
+                )
             }
         }
 
+        // My Teams (also the Library's Sports Teams).
         item(key = "my_teams") {
-            SportsRowSection(title = stringResource(R.string.sports_row_my_teams)) {
-                if (uiState.favoriteTeams.isEmpty()) {
-                    item(key = "my_teams_empty") {
-                        AddFavoritesCard(
-                            label = stringResource(R.string.sports_add_favorite_teams),
-                            onClick = onOpenFavoritesPicker
-                        )
-                    }
-                } else {
-                    items(uiState.favoriteTeams, key = { "fav_team_${it.id}" }) { team ->
-                        TeamCard(
-                            team = team,
-                            isFavorite = true,
-                            onClick = { onToggleFavoriteTeam(team.id) },
-                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
-                        )
-                    }
-                    item(key = "my_teams_add") {
-                        AddFavoritesCard(
-                            label = stringResource(R.string.sports_add_favorite_teams),
-                            onClick = onOpenFavoritesPicker
-                        )
-                    }
+            val teams = uiState.favoriteTeams
+            if (teams.isEmpty()) {
+                SportsRow(
+                    title = stringResource(R.string.sports_row_my_teams),
+                    count = 1,
+                    hasSeeAll = false,
+                    keyOf = { "add_teams" },
+                    rowFocusRequester = requester(SportsSeeAll.MY_TEAMS.name),
+                    seeAllWidth = SportsTileWidth,
+                    seeAllHeight = SportsTileHeight,
+                    onSeeAll = {},
+                    modifier = rowGap
+                ) { _, itemModifier ->
+                    SportsAddTile(label = stringResource(R.string.sports_add_favorite_teams), onClick = onOpenFavoritesPicker, modifier = itemModifier)
                 }
+            } else {
+                TeamsRow(
+                    title = stringResource(R.string.sports_row_my_teams),
+                    teams = teams,
+                    favoriteTeamIds = favoriteTeamIds,
+                    rowFocusRequester = requester(SportsSeeAll.MY_TEAMS.name),
+                    // A team of My Teams: its options (remove it, and the rest).
+                    onClick = { team -> onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    onSeeAll = { onOpenSeeAll(SportsSeeAll.MY_TEAMS) },
+                    modifier = rowGap
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun GamesRow(
+    title: String,
+    games: List<SportsEvent>,
+    rowFocusRequester: FocusRequester,
+    onPlayEvent: (SportsEvent) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    onSeeAll: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SportsRow(
+        title = title,
+        count = games.size.coerceAtMost(SPORTS_ROW_MAX),
+        hasSeeAll = games.size > SPORTS_ROW_MAX,
+        keyOf = { games[it].id },
+        rowFocusRequester = rowFocusRequester,
+        seeAllWidth = SportsGameCardWidth,
+        seeAllHeight = SportsGameCardHeight,
+        onSeeAll = onSeeAll,
+        modifier = modifier
+    ) { index, itemModifier ->
+        val game = games[index]
+        SportsGameCard(
+            event = game,
+            onClick = { onPlayEvent(game) },
+            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(game)) },
+            modifier = itemModifier
+        )
+    }
+}
+
+@Composable
+private fun LeaguesRow(
+    title: String,
+    leagues: List<SportsLeague>,
+    favoriteLeagueIds: Set<String>,
+    rowFocusRequester: FocusRequester,
+    onOpenLeagueDetail: (SportsLeague) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    onSeeAll: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SportsRow(
+        title = title,
+        count = leagues.size.coerceAtMost(SPORTS_ROW_MAX),
+        hasSeeAll = leagues.size > SPORTS_ROW_MAX,
+        keyOf = { leagues[it].id },
+        rowFocusRequester = rowFocusRequester,
+        seeAllWidth = SportsTileWidth,
+        seeAllHeight = SportsTileHeight,
+        onSeeAll = onSeeAll,
+        modifier = modifier
+    ) { index, itemModifier ->
+        LeagueTile(leagues[index], favoriteLeagueIds, onOpenLeagueDetail, onShowFavoriteOptions, itemModifier)
+    }
+}
+
+@Composable
+private fun TeamsRow(
+    title: String,
+    teams: List<SportsTeam>,
+    favoriteTeamIds: Set<String>,
+    rowFocusRequester: FocusRequester,
+    onClick: (SportsTeam) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    onSeeAll: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SportsRow(
+        title = title,
+        count = teams.size.coerceAtMost(SPORTS_ROW_MAX),
+        hasSeeAll = teams.size > SPORTS_ROW_MAX,
+        keyOf = { teams[it].id },
+        rowFocusRequester = rowFocusRequester,
+        seeAllWidth = SportsTileWidth,
+        seeAllHeight = SportsTileHeight,
+        onSeeAll = onSeeAll,
+        modifier = modifier
+    ) { index, itemModifier ->
+        TeamTile(teams[index], favoriteTeamIds, onClick, onShowFavoriteOptions, itemModifier)
+    }
+}
+
+@Composable
+private fun LeagueTile(
+    league: SportsLeague,
+    favoriteLeagueIds: Set<String>,
+    onOpenLeagueDetail: (SportsLeague) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    modifier: Modifier
+) {
+    SportsLogoTile(
+        name = league.name,
+        logoUrl = league.badgeUrl,
+        color = sportsLeagueColor(league.id, league.name),
+        isFavorite = league.id in favoriteLeagueIds,
+        onClick = { onOpenLeagueDetail(league) },
+        onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) },
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun TeamTile(
+    team: SportsTeam,
+    favoriteTeamIds: Set<String>,
+    onClick: (SportsTeam) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    modifier: Modifier
+) {
+    SportsLogoTile(
+        name = team.name,
+        logoUrl = team.badgeUrl,
+        color = sportsTeamColor(team.color, team.id),
+        isFavorite = team.id in favoriteTeamIds,
+        onClick = { onClick(team) },
+        onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
+        modifier = modifier
+    )
+}
+
+/** A row's See All page. */
+@Composable
+private fun SportsSeeAllPage(
+    which: SportsSeeAll,
+    uiState: SportsUiState,
+    onPlayEvent: (SportsEvent) -> Unit,
+    onOpenLeagueDetail: (SportsLeague) -> Unit,
+    onOpenDetail: (String, String) -> Unit,
+    onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
+    onLoadMoreTalk: () -> Unit
+) {
+    val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { it.id }.toSet() }
+    val favoriteLeagueIds = remember(uiState.favoriteLeagues) { uiState.favoriteLeagues.map { it.id }.toSet() }
+    when (which) {
+        SportsSeeAll.LIVE, SportsSeeAll.UPCOMING -> {
+            val games = if (which == SportsSeeAll.LIVE) uiState.liveNow else uiState.upcomingGames
+            SportsGridPage(
+                title = stringResource(if (which == SportsSeeAll.LIVE) R.string.sports_row_live_games else R.string.sports_row_upcoming_games),
+                count = games.size,
+                columns = 3,
+                keyOf = { games[it].id }
+            ) { index, itemModifier ->
+                val game = games[index]
+                SportsGameCard(
+                    event = game,
+                    onClick = { onPlayEvent(game) },
+                    onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(game)) },
+                    modifier = itemModifier
+                )
+            }
+        }
+
+        SportsSeeAll.LEAGUES, SportsSeeAll.MY_SPORTS -> {
+            val leagues = if (which == SportsSeeAll.LEAGUES) uiState.leagues else uiState.favoriteLeagues
+            SportsGridPage(
+                title = stringResource(if (which == SportsSeeAll.LEAGUES) R.string.sports_row_top_leagues else R.string.sports_row_my_sports),
+                count = leagues.size,
+                columns = 4,
+                keyOf = { leagues[it].id }
+            ) { index, itemModifier ->
+                LeagueTile(leagues[index], favoriteLeagueIds, onOpenLeagueDetail, onShowFavoriteOptions, itemModifier)
+            }
+        }
+
+        SportsSeeAll.MY_TEAMS -> {
+            val teams = uiState.favoriteTeams
+            SportsGridPage(
+                title = stringResource(R.string.sports_row_my_teams),
+                count = teams.size,
+                columns = 4,
+                keyOf = { teams[it].id }
+            ) { index, itemModifier ->
+                TeamTile(
+                    team = teams[index],
+                    favoriteTeamIds = favoriteTeamIds,
+                    onClick = { team -> onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
+                    onShowFavoriteOptions = onShowFavoriteOptions,
+                    modifier = itemModifier
+                )
+            }
+        }
+
+        SportsSeeAll.SPORTS_TALK -> TitlesSeeAllPage(
+            title = stringResource(R.string.sports_row_sports_talk),
+            stateKey = "sports_talk",
+            items = uiState.sportsTalkShows,
+            isLoadingMore = uiState.isLoadingMoreTalk,
+            onItemClick = { show -> onOpenDetail(show.id, show.apiType) },
+            onItemLongPress = {},
+            onLoadMore = onLoadMoreTalk
+        )
     }
 }

@@ -24,7 +24,9 @@ data class SportsTeam(
     val sportName: String? = null,
     val leagueId: String? = null,
     val leagueName: String? = null,
-    val badgeUrl: String? = null
+    val badgeUrl: String? = null,
+    /** The team's main color ("002244", no #), when the source gives it. */
+    val color: String? = null
 )
 
 enum class SportsEventStatus { LIVE, UPCOMING, FINISHED }
@@ -52,7 +54,13 @@ data class SportsEvent(
     val venue: String?,
     val status: SportsEventStatus,
     /** Free-form progress text when known/estimated, e.g. "4th Quarter", "76'", "Final". */
-    val statusDetail: String? = null
+    val statusDetail: String? = null,
+    /** The teams' short names ("BUF", "KC"), when the source gives them. */
+    val homeTeamAbbreviation: String? = null,
+    val awayTeamAbbreviation: String? = null,
+    /** The teams' main colors ("002244", no #), when the source gives them. */
+    val homeTeamColor: String? = null,
+    val awayTeamColor: String? = null
 )
 
 /** A lightweight "sports talk" article/discussion item. No live API for this yet; curated/mock. */
