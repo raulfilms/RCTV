@@ -34,6 +34,8 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -992,8 +994,12 @@ fun SportsFavoriteOptionsDialog(
     onToggleSport: (String) -> Unit,
     onDismiss: () -> Unit,
     isEventInLibrary: Boolean = false,
-    onToggleLibrary: (() -> Unit)? = null
+    onToggleLibrary: (() -> Unit)? = null,
+    libraryViewModel: SportsLibraryViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
+    // The Library's Sports Teams and Sports Leagues.
+    val libraryTeamIds by libraryViewModel.teamIds.collectAsState()
+    val libraryLeagueIds by libraryViewModel.leagueIds.collectAsState()
     val title = when (target) {
         is SportsFavoriteTarget.TeamTarget -> target.team.name
         is SportsFavoriteTarget.LeagueTarget -> target.league.name
@@ -1017,6 +1023,16 @@ fun SportsFavoriteOptionsDialog(
                         onDismiss()
                     }
                 )
+                val inLibrary = target.team.id in libraryTeamIds
+                FavoriteOptionButton(
+                    label = stringResourceCompat(
+                        if (inLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
+                    ),
+                    onClick = {
+                        libraryViewModel.toggleTeam(target.team)
+                        onDismiss()
+                    }
+                )
             }
             is SportsFavoriteTarget.LeagueTarget -> {
                 val sportName = target.league.sportName
@@ -1028,6 +1044,21 @@ fun SportsFavoriteOptionsDialog(
                         ),
                         onClick = {
                             onToggleSport(sportName)
+                            onDismiss()
+                        }
+                    )
+                }
+                // A real league (not one of "My Sports", which are sports standing in as leagues).
+                val league = target.league
+                val isRealLeague = !(league.id == league.sportName && league.name == league.sportName)
+                if (isRealLeague) {
+                    val inLibrary = league.id in libraryLeagueIds
+                    FavoriteOptionButton(
+                        label = stringResourceCompat(
+                            if (inLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
+                        ),
+                        onClick = {
+                            libraryViewModel.toggleLeague(league)
                             onDismiss()
                         }
                     )
@@ -1083,6 +1114,8 @@ fun SportsFavoriteOptionsDialog(
                             if (isEventInLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
                         ),
                         onClick = {
+                            // Its details go along, so it opens from the Library as it is now.
+                            if (!isEventInLibrary) libraryViewModel.rememberEvent(event)
                             onToggleLibrary()
                             onDismiss()
                         }

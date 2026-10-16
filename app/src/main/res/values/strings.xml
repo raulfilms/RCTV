@@ -2100,6 +2100,14 @@
     <string name="library_syncing_library">Syncing library\u2026</string>
     <string name="library_type_all">All</string>
     <string name="library_type_items">items</string>
+    <string name="library_type_movies">Movies</string>
+    <string name="library_type_shows">Shows</string>
+    <string name="library_type_sports_teams">Sports Teams</string>
+    <string name="library_type_sports_leagues">Sports Leagues</string>
+    <string name="library_type_events">Events</string>
+    <string name="library_type_custom_channels">Custom Channels</string>
+    <string name="library_empty_sports">In Sports, hold OK on a team, league or game and choose Add to library</string>
+    <string name="library_empty_custom_channels">Add channels to Custom in the Live TV guide to see them here</string>
     <string name="library_empty_local_title">No %1$s yet</string>
     <string name="library_empty_trakt_title">No %1$s in this list</string>
     <string name="library_empty_local_subtitle">Start saving your favorites to see them here</string>

@@ -41,6 +41,7 @@ class GameDetailViewModel @Inject constructor(
     private val client: EspnSportsClient,
     private val preferences: SportsPreferencesDataStore,
     private val libraryPreferences: LibraryPreferences,
+    private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -95,6 +96,8 @@ class GameDetailViewModel @Inject constructor(
             if (uiState.value.isInLibrary) {
                 libraryPreferences.removeItem(itemId = event.id, itemType = SPORTS_EVENT_LIBRARY_TYPE)
             } else {
+                // Its details go along, so it opens from the Library as it is now.
+                sportsLibraryStore.rememberEvent(event)
                 libraryPreferences.addItem(item = event.toSavedLibraryItem())
             }
         }

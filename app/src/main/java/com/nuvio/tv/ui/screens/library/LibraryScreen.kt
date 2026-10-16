@@ -118,6 +118,12 @@ private enum class LibraryViewMode {
 @Composable
 private fun localizedTypeLabel(key: String): String = when (key.lowercase()) {
     LibraryTypeTab.ALL_KEY -> stringResource(R.string.library_type_all)
+    LIBRARY_TYPE_MOVIE -> stringResource(R.string.library_type_movies)
+    LIBRARY_TYPE_SHOW -> stringResource(R.string.library_type_shows)
+    LIBRARY_TYPE_SPORTS_TEAM -> stringResource(R.string.library_type_sports_teams)
+    LIBRARY_TYPE_SPORTS_LEAGUE -> stringResource(R.string.library_type_sports_leagues)
+    LIBRARY_TYPE_EVENT -> stringResource(R.string.library_type_events)
+    LIBRARY_TYPE_CUSTOM_CHANNEL -> stringResource(R.string.library_type_custom_channels)
     else -> localizedContentType(key)
 }
 
@@ -127,7 +133,9 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
     showBuiltInHeader: Boolean = true,
     onNavigateToDetail: (String, String, String?) -> Unit,
-    onCloudPlaybackResolved: (CloudLibraryPlaybackInfo) -> Unit = {}
+    onCloudPlaybackResolved: (CloudLibraryPlaybackInfo) -> Unit = {},
+    /** Opens a team's, league's, game's or custom channel's page. */
+    onOpenRoute: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsState()
@@ -138,6 +146,7 @@ fun LibraryScreen(
     var expandedPicker by remember { mutableStateOf<String?>(null) }
     var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.Saved) }
     var activeCloudItem by remember { mutableStateOf<CloudLibraryItem?>(null) }
+    var extraToRemove by remember { mutableStateOf<com.nuvio.tv.domain.model.LibraryEntry?>(null) }
     var pendingCloudPlayback by remember { mutableStateOf<CloudLibraryPlaybackInfo?>(null) }
     var showCloudPlayerChoice by remember { mutableStateOf(false) }
     val primaryFocusRequester = remember { FocusRequester() }
@@ -429,7 +438,19 @@ fun LibraryScreen(
                 }
             }
 
-            if (uiState.visibleItems.isEmpty()) {
+            val selectedExtraType = uiState.selectedTypeTab?.key?.takeIf { it in LIBRARY_EXTRA_TYPES }
+            if (uiState.visibleItems.isEmpty() && selectedExtraType != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    EmptyScreenState(
+                        title = stringResource(R.string.library_empty_local_title, localizedTypeLabel(selectedExtraType).lowercase()),
+                        subtitle = stringResource(
+                            if (selectedExtraType == LIBRARY_TYPE_CUSTOM_CHANNEL) R.string.library_empty_custom_channels
+                            else R.string.library_empty_sports
+                        ),
+                        icon = Icons.Default.BookmarkBorder
+                    )
+                }
+            } else if (uiState.visibleItems.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     val selectedTypeLabel = uiState.selectedTypeTab?.let { localizedTypeLabel(it.key) }?.lowercase() ?: stringResource(R.string.library_type_items)
                     val title = when {
@@ -456,6 +477,27 @@ fun LibraryScreen(
 
             items(uiState.visibleItems, key = { "${it.type}:${it.id}" }) { item ->
                 val focusKey = "${item.type}:${item.id}"
+                if (item.isLibraryExtra()) {
+                    // A team, league, game or custom channel: its logo, and its own page.
+                    LibraryExtraCard(
+                        entry = item,
+                        logos = uiState.extraLogos[focusKey].orEmpty(),
+                        width = if (verticalGrid) posterCardStyle.width else com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
+                        height = if (verticalGrid) posterCardStyle.height else com.nuvio.tv.ui.components.AppleLandscapeCardHeight,
+                        cornerRadius = posterCardStyle.cornerRadius,
+                        focusRequester = posterFocusRequesters[focusKey],
+                        onFocused = { lastFocusedPosterKey = focusKey },
+                        onClick = {
+                            lastFocusedPosterKey = focusKey
+                            viewModel.extraRoute(item)?.let(onOpenRoute)
+                        },
+                        onLongPress = {
+                            lastFocusedPosterKey = focusKey
+                            extraToRemove = item
+                        }
+                    )
+                    return@items
+                }
                 val isSeries = item.type.equals("series", ignoreCase = true) || item.type.equals("tv", ignoreCase = true)
                 val previewForLongPress = remember(item) {
                     item.toMetaPreview().copy(posterShape = PosterShape.POSTER)
@@ -678,6 +720,33 @@ fun LibraryScreen(
                     .background(NuvioTheme.colors.BackgroundElevated, RoundedCornerShape(10.dp))
                     .padding(horizontal = 18.dp, vertical = 10.dp)
             )
+        }
+    }
+
+    // Held on a team, league, game or custom channel: take it out of the Library?
+    extraToRemove?.let { entry ->
+        NuvioDialog(
+            onDismiss = { extraToRemove = null },
+            title = entry.name,
+            subtitle = localizedTypeLabel(entry.type)
+        ) {
+            val colors = ButtonDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundCard,
+                contentColor = NuvioTheme.colors.TextPrimary
+            )
+            Button(
+                onClick = {
+                    viewModel.removeExtra(entry)
+                    extraToRemove = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = colors
+            ) { Text(stringResource(R.string.hero_remove_from_library)) }
+            Button(
+                onClick = { extraToRemove = null },
+                modifier = Modifier.fillMaxWidth(),
+                colors = colors
+            ) { Text(stringResource(R.string.action_cancel)) }
         }
     }
 

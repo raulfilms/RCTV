@@ -24,6 +24,15 @@ import com.nuvio.tv.core.poster.withCustomPosterUrls
 import com.nuvio.tv.data.local.DebridSettingsDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.LibraryPreferences
+import com.nuvio.tv.data.local.LiveTvDataStore
+import com.nuvio.tv.data.local.SportsLibraryStore
+import com.nuvio.tv.data.remote.espn.EspnSportsClient
+import com.nuvio.tv.domain.model.PosterShape
+import com.nuvio.tv.domain.model.SportsEvent
+import com.nuvio.tv.domain.model.SportsEventStatus
+import com.nuvio.tv.domain.model.SportsLeague
+import com.nuvio.tv.domain.model.SportsTeam
+import com.nuvio.tv.ui.navigation.Screen
 import com.nuvio.tv.data.local.PlayerPreference
 import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.domain.model.AuthState
@@ -149,7 +158,11 @@ data class LibraryUiState(
     val manageSelectedListKey: String? = null,
     val listEditorState: LibraryListEditorState? = null,
     val pendingOperation: Boolean = false,
-    val customPosterUrlPattern: String = ""
+    val customPosterUrlPattern: String = "",
+    /** Sports teams, leagues, events and the Guide's custom channels: the Library's extra types. */
+    val extraItems: List<LibraryEntry> = emptyList(),
+    /** The logos each extra item shows (a game: both teams'), by "type:id". */
+    val extraLogos: Map<String, List<String>> = emptyMap()
 )
 
 @HiltViewModel
@@ -169,6 +182,8 @@ class LibraryViewModel @Inject constructor(
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     private val profileManager: com.nuvio.tv.core.profile.ProfileManager,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
+    private val sportsLibraryStore: SportsLibraryStore,
+    private val liveTvDataStore: LiveTvDataStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -189,6 +204,7 @@ class LibraryViewModel @Inject constructor(
         posterOptions.bind(viewModelScope)
         observeLayoutPreferences()
         observeLibraryData()
+        observeLibraryExtras()
         observeProviderSortOrder()
         viewModelScope.launch {
             profileManager.activeProfileId.collect { profileId ->
@@ -226,6 +242,8 @@ class LibraryViewModel @Inject constructor(
      */
     fun prefetchMetaOnFocus(id: String, type: String) {
         if (id.isBlank() || id in metaPrefetchedIds) return
+        // Teams, leagues, games and channels aren't addon titles.
+        if (type.lowercase(Locale.ROOT) in LIBRARY_EXTRA_TYPES) return
         metaPrefetchJob?.cancel()
         metaPrefetchJob = viewModelScope.launch {
             delay(150)
@@ -677,7 +695,9 @@ class LibraryViewModel @Inject constructor(
                         ?: listTabs.firstOrNull { it.type == LibraryListTab.Type.PERSONAL }?.key
 
                     val nextSelectedType = current.selectedTypeTab
-                        ?: persistedTypeKey?.let { key -> LibraryTypeTab(key = key, label = "") }
+                        ?: persistedTypeKey?.let { key ->
+                            LibraryTypeTab(key = if (key == LibraryTypeTab.ALL_KEY) key else normalizeLibraryTypeKey(key), label = "")
+                        }
                         ?: LibraryTypeTab.All.copy(label = context.getString(R.string.library_type_all))
                     val sortOptions = if (sourceMode.providerId != null && isTrackingAuthenticated) {
                         LibrarySortOption.TrackingOptions
@@ -883,23 +903,31 @@ class LibraryViewModel @Inject constructor(
         releaseInfo?.let { YEAR_REGEX.find(it)?.value }
 
     private fun LibraryUiState.withVisibleItems(): LibraryUiState {
+        // Games bookmarked locally come in with the extra types, not with the titles.
+        val titleItems = allItems.filterNot { it.isLibraryExtra() }
         val listFiltered = if (sourceMode.providerId != null) {
             val listKey = selectedListKey ?: ""
-            allItems.filter { entry -> entry.listKeys.contains(listKey) }
+            titleItems.filter { entry -> entry.listKeys.contains(listKey) }
         } else {
-            allItems
+            titleItems
         }
 
-        // Step 2: Type filter
+        // Step 2: Type filter. Teams, leagues, events and custom channels aren't in any list, and
+        // have no genres, years or watched state to filter by.
         val selectedTypeKey = selectedTypeTab?.key
-        val typeFiltered = listFiltered.filter { entry ->
-            selectedTypeKey == null ||
-                selectedTypeKey == LibraryTypeTab.ALL_KEY ||
-                (entry.mediaCategory ?: entry.type).trim().lowercase(Locale.ROOT) == selectedTypeKey
+        val extraSelected = selectedTypeKey != null && selectedTypeKey in LIBRARY_EXTRA_TYPES
+        val typeFiltered = if (extraSelected) {
+            extraItems.filter { it.type == selectedTypeKey }
+        } else {
+            listFiltered.filter { entry ->
+                selectedTypeKey == null ||
+                    selectedTypeKey == LibraryTypeTab.ALL_KEY ||
+                    entry.libraryTypeKey() == selectedTypeKey
+            }
         }
 
         // Step 3: Genre filter
-        val genreFiltered = if (selectedGenre != null) {
+        val genreFiltered = if (selectedGenre != null && !extraSelected) {
             typeFiltered.filter { entry ->
                 entry.genres.any { it.equals(selectedGenre, ignoreCase = true) }
             }
@@ -908,14 +936,14 @@ class LibraryViewModel @Inject constructor(
         }
 
         // Step 4: Year filter
-        val yearFiltered = if (selectedYear != null) {
+        val yearFiltered = if (selectedYear != null && !extraSelected) {
             genreFiltered.filter { entry -> entry.extractYear() == selectedYear }
         } else {
             genreFiltered
         }
 
         // Step 5: Watched status filter
-        val watchedFiltered = when (selectedWatchedFilter) {
+        val watchedFiltered = if (extraSelected) yearFiltered else when (selectedWatchedFilter) {
             LibraryWatchedFilter.ALL -> yearFiltered
             LibraryWatchedFilter.WATCHED -> yearFiltered.filter { entry ->
                 val isMovie = entry.type.equals("movie", ignoreCase = true)
@@ -946,7 +974,7 @@ class LibraryViewModel @Inject constructor(
                 }
             }
         }
-        val genreOptions = genreCounts.entries
+        val genreOptions = if (extraSelected) emptyList() else genreCounts.entries
             .sortedBy { it.key.lowercase(Locale.ROOT) }
             .map { (genre, count) -> FilterOption(key = genre, label = genre, count = count) }
 
@@ -963,7 +991,7 @@ class LibraryViewModel @Inject constructor(
             val year = entry.extractYear() ?: return@forEach
             yearCounts[year] = (yearCounts[year] ?: 0) + 1
         }
-        val yearOptions = yearCounts.entries
+        val yearOptions = if (extraSelected) emptyList() else yearCounts.entries
             .sortedByDescending { it.key }
             .map { (year, count) -> FilterOption(key = year, label = year, count = count) }
 
@@ -1010,11 +1038,12 @@ class LibraryViewModel @Inject constructor(
         }
 
         // Rebuild type tabs with counts
-        val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts)
+        val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts, extraItems)
 
-        // Validate selections — clear if no longer valid
-        val validGenre = selectedGenre?.takeIf { g -> genreOptions.any { it.key.equals(g, ignoreCase = true) } }
-        val validYear = selectedYear?.takeIf { y -> yearOptions.any { it.key == y } }
+        // Validate selections — clear if no longer valid (kept while an extra type is shown, for
+        // when the titles come back)
+        val validGenre = if (extraSelected) selectedGenre else selectedGenre?.takeIf { g -> genreOptions.any { it.key.equals(g, ignoreCase = true) } }
+        val validYear = if (extraSelected) selectedYear else selectedYear?.takeIf { y -> yearOptions.any { it.key == y } }
 
         return copy(
             visibleItems = sorted.withCustomPosterUrls(customPosterUrlPattern),
@@ -1075,35 +1104,229 @@ class LibraryViewModel @Inject constructor(
             CloudLibraryItemType.File -> context.getString(R.string.cloud_library_type_files)
         }
 
+    /**
+     * The Type menu: All, Movies, Shows (and any other type the titles have, like anime), then
+     * Sports Teams, Sports Leagues, Events and Custom Channels - always there, even when empty.
+     */
     private fun buildTypeTabsWithCounts(
         allTypeItems: List<LibraryEntry>,
-        filteredItems: List<LibraryEntry>
+        filteredItems: List<LibraryEntry>,
+        extraItems: List<LibraryEntry>
     ): List<LibraryTypeTab> {
-        val byKey = linkedMapOf<String, String>()
-        allTypeItems.forEach { entry ->
-            // Use mediaCategory (e.g. "anime") as the display type when present,
-            // so anime shows as a separate filter from movies/series.
-            val key = (entry.mediaCategory ?: entry.type).trim().ifBlank { "unknown" }.lowercase(Locale.ROOT)
-            if (!byKey.containsKey(key)) {
-                byKey[key] = prettifyTypeLabel(key)
-            }
-        }
         val countByType = mutableMapOf<String, Int>()
         filteredItems.forEach { entry ->
-            val key = (entry.mediaCategory ?: entry.type).trim().ifBlank { "unknown" }.lowercase(Locale.ROOT)
+            val key = entry.libraryTypeKey()
             countByType[key] = (countByType[key] ?: 0) + 1
         }
-        val allCount = filteredItems.size
-        val allTab = LibraryTypeTab(key = LibraryTypeTab.ALL_KEY, label = "${context.getString(R.string.library_type_all)} ($allCount)")
-        // Stable order: movies, series/tv/show, anime, then anything else alphabetically.
-        val typeOrder = listOf("movie", "series", "tv", "show", "anime")
-        val sortedKeys = byKey.keys.sortedWith(compareBy { key ->
-            val idx = typeOrder.indexOf(key)
-            if (idx >= 0) idx else typeOrder.size
-        })
-        return listOf(allTab) + sortedKeys.map { key ->
-            LibraryTypeTab(key = key, label = "${byKey[key]} (${countByType[key] ?: 0})")
+        extraItems.forEach { entry ->
+            countByType[entry.type] = (countByType[entry.type] ?: 0) + 1
         }
+        val otherTitleTypes = allTypeItems
+            .map { it.libraryTypeKey() }
+            .distinct()
+            .filter { it != LIBRARY_TYPE_MOVIE && it != LIBRARY_TYPE_SHOW && it !in LIBRARY_EXTRA_TYPES }
+            .sorted()
+        val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + LIBRARY_EXTRA_TYPE_ORDER
+        val allTab = LibraryTypeTab(key = LibraryTypeTab.ALL_KEY, label = "${context.getString(R.string.library_type_all)} (${filteredItems.size})")
+        return listOf(allTab) + keys.map { key ->
+            LibraryTypeTab(key = key, label = "${prettifyTypeLabel(key)} (${countByType[key] ?: 0})")
+        }
+    }
+
+    // ── Sports teams, leagues, events and custom channels ──
+
+    private var libraryTeams: Map<String, SportsTeam> = emptyMap()
+    private var libraryLeagues: Map<String, SportsLeague> = emptyMap()
+    private var libraryEvents: Map<String, SportsEvent> = emptyMap()
+
+    private fun observeLibraryExtras() {
+        viewModelScope.launch {
+            combine(
+                sportsLibraryStore.teams,
+                sportsLibraryStore.leagues,
+                sportsLibraryStore.eventDetails,
+                libraryPreferences.libraryItems,
+                liveTvDataStore.customChannels
+            ) { teams, leagues, eventDetails, saved, channels ->
+                libraryTeams = teams.associate { it.team.id to it.team }
+                libraryLeagues = leagues.associate { it.league.id to it.league }
+                libraryEvents = eventDetails
+                val items = mutableListOf<LibraryEntry>()
+                val logos = mutableMapOf<String, List<String>>()
+                teams.forEach { (team, addedAt) ->
+                    items += extraEntry(
+                        id = team.id, type = LIBRARY_TYPE_SPORTS_TEAM, name = team.name,
+                        description = team.leagueName, genre = team.sportName, art = team.badgeUrl, addedAt = addedAt
+                    )
+                    logos["$LIBRARY_TYPE_SPORTS_TEAM:${team.id}"] = listOfNotNull(team.badgeUrl)
+                }
+                leagues.forEach { (league, addedAt) ->
+                    items += extraEntry(
+                        id = league.id, type = LIBRARY_TYPE_SPORTS_LEAGUE, name = league.name,
+                        description = league.sportName, genre = league.sportName, art = league.badgeUrl, addedAt = addedAt
+                    )
+                    logos["$LIBRARY_TYPE_SPORTS_LEAGUE:${league.id}"] = listOfNotNull(league.badgeUrl)
+                }
+                saved.filter { it.type.equals(LIBRARY_TYPE_EVENT, ignoreCase = true) }.forEach { item ->
+                    val event = eventDetails[item.id]
+                    items += extraEntry(
+                        id = item.id, type = LIBRARY_TYPE_EVENT, name = item.name,
+                        description = item.description, genre = item.genres.firstOrNull(),
+                        art = item.background, addedAt = item.addedAt
+                    )
+                    val badges: List<String> = if (event != null) {
+                        listOfNotNull(event.homeTeamBadgeUrl, event.awayTeamBadgeUrl)
+                    } else {
+                        emptyList()
+                    }
+                    logos["$LIBRARY_TYPE_EVENT:${item.id}"] = badges.ifEmpty { listOfNotNull(item.background) }
+                }
+                channels.forEach { channel ->
+                    items += extraEntry(
+                        id = channel.id, type = LIBRARY_TYPE_CUSTOM_CHANNEL, name = channel.name,
+                        description = null, genre = null, art = channel.logoUrl, addedAt = 0L
+                    )
+                    logos["$LIBRARY_TYPE_CUSTOM_CHANNEL:${channel.id}"] = listOfNotNull(channel.logoUrl)
+                }
+                items.toList() to logos.toMap()
+            }.collectLatest { (items, logos) ->
+                _uiState.update { current ->
+                    current.copy(extraItems = items, extraLogos = logos).withVisibleItems()
+                }
+            }
+        }
+    }
+
+    private fun extraEntry(
+        id: String,
+        type: String,
+        name: String,
+        description: String?,
+        genre: String?,
+        art: String?,
+        addedAt: Long
+    ) = LibraryEntry(
+        id = id,
+        type = type,
+        name = name,
+        poster = null,
+        posterShape = PosterShape.LANDSCAPE,
+        background = art,
+        logo = art,
+        description = description,
+        releaseInfo = null,
+        imdbRating = null,
+        genres = listOfNotNull(genre),
+        addonBaseUrl = null,
+        listedAt = addedAt
+    )
+
+    /**
+     * Where an extra item opens: a channel its page (as from the Guide), a league its page, a team
+     * its league's page, a game its page.
+     */
+    fun extraRoute(entry: LibraryEntry): String? = when (entry.type) {
+        LIBRARY_TYPE_CUSTOM_CHANNEL -> Screen.ChannelProfile.createRoute(entry.id)
+        LIBRARY_TYPE_SPORTS_LEAGUE -> {
+            val league = libraryLeagues[entry.id]
+            Screen.SportsLeagueDetail.createRoute(
+                leagueId = entry.id,
+                leagueName = league?.name ?: entry.name,
+                sportName = league?.sportName.orEmpty(),
+                badgeUrl = league?.badgeUrl
+            )
+        }
+        LIBRARY_TYPE_SPORTS_TEAM -> {
+            val team = libraryTeams[entry.id]
+            val leagueId = team?.leagueId
+            if (team != null && leagueId != null) {
+                Screen.SportsLeagueDetail.createRoute(
+                    leagueId = leagueId,
+                    leagueName = team.leagueName.orEmpty(),
+                    sportName = team.sportName.orEmpty()
+                )
+            } else {
+                Screen.SportsTeams.route
+            }
+        }
+        LIBRARY_TYPE_EVENT -> gameRoute(libraryEvents[entry.id]?.withStatusNow() ?: eventFromEntry(entry))
+        else -> null
+    }
+
+    /** Takes the item out of the Library (a channel: out of the Guide's Custom list). */
+    fun removeExtra(entry: LibraryEntry) {
+        viewModelScope.launch {
+            when (entry.type) {
+                LIBRARY_TYPE_CUSTOM_CHANNEL -> {
+                    if (entry.id in liveTvDataStore.customChannelIds.value) liveTvDataStore.toggleCustomChannel(entry.id)
+                }
+                LIBRARY_TYPE_SPORTS_TEAM -> sportsLibraryStore.removeTeam(entry.id)
+                LIBRARY_TYPE_SPORTS_LEAGUE -> sportsLibraryStore.removeLeague(entry.id)
+                LIBRARY_TYPE_EVENT -> {
+                    libraryPreferences.removeItem(itemId = entry.id, itemType = LIBRARY_TYPE_EVENT)
+                    sportsLibraryStore.forgetEvent(entry.id)
+                }
+            }
+        }
+    }
+
+    /** A game saved a while ago that should be over by now shows as finished. */
+    private fun SportsEvent.withStatusNow(): SportsEvent {
+        val start = startTimeMs ?: return this
+        val over = System.currentTimeMillis() > start + GAME_OVER_AFTER_MS
+        return if (over && status != SportsEventStatus.FINISHED) copy(status = SportsEventStatus.FINISHED) else this
+    }
+
+    /** A game bookmarked before its details were kept: what its Library item says ("Home vs Away • League"). */
+    private fun eventFromEntry(entry: LibraryEntry): SportsEvent {
+        val matchup = entry.description?.substringBefore(" • ").orEmpty()
+        val league = entry.description?.substringAfter(" • ", "")?.takeIf { it.isNotBlank() }
+        val home = matchup.substringBefore(" vs ", "").ifBlank { entry.name }
+        val away = matchup.substringAfter(" vs ", "")
+        val parsed = EspnSportsClient.parseEventId(entry.id)
+        return SportsEvent(
+            id = entry.id,
+            name = entry.name,
+            sportName = entry.genres.firstOrNull(),
+            leagueId = parsed?.let { "${it.sportPath}:${it.leaguePath}" },
+            leagueName = league,
+            homeTeamId = null,
+            homeTeamName = home,
+            homeTeamBadgeUrl = entry.background,
+            awayTeamId = null,
+            awayTeamName = away,
+            awayTeamBadgeUrl = null,
+            homeScore = null,
+            awayScore = null,
+            startTimeMs = null,
+            venue = null,
+            status = SportsEventStatus.UPCOMING
+        )
+    }
+
+    private fun gameRoute(event: SportsEvent): String = Screen.SportsGameDetail.createRoute(
+        eventId = event.id,
+        name = event.name,
+        sportName = event.sportName,
+        leagueId = event.leagueId,
+        leagueName = event.leagueName,
+        homeTeamId = event.homeTeamId,
+        homeTeamName = event.homeTeamName,
+        homeTeamBadgeUrl = event.homeTeamBadgeUrl,
+        homeScore = event.homeScore,
+        awayTeamId = event.awayTeamId,
+        awayTeamName = event.awayTeamName,
+        awayTeamBadgeUrl = event.awayTeamBadgeUrl,
+        awayScore = event.awayScore,
+        startTimeMs = event.startTimeMs,
+        venue = event.venue,
+        status = event.status.name,
+        statusDetail = event.statusDetail
+    )
+
+    private companion object {
+        /** A game is taken as over this long after it started. */
+        const val GAME_OVER_AFTER_MS = 4L * 60 * 60 * 1000
     }
 }
 

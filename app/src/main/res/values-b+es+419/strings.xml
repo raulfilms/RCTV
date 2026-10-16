@@ -2094,6 +2094,14 @@
     <string name="library_syncing_library">Sincronizando biblioteca…</string>
     <string name="library_type_all">Todo</string>
     <string name="library_type_items">elementos</string>
+    <string name="library_type_movies">Películas</string>
+    <string name="library_type_shows">Series</string>
+    <string name="library_type_sports_teams">Equipos</string>
+    <string name="library_type_sports_leagues">Ligas</string>
+    <string name="library_type_events">Eventos</string>
+    <string name="library_type_custom_channels">Canales personalizados</string>
+    <string name="library_empty_sports">En Deportes, mantén OK en un equipo, liga o partido y elige Agregar a la biblioteca</string>
+    <string name="library_empty_custom_channels">Agrega canales a Custom en la guía de TV en vivo para verlos aquí</string>
     <string name="library_empty_local_title">Aún no hay %1$s</string>
     <string name="library_empty_trakt_title">No hay %1$s en esta lista</string>
     <string name="library_empty_local_subtitle">Comienza a guardar tus favoritos para verlos aquí</string>

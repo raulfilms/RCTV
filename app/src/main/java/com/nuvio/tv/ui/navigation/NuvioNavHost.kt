@@ -1176,6 +1176,8 @@ private fun PlaybackNavHost(
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
                 },
+                // Sports teams, leagues, games and custom channels open their own pages.
+                onOpenRoute = { route -> navController.navigate(route) },
                 onCloudPlaybackResolved = { info ->
                     val filename = info.filename ?: info.file.name
                     navController.navigate(
