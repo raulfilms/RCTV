@@ -860,7 +860,9 @@ data class HubCard(
     @StringRes val labelRes: Int = 0,
     /** The card's name when it isn't a string resource (a collection, a filmmaker, a channel). */
     val label: String? = null,
-    val art: HubCardArt = HubCardArt.Tile
+    val art: HubCardArt = HubCardArt.Tile,
+    /** A genre card's genre ("action", "scifi"...): its thumbnail shows instead of the colored card. */
+    val genre: String? = null
 )
 
 /** What a [HubCard] shows. */

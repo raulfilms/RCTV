@@ -2,6 +2,8 @@
 
 package com.nuvio.tv.ui.screens.disneyplus
 
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,6 +37,7 @@ import com.nuvio.tv.data.disneyplus.HubCardArt
 import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
 import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
 import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.GenreThumbnails
 import com.nuvio.tv.ui.screens.home.HomeCard
 import com.nuvio.tv.ui.screens.home.HomeTileRow
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -79,7 +83,15 @@ internal fun HubCardsRow(
         val label = card.label ?: stringResource(card.labelRes)
         val image = art[card.rowId]
         when (card.art) {
-            HubCardArt.Tile -> TileCard(label, card.rowId, onClick = { onClick(card) }, modifier = itemModifier)
+            HubCardArt.Tile -> {
+                // A genre with a thumbnail (its name is on it); any other card is colored, with its name.
+                val thumbnail = card.genre?.let(GenreThumbnails::forKey)
+                if (thumbnail != null) {
+                    ThumbnailCard(label, thumbnail, onClick = { onClick(card) }, modifier = itemModifier)
+                } else {
+                    TileCard(label, card.rowId, onClick = { onClick(card) }, modifier = itemModifier)
+                }
+            }
             is HubCardArt.Collection -> PictureCard(
                 label = label,
                 caption = stringResource(R.string.disney_collection_label),
@@ -90,6 +102,25 @@ internal fun HubCardsRow(
             is HubCardArt.Person -> PersonCard(label, image, onClick = { onClick(card) }, modifier = itemModifier)
             is HubCardArt.Provider -> LogoCard(label, image, onClick = { onClick(card) }, modifier = itemModifier)
         }
+    }
+}
+
+/** A genre's thumbnail, its name on the picture. */
+@Composable
+private fun ThumbnailCard(label: String, @DrawableRes thumbnail: Int, onClick: () -> Unit, modifier: Modifier) {
+    HomeCard(
+        onClick = onClick,
+        width = AppleLandscapeCardWidth,
+        height = AppleLandscapeCardHeight,
+        containerColor = AppleTvColors.Surface2,
+        modifier = modifier
+    ) {
+        Image(
+            painter = painterResource(thumbnail),
+            contentDescription = label,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 

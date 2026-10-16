@@ -197,10 +197,11 @@ internal object ServiceHubs {
             @StringRes label: Int = 0,
             name: String? = null,
             art: HubCardArt = HubCardArt.Tile,
+            genre: String? = null,
             sources: List<DisneyRowSource>
         ) {
             val listId = "${rowId}_$key"
-            cards += HubCard(listId, label, name, art)
+            cards += HubCard(listId, label, name, art, genre)
             lists += DisneyRowSpec(
                 listId,
                 if (label != 0) label else rowTitle,
@@ -212,6 +213,7 @@ internal object ServiceHubs {
 
         fun genre(catalog: Catalog, pick: Pick, sort: String = POPULAR) = card(
             pick.key, pick.label,
+            genre = pick.key,
             sources = listOfNotNull(
                 if (pick.withMovies) catalog.movies(sort) {
                     copy(genres = pick.movieGenres, keywords = pick.keywords, originalLanguage = pick.languages)

@@ -112,6 +112,8 @@ fun HomeGenreRow(
     ) { index, itemModifier ->
         val tile = tiles[index]
         val color = GenreColors[(tile.genreId % GenreColors.size + GenreColors.size) % GenreColors.size]
+        // The genre's thumbnail (its name is on it), else a colored card with its name.
+        val thumbnail = com.nuvio.tv.ui.components.GenreThumbnails.forGenreId(tile.genreId)
         HomeCard(
             onClick = { onClick(tile) },
             width = GenreTileWidth,
@@ -119,7 +121,14 @@ fun HomeGenreRow(
             containerColor = color,
             modifier = itemModifier
         ) {
-            Box(
+            if (thumbnail != null) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(thumbnail),
+                    contentDescription = tile.label,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.25f))))
