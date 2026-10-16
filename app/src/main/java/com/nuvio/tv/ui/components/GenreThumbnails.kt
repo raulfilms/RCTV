@@ -4,8 +4,8 @@ import androidx.annotation.DrawableRes
 import com.nuvio.tv.R
 
 /**
- * The genre cards' thumbnails (their name is on the picture), on Home's "Browse by Genre" and on
- * the streaming services' genre rows. A genre without one keeps its colored card with its name.
+ * The genre cards' thumbnails (their name is on the picture), on Home's "Browse by Genre", on the
+ * streaming services' genre rows and on FOX Nation's "Discover More". A genre without one keeps its colored card with its name.
  */
 object GenreThumbnails {
 
@@ -46,6 +46,21 @@ object GenreThumbnails {
     /** By a service page's genre card ("action", "scifi", "documentaries"...). */
     @DrawableRes
     fun forKey(key: String): Int? = when (key.lowercase()) {
+        // Shudder's genres, and FOX Nation's.
+        "biography" -> R.drawable.genre_biography
+        "creatures", "creature_features" -> R.drawable.genre_creature_features
+        "crime_mystery", "crime_and_mystery" -> R.drawable.genre_crime_mystery
+        "cult" -> R.drawable.genre_cult
+        "faith" -> R.drawable.genre_faith
+        "international" -> R.drawable.genre_international
+        "killers" -> R.drawable.genre_killers
+        "paranormal" -> R.drawable.genre_paranormal
+        "politics" -> R.drawable.genre_politics
+        "psychological", "psychological_thriller" -> R.drawable.genre_psychological_thriller
+        "revenge" -> R.drawable.genre_revenge
+        "supernatural" -> R.drawable.genre_supernatural
+        // FOX Nation's War (soldiers on it).
+        "war_military" -> R.drawable.genre_war_military
         "action" -> R.drawable.genre_action
         "adventure" -> R.drawable.genre_adventure
         "action_adventure" -> R.drawable.genre_action_adventure

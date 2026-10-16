@@ -1107,23 +1107,27 @@ internal object ServiceHubs {
             addAll(cardRow("fn_more", R.string.svc_row_discover_more) {
                 card("shows", R.string.svc_card_all_shows, sources = listOfNotNull(foxCatalog.series()))
                 card("movies", R.string.svc_card_all_movies, sources = listOf(foxCatalog.movies()))
-                card("docs", R.string.svc_card_all_documentaries, sources = foxCatalog.both { copy(genres = "99") })
-                card("biography", R.string.svc_card_biography, sources = listOf(DisneyRowSource.Curated(FOX_BIOGRAPHIES)))
-                card("crime", R.string.svc_card_crime, sources = listOf(DisneyRowSource.Curated(FOX_CRIME)) + foxCatalog.both { copy(genres = "80") })
+                // The genre cards show the genre's picture (its name is on it).
+                card("docs", R.string.svc_card_all_documentaries, genre = "documentary", sources = foxCatalog.both { copy(genres = "99") })
+                card("biography", R.string.svc_card_biography, genre = "biography", sources = listOf(DisneyRowSource.Curated(FOX_BIOGRAPHIES)))
                 card(
-                    "history", R.string.svc_card_history,
+                    "crime", R.string.svc_card_crime, genre = "crime",
+                    sources = listOf(DisneyRowSource.Curated(FOX_CRIME)) + foxCatalog.both { copy(genres = "80") }
+                )
+                card(
+                    "history", R.string.svc_card_history, genre = "history",
                     sources = listOfNotNull(foxCatalog.movies { copy(genres = "36") }, DisneyRowSource.Curated(FOX_HISTORY_SERIES))
                 )
-                card("faith", R.string.svc_card_faith, sources = listOf(DisneyRowSource.Curated(FOX_FAITH)))
+                card("faith", R.string.svc_card_faith, genre = "faith", sources = listOf(DisneyRowSource.Curated(FOX_FAITH)))
                 card(
-                    "politics", R.string.svc_card_politics,
+                    "politics", R.string.svc_card_politics, genre = "politics",
                     sources = listOfNotNull(DisneyRowSource.Curated(FOX_POLITICS), foxCatalog.series { copy(genres = "10768") })
                 )
                 card(
-                    "war", R.string.svc_card_war,
+                    "war", R.string.svc_card_war, genre = "war_military",
                     sources = listOfNotNull(foxCatalog.movies { copy(genres = "10752") }, foxCatalog.series { copy(genres = "10768") })
                 )
-                card("comedy", R.string.svc_card_comedy, sources = listOf(foxCatalog.movies { copy(genres = "35") }))
+                card("comedy", R.string.svc_card_comedy, genre = "comedy", sources = listOf(foxCatalog.movies { copy(genres = "35") }))
                 card(
                     "a_z", R.string.svc_card_browse_az,
                     sources = listOfNotNull(foxCatalog.movies(A_TO_Z_MOVIES), foxCatalog.series(A_TO_Z_SERIES))
