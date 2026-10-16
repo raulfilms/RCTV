@@ -173,7 +173,7 @@ internal fun LiveTvPlayerOverlay(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.78f)
+                .fillMaxHeight(0.62f)
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
@@ -190,7 +190,7 @@ internal fun LiveTvPlayerOverlay(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = NuvioTheme.spacing.xxl, vertical = NuvioTheme.spacing.xl)
+                .padding(start = 40.dp, end = 40.dp, top = 16.dp, bottom = 12.dp)
         ) {
             // The channel and what's on.
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -201,19 +201,20 @@ internal fun LiveTvPlayerOverlay(
                         contentDescription = channel?.name ?: uiState.title,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
-                            .height(40.dp)
-                            .widthIn(max = 120.dp)
+                            .height(28.dp)
+                            .widthIn(max = 90.dp)
                     )
-                    Spacer(modifier = Modifier.width(14.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                 }
                 LiveBadge()
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = program?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: uiState.title,
-                style = MaterialTheme.typography.headlineMedium,
                 color = Color.White,
-                maxLines = 2,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             val secondLine = listOfNotNull(
@@ -223,22 +224,22 @@ internal fun LiveTvPlayerOverlay(
             if (secondLine.isNotBlank()) {
                 Text(
                     text = secondLine,
-                    style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+            Spacer(modifier = Modifier.height(8.dp))
             if (program != null) {
                 ProgramProgress(program = program, nowMs = nowMs)
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // The tabs: focusing one shows its content below.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Down goes into the tab's content (when it has something to choose).
                 val contentFocusable = when (shownTab) {
@@ -288,9 +289,9 @@ internal fun LiveTvPlayerOverlay(
                 )
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 8.dp)
+                        .padding(horizontal = 6.dp)
                         .width(1.dp)
-                        .height(28.dp)
+                        .height(20.dp)
                         .background(Color.White.copy(alpha = 0.4f))
                 )
                 LiveTextTab(
@@ -310,13 +311,13 @@ internal fun LiveTvPlayerOverlay(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // The focused tab's content.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(180.dp)
             ) {
                 when (shownTab) {
                     LiveTab.EPISODES -> EpisodesContent(
@@ -426,12 +427,12 @@ private fun LiveBadge() {
     Text(
         text = stringResource(R.string.player_live_badge),
         color = Color.White,
-        fontSize = 13.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(3.dp))
             .background(Color(0xFFE5202E))
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .padding(horizontal = 5.dp, vertical = 1.dp)
     )
 }
 
@@ -443,23 +444,23 @@ private fun ProgramProgress(program: EpgProgram, nowMs: Long) {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(NuvioTheme.spacing.sm)
-                .clip(RoundedCornerShape(3.dp))
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(alpha = 0.3f))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(program.progressAt(nowMs))
-                    .clip(RoundedCornerShape(3.dp))
+                    .clip(RoundedCornerShape(2.dp))
                     .background(accent)
             )
         }
-        Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = timeRange(program),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.9f)
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 12.sp
         )
     }
 }
@@ -476,7 +477,7 @@ private fun LiveIconTab(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = modifier.size(NuvioTheme.spacing.xxxl),
+        modifier = modifier.size(34.dp),
         colors = IconButtonDefaults.colors(
             containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent,
             focusedContainerColor = Color.White,
@@ -485,7 +486,7 @@ private fun LiveIconTab(
         ),
         shape = IconButtonDefaults.shape(shape = CircleShape)
     ) {
-        Icon(imageVector = icon, contentDescription = contentDescription, modifier = Modifier.size(26.dp))
+        Icon(imageVector = icon, contentDescription = contentDescription, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -501,7 +502,7 @@ private fun LiveTextTab(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.height(NuvioTheme.spacing.xxxl),
+        modifier = modifier.height(34.dp),
         shape = ClickableSurfaceDefaults.shape(shape = CircleShape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent,
@@ -514,12 +515,12 @@ private fun LiveTextTab(
         Row(
             modifier = Modifier
                 .fillMaxHeight()
-                .padding(horizontal = 18.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -543,27 +544,27 @@ private fun NetworksRow(
             .take(NETWORKS_ROW_LIMIT)
     }
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(vertical = 6.dp)
     ) {
         itemsIndexed(channels, key = { _, item -> item.id }) { index, item ->
             val onNow = guide.programAt(item, nowMs)
-            Column(modifier = Modifier.width(240.dp)) {
+            Column(modifier = Modifier.width(176.dp)) {
                 Card(
                     onClick = { onChoose(item) },
                     modifier = itemModifier
                         .then(if (index == 0) Modifier.focusRequester(entry) else Modifier)
                         .fillMaxWidth()
-                        .height(135.dp)
+                        .height(99.dp)
                         .onFocusChanged { if (it.isFocused) onFocused() },
-                    shape = CardDefaults.shape(shape = RoundedCornerShape(12.dp)),
+                    shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
                     colors = CardDefaults.colors(
                         containerColor = Color.White.copy(alpha = 0.14f),
                         focusedContainerColor = Color.White.copy(alpha = 0.22f)
                     ),
                     border = CardDefaults.border(
                         border = Border.None,
-                        focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = RoundedCornerShape(12.dp))
+                        focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(10.dp))
                     ),
                     scale = CardDefaults.scale(focusedScale = 1.04f)
                 ) {
@@ -575,32 +576,32 @@ private fun NetworksRow(
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 48.dp, vertical = 30.dp)
+                                    .padding(horizontal = 36.dp, vertical = 22.dp)
                             )
                         } else {
                             Text(
                                 text = item.name,
                                 color = Color.White,
-                                fontSize = 16.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
                                 maxLines = 2,
                                 modifier = Modifier
                                     .align(Alignment.Center)
-                                    .padding(16.dp)
+                                    .padding(12.dp)
                             )
                         }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .padding(start = 10.dp, bottom = 12.dp)
+                                .padding(start = 8.dp, bottom = 8.dp)
                         ) { LiveBadge() }
                         if (onNow != null) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .height(4.dp)
+                                    .height(3.dp)
                                     .background(Color.White.copy(alpha = 0.25f))
                             ) {
                                 Box(
@@ -613,11 +614,11 @@ private fun NetworksRow(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = onNow?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: item.name,
                     color = Color.White,
-                    fontSize = 17.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -625,7 +626,7 @@ private fun NetworksRow(
                 Text(
                     text = listOfNotNull(item.name, onNow?.let { airingLabel(it) }).joinToString(" · "),
                     color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 13.sp,
+                    fontSize = 10.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -654,9 +655,9 @@ private fun LibraryCard(
     ) {
         Box(
             modifier = Modifier
-                .width(300.dp)
-                .height(169.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .width(192.dp)
+                .height(108.dp)
+                .clip(RoundedCornerShape(10.dp))
                 .background(Color.White.copy(alpha = 0.12f))
         ) {
             val image = match?.backdrop ?: program?.imageUrl?.takeIf { it.isNotBlank() }
@@ -674,16 +675,16 @@ private fun LibraryCard(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(36.dp)
+                        .padding(24.dp)
                 )
             }
         }
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = match?.name ?: program?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: channel?.name.orEmpty(),
                 color = Color.White,
-                fontSize = 22.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -695,26 +696,26 @@ private fun LibraryCard(
                     program.category?.takeIf { it.isNotBlank() }
                 ).joinToString(" · ")
                 if (details.isNotBlank()) {
-                    Text(text = details, color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = details, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(text = timeRange(program), color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, maxLines = 1)
+                Text(text = timeRange(program), color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1)
             }
             val description = program?.description?.takeIf { it.isNotBlank() } ?: match?.overview
             if (!description.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = description,
                     color = Color.White.copy(alpha = 0.75f),
-                    fontSize = 14.sp,
+                    fontSize = 11.sp,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(16.dp))
         Column(
-            modifier = Modifier.width(260.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.width(190.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             when {
                 state.isLoading -> LivePillButton(
@@ -744,7 +745,7 @@ private fun LibraryCard(
                 else -> Text(
                     text = stringResource(R.string.livetv_library_not_on_tmdb),
                     color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 15.sp
+                    fontSize = 12.sp
                 )
             }
         }
@@ -766,8 +767,8 @@ private fun LivePillButton(
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp),
-        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(26.dp)),
+            .heightIn(min = 34.dp),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(17.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.White.copy(alpha = 0.16f),
             contentColor = Color.White,
@@ -781,16 +782,16 @@ private fun LivePillButton(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 52.dp)
-                .padding(horizontal = 20.dp),
+                .heightIn(min = 34.dp)
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             if (icon != null) {
-                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.width(10.dp))
+                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(6.dp))
             }
-            Text(text = label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -815,12 +816,12 @@ private fun OptionsRow(
     onFocused: () -> Unit
 ) {
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 6.dp)
     ) {
         itemsIndexed(options) { index, option ->
             Column(
-                modifier = Modifier.width(160.dp),
+                modifier = Modifier.width(108.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Card(
@@ -828,16 +829,16 @@ private fun OptionsRow(
                     modifier = itemModifier
                         .then(if (index == 0) Modifier.focusRequester(entry) else Modifier)
                         .fillMaxWidth()
-                        .height(120.dp)
+                        .height(86.dp)
                         .onFocusChanged { if (it.isFocused) onFocused() },
-                    shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
+                    shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
                     colors = CardDefaults.colors(
                         containerColor = Color.White.copy(alpha = 0.14f),
                         focusedContainerColor = Color.White.copy(alpha = 0.26f)
                     ),
                     border = CardDefaults.border(
                         border = Border.None,
-                        focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = RoundedCornerShape(14.dp))
+                        focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(10.dp))
                     ),
                     scale = CardDefaults.scale(focusedScale = 1.05f)
                 ) {
@@ -850,33 +851,33 @@ private fun OptionsRow(
                             option.glyph != null -> Text(
                                 text = option.glyph,
                                 color = Color.White,
-                                fontSize = 18.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier
-                                    .border(2.dp, Color.White, RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    .border(1.5.dp, Color.White, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
                             )
                             option.icon != null -> Icon(
                                 imageVector = option.icon,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                         if (option.checked) {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         } else if (option.detail != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = option.detail,
                                 color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 13.sp,
+                                fontSize = 10.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 8.dp)
@@ -884,11 +885,11 @@ private fun OptionsRow(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = option.label,
                     color = Color.White,
-                    fontSize = 16.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
@@ -918,7 +919,7 @@ private fun EpisodesContent(
         Text(
             text = stringResource(if (state.isLoading) R.string.livetv_library_looking_up else R.string.player_live_no_episodes),
             color = Color.White.copy(alpha = 0.7f),
-            fontSize = 15.sp,
+            fontSize = 12.sp,
             modifier = Modifier.padding(top = 8.dp)
         )
         return
@@ -927,7 +928,7 @@ private fun EpisodesContent(
         // The seasons (all of them composed, so the chosen one can always take focus).
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             state.seasons.forEach { season ->
                 val selected = season.number == state.selectedSeason
@@ -936,7 +937,7 @@ private fun EpisodesContent(
                     onClick = { onSelectSeason(season.number) },
                     modifier = seasonModifier
                         .then(if (selected) Modifier.focusRequester(entry) else Modifier)
-                        .height(36.dp)
+                        .height(28.dp)
                         .onFocusChanged {
                             if (it.isFocused) {
                                 onFocused()
@@ -955,15 +956,15 @@ private fun EpisodesContent(
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .padding(horizontal = 16.dp),
+                            .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         val listState = rememberLazyListState()
         val airing = state.airing
         // The episode airing now in view.
@@ -976,7 +977,7 @@ private fun EpisodesContent(
             Text(
                 text = stringResource(R.string.livetv_library_looking_up),
                 color = Color.White.copy(alpha = 0.7f),
-                fontSize = 15.sp
+                fontSize = 12.sp
             )
         }
         LazyRow(
@@ -1023,12 +1024,12 @@ private fun EpisodesContent(
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(5.dp))
                     Text(
                         text = stringResource(R.string.player_live_episode_code, episode.episode) +
                             (episode.name?.let { " · $it" } ?: ""),
                         color = Color.White,
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1041,7 +1042,7 @@ private fun EpisodesContent(
                                 )
                             }.getOrDefault(date),
                             color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 12.sp,
+                            fontSize = 10.sp,
                             maxLines = 1
                         )
                     }
