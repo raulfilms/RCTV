@@ -175,8 +175,8 @@ internal fun LiveTvTimelineGuide(
     /** A channel's logo was chosen. */
     onChannelClick: (LiveTvChannel) -> Unit,
     /**
-     * Select held on what's on now: asks whether to add the episode or the series (or the movie) to
-     * the library. Null: holding Select on it adds the channel to Custom, like elsewhere.
+     * Select held on what's on now: a movie goes straight into the library; a series asks whether to
+     * add the episode or the whole series. Null: holding Select on it adds the channel to Custom.
      */
     onLiveProgramLongClick: ((LiveTvChannel, EpgProgram) -> Unit)? = null,
     /** Where to put focus when the guide shows again (after a channel page or the player). */
@@ -872,8 +872,8 @@ private fun GuideBlock(
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        // Press and hold: what's on now goes to the library (episode or series); anything else
-        // adds the channel to (or takes it out of) the Custom list.
+        // Press and hold: what's on now goes to the library (a movie right away; a series asks
+        // episode or series); anything else adds the channel to (or takes it out of) Custom.
         onLongClick = onLongClick,
         modifier = modifier
             .focusRequester(focusRequester)

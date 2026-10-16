@@ -147,7 +147,8 @@ fun LiveTvScreen(
                 },
                 returnFocus = viewModel.guideReturnFocus,
                 onReturnFocusUsed = { viewModel.guideReturnFocus = null },
-                // Select held on what's on now: add the episode or the series to the library.
+                // Select held on what's on now: a movie goes into the library right away; a series
+                // asks whether to add the episode or the whole series.
                 onLiveProgramLongClick = viewModel::openLibraryPrompt
             )
         } else Column(
