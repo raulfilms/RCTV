@@ -332,11 +332,19 @@ fun ClassicHomeContent(
             focusState.verticalScrollIndex == 0 &&
             focusState.verticalScrollOffset == 0
     }
-    val visibleHomeRows = remember(uiState.homeRows, uiState.catalogRows) {
-        if (uiState.homeRows.isNotEmpty()) {
-            uiState.homeRows
-        } else {
-            uiState.catalogRows.filter { it.items.isNotEmpty() }.map { HomeRow.Catalog(it) }
+    // Home ends with its TMDB rows (Discover Something New is the last one): the addons' catalog
+    // rows (Popular - Movie, Popular - Series...), collections and Upcoming don't show under them.
+    // Only when every TMDB row fails (no connection, no key) do the catalog rows show instead, so
+    // Home is never left empty.
+    val tmdbRowsFailed = discoverRows.isEmpty() || (
+        discoverRows.none { it.isLoading } &&
+            discoverRows.none { it.spec.kind == DisneyRowKind.CATALOG && it.isShown() }
+        )
+    val visibleHomeRows = remember(uiState.homeRows, uiState.catalogRows, tmdbRowsFailed) {
+        when {
+            !tmdbRowsFailed -> emptyList<HomeRow>()
+            uiState.homeRows.isNotEmpty() -> uiState.homeRows
+            else -> uiState.catalogRows.filter { it.items.isNotEmpty() }.map { HomeRow.Catalog(it) }
         }
     }
     val visibleRowKeys = remember(visibleHomeRows) {
@@ -899,7 +907,7 @@ fun ClassicHomeContent(
             }
         }
 
-        if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
+        if (tmdbRowsFailed && uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {
             item(key = "upcoming_section", contentType = "upcoming_section") {
                 LaunchedEffect(upcomingPendingScrollToStart.intValue) {
                     if (upcomingPendingScrollToStart.intValue > 0) {
