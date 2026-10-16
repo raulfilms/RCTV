@@ -95,7 +95,16 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.tv.material3.Button
+import androidx.tv.material3.Icon
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import androidx.compose.ui.res.stringResource
@@ -125,15 +134,16 @@ private object ProfileSelectionSpacing {
     val LogoHeight = 44.dp
     val LogoToHeading = 28.dp
     val HeadingToSubheading = NuvioTheme.spacing.md
-    val GridItemGap = 28.dp
+    val GridItemGap = 26.dp
     val CompactGridItemGap = NuvioTheme.spacing.md
-    val CardWidth = 152.dp
-    val CompactCardWidth = 128.dp
+    val CardWidth = 150.dp
+    val CompactCardWidth = 124.dp
+    val AvatarSize = 128.dp
     val CardPaddingHorizontal = 10.dp
     val CardPaddingVertical = NuvioTheme.spacing.sm
     val AvatarContainer = 126.dp
     val CompactAvatarContainer = 104.dp
-    val CompactAvatarSize = 82.dp
+    val CompactAvatarSize = 104.dp
     val CompactFocusedAvatarSize = 88.dp
     val CompactOuterAvatarSize = 98.dp
     val CompactFocusedOuterAvatarSize = 104.dp
@@ -236,6 +246,8 @@ fun ProfileSelectionScreen(
     var pinOverlayState by remember { mutableStateOf<ProfilePinOverlayState?>(null) }
     var pinOverlayError by remember { mutableStateOf<String?>(null) }
     var profileActionMessage by remember { mutableStateOf<String?>(null) }
+    // "Edit Profiles": choosing a profile opens its edit page (Manage Profiles opens this way).
+    var isEditing by remember { mutableStateOf(screenMode == ProfileSelectionMode.Management) }
     val onProfileFocusedChange = remember(onProfileFocusChanged, onProfileThemeFocused) {
         { profile: UserProfile? ->
             focusedProfileId = profile?.id
@@ -283,6 +295,8 @@ fun ProfileSelectionScreen(
     if (onBackPress != null) {
         BackHandler(onBack = onBackPress)
     }
+    // Back leaves "Edit Profiles" first (on the profile picker).
+    BackHandler(enabled = isEditing && screenMode == ProfileSelectionMode.Selection) { isEditing = false }
 
     LaunchedEffect(profiles, activeProfileId) {
         val targetProfile = profiles.firstOrNull { it.id == focusedProfileId }
@@ -378,14 +392,16 @@ fun ProfileSelectionScreen(
             modifier = Modifier.fillMaxSize(),
             label = "profilePinTransition"
         ) { activePinOverlay ->
-            if (activePinOverlay == null) {
+            if (activePinOverlay == null && profileToEdit == null) {
                 ProfileSelectionMainContent(
                     screenTitle = screenTitle,
                     screenSubtitle = screenSubtitle,
                     screenHint = screenHint,
                     isManagementMode = isManagementMode,
+                    isEditing = isEditing,
                     profiles = profiles,
                     activeProfileId = activeProfileId,
+                    preferredFocusProfileId = focusedProfileId,
                     canAddProfile = viewModel.canAddProfile,
                     profilePinEnabled = profilePinEnabled,
                     avatarImageUrlsById = avatarImageUrlsById,
@@ -393,9 +409,8 @@ fun ProfileSelectionScreen(
                     profileThemes = profileThemes,
                     onProfileFocused = onProfileFocusedChange,
                     onProfileSelected = { profile ->
-                        if (isManagementMode) {
-                            suppressOptionsDialogFirstKeyUp = false
-                            longPressedProfile = profile
+                        if (isEditing) {
+                            profileToEdit = profile
                         } else {
                             if (profilePinEnabled[profile.id] == true) {
                                 pinOverlayError = null
@@ -409,9 +424,16 @@ fun ProfileSelectionScreen(
                         suppressOptionsDialogFirstKeyUp = true
                         longPressedProfile = profile
                     },
-                    onAddProfileClick = { showCreateProfile = true }
+                    onAddProfileClick = { showCreateProfile = true },
+                    onEditProfilesClick = {
+                        if (isEditing && isManagementMode && onBackPress != null) {
+                            onBackPress()
+                        } else {
+                            isEditing = !isEditing
+                        }
+                    }
                 )
-            } else {
+            } else if (activePinOverlay != null) {
                 ProfilePinOverlay(
                     state = activePinOverlay,
                     isWorking = isPinOperationInProgress,
@@ -575,17 +597,50 @@ fun ProfileSelectionScreen(
 
         // Edit Profile Overlay
         profileToEdit?.let { profile ->
+            val pinOn = profilePinEnabled[profile.id] == true
             EditProfileOverlay(
                 profile = profile,
                 avatarCatalog = avatarCatalog,
                 profileBackgroundCatalog = profileBackgroundCatalog,
                 hasProfileBackgroundAccess = hasProfileBackgroundAccess,
                 isSaving = isSaving,
+                isPinEnabled = pinOn,
+                canCopySettings = profiles.size > 1,
                 avatarUrlResolver = { avatarId -> viewModel.getAvatarImageUrl(avatarId) },
                 onDismiss = { profileToEdit = null },
                 onSaveProfile = { updated ->
                     viewModel.updateProfile(updated)
                     profileToEdit = null
+                },
+                onSetPin = {
+                    profileToEdit = null
+                    pinOverlayError = null
+                    pinOverlayState = if (pinOn) {
+                        ProfilePinOverlayState.VerifyCurrentForChange(profile)
+                    } else {
+                        ProfilePinOverlayState.Set(profile)
+                    }
+                },
+                onRemovePin = {
+                    profileToEdit = null
+                    pinOverlayError = null
+                    pinOverlayState = ProfilePinOverlayState.VerifyCurrentForRemove(profile)
+                },
+                onCopySettings = {
+                    profileToEdit = null
+                    settingsCopyError = null
+                    settingsCopyTarget = profile
+                },
+                onDelete = if (profile.isPrimary) null else {
+                    {
+                        profileToEdit = null
+                        if (pinOn) {
+                            pinOverlayError = null
+                            pinOverlayState = ProfilePinOverlayState.VerifyCurrentForDelete(profile)
+                        } else {
+                            profileToDelete = profile
+                        }
+                    }
                 }
             )
         }
@@ -804,6 +859,25 @@ fun ProfileSelectionScreen(
     }
 }
 
+/** The profile screens' colors: a dark, quiet backdrop (as on Disney+), white for what's focused. */
+private object ProfileScreenColors {
+    val Background = Color(0xFF16171D)
+    val BackgroundTop = Color(0xFF20222B)
+    val NameIdle = Color(0xFFA3A5AD)
+    val Tile = Color(0xFF3A3C45)
+    val TileFocused = Color.White
+    val Panel = Color.White.copy(alpha = 0.06f)
+    val PanelBorder = Color.White.copy(alpha = 0.10f)
+    val Label = Color(0xFF8E9099)
+    val Destructive = Color(0xFFFF6B6B)
+}
+
+/** Colors to pick for a profile's avatar (while it has no picture). */
+private val ProfileColorChoices = listOf(
+    "#1E88E5", "#3949AB", "#8E24AA", "#D81B60", "#E53935",
+    "#FB8C00", "#FDD835", "#43A047", "#00ACC1", "#546E7A"
+)
+
 @Composable
 private fun ProfileSelectionBackground(
     focusedAvatarColor: Color,
@@ -814,15 +888,6 @@ private fun ProfileSelectionBackground(
         animationSpec = tween(durationMillis = 520),
         label = "focusedAvatarColor"
     )
-    // Use fixed dark colors so the gradient is consistent.
-    // Otherwise, profile selector and splash screen needs to know about user template
-    val baseBg = Color(0xFF121212)
-    val baseBgElevated = Color(0xFF1E1E1E)
-    val gradientTop = lerp(baseBgElevated, animatedAvatarColor, 0.3f)
-    val gradientMid = lerp(baseBg, animatedAvatarColor, 0.14f)
-    val halfFadeStrong = animatedAvatarColor.copy(alpha = 0.26f)
-    val halfFadeSoft = animatedAvatarColor.copy(alpha = 0.08f)
-
     AnimatedContent(
         targetState = profileBackground,
         transitionSpec = {
@@ -850,26 +915,16 @@ private fun ProfileSelectionBackground(
                 modifier = Modifier.fillMaxSize()
             )
             null -> {
+                // Dark and calm, with the focused profile's color only as a faint glow at the top.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                         .background(
                             brush = Brush.verticalGradient(
                                 colorStops = arrayOf(
-                                    0f to gradientTop,
-                                    0.42f to gradientMid,
-                                    1f to baseBg
-                                )
-                            )
-                        )
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0f to halfFadeStrong,
-                                    0.45f to halfFadeSoft,
-                                    0.72f to Color.Transparent,
-                                    1f to Color.Transparent
+                                    0f to lerp(ProfileScreenColors.BackgroundTop, animatedAvatarColor, 0.10f),
+                                    0.55f to ProfileScreenColors.Background,
+                                    1f to ProfileScreenColors.Background
                                 )
                             )
                         )
@@ -885,8 +940,10 @@ private fun ProfileSelectionMainContent(
     screenSubtitle: String,
     screenHint: String,
     isManagementMode: Boolean,
+    isEditing: Boolean,
     profiles: List<UserProfile>,
     activeProfileId: Int,
+    preferredFocusProfileId: Int?,
     canAddProfile: Boolean,
     profilePinEnabled: Map<Int, Boolean>,
     avatarImageUrlsById: Map<String, String>,
@@ -895,7 +952,8 @@ private fun ProfileSelectionMainContent(
     onProfileFocused: (UserProfile?) -> Unit,
     onProfileSelected: (UserProfile) -> Unit,
     onProfileLongPress: (UserProfile) -> Unit,
-    onAddProfileClick: () -> Unit
+    onAddProfileClick: () -> Unit,
+    onEditProfilesClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -906,38 +964,34 @@ private fun ProfileSelectionMainContent(
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        MemberBrandWordmark(
-            height = ProfileSelectionSpacing.LogoHeight,
-            contentDescription = stringResource(R.string.cd_nuvio_logo),
-            drawableOverride = brandWordmarkRes
-        )
-
-        Spacer(modifier = Modifier.height(ProfileSelectionSpacing.LogoToHeading))
+        Spacer(modifier = Modifier.weight(0.7f, fill = true))
 
         Text(
-            text = screenTitle,
-            color = NuvioTheme.colors.TextPrimary,
-            fontSize = 44.sp,
+            text = if (isEditing) stringResource(R.string.profile_edit_profiles_title) else screenTitle,
+            color = Color.White,
+            fontSize = 40.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.5).sp
+            letterSpacing = (-0.3).sp
         )
+        if (isEditing) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = stringResource(R.string.profile_edit_profiles_hint),
+                color = ProfileScreenColors.NameIdle,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
 
-        Spacer(modifier = Modifier.height(ProfileSelectionSpacing.HeadingToSubheading))
-
-        Text(
-            text = screenSubtitle,
-            color = NuvioTheme.colors.TextSecondary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium
-        )
-
-        Spacer(modifier = Modifier.weight(1f, fill = true))
+        Spacer(modifier = Modifier.height(if (isEditing) 34.dp else 56.dp))
 
         ProfileGrid(
             profiles = profiles,
             activeProfileId = activeProfileId,
+            preferredFocusProfileId = preferredFocusProfileId,
             isManagementMode = isManagementMode,
-            canAddProfile = canAddProfile,
+            isEditing = isEditing,
+            canAddProfile = canAddProfile && !isEditing,
             profilePinEnabled = profilePinEnabled,
             avatarImageUrlsById = avatarImageUrlsById,
             profileThemes = profileThemes,
@@ -949,11 +1003,57 @@ private fun ProfileSelectionMainContent(
 
         Spacer(modifier = Modifier.weight(1f, fill = true))
 
+        if (profiles.isNotEmpty()) {
+            EditProfilesButton(
+                text = stringResource(if (isEditing) R.string.profile_edit_done else R.string.profile_edit_profiles_btn),
+                onClick = onEditProfilesClick
+            )
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+    }
+}
+
+/** The wide "EDIT PROFILES" / "DONE" button under the profiles: dark, white when focused. */
+@Composable
+private fun EditProfilesButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val background by animateColorAsState(
+        targetValue = if (isFocused) ProfileScreenColors.TileFocused else ProfileScreenColors.Tile,
+        animationSpec = tween(140),
+        label = "editProfilesBackground"
+    )
+    Box(
+        modifier = modifier
+            .width(300.dp)
+            .height(46.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(background)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable(interactionSource = interactionSource)
+            .onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (native.action == AndroidKeyEvent.ACTION_UP && isProfileSelectKey(native.keyCode)) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
         Text(
-            text = screenHint,
-            color = NuvioTheme.colors.TextTertiary.copy(alpha = 0.9f),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
+            text = text.uppercase(),
+            color = if (isFocused) Color.Black else Color.White.copy(alpha = 0.92f),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 2.sp
         )
     }
 }
@@ -962,7 +1062,9 @@ private fun ProfileSelectionMainContent(
 private fun ProfileGrid(
     profiles: List<UserProfile>,
     activeProfileId: Int,
+    preferredFocusProfileId: Int?,
     isManagementMode: Boolean,
+    isEditing: Boolean,
     canAddProfile: Boolean,
     profilePinEnabled: Map<Int, Boolean>,
     avatarImageUrlsById: Map<String, String>,
@@ -974,8 +1076,8 @@ private fun ProfileGrid(
 ) {
     val totalItems = profiles.size + if (canAddProfile) 1 else 0
     val initialFocusIndex = remember(profiles, activeProfileId, canAddProfile) {
-        profiles.indexOfFirst { it.id == activeProfileId }
-            .takeIf { it >= 0 }
+        (preferredFocusProfileId?.let { id -> profiles.indexOfFirst { it.id == id } }?.takeIf { it >= 0 })
+            ?: profiles.indexOfFirst { it.id == activeProfileId }.takeIf { it >= 0 }
             ?: if (profiles.isNotEmpty()) 0 else if (canAddProfile) 0 else -1
     }
     val focusRequesters = remember(totalItems) {
@@ -992,7 +1094,7 @@ private fun ProfileGrid(
     if (profiles.isEmpty() && !canAddProfile) {
         Text(
             text = stringResource(R.string.profile_selection_empty),
-            color = NuvioTheme.colors.TextSecondary,
+            color = ProfileScreenColors.NameIdle,
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium
         )
@@ -1017,8 +1119,8 @@ private fun ProfileGrid(
             } else {
                 ProfileSelectionSpacing.GridItemGap
             }
-            // Up to 8 profiles: when even the small cards are wider than the screen (7 or more),
-            // the whole row is shrunk to fit, so every profile stays on screen in one line.
+            // Up to 8 profiles: when even the small cards are wider than the screen, the whole row
+            // is shrunk to fit, so every profile stays on screen in one line.
             val compactGridWidth = profileGridWidth(
                 itemCount = totalItems,
                 cardWidth = ProfileSelectionSpacing.CompactCardWidth,
@@ -1051,7 +1153,8 @@ private fun ProfileGrid(
                             ?: profile.avatarId?.let(avatarImageUrlsById::get),
                         focusRequester = focusRequesters[index],
                         compact = useCompactCards,
-                        profileTheme = profileThemes[profile.id],
+                        isEditing = isEditing,
+                        isLocked = profilePinEnabled[profile.id] == true,
                         onFocused = { onProfileFocused(profile) },
                         onClick = { onProfileSelected(profile) },
                         onLongPress = { onProfileLongPress(profile) }
@@ -1080,13 +1183,19 @@ private fun profileGridWidth(
     return (cardWidth.value * itemCount + itemGap.value * gapCount).dp
 }
 
+/**
+ * A profile: its big round avatar (a little larger with a white ring when focused, as on Disney+)
+ * and its name under it, grey until focused. Editing, the avatar shows a pencil; a PIN-locked
+ * profile shows a small lock under its name.
+ */
 @Composable
 private fun ProfileCard(
     profile: UserProfile,
     avatarImageUrl: String?,
     focusRequester: FocusRequester,
     compact: Boolean,
-    profileTheme: com.nuvio.tv.domain.model.AppTheme? = null,
+    isEditing: Boolean,
+    isLocked: Boolean,
     onFocused: () -> Unit,
     onClick: () -> Unit,
     onLongPress: () -> Unit
@@ -1100,40 +1209,13 @@ private fun ProfileCard(
         animationSpec = tween(durationMillis = 210, easing = ProfileCardFocusEasing),
         label = "profileFocusProgress"
     )
-    val profileFocusRing = remember(profileTheme) {
-        profileTheme?.let {
-            createFocusRingStyle(ThemeColors.getColorPalette(it))
-        }
-    }
-    val itemScale = 1f + (0.04f * focusProgress)
-    val avatarSize = androidx.compose.ui.unit.lerp(
-        if (compact) ProfileSelectionSpacing.CompactAvatarSize else 96.dp,
-        if (compact) ProfileSelectionSpacing.CompactFocusedAvatarSize else 102.dp,
-        focusProgress
-    )
-    val outerAvatarSize = androidx.compose.ui.unit.lerp(
-        if (compact) ProfileSelectionSpacing.CompactOuterAvatarSize else 114.dp,
-        if (compact) ProfileSelectionSpacing.CompactFocusedOuterAvatarSize else 122.dp,
-        focusProgress
-    )
-    val ringWidth = androidx.compose.ui.unit.lerp(NuvioTheme.spacing.hairline, 3.dp, focusProgress)
-    val nameColor = lerp(
-        NuvioTheme.colors.TextSecondary,
-        NuvioTheme.colors.TextPrimary,
-        focusProgress
-    )
-    val nameWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium
+    val avatarSize = if (compact) ProfileSelectionSpacing.CompactAvatarSize else ProfileSelectionSpacing.AvatarSize
+    val avatarScale = 1f + 0.08f * focusProgress
+    val nameColor = lerp(ProfileScreenColors.NameIdle, Color.White, focusProgress)
 
     Column(
         modifier = Modifier
-            .width(
-                if (compact) ProfileSelectionSpacing.CompactCardWidth
-                else ProfileSelectionSpacing.CardWidth
-            )
-            .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
-            }
+            .width(if (compact) ProfileSelectionSpacing.CompactCardWidth else ProfileSelectionSpacing.CardWidth)
             .focusRequester(focusRequester)
             .onFocusChanged {
                 isFocused = it.isFocused
@@ -1172,98 +1254,72 @@ private fun ProfileCard(
                 indication = null,
                 onClick = onClick
             )
-            .padding(
-                horizontal = ProfileSelectionSpacing.CardPaddingHorizontal,
-                vertical = ProfileSelectionSpacing.CardPaddingVertical
-            ),
+            .padding(vertical = ProfileSelectionSpacing.CardPaddingVertical),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.size(
-                if (compact) ProfileSelectionSpacing.CompactAvatarContainer
-                else ProfileSelectionSpacing.AvatarContainer
-            ),
+            modifier = Modifier
+                .size(avatarSize + 16.dp)
+                .graphicsLayer {
+                    scaleX = avatarScale
+                    scaleY = avatarScale
+                },
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(outerAvatarSize)
-                    .clip(CircleShape)
-                    .border(
-                        width = NuvioTheme.spacing.hairline,
-                        color = NuvioTheme.colors.Border.copy(alpha = 0.75f),
-                        shape = CircleShape
-                    )
-                    .border(
-                        border = (profileFocusRing ?: NuvioTheme.focusRing).border(ringWidth, focusProgress),
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                ProfileAvatarCircle(
-                    name = profile.name,
-                    colorHex = profile.avatarColorHex,
-                    size = avatarSize,
-                    avatarImageUrl = avatarImageUrl
-                )
-            }
-
-            if (profile.isPrimary) {
+            ProfileAvatarCircle(
+                name = profile.name,
+                colorHex = profile.avatarColorHex,
+                size = avatarSize,
+                avatarImageUrl = avatarImageUrl
+            )
+            if (isEditing) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = NuvioTheme.spacing.xxs, y = NuvioTheme.spacing.hairline)
-                        .size(if (compact) 22.dp else 26.dp)
+                        .size(avatarSize)
                         .clip(CircleShape)
-                        .background(Color(0xFFFFB300), CircleShape)
-                        .border(
-                            width = NuvioTheme.spacing.xxs,
-                            color = NuvioTheme.colors.Background,
-                            shape = CircleShape
-                        ),
+                        .background(Color.Black.copy(alpha = 0.45f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "\u2605",
-                        color = Color.White,
-                        fontSize = if (compact) 12.sp else 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.profile_edit_header),
+                        tint = Color.White,
+                        modifier = Modifier.size(avatarSize * 0.26f)
                     )
                 }
             }
+            // The white ring, a little out from the avatar.
+            Box(
+                modifier = Modifier
+                    .size(avatarSize + 10.dp)
+                    .border(3.dp, Color.White.copy(alpha = focusProgress), CircleShape)
+            )
         }
 
-        Spacer(
-            modifier = Modifier.height(
-                if (compact) ProfileSelectionSpacing.CompactAvatarToName
-                else ProfileSelectionSpacing.AvatarToName
-            )
-        )
+        Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
 
         Text(
             text = profile.name,
             color = nameColor,
-            fontSize = if (compact) 15.sp else 17.sp,
-            fontWeight = nameWeight,
+            fontSize = if (compact) 16.sp else 19.sp,
+            fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(ProfileSelectionSpacing.NameToMeta))
-
         Box(
-            modifier = Modifier.height(ProfileSelectionSpacing.MetaSlotHeight),
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .height(16.dp),
             contentAlignment = Alignment.TopCenter
         ) {
-            if (profile.isPrimary) {
-                Text(
-                    text = stringResource(R.string.profile_selection_primary_badge),
-                    color = Color(0xFFFFB300),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.8.sp
+            if (isLocked) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = stringResource(R.string.profile_pin_title),
+                    tint = nameColor,
+                    modifier = Modifier.size(15.dp)
                 )
             }
         }
@@ -1275,6 +1331,7 @@ private fun parseProfileColor(colorHex: String): Color {
         .getOrDefault(Color(0xFF1E88E5))
 }
 
+/** "Add Profile": a dark grey circle with a thin plus, like the profiles beside it. */
 @Composable
 private fun AddProfileCard(
     focusRequester: FocusRequester,
@@ -1289,39 +1346,15 @@ private fun AddProfileCard(
         animationSpec = tween(durationMillis = 210, easing = ProfileCardFocusEasing),
         label = "addFocusProgress"
     )
-    val itemScale = 1f + (0.04f * focusProgress)
-    val outerAvatarSize = androidx.compose.ui.unit.lerp(
-        if (compact) ProfileSelectionSpacing.CompactOuterAvatarSize else 114.dp,
-        if (compact) ProfileSelectionSpacing.CompactFocusedOuterAvatarSize else 122.dp,
-        focusProgress
-    )
-    val ringWidth = androidx.compose.ui.unit.lerp(NuvioTheme.spacing.hairline, 3.dp, focusProgress)
-    val nameColor = lerp(
-        NuvioTheme.colors.TextTertiary,
-        NuvioTheme.colors.TextPrimary,
-        focusProgress
-    )
-    val plusColor = lerp(
-        NuvioTheme.colors.TextTertiary,
-        Color.White,
-        focusProgress
-    )
-    val addBackgroundColor = lerp(
-        Color.White.copy(alpha = 0.06f),
-        Color.White.copy(alpha = 0.12f),
-        focusProgress
-    )
+    val avatarSize = if (compact) ProfileSelectionSpacing.CompactAvatarSize else ProfileSelectionSpacing.AvatarSize
+    val avatarScale = 1f + 0.08f * focusProgress
+    val nameColor = lerp(ProfileScreenColors.NameIdle, Color.White, focusProgress)
+    val plusColor = lerp(Color.White.copy(alpha = 0.85f), Color.White, focusProgress)
+    val plusLength = avatarSize * 0.32f
 
     Column(
         modifier = Modifier
-            .width(
-                if (compact) ProfileSelectionSpacing.CompactCardWidth
-                else ProfileSelectionSpacing.CardWidth
-            )
-            .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
-            }
+            .width(if (compact) ProfileSelectionSpacing.CompactCardWidth else ProfileSelectionSpacing.CardWidth)
             .focusRequester(focusRequester)
             .onFocusChanged {
                 isFocused = it.isFocused
@@ -1332,76 +1365,59 @@ private fun AddProfileCard(
                 indication = null,
                 onClick = onClick
             )
-            .padding(
-                horizontal = ProfileSelectionSpacing.CardPaddingHorizontal,
-                vertical = ProfileSelectionSpacing.CardPaddingVertical
-            ),
+            .padding(vertical = ProfileSelectionSpacing.CardPaddingVertical),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.size(
-                if (compact) ProfileSelectionSpacing.CompactAvatarContainer
-                else ProfileSelectionSpacing.AvatarContainer
-            ),
+            modifier = Modifier
+                .size(avatarSize + 16.dp)
+                .graphicsLayer {
+                    scaleX = avatarScale
+                    scaleY = avatarScale
+                },
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(outerAvatarSize)
+                    .size(avatarSize)
                     .clip(CircleShape)
-                    .border(
-                        width = NuvioTheme.spacing.hairline,
-                        color = NuvioTheme.colors.Border.copy(alpha = 0.5f),
-                        shape = CircleShape
-                    )
-                    .border(
-                        border = NuvioTheme.focusRing.border(ringWidth, focusProgress),
-                        shape = CircleShape
-                    )
-                    .background(addBackgroundColor, CircleShape),
+                    .background(lerp(ProfileScreenColors.Tile, Color(0xFF4A4C56), focusProgress)),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
-                    modifier = Modifier.size(if (compact) 30.dp else 34.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(if (compact) 22.dp else 26.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(plusColor)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(if (compact) 22.dp else 26.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(plusColor)
-                    )
-                }
+                    modifier = Modifier
+                        .width(plusLength)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(plusColor)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(plusLength)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(plusColor)
+                )
             }
+            Box(
+                modifier = Modifier
+                    .size(avatarSize + 10.dp)
+                    .border(3.dp, Color.White.copy(alpha = focusProgress), CircleShape)
+            )
         }
 
-        Spacer(
-            modifier = Modifier.height(
-                if (compact) ProfileSelectionSpacing.CompactAvatarToName
-                else ProfileSelectionSpacing.AvatarToName
-            )
-        )
+        Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
 
         Text(
             text = stringResource(R.string.profile_add_new),
             color = nameColor,
-            fontSize = if (compact) 15.sp else 17.sp,
-            fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
+            fontSize = if (compact) 16.sp else 19.sp,
+            fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-
-        Spacer(modifier = Modifier.height(ProfileSelectionSpacing.NameToMeta))
-        Box(modifier = Modifier.height(ProfileSelectionSpacing.MetaSlotHeight))
+        Box(modifier = Modifier.padding(top = 6.dp).height(16.dp))
     }
 }
 
@@ -1736,6 +1752,11 @@ private fun rememberKeyboardVisibilityState(): KeyboardVisibilityState {
     return state
 }
 
+/**
+ * Editing a profile, full screen: its avatar (big, as it will look), its name, its color or
+ * avatar picture, its background (members), and its PIN, settings copy and delete. Save keeps
+ * the changes; Cancel or Back leaves without them.
+ */
 @Composable
 private fun EditProfileOverlay(
     profile: UserProfile,
@@ -1743,9 +1764,15 @@ private fun EditProfileOverlay(
     profileBackgroundCatalog: List<ProfileBackgroundCatalogItem>,
     hasProfileBackgroundAccess: Boolean,
     isSaving: Boolean,
+    isPinEnabled: Boolean,
+    canCopySettings: Boolean,
     avatarUrlResolver: (String?) -> String?,
     onDismiss: () -> Unit,
-    onSaveProfile: (UserProfile) -> Unit
+    onSaveProfile: (UserProfile) -> Unit,
+    onSetPin: () -> Unit,
+    onRemovePin: () -> Unit,
+    onCopySettings: () -> Unit,
+    onDelete: (() -> Unit)?
 ) {
     BackHandler(onBack = onDismiss)
 
@@ -1772,7 +1799,10 @@ private fun EditProfileOverlay(
             ?: avatarUrlResolver(profile.avatarId)
         else -> null
     }
+    val saveFocusRequester = remember { FocusRequester() }
     val nameFocusRequester = remember { FocusRequester() }
+    val profileColor = parseProfileColor(selectedColorHex)
+    val animatedProfileColor by animateColorAsState(profileColor, tween(360), label = "editProfileColor")
 
     LaunchedEffect(Unit) {
         repeat(2) { withFrameNanos { } }
@@ -1783,10 +1813,32 @@ private fun EditProfileOverlay(
         if (!hasProfileBackgroundAccess) selectedEditorTab = ProfileEditorTab.Avatar
     }
 
+    val save = {
+        onSaveProfile(
+            profile.copy(
+                name = profileName.trim(),
+                avatarColorHex = selectedColorHex,
+                avatarId = selectedAvatarId,
+                avatarUrl = if (hasChangedAvatarSelection) null else profile.avatarUrl,
+                profileBackgroundId = selectedBackgroundId,
+                profileBackgroundUrl = selectedBackgroundUrl
+            )
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.85f))
+            .background(ProfileScreenColors.Background)
+            .background(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to animatedProfileColor.copy(alpha = 0.22f),
+                        0.45f to Color.Transparent,
+                        1f to Color.Transparent
+                    )
+                )
+            )
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
                 if (native.action == AndroidKeyEvent.ACTION_UP &&
@@ -1801,147 +1853,179 @@ private fun EditProfileOverlay(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onDismiss
-            ),
-        contentAlignment = Alignment.Center
+                onClick = {}
+            )
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = ProfileSelectionSpacing.EditorPanelMaxWidth)
-                .clip(RoundedCornerShape(20.dp))
-                .background(NuvioTheme.colors.BackgroundElevated)
-                .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border, RoundedCornerShape(20.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                )
-                .padding(NuvioTheme.spacing.xxl),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(horizontal = 56.dp, vertical = 30.dp)
         ) {
-            // Header row: title left, save button right
+            // Header: what's being edited, then Cancel and Save.
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = NuvioTheme.spacing.xl),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xxs)) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.profile_edit_header),
-                        color = NuvioTheme.colors.TextSecondary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = stringResource(R.string.profile_edit_header).uppercase(),
+                        color = ProfileScreenColors.Label,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 2.sp
                     )
                     Text(
-                        text = profile.name,
+                        text = profileName.ifBlank { profile.name },
                         color = Color.White,
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-                OverlayButton(
-                    text = if (isSaving) stringResource(R.string.profile_saving)
-                           else stringResource(R.string.profile_save),
-                    isPrimary = true,
-                    enabled = profileName.isNotBlank() && !isSaving,
-                    onClick = {
-                        onSaveProfile(
-                            profile.copy(
-                                name = profileName,
-                                avatarColorHex = selectedColorHex,
-                                avatarId = selectedAvatarId,
-                                avatarUrl = if (hasChangedAvatarSelection) null else profile.avatarUrl,
-                                profileBackgroundId = selectedBackgroundId,
-                                profileBackgroundUrl = selectedBackgroundUrl
-                            )
-                        )
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 360.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(ProfileSelectionSpacing.EditorPreviewWidth)
-                        .padding(start = NuvioTheme.spacing.xl, top = NuvioTheme.spacing.xl + ProfileSelectionSpacing.EditorPreviewTopOffset, end = NuvioTheme.spacing.xl, bottom = NuvioTheme.spacing.xl),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    ProfileAvatarCircle(
-                        name = profileName.ifEmpty { "?" },
-                        colorHex = selectedColorHex,
-                        size = ProfileSelectionSpacing.EditorPreviewAvatarSize,
-                        avatarImageUrl = previewAvatarImageUrl
-                    )
-
-                    Text(
-                        text = profileName.ifBlank { stringResource(R.string.profile_name_placeholder) },
-                        color = if (profileName.isBlank()) NuvioTheme.colors.TextSecondary else NuvioTheme.colors.TextPrimary,
-                        fontSize = 22.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    EditPageButton(
+                        text = stringResource(R.string.profile_cancel),
+                        isPrimary = false,
+                        onClick = onDismiss
+                    )
+                    EditPageButton(
+                        text = stringResource(if (isSaving) R.string.profile_saving else R.string.profile_save),
+                        isPrimary = true,
+                        enabled = profileName.isNotBlank() && !isSaving,
+                        modifier = Modifier.focusRequester(saveFocusRequester),
+                        onClick = save
+                    )
+                }
+            }
 
+            Spacer(modifier = Modifier.height(22.dp))
+
+            Row(modifier = Modifier.fillMaxSize()) {
+                // The profile as it will look, its name, and what else can be done with it.
+                Column(
+                    modifier = Modifier.width(300.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        ProfileAvatarCircle(
+                            name = profileName.ifEmpty { "?" },
+                            colorHex = selectedColorHex,
+                            size = 120.dp,
+                            avatarImageUrl = previewAvatarImageUrl
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(3.dp, ProfileScreenColors.Background, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    EditSectionLabel(stringResource(R.string.profile_name_placeholder), Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(6.dp))
                     ProfileNameField(
                         value = profileName,
                         onValueChange = { if (it.length <= 20) profileName = it },
                         focusRequester = nameFocusRequester
                     )
 
-                    OverlayButton(
-                        text = stringResource(R.string.profile_cancel),
-                        isPrimary = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onDismiss
-                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(ProfileScreenColors.Panel)
+                            .border(1.dp, ProfileScreenColors.PanelBorder, RoundedCornerShape(14.dp))
+                            .padding(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        EditSettingRow(
+                            icon = Icons.Default.Lock,
+                            title = stringResource(if (isPinEnabled) R.string.profile_pin_change else R.string.profile_pin_set),
+                            value = stringResource(if (isPinEnabled) R.string.profile_edit_on else R.string.profile_edit_off),
+                            onClick = onSetPin
+                        )
+                        if (isPinEnabled) {
+                            EditSettingRow(
+                                icon = Icons.Default.LockOpen,
+                                title = stringResource(R.string.profile_pin_remove),
+                                onClick = onRemovePin
+                            )
+                        }
+                        if (canCopySettings) {
+                            EditSettingRow(
+                                icon = Icons.Default.ContentCopy,
+                                title = stringResource(R.string.profile_copy_settings_label),
+                                onClick = onCopySettings
+                            )
+                        }
+                        if (onDelete != null) {
+                            EditSettingRow(
+                                icon = Icons.Default.Delete,
+                                title = stringResource(R.string.profile_delete_btn),
+                                destructive = true,
+                                onClick = onDelete
+                            )
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(ProfileSelectionSpacing.EditorDividerSpacing))
-                EditorSectionDivider()
-                Spacer(modifier = Modifier.width(ProfileSelectionSpacing.EditorDividerSpacing))
+                Spacer(modifier = Modifier.width(44.dp))
 
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-                ) {
-                    ProfileEditorTabs(
-                        selectedTab = selectedEditorTab,
-                        showBackgroundTab = hasProfileBackgroundAccess,
-                        onTabSelected = { selectedEditorTab = it },
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
+                // Its look: color and avatar picture, or its background.
+                Column(modifier = Modifier.weight(1f)) {
+                    if (hasProfileBackgroundAccess) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            EditTabPill(
+                                label = stringResource(R.string.profile_editor_tab_avatar),
+                                selected = selectedEditorTab == ProfileEditorTab.Avatar,
+                                onClick = { selectedEditorTab = ProfileEditorTab.Avatar }
+                            )
+                            EditTabPill(
+                                label = stringResource(R.string.profile_editor_tab_background),
+                                selected = selectedEditorTab == ProfileEditorTab.Background,
+                                onClick = { selectedEditorTab = ProfileEditorTab.Background }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
                     when (selectedEditorTab) {
                         ProfileEditorTab.Avatar -> {
-                            Text(
-                                text = stringResource(R.string.profile_choose_avatar),
-                                modifier = Modifier.fillMaxWidth(),
-                                color = NuvioTheme.colors.TextTertiary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
+                            EditSectionLabel(stringResource(R.string.profile_avatar_color))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ProfileColorChoices.forEach { hex ->
+                                    ColorSwatch(
+                                        color = parseProfileColor(hex),
+                                        selected = selectedAvatar == null && previewAvatarImageUrl == null &&
+                                            selectedColorHex.equals(hex, ignoreCase = true),
+                                        onClick = {
+                                            selectedColorHex = hex
+                                            // A color shows instead of the avatar picture.
+                                            selectedAvatarId = null
+                                        }
+                                    )
+                                }
+                            }
 
-                            Text(
-                                text = stringResource(R.string.profile_custom_avatar_web_panel_note),
-                                modifier = Modifier.fillMaxWidth(),
-                                color = NuvioTheme.colors.TextTertiary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                            EditSectionLabel(stringResource(R.string.profile_choose_avatar))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             if (avatarCatalog.isNotEmpty()) {
                                 AvatarPickerGrid(
@@ -1959,65 +2043,72 @@ private fun EditProfileOverlay(
                                     onAvatarFocused = { avatar ->
                                         focusedAvatarName = avatar?.displayName
                                     },
-                                    modifier = Modifier.heightIn(max = 280.dp)
+                                    modifier = Modifier.heightIn(max = 230.dp)
                                 )
-
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = focusedAvatarName ?: stringResource(R.string.profile_avatar_focus_hint),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = if (focusedAvatarName != null) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextTertiary,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center
+                                    color = if (focusedAvatarName != null) Color.White else ProfileScreenColors.Label,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             } else {
-                                Box(
+                                // No pictures to choose from yet: the profile shows its color and initial.
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(160.dp)
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(NuvioTheme.colors.BackgroundCard)
-                                        .border(
-                                            NuvioTheme.spacing.hairline,
-                                            NuvioTheme.colors.Border,
-                                            RoundedCornerShape(18.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(ProfileScreenColors.Panel)
+                                        .border(1.dp, ProfileScreenColors.PanelBorder, RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = stringResource(R.string.profile_choose_avatar),
-                                        color = NuvioTheme.colors.TextTertiary,
-                                        fontSize = 15.sp
-                                    )
+                                    Box(modifier = Modifier.width(116.dp).height(48.dp)) {
+                                        listOf("#8E24AA", "#00ACC1", "#FB8C00").forEachIndexed { index, hex ->
+                                            ProfileAvatarCircle(
+                                                name = profileName.ifEmpty { "?" },
+                                                colorHex = hex,
+                                                size = 48.dp,
+                                                modifier = Modifier
+                                                    .offset(x = (index * 34).dp)
+                                                    .border(2.dp, ProfileScreenColors.Background, CircleShape)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(20.dp))
+                                    Column {
+                                        Text(
+                                            text = stringResource(R.string.profile_edit_avatars_soon_title),
+                                            color = Color.White,
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = stringResource(R.string.profile_edit_avatars_soon),
+                                            color = ProfileScreenColors.Label,
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                 }
                             }
                         }
 
                         ProfileEditorTab.Background -> {
-                            Text(
-                                text = stringResource(R.string.profile_choose_background),
-                                modifier = Modifier.fillMaxWidth(),
-                                color = NuvioTheme.colors.TextSecondary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
-
+                            EditSectionLabel(stringResource(R.string.profile_choose_background))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = stringResource(R.string.profile_background_member_note),
-                                modifier = Modifier.fillMaxWidth(),
-                                color = NuvioTheme.colors.TextTertiary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
+                                color = ProfileScreenColors.Label,
+                                fontSize = 12.sp
                             )
-
+                            Spacer(modifier = Modifier.height(12.dp))
                             ProfileBackgroundPicker(
                                 backgrounds = profileBackgroundCatalog,
                                 selectedBackgroundId = selectedBackgroundId,
                                 customBackgroundUrl = profile.profileBackgroundUrl,
                                 selectedBackgroundUrl = selectedBackgroundUrl,
-                                standardBackgroundColor = parseProfileColor(selectedColorHex),
+                                standardBackgroundColor = profileColor,
                                 onStandardBackgroundSelected = {
                                     selectedBackgroundId = null
                                     selectedBackgroundUrl = null
@@ -2051,9 +2142,205 @@ private fun EditProfileOverlay(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
         }
+    }
+}
+
+/** A small grey uppercase label over a part of the edit page ("PROFILE NAME", "AVATAR COLOR"). */
+@Composable
+private fun EditSectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text.uppercase(),
+        color = ProfileScreenColors.Label,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.5.sp,
+        modifier = modifier
+    )
+}
+
+/** A round color to pick: a white ring and a check when it's the profile's. */
+@Composable
+private fun ColorSwatch(color: Color, selected: Boolean, onClick: () -> Unit) {
+    var isFocused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val scale by animateFloatAsState(if (isFocused) 1.15f else 1f, tween(140), label = "swatchScale")
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .onFocusChanged { isFocused = it.isFocused }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .border(
+                width = if (isFocused || selected) 3.dp else 0.dp,
+                color = if (isFocused || selected) Color.White else Color.Transparent,
+                shape = CircleShape
+            )
+            .padding(if (isFocused || selected) 5.dp else 0.dp)
+            .clip(CircleShape)
+            .background(color),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+/** A row in the edit page's list (PIN, copy settings, delete): white when focused. */
+@Composable
+private fun EditSettingRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    value: String? = null,
+    destructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val background by animateColorAsState(
+        if (isFocused) Color.White else Color.Transparent,
+        tween(120),
+        label = "editRowBackground"
+    )
+    val content = when {
+        isFocused -> Color.Black
+        destructive -> ProfileScreenColors.Destructive
+        else -> Color.White
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(background)
+            .onFocusChanged { isFocused = it.isFocused }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = content, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = title,
+            color = content,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (value != null) {
+            Text(
+                text = value,
+                color = if (isFocused) Color.Black.copy(alpha = 0.6f) else ProfileScreenColors.Label,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = if (isFocused) Color.Black.copy(alpha = 0.6f) else ProfileScreenColors.Label,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+/** "Avatar" / "Background": white when chosen or focused. */
+@Composable
+private fun EditTabPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    var isFocused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val background = when {
+        isFocused -> Color.White
+        selected -> Color.White.copy(alpha = 0.18f)
+        else -> Color.White.copy(alpha = 0.06f)
+    }
+    Text(
+        text = label,
+        color = if (isFocused) Color.Black else Color.White,
+        fontSize = 14.sp,
+        fontWeight = if (selected || isFocused) FontWeight.SemiBold else FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(background)
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (it.isFocused) onClick()
+            }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    )
+}
+
+/** Cancel / Save on the edit page: Save white, Cancel dark; both white when focused. */
+@Composable
+private fun EditPageButton(
+    text: String,
+    isPrimary: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val background by animateColorAsState(
+        targetValue = when {
+            !enabled -> Color.White.copy(alpha = 0.06f)
+            isFocused -> Color.White
+            isPrimary -> Color.White.copy(alpha = 0.85f)
+            else -> ProfileScreenColors.Tile
+        },
+        animationSpec = tween(120),
+        label = "editPageButton"
+    )
+    val textColor = when {
+        !enabled -> Color.White.copy(alpha = 0.4f)
+        isFocused || isPrimary -> Color.Black
+        else -> Color.White
+    }
+    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f, tween(140), label = "editPageButtonScale")
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .widthIn(min = 120.dp)
+            .height(44.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable(enabled = enabled, interactionSource = interactionSource)
+            .onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (enabled && native.action == AndroidKeyEvent.ACTION_UP && isProfileSelectKey(native.keyCode)) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
     }
 }
 

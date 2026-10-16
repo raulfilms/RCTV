@@ -3543,4 +3543,12 @@
     <string name="livetv_library_not_found">No se encontró %1$s en TMDB</string>
     <string name="livetv_library_episode_not_found">TMDB no indica qué episodio de %1$s es. Puedes agregar la serie.</string>
     <string name="livetv_library_failed">No se pudo agregar a tu biblioteca</string>
+    <string name="profile_edit_profiles_btn">Editar perfiles</string>
+    <string name="profile_edit_done">Listo</string>
+    <string name="profile_edit_profiles_title">Editar perfiles</string>
+    <string name="profile_edit_profiles_hint">Elige un perfil para editarlo</string>
+    <string name="profile_edit_on">Activado</string>
+    <string name="profile_edit_off">Desactivado</string>
+    <string name="profile_edit_avatars_soon_title">Pronto habrá avatares</string>
+    <string name="profile_edit_avatars_soon">Por ahora, elige un color para este perfil.</string>
 </resources>

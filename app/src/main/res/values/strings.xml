@@ -4076,4 +4076,12 @@
     <string name="livetv_library_not_found">Couldn\'t find %1$s on TMDB</string>
     <string name="livetv_library_episode_not_found">TMDB can\'t tell which episode of %1$s this is. You can add the series.</string>
     <string name="livetv_library_failed">Couldn\'t add it to your library</string>
+    <string name="profile_edit_profiles_btn">Edit Profiles</string>
+    <string name="profile_edit_done">Done</string>
+    <string name="profile_edit_profiles_title">Edit Profiles</string>
+    <string name="profile_edit_profiles_hint">Choose a profile to edit</string>
+    <string name="profile_edit_on">On</string>
+    <string name="profile_edit_off">Off</string>
+    <string name="profile_edit_avatars_soon_title">Avatars are coming soon</string>
+    <string name="profile_edit_avatars_soon">For now, pick a color for this profile.</string>
 </resources>
