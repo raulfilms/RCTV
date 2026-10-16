@@ -30,7 +30,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -168,6 +172,57 @@ fun DisneyPlusScreen(
             viewModel.closeSeeAll()
         }
     }
+    // A streaming service's own page: Back anywhere down the page goes all the way back up, onto
+    // the banner; Back at the top opens the app's menu; Back with the menu open returns Home.
+    val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
+    val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
+    val isServiceHome = isMain && !viewModel.isDirectSeeAll
+    DisposableEffect(menuBridge, isServiceHome) {
+        if (isServiceHome) menuBridge?.pageOpensMenu = true
+        onDispose { if (isServiceHome) menuBridge?.pageOpensMenu = false }
+    }
+    val hasHero = uiState.heroItems.isNotEmpty()
+    val pageScrolled by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
+    }
+    val atPageTop = if (hasHero) heroFocused else !pageScrolled
+    val pageScope = rememberCoroutineScope()
+    BackHandler(enabled = isServiceHome && seeAll == null && !menuOpen && !uiState.isInitialLoading && !atPageTop) {
+        pageScope.launch {
+            runCatching { listState.scrollToItem(0) }
+            repeat(8) {
+                withFrameNanos { }
+                val target = if (hasHero) {
+                    heroFocusRequester
+                } else {
+                    uiState.rows.firstOrNull { it.row != null || it.spec.kind == DisneyRowKind.CARDS }
+                        ?.spec?.id?.let { rowFocusRequesters[it] }
+                }
+                if (target != null && runCatching { target.requestFocus() }.getOrDefault(false)) {
+                    runCatching { listState.scrollToItem(0) }
+                    return@launch
+                }
+            }
+        }
+    }
+    BackHandler(enabled = isServiceHome && seeAll == null && !menuOpen && atPageTop && menuBridge != null) {
+        menuBridge?.open?.invoke()
+    }
+    // The menu closed (Right, or a pick on this same page): focus back on the banner.
+    var menuWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(menuOpen) {
+        if (menuOpen) {
+            menuWasOpen = true
+            return@LaunchedEffect
+        }
+        if (!menuWasOpen || !isServiceHome || !hasHero) return@LaunchedEffect
+        menuWasOpen = false
+        repeat(8) {
+            withFrameNanos { }
+            if (runCatching { heroFocusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+
     LaunchedEffect(seeAll == null, returnFocusRowId) {
         val rowId = returnFocusRowId ?: return@LaunchedEffect
         if (seeAll != null) return@LaunchedEffect

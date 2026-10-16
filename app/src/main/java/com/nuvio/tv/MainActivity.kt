@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Stars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
@@ -1818,6 +1819,13 @@ private fun ModernSidebarScaffold(
     onExitApp: () -> Unit
 ) {
     val showSidebar = currentRoute in rootRoutes
+    // A streaming service's page opens the menu on Back too (see AppMenuBridge): only the
+    // expanded menu, no pill. Back with the menu open then returns Home.
+    val menuBridge = remember { com.nuvio.tv.ui.components.AppMenuBridge() }
+    val serviceHome = !showSidebar && menuBridge.pageOpensMenu
+    val menuRoute = showSidebar || serviceHome
+    // On a service's page the menu has Home picked (that's where Back goes).
+    val menuSelectedRoute = selectedDrawerRoute ?: if (serviceHome) Screen.Home.route else null
     val sidebarTokens = NuvioComponents.tokens.sidebar
     val collapsedSidebarWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.collapsedWidth
     val openSidebarWidth = sidebarTokens.expandedWidth
@@ -1841,8 +1849,16 @@ private fun ModernSidebarScaffold(
     val hasSidebarProfileItem = showProfileSelector && activeProfileName.isNotEmpty()
     val sidebarTopBoundaryIndex = if (hasSidebarProfileItem) drawerItems.size else 0
 
-    LaunchedEffect(showSidebar) {
-        if (!showSidebar) {
+    SideEffect {
+        menuBridge.open = {
+            isSidebarExpanded = true
+            sidebarCollapsePending = false
+            pendingSidebarFocusRequest = true
+        }
+    }
+
+    LaunchedEffect(menuRoute) {
+        if (!menuRoute) {
             isSidebarExpanded = false
             sidebarCollapsePending = false
             pendingContentFocusTransfer = false
@@ -1883,8 +1899,8 @@ private fun ModernSidebarScaffold(
         onExitApp()
     }
 
-    LaunchedEffect(sidebarCollapsePending, isSidebarExpanded, showSidebar) {
-        if (!showSidebar || !sidebarCollapsePending) {
+    LaunchedEffect(sidebarCollapsePending, isSidebarExpanded, menuRoute) {
+        if (!menuRoute || !sidebarCollapsePending) {
             return@LaunchedEffect
         }
         if (!isSidebarExpanded) {
@@ -1911,7 +1927,7 @@ private fun ModernSidebarScaffold(
         isFloatingPillIconOnly = true
     }
 
-    val sidebarVisible = showSidebar && (isSidebarExpanded || !sidebarCollapsed)
+    val sidebarVisible = (showSidebar && (isSidebarExpanded || !sidebarCollapsed)) || (serviceHome && isSidebarExpanded)
     val sidebarHazeState = remember { HazeState() }
     // Panel is always laid out at full expanded width; open/close is
     // purely a graphicsLayer transform (scale + alpha) so Compose never
@@ -1926,7 +1942,7 @@ private fun ModernSidebarScaffold(
         animationSpec = tween(durationMillis = if (isSidebarExpanded) 280 else 200, easing = animationEasing),
         label = "sidebarSurfaceAlpha"
     )
-    val shouldApplySidebarHaze = showSidebar && modernSidebarBlurEnabled
+    val shouldApplySidebarHaze = menuRoute && modernSidebarBlurEnabled
     val sidebarTransition = updateTransition(
         targetState = isSidebarExpanded,
         label = "sidebarTransition"
@@ -1957,8 +1973,8 @@ private fun ModernSidebarScaffold(
     val sidebarDeflateOffsetX = NuvioTheme.spacing.none
     val sidebarDeflateOffsetY = NuvioTheme.spacing.none
 
-    LaunchedEffect(isSidebarExpanded, sidebarCollapsePending, pendingContentFocusTransfer, showSidebar) {
-        if (!showSidebar || !pendingContentFocusTransfer || isSidebarExpanded || sidebarCollapsePending) {
+    LaunchedEffect(isSidebarExpanded, sidebarCollapsePending, pendingContentFocusTransfer, menuRoute) {
+        if (!menuRoute || !pendingContentFocusTransfer || isSidebarExpanded || sidebarCollapsePending) {
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
@@ -1966,11 +1982,11 @@ private fun ModernSidebarScaffold(
         pendingContentFocusTransfer = false
     }
 
-    LaunchedEffect(isSidebarExpanded, pendingSidebarFocusRequest, showSidebar, selectedDrawerRoute) {
-        if (!showSidebar || !pendingSidebarFocusRequest || !isSidebarExpanded) {
+    LaunchedEffect(isSidebarExpanded, pendingSidebarFocusRequest, menuRoute, menuSelectedRoute) {
+        if (!menuRoute || !pendingSidebarFocusRequest || !isSidebarExpanded) {
             return@LaunchedEffect
         }
-        val targetRoute = selectedDrawerRoute ?: drawerItems.firstOrNull()?.route ?: run {
+        val targetRoute = menuSelectedRoute ?: drawerItems.firstOrNull()?.route ?: run {
             pendingSidebarFocusRequest = false
             return@LaunchedEffect
         }
@@ -1985,9 +2001,9 @@ private fun ModernSidebarScaffold(
 
     SidebarFocusRecoveryEffect(
         drawerItems = drawerItems,
-        selectedDrawerRoute = selectedDrawerRoute,
+        selectedDrawerRoute = menuSelectedRoute,
         drawerItemFocusRequesters = drawerItemFocusRequesters,
-        sidebarOwnsFocus = showSidebar && isSidebarExpanded
+        sidebarOwnsFocus = menuRoute && isSidebarExpanded
     )
 
     Box(
@@ -2079,7 +2095,8 @@ private fun ModernSidebarScaffold(
         ) {
             CompositionLocalProvider(
                 LocalSidebarExpanded provides isSidebarExpanded,
-                LocalContentFocusRequester provides contentFocusRequester
+                LocalContentFocusRequester provides contentFocusRequester,
+                com.nuvio.tv.ui.components.LocalAppMenuBridge provides menuBridge
             ) {
                 NuvioNavHost(
                     navController = navController,
@@ -2089,7 +2106,7 @@ private fun ModernSidebarScaffold(
             }
         }
 
-        if (showSidebar && (sidebarVisible || sidebarShowExpandedPanel)) {
+        if (menuRoute && (sidebarVisible || sidebarShowExpandedPanel)) {
             val panelShape = RoundedCornerShape(sidebarTokens.panelRadius)
             val showExpandedPanel = isSidebarExpanded || sidebarShowExpandedPanel
 
@@ -2159,7 +2176,7 @@ private fun ModernSidebarScaffold(
                 if (showExpandedPanel) {
                     ModernSidebarBlurPanel(
                         drawerItems = drawerItems,
-                        selectedDrawerRoute = selectedDrawerRoute,
+                        selectedDrawerRoute = menuSelectedRoute,
                         keepSidebarFocusDuringCollapse = keepSidebarFocusDuringCollapse,
                         sidebarLabelAlpha = sidebarLabelAlpha,
                         sidebarIconScale = sidebarIconScale,
@@ -2202,6 +2219,8 @@ private fun ModernSidebarScaffold(
                 label = "homePillChrome"
             )
             if (
+                // A streaming service's page has its own logo up top: no pill there.
+                showSidebar &&
                 !sidebarCollapsed &&
                 sidebarShowCollapsedPill &&
                 selectedDrawerRoute != Screen.Search.route &&

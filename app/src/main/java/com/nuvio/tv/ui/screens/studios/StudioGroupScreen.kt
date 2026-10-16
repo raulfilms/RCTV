@@ -13,8 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,6 +71,33 @@ fun StudioGroupScreen(
     var focusedIndex by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(studios.size) {
+        val target = requesters.getOrNull(focusedIndex) ?: requesters.firstOrNull() ?: return@LaunchedEffect
+        repeat(6) {
+            withFrameNanos { }
+            if (runCatching { target.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+
+    // Like the streaming services' pages: Back opens the app's menu (there's nothing to scroll),
+    // and Back with the menu open returns Home.
+    val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
+    val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
+    DisposableEffect(menuBridge) {
+        menuBridge?.pageOpensMenu = true
+        onDispose { menuBridge?.pageOpensMenu = false }
+    }
+    BackHandler(enabled = menuBridge != null && !menuOpen) {
+        menuBridge?.open?.invoke()
+    }
+    // The menu closed without leaving: focus back on the last tile.
+    var menuWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(menuOpen) {
+        if (menuOpen) {
+            menuWasOpen = true
+            return@LaunchedEffect
+        }
+        if (!menuWasOpen) return@LaunchedEffect
+        menuWasOpen = false
         val target = requesters.getOrNull(focusedIndex) ?: requesters.firstOrNull() ?: return@LaunchedEffect
         repeat(6) {
             withFrameNanos { }
