@@ -195,7 +195,7 @@ fun TeamsBrowseScreen(
 }
 
 /** Lets a grid item reach past the page's side margins (the banner runs edge to edge). */
-private fun Modifier.bleed(side: Dp): Modifier = layout { measurable, constraints ->
+internal fun Modifier.bleed(side: Dp): Modifier = layout { measurable, constraints ->
     val extra = (side * 2).roundToPx()
     val placeable = measurable.measure(
         constraints.copy(
@@ -208,15 +208,33 @@ private fun Modifier.bleed(side: Dp): Modifier = layout { measurable, constraint
     }
 }
 
-/**
- * "TEAMS" over a red-to-blue glow, the page's line under it, and a slanted collage of team tiles
- * (their colors, their logos) on the right.
- */
+/** One tile of a banner's collage: a team's or a league's color and logo. */
+internal data class SportsCollageItem(val name: String, val logoUrl: String?, val color: Color)
+
+/** The Teams banner: "TEAMS" and the team collage. */
 @Composable
 private fun TeamsBanner(collage: List<SportsTeam>) {
+    SportsCollageBanner(
+        title = stringResource(R.string.sports_row_teams),
+        subtitle = stringResource(R.string.sports_teams_subtitle),
+        items = collage.map { team -> SportsCollageItem(team.name, team.badgeUrl, sportsTeamColor(team.color, team.id)) }
+    )
+}
+
+/**
+ * A big title ("TEAMS", "LEAGUES") over a red-to-blue glow, its line under it, and a slanted collage
+ * of tiles (their colors, their logos) on the right. Runs edge to edge past the page's margins.
+ */
+@Composable
+internal fun SportsCollageBanner(
+    title: String,
+    subtitle: String,
+    items: List<SportsCollageItem>,
+    sideMargin: Dp = PageSideMargin
+) {
     Box(
         modifier = Modifier
-            .bleed(PageSideMargin)
+            .bleed(sideMargin)
             .fillMaxWidth()
             .height(250.dp)
     ) {
@@ -229,8 +247,8 @@ private fun TeamsBanner(collage: List<SportsTeam>) {
                     )
                 )
         )
-        // The collage of teams, slanted, on the right.
-        if (collage.isNotEmpty()) {
+        // The collage, slanted, on the right.
+        if (items.isNotEmpty()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -245,9 +263,9 @@ private fun TeamsBanner(collage: List<SportsTeam>) {
                 contentAlignment = Alignment.Center
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    collage.chunked(3).forEach { rowTeams ->
+                    items.take(6).chunked(3).forEach { rowItems ->
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            rowTeams.forEach { team -> CollageTile(team) }
+                            rowItems.forEach { item -> CollageTile(item) }
                         }
                     }
                 }
@@ -284,17 +302,17 @@ private fun TeamsBanner(collage: List<SportsTeam>) {
         Column(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = PageSideMargin, top = 10.dp)
+                .padding(start = sideMargin, top = 10.dp)
         ) {
             Text(
-                text = stringResource(R.string.sports_row_teams).uppercase(),
+                text = title.uppercase(),
                 color = Color.White,
                 fontSize = 54.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp
             )
             Text(
-                text = stringResource(R.string.sports_teams_subtitle),
+                text = subtitle,
                 color = Color.White.copy(alpha = 0.8f),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium
@@ -304,23 +322,24 @@ private fun TeamsBanner(collage: List<SportsTeam>) {
 }
 
 @Composable
-private fun CollageTile(team: SportsTeam) {
-    val color = sportsTeamColor(team.color, team.id)
+private fun CollageTile(item: SportsCollageItem) {
     Box(
         modifier = Modifier
             .size(width = 130.dp, height = 110.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(
-                Brush.linearGradient(listOf(lerp(color, Color.White, 0.12f), lerp(color, Color.Black, 0.4f)))
+                Brush.linearGradient(listOf(lerp(item.color, Color.White, 0.12f), lerp(item.color, Color.Black, 0.4f)))
             ),
         contentAlignment = Alignment.Center
     ) {
-        AsyncImage(
-            model = team.badgeUrl,
-            contentDescription = team.name,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(70.dp)
-        )
+        if (!item.logoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = item.logoUrl,
+                contentDescription = item.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(70.dp)
+            )
+        }
     }
 }
 

@@ -4091,4 +4091,6 @@
     <string name="sports_vs">VS</string>
     <string name="sports_live">Live</string>
     <string name="sports_final">Final</string>
+    <string name="sports_leagues_title">Leagues</string>
+    <string name="sports_leagues_subtitle">Every league, all in one place.</string>
 </resources>

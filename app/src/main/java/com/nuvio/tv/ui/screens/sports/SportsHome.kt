@@ -72,9 +72,11 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
+import com.nuvio.tv.data.remote.espn.EspnSportsClient
 import com.nuvio.tv.domain.model.SportsContinueWatchingItem
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsEventStatus
+import com.nuvio.tv.domain.model.SportsLeague
 import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
 import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
 import com.nuvio.tv.ui.components.AppleSeeAllCard
@@ -134,12 +136,23 @@ private fun leagueColor(name: String): Color? {
         "ufc" in n || "mma" in n -> Color(0xFFD20A0A)
         "f1" in n || "formula" in n -> Color(0xFFE10600)
         "pga" in n || "golf" in n -> Color(0xFF0B5A2B)
+        "liga mx" in n || "mexican" in n || n == "mex.1" -> Color(0xFF00573F)
+        "tennis" in n || n == "atp" || n == "wta" -> Color(0xFF0F3B73)
         else -> null
     }
 }
 
+/** A league's color: by its name ("National Basketball Association"), else by its id ("basketball:nba"), else one picked by its id. */
 internal fun sportsLeagueColor(id: String, name: String): Color =
-    leagueColor(name) ?: TilePalette[Math.floorMod(id.hashCode(), TilePalette.size)]
+    leagueColor(name) ?: leagueColor(id.substringAfter(':')) ?: TilePalette[Math.floorMod(id.hashCode(), TilePalette.size)]
+
+/** The leagues' short names by id ("football:nfl" to "NFL", "soccer:esp.1" to "La Liga"). */
+private val LeagueShortNames: Map<String, String> by lazy {
+    EspnSportsClient.TEAMS_FILTERS.associate { chip -> chip.id to chip.label }
+}
+
+/** A league's short name under its tile ("NFL" rather than "National Football League"). */
+internal fun sportsLeagueShortName(league: SportsLeague): String = LeagueShortNames[league.id] ?: league.name
 
 /** A team's color ("002244" from the source), else one picked by its id. */
 internal fun sportsTeamColor(hex: String?, seed: String?): Color {

@@ -317,7 +317,8 @@ private fun SportsContent(
                     onOpenLeagueDetail = onOpenLeagueDetail,
                     onShowFavoriteOptions = onShowFavoriteOptions,
                     onSeeAll = { onOpenSeeAll(SportsSeeAll.LEAGUES) },
-                    modifier = rowGap
+                    modifier = rowGap,
+                    alwaysSeeAll = true
                 )
             }
         }
@@ -468,12 +469,14 @@ private fun LeaguesRow(
     onOpenLeagueDetail: (SportsLeague) -> Unit,
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
     onSeeAll: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** See All even with ten leagues or fewer (Top Leagues opens the Leagues page). */
+    alwaysSeeAll: Boolean = false
 ) {
     SportsRow(
         title = title,
         count = leagues.size.coerceAtMost(SPORTS_ROW_MAX),
-        hasSeeAll = leagues.size > SPORTS_ROW_MAX,
+        hasSeeAll = alwaysSeeAll || leagues.size > SPORTS_ROW_MAX,
         keyOf = { leagues[it].id },
         rowFocusRequester = rowFocusRequester,
         seeAllWidth = SportsTileWidth,
@@ -520,7 +523,7 @@ private fun LeagueTile(
     modifier: Modifier
 ) {
     SportsLogoTile(
-        name = league.name,
+        name = sportsLeagueShortName(league),
         logoUrl = league.badgeUrl,
         color = sportsLeagueColor(league.id, league.name),
         isFavorite = league.id in favoriteLeagueIds,
@@ -591,10 +594,18 @@ private fun SportsSeeAllPage(
             }
         }
 
-        SportsSeeAll.LEAGUES, SportsSeeAll.MY_SPORTS -> {
-            val leagues = if (which == SportsSeeAll.LEAGUES) uiState.leagues else uiState.favoriteLeagues
+        // Every league, going down the page under a "LEAGUES" banner.
+        SportsSeeAll.LEAGUES -> LeaguesBrowsePage(
+            leagues = uiState.leagues,
+            favoriteLeagueIds = favoriteLeagueIds,
+            onOpenLeague = onOpenLeagueDetail,
+            onLongPressLeague = { league -> onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
+        )
+
+        SportsSeeAll.MY_SPORTS -> {
+            val leagues = uiState.favoriteLeagues
             SportsGridPage(
-                title = stringResource(if (which == SportsSeeAll.LEAGUES) R.string.sports_row_top_leagues else R.string.sports_row_my_sports),
+                title = stringResource(R.string.sports_row_my_sports),
                 count = leagues.size,
                 columns = 4,
                 keyOf = { leagues[it].id }

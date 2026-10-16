@@ -370,7 +370,7 @@ class SportsViewModel @Inject constructor(
         val results = client.fetchAllFixtures()
         val homeTeamRowPicks = runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList())
 
-        val leagues = results.map { it.league }
+        val leagues = results.map { it.league }.sortedBy { league -> leagueRank(league.id) }
         val allEvents = results.flatMap { it.events }
         val allTeams = results.flatMap { it.teams }.distinctBy { it.id }
 
@@ -412,6 +412,18 @@ class SportsViewModel @Inject constructor(
             "First Take", "Inside the NBA", "Pardon the Interruption", "The Pat McAfee Show", "Undisputed",
             "Get Up", "The Herd with Colin Cowherd", "Around the Horn", "NFL Live", "Real Sports with Bryant Gumbel"
         )
+
+        /** The order of the leagues (ESPN's league path, the part after ":" in the id): the US leagues first, then soccer, then the rest. */
+        val LEAGUE_ORDER = listOf(
+            "nfl", "nba", "mlb", "nhl", "usa.1", "eng.1", "esp.1", "uefa.champions",
+            "ita.1", "ger.1", "fra.1", "mex.1", "ufc", "f1", "atp"
+        )
+
+        /** Where a league goes in [LEAGUE_ORDER]; leagues not in it go last, in the order they came. */
+        fun leagueRank(leagueId: String): Int {
+            val index = LEAGUE_ORDER.indexOf(leagueId.substringAfter(':'))
+            return if (index >= 0) index else LEAGUE_ORDER.size
+        }
     }
 
     private fun mockSportsTalk(): List<SportsTalkItem> = listOf(
