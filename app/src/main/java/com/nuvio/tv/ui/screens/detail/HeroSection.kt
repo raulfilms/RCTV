@@ -389,7 +389,7 @@ private fun HeroBrandLogos(
                 Box(
                     modifier = Modifier
                         .width(NuvioTheme.spacing.hairline)
-                        .height(18.dp)
+                        .height(14.dp)
                         .background(Color.White.copy(alpha = 0.45f))
                 )
             }
@@ -412,12 +412,12 @@ private fun HeroBrandLogos(
                     alignment = Alignment.CenterStart,
                     modifier = Modifier
                         .height(HERO_BRAND_LOGO_HEIGHT)
-                        .widthIn(max = 150.dp)
+                        .widthIn(max = HERO_BRAND_LOGO_MAX_WIDTH)
                 )
             } else {
                 Text(
                     text = company.name.uppercase(),
-                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.5.sp),
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.5.sp),
                     color = Color.White.copy(alpha = 0.9f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -428,7 +428,9 @@ private fun HeroBrandLogos(
     }
 }
 
-private val HERO_BRAND_LOGO_HEIGHT = 28.dp
+// Kept small so it sits above the title's logo without competing with it.
+private val HERO_BRAND_LOGO_HEIGHT = 20.dp
+private val HERO_BRAND_LOGO_MAX_WIDTH = 110.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
