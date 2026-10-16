@@ -37,6 +37,9 @@ data class LiveEpisode(
     val airDate: String?
 )
 
+/** A season of a series on TMDB. */
+data class LiveSeason(val number: Int, val name: String?, val episodeCount: Int)
+
 /** A guide program's movie or series on TMDB (with the episode airing, when it could be told). */
 data class LiveProgramMatch(
     val isMovie: Boolean,
@@ -134,6 +137,35 @@ class LiveProgramLibrary @Inject constructor(
     }
 
     private val titleCache = ConcurrentHashMap<String, Optional<LiveProgramMatch>>()
+    private val seasonsCache = ConcurrentHashMap<String, List<LiveSeason>>()
+
+    /**
+     * A series' seasons on TMDB, in order (specials last). Throws when TMDB can't be reached.
+     */
+    suspend fun seasons(tvId: Int): List<LiveSeason> = withContext(Dispatchers.IO) {
+        val language = language()
+        val key = "$tvId:$language"
+        seasonsCache[key]?.let { return@withContext it }
+        val details = limiter.withPermit {
+            val response = tmdbApi.getTvDetails(tvId, apiKey, language)
+            if (!response.isSuccessful) throw java.io.IOException("TMDB details HTTP ${response.code()}")
+            response.body()
+        }
+        val seasons = details?.seasons.orEmpty()
+            .mapNotNull { season ->
+                val number = season.seasonNumber ?: return@mapNotNull null
+                LiveSeason(number = number, name = season.name?.takeIf { it.isNotBlank() }, episodeCount = season.episodeCount ?: 0)
+            }
+            .filter { it.episodeCount > 0 }
+            .sortedBy { if (it.number == 0) Int.MAX_VALUE else it.number }
+        if (seasons.isNotEmpty()) seasonsCache[key] = seasons
+        seasons
+    }
+
+    /** A season's episodes on TMDB (empty when TMDB can't be reached). */
+    suspend fun episodes(tvId: Int, season: Int): List<LiveEpisode> = withContext(Dispatchers.IO) {
+        seasonEpisodes(tvId, season, language()).mapNotNull { it.toLiveEpisode(season) }
+    }
 
     /** Whether the movie or the series is in the library. */
     fun isInLibrary(match: LiveProgramMatch): kotlinx.coroutines.flow.Flow<Boolean> =

@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +37,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -75,6 +79,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
+import com.nuvio.tv.data.livetv.LiveEpisode
 import com.nuvio.tv.data.livetv.LiveProgramLibrary
 import com.nuvio.tv.data.livetv.LiveProgramMatch
 import com.nuvio.tv.data.livetv.LiveTvPlayerSession
@@ -90,7 +95,7 @@ import java.util.Date
 import java.util.Locale
 
 /** The live player's tabs: icons on the left, "Networks" after the divider (as on YouTube TV). */
-private enum class LiveTab { MORE, QUALITY, CAPTIONS, LIBRARY, NETWORKS }
+private enum class LiveTab { MORE, QUALITY, CAPTIONS, LIBRARY, NETWORKS, EPISODES }
 
 /** Channels in the Networks row (the one playing, the Guide's Custom ones, then the rest). */
 private const val NETWORKS_ROW_LIMIT = 60
@@ -104,7 +109,9 @@ private const val NETWORKS_ROW_LIMIT = 60
  * - HD: the stream's qualities (Auto, 1080p60, 720p...);
  * - CC: no captions, each caption track, caption style;
  * - ✓: the program's TMDB card, Add to library and More info;
- * - Networks: the channels and what's on them; choosing one switches to it.
+ * - Networks: the channels and what's on them; choosing one switches to it;
+ * - Episodes (a series on TMDB only): its seasons and episodes, the one airing marked; choosing
+ *   one opens the series' page on it.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -117,11 +124,13 @@ internal fun LiveTvPlayerOverlay(
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit,
     onPlayChannel: (LiveTvChannel) -> Unit,
-    onOpenTitle: (LiveProgramMatch) -> Unit
+    onOpenTitle: (LiveProgramMatch) -> Unit,
+    onOpenEpisode: (LiveProgramMatch, LiveEpisode) -> Unit
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
     val programState by liveViewModel.program.collectAsState()
+    val episodesState by liveViewModel.episodes.collectAsState()
     val channel = remember(guide, uiState.title, uiState.logo) {
         liveViewModel.channelFor(uiState.title, uiState.logo, guide)
     }
@@ -129,6 +138,12 @@ internal fun LiveTvPlayerOverlay(
     LaunchedEffect(program) { liveViewModel.bindProgram(program) }
 
     var selectedTab by remember { mutableStateOf(LiveTab.NETWORKS) }
+    // Episodes: only for a series on TMDB (not a movie, a game or a newscast).
+    val seriesMatch = programState.match?.takeIf { !it.isMovie }
+    val shownTab = if (selectedTab == LiveTab.EPISODES && seriesMatch == null) LiveTab.NETWORKS else selectedTab
+    LaunchedEffect(shownTab, seriesMatch?.tmdbId) {
+        if (shownTab == LiveTab.EPISODES) liveViewModel.ensureEpisodes()
+    }
     val tabRequesters = remember { LiveTab.entries.associateWith { FocusRequester() } }
     val contentEntry = remember { FocusRequester() }
     val tabFocusRequester: (LiveTab) -> FocusRequester = { tab ->
@@ -226,9 +241,10 @@ internal fun LiveTvPlayerOverlay(
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
             ) {
                 // Down goes into the tab's content (when it has something to choose).
-                val contentFocusable = when (selectedTab) {
+                val contentFocusable = when (shownTab) {
                     LiveTab.LIBRARY -> programState.isLoading || programState.match != null
                     LiveTab.NETWORKS -> guide.channels.isNotEmpty()
+                    LiveTab.EPISODES -> episodesState.seasons.isNotEmpty()
                     else -> true
                 }
                 val tabModifier: (LiveTab) -> Modifier = { tab ->
@@ -245,28 +261,28 @@ internal fun LiveTvPlayerOverlay(
                 LiveIconTab(
                     icon = Icons.Default.MoreVert,
                     contentDescription = stringResource(R.string.cd_more_actions),
-                    selected = selectedTab == LiveTab.MORE,
+                    selected = shownTab == LiveTab.MORE,
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.MORE)
                 )
                 LiveIconTab(
                     icon = Icons.Default.HighQuality,
                     contentDescription = stringResource(R.string.player_live_quality),
-                    selected = selectedTab == LiveTab.QUALITY,
+                    selected = shownTab == LiveTab.QUALITY,
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.QUALITY)
                 )
                 LiveIconTab(
                     icon = Icons.Default.ClosedCaption,
                     contentDescription = stringResource(R.string.cd_subtitles),
-                    selected = selectedTab == LiveTab.CAPTIONS,
+                    selected = shownTab == LiveTab.CAPTIONS,
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.CAPTIONS)
                 )
                 LiveIconTab(
                     icon = if (programState.inLibrary) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline,
                     contentDescription = stringResource(R.string.hero_add_to_library),
-                    selected = selectedTab == LiveTab.LIBRARY,
+                    selected = shownTab == LiveTab.LIBRARY,
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.LIBRARY)
                 )
@@ -280,10 +296,19 @@ internal fun LiveTvPlayerOverlay(
                 LiveTextTab(
                     icon = Icons.Default.LiveTv,
                     label = stringResource(R.string.player_live_networks),
-                    selected = selectedTab == LiveTab.NETWORKS,
+                    selected = shownTab == LiveTab.NETWORKS,
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.NETWORKS)
                 )
+                if (seriesMatch != null) {
+                    LiveTextTab(
+                        icon = Icons.AutoMirrored.Filled.List,
+                        label = stringResource(R.string.player_live_episodes),
+                        selected = shownTab == LiveTab.EPISODES,
+                        onClick = { runCatching { contentEntry.requestFocus() } },
+                        modifier = tabModifier(LiveTab.EPISODES)
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
 
@@ -293,7 +318,16 @@ internal fun LiveTvPlayerOverlay(
                     .fillMaxWidth()
                     .height(200.dp)
             ) {
-                when (selectedTab) {
+                when (shownTab) {
+                    LiveTab.EPISODES -> EpisodesContent(
+                        state = episodesState,
+                        fallbackArt = seriesMatch?.backdrop,
+                        entry = contentEntry,
+                        seasonModifier = upToTab,
+                        onFocused = onResetHideTimer,
+                        onSelectSeason = liveViewModel::selectSeason,
+                        onChoose = { episode -> seriesMatch?.let { onOpenEpisode(it, episode) } }
+                    )
                     LiveTab.NETWORKS -> NetworksRow(
                         guide = guide,
                         current = channel,
@@ -860,6 +894,158 @@ private fun OptionsRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Episodes: the series' seasons (focusing one shows its episodes) and the episodes, the one airing
+ * now marked LIVE. Choosing an episode opens the series' page on it.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun EpisodesContent(
+    state: LivePlayerEpisodesState,
+    fallbackArt: String?,
+    entry: FocusRequester,
+    seasonModifier: Modifier,
+    onFocused: () -> Unit,
+    onSelectSeason: (Int) -> Unit,
+    onChoose: (LiveEpisode) -> Unit
+) {
+    if (state.isLoading || state.seasons.isEmpty()) {
+        Text(
+            text = stringResource(if (state.isLoading) R.string.livetv_library_looking_up else R.string.player_live_no_episodes),
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 15.sp,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        return
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        // The seasons (all of them composed, so the chosen one can always take focus).
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            state.seasons.forEach { season ->
+                val selected = season.number == state.selectedSeason
+                val label = season.name ?: stringResource(R.string.player_live_season, season.number)
+                Surface(
+                    onClick = { onSelectSeason(season.number) },
+                    modifier = seasonModifier
+                        .then(if (selected) Modifier.focusRequester(entry) else Modifier)
+                        .height(36.dp)
+                        .onFocusChanged {
+                            if (it.isFocused) {
+                                onFocused()
+                                onSelectSeason(season.number)
+                            }
+                        },
+                    shape = ClickableSurfaceDefaults.shape(shape = CircleShape),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = if (selected) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.12f),
+                        contentColor = Color.White,
+                        focusedContainerColor = Color.White,
+                        focusedContentColor = Color.Black
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        val listState = rememberLazyListState()
+        val airing = state.airing
+        // The episode airing now in view.
+        LaunchedEffect(state.episodes, airing) {
+            if (airing == null) return@LaunchedEffect
+            val index = state.episodes.indexOfFirst { it.season == airing.season && it.episode == airing.episode }
+            if (index >= 0) runCatching { listState.scrollToItem((index - 1).coerceAtLeast(0)) }
+        }
+        if (state.isLoadingEpisodes) {
+            Text(
+                text = stringResource(R.string.livetv_library_looking_up),
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 15.sp
+            )
+        }
+        LazyRow(
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(vertical = 4.dp)
+        ) {
+            itemsIndexed(state.episodes, key = { _, item -> "${item.season}:${item.episode}" }) { _, episode ->
+                val isAiring = airing != null && airing.season == episode.season && airing.episode == episode.episode
+                Column(modifier = Modifier.width(176.dp)) {
+                    Card(
+                        onClick = { onChoose(episode) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(99.dp)
+                            .onFocusChanged { if (it.isFocused) onFocused() },
+                        shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                        colors = CardDefaults.colors(
+                            containerColor = Color.White.copy(alpha = 0.14f),
+                            focusedContainerColor = Color.White.copy(alpha = 0.22f)
+                        ),
+                        border = CardDefaults.border(
+                            border = Border.None,
+                            focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = RoundedCornerShape(10.dp))
+                        ),
+                        scale = CardDefaults.scale(focusedScale = 1.04f)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            val image = episode.still ?: fallbackArt
+                            if (image != null) {
+                                AsyncImage(
+                                    model = image,
+                                    contentDescription = episode.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            if (isAiring) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(start = 8.dp, bottom = 8.dp)
+                                ) { LiveBadge() }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.player_live_episode_code, episode.episode) +
+                            (episode.name?.let { " · $it" } ?: ""),
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    episode.airDate?.let { date ->
+                        Text(
+                            text = runCatching {
+                                LocalDate.parse(date).format(
+                                    java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
+                                )
+                            }.getOrDefault(date),
+                            color = Color.White.copy(alpha = 0.65f),
+                            fontSize = 12.sp,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
     }

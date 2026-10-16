@@ -4062,6 +4062,10 @@
     <string name="player_live_stats">Stats for nerds</string>
     <string name="player_live_added_to_library">Added to library</string>
     <string name="player_live_more_info">More info</string>
+    <string name="player_live_episodes">Episodes</string>
+    <string name="player_live_season">Season %1$d</string>
+    <string name="player_live_episode_code">E%1$d</string>
+    <string name="player_live_no_episodes">No episodes on TMDB for this series</string>
     <string name="livetv_details_in_library">In library</string>
     <string name="livetv_details_browse_episodes">Browse episodes</string>
     <string name="livetv_details_view_movie">View movie</string>

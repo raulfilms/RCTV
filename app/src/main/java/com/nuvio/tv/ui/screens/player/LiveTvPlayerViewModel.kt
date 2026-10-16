@@ -5,7 +5,9 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.R
+import com.nuvio.tv.data.livetv.LiveEpisode
 import com.nuvio.tv.data.livetv.LiveLibraryResult
+import com.nuvio.tv.data.livetv.LiveSeason
 import com.nuvio.tv.data.livetv.LiveProgramLibrary
 import com.nuvio.tv.data.livetv.LiveProgramMatch
 import com.nuvio.tv.data.livetv.LiveTvPlayerSession
@@ -15,6 +17,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +35,20 @@ data class LivePlayerProgramState(
     val match: LiveProgramMatch? = null,
     val inLibrary: Boolean = false,
     val isAdding: Boolean = false
+)
+
+/** The Episodes tab: the series airing now, its seasons and the chosen season's episodes. */
+data class LivePlayerEpisodesState(
+    /** The series (TMDB id) these are for; null until the tab is first shown. */
+    val tvId: Int? = null,
+    /** Its seasons are being looked up. */
+    val isLoading: Boolean = false,
+    val seasons: List<LiveSeason> = emptyList(),
+    val selectedSeason: Int? = null,
+    val episodes: List<LiveEpisode> = emptyList(),
+    val isLoadingEpisodes: Boolean = false,
+    /** The episode airing now, once TMDB tells (by its name in the guide, or its air date). */
+    val airing: LiveEpisode? = null
 )
 
 /**
@@ -57,6 +74,15 @@ class LiveTvPlayerViewModel @Inject constructor(
     val program: StateFlow<LivePlayerProgramState> = _program.asStateFlow()
     private var programJob: Job? = null
 
+    private val _episodes = MutableStateFlow(LivePlayerEpisodesState())
+
+    /** The Episodes tab (a series on TMDB only). */
+    val episodes: StateFlow<LivePlayerEpisodesState> = _episodes.asStateFlow()
+    private var episodesJob: Job? = null
+    private var seasonJob: Job? = null
+    /** A season was picked by hand: the airing episode's season doesn't take over. */
+    private var seasonChosen = false
+
     init {
         viewModelScope.launch {
             while (true) {
@@ -75,6 +101,10 @@ class LiveTvPlayerViewModel @Inject constructor(
     fun bindProgram(program: EpgProgram?) {
         if (_program.value.program == program) return
         programJob?.cancel()
+        // A new program: its episodes are looked up again when the tab shows.
+        episodesJob?.cancel()
+        seasonJob?.cancel()
+        _episodes.value = LivePlayerEpisodesState()
         if (program == null) {
             _program.value = LivePlayerProgramState()
             return
@@ -94,6 +124,70 @@ class LiveTvPlayerViewModel @Inject constructor(
                     _program.update { it.copy(inLibrary = inLibrary) }
                 }
             }
+        }
+    }
+
+    /**
+     * The Episodes tab showed: the series' seasons, then the latest season's episodes (or the
+     * airing episode's season, once TMDB tells which episode is on).
+     */
+    fun ensureEpisodes() {
+        val state = _program.value
+        val match = state.match ?: return
+        val program = state.program ?: return
+        if (match.isMovie || _episodes.value.tvId == match.tmdbId) return
+        episodesJob?.cancel()
+        seasonJob?.cancel()
+        seasonChosen = false
+        _episodes.value = LivePlayerEpisodesState(tvId = match.tmdbId, isLoading = true)
+        episodesJob = viewModelScope.launch {
+            val airingLookup = async {
+                try {
+                    liveProgramLibrary.match(program)?.episode
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            val seasons = try {
+                liveProgramLibrary.seasons(match.tmdbId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _episodes.update { it.copy(isLoading = false, seasons = seasons) }
+            val latest = seasons.lastOrNull { it.number > 0 }?.number ?: seasons.firstOrNull()?.number
+            if (latest != null) loadSeason(latest)
+            val airing = airingLookup.await() ?: return@launch
+            _episodes.update { it.copy(airing = airing) }
+            if (!seasonChosen && airing.season != _episodes.value.selectedSeason && seasons.any { it.number == airing.season }) {
+                loadSeason(airing.season)
+            }
+        }
+    }
+
+    /** A season chosen in the Episodes tab. */
+    fun selectSeason(number: Int) {
+        if (_episodes.value.selectedSeason == number) return
+        seasonChosen = true
+        loadSeason(number)
+    }
+
+    private fun loadSeason(number: Int) {
+        val tvId = _episodes.value.tvId ?: return
+        seasonJob?.cancel()
+        _episodes.update { it.copy(selectedSeason = number, episodes = emptyList(), isLoadingEpisodes = true) }
+        seasonJob = viewModelScope.launch {
+            val list = try {
+                liveProgramLibrary.episodes(tvId, number)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _episodes.update { if (it.selectedSeason == number) it.copy(episodes = list, isLoadingEpisodes = false) else it }
         }
     }
 

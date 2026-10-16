@@ -1082,9 +1082,17 @@ private fun PlaybackNavHost(
                         popUpTo(Screen.Player.route) { inclusive = true }
                     }
                 },
-                // Live TV: "More info" opens what's on as any title (Back returns to the Guide).
-                onOpenLiveTitle = { itemId, itemType ->
-                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType)) {
+                // Live TV: "More info" (or an episode from Episodes) opens what's on as any title,
+                // on that episode (Back returns to the Guide).
+                onOpenLiveTitle = { itemId, itemType, season, episode ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(
+                            itemId = itemId,
+                            itemType = itemType,
+                            returnFocusSeason = season,
+                            returnFocusEpisode = episode
+                        )
+                    ) {
                         popUpTo(Screen.Player.route) { inclusive = true }
                     }
                 },

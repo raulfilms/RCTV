@@ -427,7 +427,17 @@ data class TmdbDetailsResponse(
     @Json(name = "status") val status: String? = null,
     @Json(name = "belongs_to_collection") val belongsToCollection: TmdbCollectionSummary? = null,
     /** Series: how many seasons it has. */
-    @Json(name = "number_of_seasons") val numberOfSeasons: Int? = null
+    @Json(name = "number_of_seasons") val numberOfSeasons: Int? = null,
+    /** Series: its seasons (number, name, how many episodes). */
+    @Json(name = "seasons") val seasons: List<TmdbSeasonSummary>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TmdbSeasonSummary(
+    @Json(name = "season_number") val seasonNumber: Int? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "episode_count") val episodeCount: Int? = null,
+    @Json(name = "air_date") val airDate: String? = null
 )
 
 @JsonClass(generateAdapter = true)

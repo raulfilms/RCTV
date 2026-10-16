@@ -3529,6 +3529,10 @@
     <string name="player_live_stats">Estadísticas</string>
     <string name="player_live_added_to_library">En tu biblioteca</string>
     <string name="player_live_more_info">Más info</string>
+    <string name="player_live_episodes">Episodios</string>
+    <string name="player_live_season">Temporada %1$d</string>
+    <string name="player_live_episode_code">E%1$d</string>
+    <string name="player_live_no_episodes">TMDB no tiene episodios de esta serie</string>
     <string name="livetv_details_in_library">En tu biblioteca</string>
     <string name="livetv_details_browse_episodes">Ver episodios</string>
     <string name="livetv_details_view_movie">Ver película</string>

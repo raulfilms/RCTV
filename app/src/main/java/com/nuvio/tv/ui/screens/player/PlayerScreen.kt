@@ -158,8 +158,8 @@ fun PlayerScreen(
     onOpenRecommendationDetails: (PostPlayRecommendation) -> Unit = {},
     /** Live TV: another channel chosen in the Networks row (its address already resolved). */
     onPlayLiveChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = {},
-    /** Live TV: "More info" on what's on, its movie's or series' page. */
-    onOpenLiveTitle: (itemId: String, itemType: String) -> Unit = { _, _ -> },
+    /** Live TV: "More info" on what's on, or an episode from Episodes: its movie's or series' page. */
+    onOpenLiveTitle: (itemId: String, itemType: String, season: Int?, episode: Int?) -> Unit = { _, _, _, _ -> },
     liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -218,8 +218,15 @@ fun PlayerScreen(
         if (exitDispatched) return@openLiveTitle
         exitDispatched = true
         viewModel.stopAndRelease()
-        onOpenLiveTitle(match.itemId, match.itemType)
+        onOpenLiveTitle(match.itemId, match.itemType, null, null)
     }
+    val openLiveEpisode: (com.nuvio.tv.data.livetv.LiveProgramMatch, com.nuvio.tv.data.livetv.LiveEpisode) -> Unit =
+        openLiveEpisode@{ match, episode ->
+            if (exitDispatched) return@openLiveEpisode
+            exitDispatched = true
+            viewModel.stopAndRelease()
+            onOpenLiveTitle(match.itemId, match.itemType, episode.season, episode.episode)
+        }
     val exitPlayerFromError: () -> Unit = exitPlayerFromError@{
         if (exitDispatched) return@exitPlayerFromError
         exitDispatched = true
@@ -1315,7 +1322,8 @@ fun PlayerScreen(
                     },
                     onHideControls = { viewModel.hideControls() },
                     onPlayChannel = switchLiveChannel,
-                    onOpenTitle = openLiveTitle
+                    onOpenTitle = openLiveTitle,
+                    onOpenEpisode = openLiveEpisode
                 )
             } else PlayerControlsOverlay(
                 uiState = uiState,
