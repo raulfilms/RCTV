@@ -370,6 +370,44 @@ fun ClassicHomeContent(
 
     val heroVisible = uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()
 
+    // Back anywhere down the page goes all the way back up, onto the banner; the next Back opens
+    // the menu. (Registered after the row-to-start Back above, so it comes first.)
+    val heroHasFocus = remember { mutableStateOf(false) }
+    val pageScrolled by remember {
+        derivedStateOf { columnListState.firstVisibleItemIndex > 0 || columnListState.firstVisibleItemScrollOffset > 0 }
+    }
+    BackHandler(enabled = contentHasFocus.value && (if (heroVisible) !heroHasFocus.value else pageScrolled)) {
+        currentFocusSnapshot.rowIndex = -2
+        currentFocusSnapshot.itemIndex = 0
+        currentFocusSnapshot.rowKey = if (heroVisible) "hero_carousel" else null
+        activeRowKeyState.value = null
+        scope.launch {
+            runCatching { columnListState.scrollToItem(0, 0) }
+            repeat(8) {
+                withFrameNanos { }
+                val target = if (heroVisible) {
+                    heroFocusRequester
+                } else {
+                    // No banner: the first row at the top.
+                    val topItem = columnListState.layoutInfo.visibleItemsInfo.firstOrNull()
+                    val topKey = topItem?.let { it.key as? String }
+                    when {
+                        topKey == null -> null
+                        topKey == "continue_watching" -> cwRowFocusRequester
+                        topKey == STREAMING_SERVICES_ROW_KEY -> servicesRowFocusRequester
+                        topKey == "upcoming_section" -> upcomingRowFocusRequester
+                        else -> discoverRowFocusRequesters[topKey] ?: rowFocusRequesters[topKey]
+                            ?: rowFocusRequesters[topKey.substringBeforeLast('_')]
+                    }
+                }
+                if (target != null && runCatching { target.requestFocus(); true }.getOrDefault(false)) {
+                    runCatching { columnListState.scrollToItem(0, 0) }
+                    return@launch
+                }
+            }
+        }
+    }
+
     val heroExpected = uiState.heroSectionEnabled
     val heroResolved = !heroExpected || heroVisible
     var heroDeferTimedOut by remember { mutableStateOf(false) }
@@ -666,7 +704,10 @@ fun ClassicHomeContent(
                     onDetails = { item -> onNavigateToDetail(item.id, item.apiType, "") },
                     onToggleLibrary = onHeroToggleLibrary,
                     isInLibrary = isHeroItemInLibrary,
-                    modifier = Modifier.onFocusChanged { heroFocusFlag[0] = it.hasFocus }
+                    modifier = Modifier.onFocusChanged {
+                        heroFocusFlag[0] = it.hasFocus
+                        heroHasFocus.value = it.hasFocus
+                    }
                 )
             }
         }
