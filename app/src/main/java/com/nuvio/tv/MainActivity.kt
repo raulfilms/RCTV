@@ -328,6 +328,9 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var rowLayoutRepository: com.nuvio.tv.data.layout.RowLayoutRepository
 
+    @Inject
+    lateinit var liveTvGuideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -371,6 +374,10 @@ open class MainActivity : ComponentActivity() {
 
         // Wire the Activity-level launcher to the tracker
         externalPlaybackTracker.activityLauncher = externalPlayerLauncher
+
+        // The Live TV guide loads in the background, so the Guide and the channels' pages (from
+        // Home's Top Channels) open at once.
+        liveTvGuideLoader.prewarm()
 
         PluginRuntimeHooks.onActivityCreate(this)
 

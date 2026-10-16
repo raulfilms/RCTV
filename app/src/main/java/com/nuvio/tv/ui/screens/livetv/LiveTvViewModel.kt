@@ -4,16 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.local.LiveTvDataStore
-import com.nuvio.tv.data.remote.stalker.StalkerClient
-import com.nuvio.tv.data.remote.xtream.XtreamClient
 import com.nuvio.tv.domain.model.CustomLiveChannel
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.LiveTvConnection
 import com.nuvio.tv.domain.model.LiveTvSource
-import com.nuvio.tv.ui.util.M3uPlaylistParser
-import com.nuvio.tv.ui.util.XmltvGuide
-import com.nuvio.tv.ui.util.XmltvParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.nuvio.tv.R
@@ -22,11 +17,9 @@ import com.nuvio.tv.data.livetv.LiveProgramLibrary
 import com.nuvio.tv.data.livetv.LiveProgramMatch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,11 +27,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import javax.inject.Inject
-import javax.inject.Named
 
 enum class LiveTvSetupMethod { M3U, XTREAM, STALKER }
 
@@ -177,9 +166,7 @@ data class GuideReturnFocus(val channelId: String, val onLogo: Boolean)
 class LiveTvViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val liveTvDataStore: LiveTvDataStore,
-    private val xtreamClient: XtreamClient,
-    private val stalkerClient: StalkerClient,
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient,
+    private val guideLoader: LiveTvGuideLoader,
     private val liveProgramLibrary: LiveProgramLibrary,
     private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
     private val playerSession: com.nuvio.tv.data.livetv.LiveTvPlayerSession
@@ -380,12 +367,11 @@ class LiveTvViewModel @Inject constructor(
      */
     var guideReturnFocus: GuideReturnFocus? = null
 
-    /** The sample guide, kept once loaded so coming back to the Guide is instant. */
-    private var previewGuide: XmltvGuide? = null
-    private var previewJob: Job? = null
+    /** The sample guide was left for the IPTV setup form: it isn't shown again until Retry. */
+    private var setupFormShown = false
 
-    /** Cached Stalker sessions, keyed by [LiveTvSource.id], so channel/EPG loads don't re-handshake a portal every time. */
-    private val stalkerSessions = mutableMapOf<String, StalkerClient.Session>()
+    /** The saved sources have been read (until then, which guide to show isn't known). */
+    private var sourcesKnown = false
 
     /** The most recently seen source list, kept around so [retry] doesn't need a parameter. */
     private var currentSources: List<LiveTvSource> = emptyList()
@@ -399,28 +385,36 @@ class LiveTvViewModel @Inject constructor(
         viewModelScope.launch {
             liveTvDataStore.sources.collect { sources ->
                 currentSources = sources
+                sourcesKnown = true
                 val enabled = sources.filter { it.enabled }
                 _uiState.update { it.copy(connection = enabled.firstOrNull()?.connection) }
                 if (enabled.isNotEmpty()) {
                     // Real sources replace the sample guide.
-                    previewJob?.cancel()
+                    setupFormShown = false
                     _uiState.update { it.copy(isPreviewGuide = false, previewError = null) }
-                    loadChannels(enabled)
                 } else {
-                    stalkerSessions.clear()
-                    _uiState.update {
-                        it.copy(
-                            channels = emptyList(),
-                            groups = emptyList(),
-                            selectedGroup = null,
-                            error = null,
-                            epgByChannel = emptyMap(),
-                            showGuide = false
-                        )
+                    guideLoader.clearSessions()
+                    if (_uiState.value.channels.isNotEmpty() && !_uiState.value.isPreviewGuide) {
+                        // The sources were removed: their channels go.
+                        _uiState.update {
+                            it.copy(
+                                channels = emptyList(),
+                                groups = emptyList(),
+                                selectedGroup = null,
+                                error = null,
+                                epgByChannel = emptyMap(),
+                                showGuide = false
+                            )
+                        }
                     }
-                    startPreviewGuide()
                 }
+                // The guide loaded for the app shows at once (loaded, or refreshed, only when needed).
+                applyGuide(guideLoader.guide.value)
+                if (enabled.isNotEmpty() || !setupFormShown) guideLoader.ensure(enabled)
             }
+        }
+        viewModelScope.launch {
+            guideLoader.guide.collect { guide -> applyGuide(guide) }
         }
         viewModelScope.launch {
             liveTvDataStore.customChannelIds.collect { ids ->
@@ -476,15 +470,72 @@ class LiveTvViewModel @Inject constructor(
         super.onCleared()
     }
 
-    suspend fun resolvePlaybackUrl(channel: LiveTvChannel): String {
-        val sourceId = channel.sourceId ?: return channel.streamUrl
-        val connection = currentSources.firstOrNull { it.id == sourceId }?.connection
-        if (connection !is LiveTvConnection.Stalker) return channel.streamUrl
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                val session = stalkerSessions.getOrPut(sourceId) { stalkerClient.authenticate(connection) }
-                stalkerClient.resolveStreamUrl(session, channel.streamUrl) ?: channel.streamUrl
-            }.getOrDefault(channel.streamUrl)
+    suspend fun resolvePlaybackUrl(channel: LiveTvChannel): String =
+        guideLoader.resolvePlaybackUrl(channel, currentSources)
+
+    /**
+     * Shows the guide loaded for the app, when it's for the sources in use (the sample guide when
+     * there are none, unless it was left for the setup form). The Guide's own choices (group,
+     * country, what's selected) stay.
+     */
+    private fun applyGuide(guide: LiveGuideSnapshot?) {
+        if (guide == null || !sourcesKnown) return
+        val enabled = currentSources.filter { it.enabled }
+        if (guide.key != guideLoader.keyOf(enabled)) return
+        if (guide.isPreview) {
+            if (setupFormShown) return
+            when {
+                guide.isLoading -> _uiState.update {
+                    it.copy(isLoading = true, error = null, previewError = null, isPreviewGuide = true)
+                }
+                guide.channels.isEmpty() -> _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isPreviewGuide = false,
+                        previewError = guide.error ?: "No channels found in the sample guide.",
+                        channels = emptyList(),
+                        epgByChannel = emptyMap(),
+                        showGuide = false
+                    )
+                }
+                else -> _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = guide.error,
+                        previewError = null,
+                        isPreviewGuide = true,
+                        channels = guide.channels,
+                        channelCategories = guide.channelCategories,
+                        groups = emptyList(),
+                        selectedGroup = null,
+                        epgByChannel = guide.epgByChannel,
+                        isEpgLoading = false,
+                        showGuide = true,
+                        nowMs = System.currentTimeMillis()
+                    )
+                }
+            }
+            return
+        }
+        if (guide.isLoading) {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                error = guide.error,
+                channels = guide.channels,
+                groups = guide.groups,
+                selectedGroup = it.selectedGroup?.takeIf { g -> g in guide.groups },
+                guideCountry = it.guideCountry?.takeIf { c -> guide.channels.any { ch -> ch.country == c } },
+                channelCategories = guide.channelCategories,
+                epgByChannel = guide.epgByChannel,
+                isEpgLoading = guide.isEpgLoading,
+                nowMs = System.currentTimeMillis(),
+                // With programs, the Guide page opens on them.
+                showGuide = if (guide.epgByChannel.isNotEmpty() && !it.hasEpg) true else it.showGuide
+            )
         }
     }
 
@@ -526,7 +577,7 @@ class LiveTvViewModel @Inject constructor(
 
     fun disconnect() {
         viewModelScope.launch {
-            stalkerSessions.clear()
+            guideLoader.clearSessions()
             liveTvDataStore.clearConnection()
             _uiState.update {
                 it.copy(
@@ -569,12 +620,6 @@ class LiveTvViewModel @Inject constructor(
         )
         viewModelScope.launch { liveTvDataStore.toggleCustomChannel(channel.id, info) }
     }
-
-    /** Sorts every channel into the Guide's categories from its programs, name and group. */
-    private fun categorize(channels: List<LiveTvChannel>, epg: Map<String, List<EpgProgram>>): Map<String, Set<GuideBrowse>> =
-        LiveTvGuideCategories.classify(channels) { channel ->
-            channel.epgChannelId?.let { epg[it] }.orEmpty()
-        }
 
     fun setGuideCountry(country: String?) {
         _uiState.update { it.copy(guideCountry = country) }
@@ -642,7 +687,7 @@ class LiveTvViewModel @Inject constructor(
 
     /** Leaves the sample guide for the IPTV setup form. */
     fun showSetupForm() {
-        previewJob?.cancel()
+        setupFormShown = true
         _uiState.update {
             it.copy(
                 isLoading = false,
@@ -658,247 +703,13 @@ class LiveTvViewModel @Inject constructor(
     }
 
     fun retry() {
-        val enabled = currentSources.filter { it.enabled }
-        if (enabled.isEmpty()) {
-            startPreviewGuide()
-        } else {
-            viewModelScope.launch { loadChannels(enabled) }
-        }
-    }
-
-    /**
-     * Sample guide for trying the Guide's layout without an IPTV account: channels, logos and
-     * programs all come from a public XMLTV feed ([PREVIEW_EPG_URL]). Shown only while no IPTV
-     * source is added.
-     */
-    private fun startPreviewGuide() {
-        if (previewJob?.isActive == true) return
-        previewGuide?.let { cached ->
-            applyPreviewGuide(cached)
-            return
-        }
-        previewJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null, previewError = null, isPreviewGuide = true) }
-            val nowMs = System.currentTimeMillis()
-            val result = withContext(Dispatchers.IO) {
-                // The app's own channel logos (unpacked once).
-                ChannelLogoLibrary.ensureReady(appContext)
-                runCatching {
-                    val request = Request.Builder().url(PREVIEW_EPG_URL).build()
-                    okHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) error("HTTP ${response.code}")
-                        val body = response.body ?: error("Empty response")
-                        XmltvParser.parseStream(
-                            input = body.byteStream(),
-                            fromMs = nowMs - EPG_WINDOW_PAST_MS,
-                            toMs = nowMs + EPG_WINDOW_AHEAD_MS,
-                            includeChannels = true,
-                            shouldContinue = { isActive }
-                        )
-                    }
-                }
-            }
-            if (!isActive) return@launch
-            result
-                .onSuccess { guide ->
-                    previewGuide = guide
-                    applyPreviewGuide(guide)
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isPreviewGuide = false,
-                            previewError = error.message ?: error.javaClass.simpleName
-                        )
-                    }
-                }
-        }
-    }
-
-    private fun applyPreviewGuide(guide: XmltvGuide) {
-        val epg = guide.programs
-            .groupBy { "$PREVIEW_SOURCE_ID:${it.channelId}" }
-            .mapValues { (_, list) -> list.sortedBy { it.startMs } }
-        val channels = guide.channels.map { channel ->
-            val key = "$PREVIEW_SOURCE_ID:${channel.id}"
-            // "US - FOX News Detroit" -> "FOX News Detroit": the country tag adds nothing here.
-            val name = stripCountryTag(channel.displayName)
-            LiveTvChannel(
-                id = key,
-                name = name,
-                streamUrl = "",
-                // The app's logo when it has one for this channel, else the guide's own.
-                logoUrl = ChannelLogoLibrary.logoUriFor(name, channel.number) ?: channel.iconUrl,
-                epgChannelId = key,
-                // The sample feed is EPGTalk's US guide.
-                country = "US",
-                number = channel.number
-            )
-        }
-        // Keep the feed's lineup order; drop channels with nothing in the guide's window, and
-        // the sample feed's adult-only channels.
-        val withPrograms = channels.filter { channel ->
-            val programs = epg[channel.id]
-            !programs.isNullOrEmpty() && !LiveTvGuideCategories.isAdultChannel(programs)
-        }
-        val shown = withPrograms.ifEmpty { channels }
-        _uiState.update {
-            it.copy(
-                isLoading = false,
-                error = if (channels.isEmpty()) "No channels found in the sample guide." else null,
-                previewError = null,
-                isPreviewGuide = true,
-                channels = shown,
-                channelCategories = categorize(shown, epg),
-                groups = emptyList(),
-                selectedGroup = null,
-                epgByChannel = epg,
-                showGuide = true,
-                nowMs = System.currentTimeMillis()
-            )
-        }
-    }
-
-    /** Fetches one source's channels; never throws - a failing source just contributes nothing to the merged list. */
-    private suspend fun loadSourceChannels(source: LiveTvSource): Result<List<LiveTvChannel>> = runCatching {
-        val rawChannels = when (val connection = source.connection) {
-            is LiveTvConnection.M3u -> {
-                val request = Request.Builder().url(connection.playlistUrl).build()
-                val body = okHttpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) error("HTTP ${response.code}")
-                    response.body?.string().orEmpty()
-                }
-                M3uPlaylistParser.parse(body)
-            }
-            is LiveTvConnection.Xtream -> xtreamClient.fetchChannels(connection)
-            is LiveTvConnection.Stalker -> {
-                val session = stalkerSessions.getOrPut(source.id) { stalkerClient.authenticate(connection) }
-                stalkerClient.fetchChannels(session)
-            }
-        }
-        // Prefix ids with the source id so channels from several playlists/accounts never collide,
-        // and tag each with its source so resolvePlaybackUrl/loadEpg know where it came from.
-        rawChannels.map { channel ->
-            channel.copy(
-                id = "${source.id}:${channel.id}",
-                epgChannelId = channel.epgChannelId?.let { "${source.id}:$it" },
-                sourceId = source.id
-            )
-        }
-    }
-
-    /** Loads and merges channels from every enabled source. A source that fails doesn't blank out the others. */
-    private suspend fun loadChannels(sources: List<LiveTvSource>) {
-        _uiState.update { it.copy(isLoading = true, error = null) }
-        val results = withContext(Dispatchers.IO) {
-            ChannelLogoLibrary.ensureReady(appContext)
-            sources.map { source -> source to loadSourceChannels(source) }
-        }
-        val channels = results
-            .flatMap { (_, result) -> result.getOrDefault(emptyList()) }
-            .map { channel ->
-                // Country for the Guide's filter: the playlist's own, or guessed from group/name.
-                val country = LiveTvCountry.of(channel)
-                // US channels get the app's own logo when it has one (they're made for dark screens).
-                val bundledLogo = if (country == null || country == "US") {
-                    ChannelLogoLibrary.logoUriFor(stripCountryTag(channel.name), channel.number)
-                } else {
-                    null
-                }
-                channel.copy(country = country, logoUrl = bundledLogo ?: channel.logoUrl)
-            }
-        val failures = results.mapNotNull { (source, result) -> result.exceptionOrNull()?.let { source.name to it } }
-
-        val groups = channels.mapNotNull { it.groupTitle }.distinct().sorted()
-        val error = when {
-            channels.isEmpty() && failures.isNotEmpty() ->
-                failures.first().second.message ?: "Couldn't load channels for ${failures.first().first}."
-            channels.isEmpty() -> "No channels found for this connection."
-            failures.isNotEmpty() -> "Loaded channels, but ${failures.size} source(s) failed: ${failures.joinToString { it.first }}."
-            else -> null
-        }
-        _uiState.update {
-            it.copy(
-                isLoading = false,
-                error = error,
-                channels = channels,
-                groups = groups,
-                selectedGroup = it.selectedGroup?.takeIf { g -> g in groups },
-                guideCountry = it.guideCountry?.takeIf { c -> channels.any { ch -> ch.country == c } },
-                // Name/group hints for now; the guide's programs refine this once the EPG loads.
-                channelCategories = categorize(channels, emptyMap())
-            )
-        }
-        if (channels.isNotEmpty()) loadEpg(sources)
-    }
-
-    /** Fetches and prefixes one source's EPG programs (see [loadSourceChannels] for the id-prefixing reasoning). Stalker EPG is deferred to a later phase. */
-    private suspend fun loadSourceEpg(source: LiveTvSource): Map<String, List<EpgProgram>> {
-        val connection = source.connection
-        val epgUrl = when (connection) {
-            is LiveTvConnection.Xtream -> null // fetched via xtreamClient.fetchXmltv below
-            is LiveTvConnection.M3u -> connection.epgUrl
-            is LiveTvConnection.Stalker -> return emptyMap()
-        }
-        if (connection is LiveTvConnection.M3u && epgUrl == null) return emptyMap()
-
-        return runCatching {
-            val xmltvText = when (connection) {
-                is LiveTvConnection.Xtream -> xtreamClient.fetchXmltv(connection)
-                is LiveTvConnection.M3u -> {
-                    // Streamed, gzip-aware and limited to the guide's window, so a big national
-                    // guide (or an .xml.gz one) doesn't have to fit in memory as one string.
-                    val nowMs = System.currentTimeMillis()
-                    val request = Request.Builder().url(requireNotNull(epgUrl)).build()
-                    val programs = okHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) error("HTTP ${response.code}")
-                        val body = response.body ?: error("Empty response")
-                        XmltvParser.parseStream(
-                            input = body.byteStream(),
-                            fromMs = nowMs - EPG_WINDOW_PAST_MS,
-                            toMs = nowMs + EPG_WINDOW_AHEAD_MS,
-                            includeChannels = false
-                        ).programs
-                    }
-                    return@runCatching programs
-                        .groupBy { "${source.id}:${it.channelId}" }
-                        .mapValues { (_, list) -> list.sortedBy { it.startMs } }
-                }
-                is LiveTvConnection.Stalker -> return emptyMap()
-            }
-            XmltvParser.parse(xmltvText)
-                .groupBy { "${source.id}:${it.channelId}" }
-                .mapValues { (_, list) -> list.sortedBy { it.startMs } }
-        }.getOrDefault(emptyMap())
-    }
-
-    private suspend fun loadEpg(sources: List<LiveTvSource>) {
-        _uiState.update { it.copy(isEpgLoading = true) }
-        val merged = withContext(Dispatchers.IO) {
-            sources.fold(emptyMap<String, List<EpgProgram>>()) { acc, source -> acc + loadSourceEpg(source) }
-        }
-        // EPG is a nice-to-have on top of channel playback; an empty result (whether every source
-        // has none, or every fetch failed) never blocks watching live TV.
-        // With a guide available, the Guide page opens on it.
-        _uiState.update {
-            it.copy(
-                isEpgLoading = false,
-                epgByChannel = merged,
-                nowMs = System.currentTimeMillis(),
-                channelCategories = categorize(it.channels, merged),
-                showGuide = if (merged.isNotEmpty() && !it.hasEpg) true else it.showGuide
-            )
-        }
+        setupFormShown = false
+        guideLoader.ensure(currentSources.filter { it.enabled }, force = true)
+        // What's loaded shows meanwhile (the sample guide again, after the setup form).
+        applyGuide(guideLoader.guide.value)
     }
 
     companion object {
-        /** Public US guide (EPGTalk) used for the sample guide. */
-        const val PREVIEW_EPG_URL = "https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/US_guide.xml.gz"
-        private const val PREVIEW_SOURCE_ID = "preview"
-        /** Programs kept per load: from 2 hours ago to 36 hours ahead. */
-        private const val EPG_WINDOW_PAST_MS = 2L * 60 * 60 * 1000
-        private const val EPG_WINDOW_AHEAD_MS = 36L * 60 * 60 * 1000
         private val COUNTRY_PREFIX = Regex("^([A-Z]{2,3})\\s*[-:|]\\s+")
 
         /** "US - FOX News Detroit" -> "FOX News Detroit"; "MTV - Music Television" stays (MTV isn't a country). */
