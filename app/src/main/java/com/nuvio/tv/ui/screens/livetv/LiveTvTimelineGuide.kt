@@ -187,6 +187,8 @@ internal fun LiveTvTimelineGuide(
     cachedProgramArt: (EpgProgram) -> GuideProgramArt? = { null },
     /** Looks up the focused program's TMDB artwork (backdrop, title card, logo). */
     programArt: suspend (EpgProgram) -> GuideProgramArt = { GuideProgramArt.NONE },
+    /** A program's details are open over the guide (they hold focus; it comes back when they close). */
+    detailsOpen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -280,6 +282,8 @@ internal fun LiveTvTimelineGuide(
     // page (or the player), focus that channel again: its logo, or what's on now.
     LaunchedEffect(channels.isNotEmpty()) {
         if (channels.isEmpty()) return@LaunchedEffect
+        // Back from a title's page to a program's details: they keep focus (see below for after).
+        if (detailsOpen) return@LaunchedEffect
         val returnRow = returnFocus?.let { target -> channels.indexOfFirst { it.id == target.channelId } } ?: -1
         val row = returnRow.coerceAtLeast(0)
         val channel = channels[row]
@@ -293,6 +297,25 @@ internal fun LiveTvTimelineGuide(
         } else {
             focusBlock(0, current)
         }
+    }
+
+    // A program's details closed: focus goes back to that program (or to what's on now on its
+    // channel, when the guide was rebuilt meanwhile, after a title's page).
+    var detailsWereOpen by remember { mutableStateOf(detailsOpen) }
+    LaunchedEffect(detailsOpen) {
+        if (detailsOpen) {
+            detailsWereOpen = true
+            return@LaunchedEffect
+        }
+        if (!detailsWereOpen || channels.isEmpty()) return@LaunchedEffect
+        detailsWereOpen = false
+        val returnRow = returnFocus?.let { target -> channels.indexOfFirst { it.id == target.channelId } } ?: -1
+        val row = focusedRow.takeIf { it in channels.indices } ?: returnRow.takeIf { it >= 0 } ?: 0
+        val programs = programsOf(channels[row])
+        val program = programs.firstOrNull { it.startMs == focusedStart } ?: programs.firstOrNull { it.isAiringAt(nowMs) }
+        if (returnFocus != null) onReturnFocusUsed()
+        if (focusedRow !in channels.indices) runCatching { listState.scrollToItem((row - 2).coerceAtLeast(0)) }
+        focusBlock(row, program)
     }
 
     fun onDirection(key: Key): Boolean {

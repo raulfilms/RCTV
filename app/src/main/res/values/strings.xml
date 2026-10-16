@@ -4052,6 +4052,11 @@
     <string name="livetv_library_episode_title">%1$s · S%2$d E%3$d</string>
     <string name="livetv_library_episode_unknown">%1$s · TMDB can\'t tell which episode is airing</string>
     <string name="livetv_library_added">Added to your library: %1$s</string>
+    <string name="livetv_details_in_library">In library</string>
+    <string name="livetv_details_browse_episodes">Browse episodes</string>
+    <string name="livetv_details_view_movie">View movie</string>
+    <string name="livetv_details_today">Today, %1$s</string>
+    <string name="livetv_details_tomorrow">Tomorrow, %1$s</string>
     <string name="livetv_library_already">Already in your library: %1$s</string>
     <string name="livetv_library_series_instead">Your library syncs with a tracking service that keeps whole series: %1$s was added</string>
     <string name="livetv_library_not_found">Couldn\'t find %1$s on TMDB</string>

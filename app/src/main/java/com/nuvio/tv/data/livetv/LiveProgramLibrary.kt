@@ -135,6 +135,10 @@ class LiveProgramLibrary @Inject constructor(
 
     private val titleCache = ConcurrentHashMap<String, Optional<LiveProgramMatch>>()
 
+    /** Whether the movie or the series is in the library. */
+    fun isInLibrary(match: LiveProgramMatch): kotlinx.coroutines.flow.Flow<Boolean> =
+        libraryRepository.isInLibrary(match.itemId, match.itemType)
+
     /** Adds the movie or the series to the library (nothing is taken out if it's already there). */
     suspend fun addTitle(match: LiveProgramMatch): LiveLibraryResult = add(match.toInput())
 

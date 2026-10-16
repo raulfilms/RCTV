@@ -155,6 +155,21 @@ data class GuideProgramArt(
     }
 }
 
+/**
+ * What TMDB has for the program whose details are open (a later show chosen in the guide): its
+ * movie or series, artwork, and whether it's in the library.
+ */
+data class ProgramDetailsTmdb(
+    /** TMDB is being asked. */
+    val isLoading: Boolean = true,
+    /** The movie or series (null: TMDB doesn't have it, once [isLoading] is over). */
+    val match: LiveProgramMatch? = null,
+    val art: GuideProgramArt? = null,
+    val inLibrary: Boolean = false,
+    /** It's being added to the library. */
+    val isAdding: Boolean = false
+)
+
 /** Where the Guide puts focus when it shows again: a channel's logo, or what's on now on it. */
 data class GuideReturnFocus(val channelId: String, val onLogo: Boolean)
 
@@ -536,12 +551,64 @@ class LiveTvViewModel @Inject constructor(
         _uiState.update { it.copy(guideCountry = country) }
     }
 
+    private val _programDetailsTmdb = MutableStateFlow(ProgramDetailsTmdb())
+
+    /** The open program's movie or series on TMDB (see [openProgramDetails]). */
+    val programDetailsTmdb: StateFlow<ProgramDetailsTmdb> = _programDetailsTmdb.asStateFlow()
+    private var programDetailsJob: Job? = null
+
+    /**
+     * Opens a program's details: what the guide says, and its movie or series from TMDB (artwork,
+     * "Add to library", and its page) as soon as TMDB answers.
+     */
     fun openProgramDetails(channel: LiveTvChannel, program: EpgProgram) {
         _uiState.update { it.copy(selectedProgramChannel = channel, selectedProgram = program) }
+        programDetailsJob?.cancel()
+        _programDetailsTmdb.value = ProgramDetailsTmdb(art = cachedProgramArt(program))
+        programDetailsJob = viewModelScope.launch {
+            val art = programArt(program)
+            val match = try {
+                liveProgramLibrary.findTitle(program)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            _programDetailsTmdb.value = ProgramDetailsTmdb(isLoading = false, match = match, art = art)
+            if (match != null) {
+                liveProgramLibrary.isInLibrary(match).collect { inLibrary ->
+                    _programDetailsTmdb.update { it.copy(inLibrary = inLibrary) }
+                }
+            }
+        }
     }
 
     fun dismissProgramDetails() {
+        programDetailsJob?.cancel()
+        programDetailsJob = null
+        _programDetailsTmdb.value = ProgramDetailsTmdb()
         _uiState.update { it.copy(selectedProgramChannel = null, selectedProgram = null) }
+    }
+
+    /** "Add to library" in a program's details: its movie, or its whole series. */
+    fun addProgramDetailsToLibrary() {
+        val state = _programDetailsTmdb.value
+        val match = state.match ?: return
+        if (state.isAdding || state.inLibrary) return
+        _programDetailsTmdb.update { it.copy(isAdding = true) }
+        viewModelScope.launch {
+            val result = liveProgramLibrary.addTitle(match)
+            toast(
+                when (result) {
+                    LiveLibraryResult.ADDED, LiveLibraryResult.ADDED_SERIES_INSTEAD ->
+                        appContext.getString(R.string.livetv_library_added, match.name)
+                    LiveLibraryResult.ALREADY_IN_LIBRARY -> appContext.getString(R.string.livetv_library_already, match.name)
+                    LiveLibraryResult.NOT_FOUND -> appContext.getString(R.string.livetv_library_not_found, match.name)
+                    LiveLibraryResult.FAILED -> appContext.getString(R.string.livetv_library_failed)
+                }
+            )
+            _programDetailsTmdb.update { it.copy(isAdding = false) }
+        }
     }
 
     /** Leaves the sample guide for the IPTV setup form. */

@@ -78,6 +78,8 @@ fun LiveTvScreen(
     onManageSources: () -> Unit = {},
     /** Opens a channel's profile page (from its logo in the guide). */
     onOpenChannelProfile: (LiveTvChannel) -> Unit = {},
+    /** Opens a movie's or series' page (from a later show's details: "View movie", "Browse episodes"). */
+    onOpenTitle: (itemId: String, itemType: String) -> Unit = { _, _ -> },
     showBuiltInHeader: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -140,7 +142,12 @@ fun LiveTvScreen(
                             viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
                             openPlayerPreview(channel)
                         }
-                        program != null -> viewModel.openProgramDetails(channel, program)
+                        // A later show: its details beside the guide (TMDB artwork, Add to library,
+                        // its page); focus comes back to it when they close.
+                        program != null -> {
+                            viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
+                            viewModel.openProgramDetails(channel, program)
+                        }
                     }
                 },
                 // A logo opens the channel's profile page; coming back puts focus on that logo.
@@ -152,7 +159,8 @@ fun LiveTvScreen(
                 onReturnFocusUsed = { viewModel.guideReturnFocus = null },
                 // Select held on what's on now: a movie goes into the library right away; a series
                 // asks whether to add the episode or the whole series.
-                onLiveProgramLongClick = viewModel::openLibraryPrompt
+                onLiveProgramLongClick = viewModel::openLibraryPrompt,
+                detailsOpen = uiState.selectedProgram != null
             )
         } else Column(
             modifier = Modifier
@@ -214,10 +222,15 @@ fun LiveTvScreen(
         val selectedProgram = uiState.selectedProgram
         val selectedChannel = uiState.selectedProgramChannel
         if (selectedProgram != null && selectedChannel != null) {
+            val programTmdb by viewModel.programDetailsTmdb.collectAsState()
             LiveTvProgramDetailsOverlay(
                 channel = selectedChannel,
                 program = selectedProgram,
                 nowMs = uiState.nowMs,
+                tmdb = programTmdb,
+                onAddToLibrary = viewModel::addProgramDetailsToLibrary,
+                // Its page, like any title; Back comes back to these details.
+                onOpenTitle = { match -> onOpenTitle(match.itemId, match.itemType) },
                 // Sample guide channels have no stream: Watch opens the player's screen (no video).
                 onWatch = if (uiState.isPreviewGuide) {
                     {
@@ -874,91 +887,3 @@ private fun LiveTvProgramProgressBar(progress: Float) {
     }
 }
 
-private fun formatProgramTime(startMs: Long, endMs: Long): String {
-    val formatter = SimpleDateFormat("h:mm a", Locale.getDefault())
-    return "${formatter.format(Date(startMs))} – ${formatter.format(Date(endMs))}"
-}
-
-@Composable
-internal fun LiveTvProgramDetailsOverlay(
-    channel: LiveTvChannel,
-    program: EpgProgram,
-    nowMs: Long,
-    onWatch: (() -> Unit)?,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.72f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = 480.dp)
-                .background(NuvioTheme.colors.BackgroundCard, RoundedCornerShape(NuvioTheme.radii.lg))
-                .padding(NuvioTheme.spacing.xl)
-                .clickable(enabled = false) {}
-        ) {
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.labelLarge,
-                color = NuvioTheme.colors.TextTertiary
-            )
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
-            Text(
-                text = program.title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = NuvioTheme.colors.TextPrimary
-            )
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
-            Text(
-                text = formatProgramTime(program.startMs, program.endMs),
-                style = MaterialTheme.typography.bodyMedium,
-                color = NuvioTheme.colors.TextSecondary
-            )
-            if (!program.description.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                Text(
-                    text = program.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioTheme.colors.TextSecondary
-                )
-            }
-            if (program.isAiringAt(nowMs)) {
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                LiveTvProgramProgressBar(progress = program.progressAt(nowMs))
-            }
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
-            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-                if (onWatch != null) Button(
-                    onClick = onWatch,
-                    colors = ButtonDefaults.colors(
-                        containerColor = NuvioTheme.colors.BackgroundElevated,
-                        contentColor = NuvioTheme.colors.TextPrimary,
-                        focusedContainerColor = NuvioTheme.colors.FocusBackground,
-                        focusedContentColor = NuvioTheme.colors.Primary
-                    ),
-                    shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
-                ) {
-                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.height(18.dp))
-                    Spacer(modifier = Modifier.width(NuvioTheme.spacing.xs))
-                    Text(text = stringResource(R.string.livetv_watch_channel_btn))
-                }
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.colors(
-                        containerColor = NuvioTheme.colors.BackgroundElevated,
-                        contentColor = NuvioTheme.colors.TextPrimary,
-                        focusedContainerColor = NuvioTheme.colors.FocusBackground,
-                        focusedContentColor = NuvioTheme.colors.Primary
-                    ),
-                    shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
-                ) {
-                    Text(text = stringResource(R.string.livetv_close_btn))
-                }
-            }
-        }
-    }
-}

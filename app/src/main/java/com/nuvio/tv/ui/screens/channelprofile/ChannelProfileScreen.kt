@@ -329,10 +329,15 @@ fun ChannelProfileScreen(
         val program = liveState.selectedProgram
         val programChannel = liveState.selectedProgramChannel
         if (program != null && programChannel != null) {
+            val programTmdb by liveTvViewModel.programDetailsTmdb.collectAsState()
             LiveTvProgramDetailsOverlay(
                 channel = programChannel,
                 program = program,
                 nowMs = liveState.nowMs,
+                tmdb = programTmdb,
+                onAddToLibrary = liveTvViewModel::addProgramDetailsToLibrary,
+                // Its page, like any title; Back comes back to these details.
+                onOpenTitle = { match -> onNavigateToDetail(match.itemId, match.itemType, "") },
                 onWatch = if (liveState.isPreviewGuide) {
                     {
                         liveTvViewModel.dismissProgramDetails()

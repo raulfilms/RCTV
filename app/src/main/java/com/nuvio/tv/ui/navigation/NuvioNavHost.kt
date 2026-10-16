@@ -1219,6 +1219,10 @@ private fun PlaybackNavHost(
                 onManageSources = { navController.navigate(Screen.IptvSources.route) },
                 onOpenChannelProfile = { channel ->
                     navController.navigate(Screen.ChannelProfile.createRoute(channel.id))
+                },
+                // A later show's "View movie" / "Browse episodes": its page, like any title.
+                onOpenTitle = { itemId, itemType ->
+                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType))
                 }
             )
         }
