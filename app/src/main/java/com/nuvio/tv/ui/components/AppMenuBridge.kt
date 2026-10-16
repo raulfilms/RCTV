@@ -31,7 +31,7 @@ class AppMenuBridge {
     var close: () -> Unit = {}
 
     /** Whether the menu is open (set by the menu's host). */
-    var isOpen: () -> Boolean = { false }
+    var isMenuOpen: () -> Boolean = { false }
 }
 
 /** The menu's bridge; null where the app's menu can't be opened from a page (the classic sidebar). */

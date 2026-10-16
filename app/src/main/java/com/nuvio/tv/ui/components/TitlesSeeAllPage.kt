@@ -162,7 +162,7 @@ fun TitlesSeeAllPage(
         menuBridge?.registerPage()
         onDispose {
             menuBridge?.unregisterPage()
-            if (menuBridge?.isOpen?.invoke() == true) menuBridge.close()
+            if (menuBridge?.isMenuOpen?.invoke() == true) menuBridge.close()
         }
     }
     val gridAtTop by remember {

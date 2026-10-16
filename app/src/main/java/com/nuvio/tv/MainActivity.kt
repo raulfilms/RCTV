@@ -1862,7 +1862,7 @@ private fun ModernSidebarScaffold(
                 sidebarCollapsePending = false
             }
         }
-        menuBridge.isOpen = { isSidebarExpanded }
+        menuBridge.isMenuOpen = { isSidebarExpanded }
     }
 
     LaunchedEffect(menuRoute) {
