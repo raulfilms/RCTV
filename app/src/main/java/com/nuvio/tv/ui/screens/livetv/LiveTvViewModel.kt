@@ -15,8 +15,15 @@ import com.nuvio.tv.ui.util.XmltvGuide
 import com.nuvio.tv.ui.util.XmltvParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.nuvio.tv.R
+import com.nuvio.tv.data.livetv.LiveLibraryResult
+import com.nuvio.tv.data.livetv.LiveProgramLibrary
+import com.nuvio.tv.data.livetv.LiveProgramMatch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +38,28 @@ import javax.inject.Inject
 import javax.inject.Named
 
 enum class LiveTvSetupMethod { M3U, XTREAM, STALKER }
+
+/** What to add from a program on now: the episode airing, the whole series, or the movie. */
+enum class LiveLibraryChoice { EPISODE, SERIES, MOVIE }
+
+/** The "add to library" question for a program on now, and its TMDB lookup. */
+data class LiveLibraryPrompt(
+    val channel: LiveTvChannel,
+    val program: EpgProgram,
+    /** The guide calls it a movie (until TMDB says what it is). */
+    val looksLikeMovie: Boolean,
+    /** TMDB is being asked. */
+    val isMatching: Boolean = true,
+    /** What TMDB has (null: not found, once [isMatching] is over). */
+    val match: LiveProgramMatch? = null,
+    /** TMDB couldn't be reached. */
+    val lookupFailed: Boolean = false,
+    /** An answer is being saved. */
+    val isAdding: Boolean = false
+) {
+    /** Movie (one choice) or series (episode or series). */
+    val isMovie: Boolean get() = match?.isMovie ?: looksLikeMovie
+}
 
 data class LiveTvUiState(
     val connection: LiveTvConnection? = null,
@@ -114,8 +143,108 @@ class LiveTvViewModel @Inject constructor(
     private val liveTvDataStore: LiveTvDataStore,
     private val xtreamClient: XtreamClient,
     private val stalkerClient: StalkerClient,
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient
+    @Named("addonPermissive") private val okHttpClient: OkHttpClient,
+    private val liveProgramLibrary: LiveProgramLibrary
 ) : ViewModel() {
+
+    // ------------------------------------------------------------------ add to library
+
+    private val _libraryPrompt = MutableStateFlow<LiveLibraryPrompt?>(null)
+
+    /** The "add the episode or the series?" question for what's on now (Select held on it). */
+    val libraryPrompt: StateFlow<LiveLibraryPrompt?> = _libraryPrompt.asStateFlow()
+
+    /** The open question's TMDB lookup, started as soon as it opens. */
+    private var libraryMatch: Deferred<LiveProgramMatch?>? = null
+
+    /** Select held on what's on now: ask right away, and look the program up on TMDB meanwhile. */
+    fun openLibraryPrompt(channel: LiveTvChannel, program: EpgProgram) {
+        libraryMatch?.cancel()
+        _libraryPrompt.value = LiveLibraryPrompt(
+            channel = channel,
+            program = program,
+            looksLikeMovie = (program.categories + listOfNotNull(program.category))
+                .any { val word = it.lowercase(java.util.Locale.ROOT); "movie" in word || "film" in word }
+        )
+        val lookup = viewModelScope.async { liveProgramLibrary.match(program) }
+        libraryMatch = lookup
+        viewModelScope.launch {
+            val result = try {
+                Result.success(lookup.await())
+            } catch (e: CancellationException) {
+                return@launch
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            _libraryPrompt.update { prompt ->
+                if (prompt?.program != program) prompt
+                else prompt.copy(isMatching = false, match = result.getOrNull(), lookupFailed = result.isFailure)
+            }
+        }
+    }
+
+    fun dismissLibraryPrompt() {
+        libraryMatch?.cancel()
+        libraryMatch = null
+        _libraryPrompt.value = null
+    }
+
+    /** The answer: adds the episode, the series or the movie (once TMDB has been asked). */
+    fun addFromLibraryPrompt(choice: LiveLibraryChoice) {
+        val prompt = _libraryPrompt.value ?: return
+        if (prompt.isAdding) return
+        val lookup = libraryMatch ?: return
+        _libraryPrompt.update { it?.copy(isAdding = true) }
+        viewModelScope.launch {
+            val match = try {
+                lookup.await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            val title = match?.name ?: LiveProgramLibrary.cleanTitle(prompt.program.title)
+            if (match == null) {
+                toast(appContext.getString(R.string.livetv_library_not_found, title))
+                _libraryPrompt.update { it?.copy(isAdding = false, isMatching = false) }
+                return@launch
+            }
+            if (choice == LiveLibraryChoice.EPISODE && !match.isMovie && match.episode == null) {
+                // Which episode it is couldn't be told: the question stays, for the series.
+                toast(appContext.getString(R.string.livetv_library_episode_not_found, title))
+                _libraryPrompt.update { it?.copy(isAdding = false) }
+                return@launch
+            }
+            val result = if (choice == LiveLibraryChoice.EPISODE && !match.isMovie) {
+                liveProgramLibrary.addEpisode(match)
+            } else {
+                liveProgramLibrary.addTitle(match)
+            }
+            val shown = if (choice == LiveLibraryChoice.EPISODE && !match.isMovie && result != LiveLibraryResult.ADDED_SERIES_INSTEAD) {
+                match.episode?.let { appContext.getString(R.string.livetv_library_episode_title, match.name, it.season, it.episode) } ?: title
+            } else {
+                title
+            }
+            toast(
+                when (result) {
+                    LiveLibraryResult.ADDED -> appContext.getString(R.string.livetv_library_added, shown)
+                    LiveLibraryResult.ALREADY_IN_LIBRARY -> appContext.getString(R.string.livetv_library_already, shown)
+                    LiveLibraryResult.ADDED_SERIES_INSTEAD -> appContext.getString(R.string.livetv_library_series_instead, title)
+                    LiveLibraryResult.NOT_FOUND -> appContext.getString(R.string.livetv_library_not_found, title)
+                    LiveLibraryResult.FAILED -> appContext.getString(R.string.livetv_library_failed)
+                }
+            )
+            if (result == LiveLibraryResult.FAILED) {
+                _libraryPrompt.update { it?.copy(isAdding = false) }
+            } else {
+                dismissLibraryPrompt()
+            }
+        }
+    }
+
+    private fun toast(message: String) {
+        android.widget.Toast.makeText(appContext, message, android.widget.Toast.LENGTH_SHORT).show()
+    }
 
     // Starts as loading: either the user's sources or the sample guide load right away.
     private val _uiState = MutableStateFlow(LiveTvUiState(isLoading = true))

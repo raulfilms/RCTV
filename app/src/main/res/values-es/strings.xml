@@ -1305,4 +1305,20 @@
     <string name="svc_card_faith">Fe</string>
     <string name="svc_card_politics">Política</string>
     <string name="svc_card_browse_az">Explorar de la A a la Z</string>
+    <!-- RCTV: Live TV guide, Select held on what is on now: add it to the library -->
+    <string name="livetv_library_dialog_subtitle">Agregar a tu biblioteca</string>
+    <string name="livetv_library_add_episode">Agregar el episodio</string>
+    <string name="livetv_library_add_series">Agregar la serie</string>
+    <string name="livetv_library_add_movie">Agregar la película</string>
+    <string name="livetv_library_looking_up">Buscando en TMDB…</string>
+    <string name="livetv_library_lookup_failed">No se pudo conectar con TMDB. Inténtalo de nuevo en un momento.</string>
+    <string name="livetv_library_not_on_tmdb">No está en TMDB: no se puede agregar a la biblioteca.</string>
+    <string name="livetv_library_episode_title">%1$s · T%2$d E%3$d</string>
+    <string name="livetv_library_episode_unknown">%1$s · TMDB no indica qué episodio se está emitiendo</string>
+    <string name="livetv_library_added">Agregado a tu biblioteca: %1$s</string>
+    <string name="livetv_library_already">Ya está en tu biblioteca: %1$s</string>
+    <string name="livetv_library_series_instead">Tu biblioteca se sincroniza con un servicio que guarda series completas: se agregó %1$s</string>
+    <string name="livetv_library_not_found">No se encontró %1$s en TMDB</string>
+    <string name="livetv_library_episode_not_found">TMDB no indica qué episodio de %1$s es. Puedes agregar la serie.</string>
+    <string name="livetv_library_failed">No se pudo agregar a tu biblioteca</string>
 </resources>

@@ -146,7 +146,9 @@ fun LiveTvScreen(
                     onOpenChannelProfile(channel)
                 },
                 returnFocus = viewModel.guideReturnFocus,
-                onReturnFocusUsed = { viewModel.guideReturnFocus = null }
+                onReturnFocusUsed = { viewModel.guideReturnFocus = null },
+                // Select held on what's on now: add the episode or the series to the library.
+                onLiveProgramLongClick = viewModel::openLibraryPrompt
             )
         } else Column(
             modifier = Modifier
@@ -194,6 +196,15 @@ fun LiveTvScreen(
                     onToggleGuide = if (uiState.hasEpg) { { viewModel.setShowGuide(true) } } else null
                 )
             }
+        }
+
+        val libraryPrompt by viewModel.libraryPrompt.collectAsState()
+        libraryPrompt?.let { prompt ->
+            LiveProgramLibraryDialog(
+                prompt = prompt,
+                onChoice = viewModel::addFromLibraryPrompt,
+                onDismiss = viewModel::dismissLibraryPrompt
+            )
         }
 
         val selectedProgram = uiState.selectedProgram

@@ -20,6 +20,22 @@ sealed class Screen(val route: String) {
             playOnLoad: Boolean = false,
             manualSelection: Boolean = false
         ): String {
+            // An episode saved from the Live TV guide opens its series, on that episode.
+            if (itemType == com.nuvio.tv.data.livetv.LiveProgramLibrary.EPISODE_TYPE) {
+                com.nuvio.tv.data.livetv.LiveProgramLibrary.parseEpisodeId(itemId)?.let { (series, season, episode) ->
+                    return createRoute(
+                        itemId = series,
+                        itemType = "series",
+                        addonBaseUrl = addonBaseUrl,
+                        returnFocusSeason = returnFocusSeason ?: season,
+                        returnFocusEpisode = returnFocusEpisode ?: episode,
+                        returnToHomeOnBack = returnToHomeOnBack,
+                        heroBackdropUrl = heroBackdropUrl,
+                        playOnLoad = playOnLoad,
+                        manualSelection = manualSelection
+                    )
+                }
+            }
             val encodedItemId = encode(itemId)
             val encodedItemType = encode(itemType)
             val encodedAddon = addonBaseUrl?.let { encode(it) } ?: ""

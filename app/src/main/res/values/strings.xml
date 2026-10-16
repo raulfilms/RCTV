@@ -4031,4 +4031,20 @@
     <string name="svc_card_faith">Faith</string>
     <string name="svc_card_politics">Politics</string>
     <string name="svc_card_browse_az">Browse A–Z</string>
+    <!-- RCTV: Live TV guide, Select held on what is on now: add it to the library -->
+    <string name="livetv_library_dialog_subtitle">Add to your library</string>
+    <string name="livetv_library_add_episode">Add Episode</string>
+    <string name="livetv_library_add_series">Add TV Series</string>
+    <string name="livetv_library_add_movie">Add Movie</string>
+    <string name="livetv_library_looking_up">Looking it up on TMDB…</string>
+    <string name="livetv_library_lookup_failed">Couldn\'t reach TMDB. Try again in a moment.</string>
+    <string name="livetv_library_not_on_tmdb">Not on TMDB: it can\'t be added to the library.</string>
+    <string name="livetv_library_episode_title">%1$s · S%2$d E%3$d</string>
+    <string name="livetv_library_episode_unknown">%1$s · TMDB can\'t tell which episode is airing</string>
+    <string name="livetv_library_added">Added to your library: %1$s</string>
+    <string name="livetv_library_already">Already in your library: %1$s</string>
+    <string name="livetv_library_series_instead">Your library syncs with a tracking service that keeps whole series: %1$s was added</string>
+    <string name="livetv_library_not_found">Couldn\'t find %1$s on TMDB</string>
+    <string name="livetv_library_episode_not_found">TMDB can\'t tell which episode of %1$s this is. You can add the series.</string>
+    <string name="livetv_library_failed">Couldn\'t add it to your library</string>
 </resources>

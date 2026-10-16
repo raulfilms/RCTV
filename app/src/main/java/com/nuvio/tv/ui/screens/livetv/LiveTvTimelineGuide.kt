@@ -174,6 +174,11 @@ internal fun LiveTvTimelineGuide(
     onProgramClick: (LiveTvChannel, EpgProgram?) -> Unit,
     /** A channel's logo was chosen. */
     onChannelClick: (LiveTvChannel) -> Unit,
+    /**
+     * Select held on what's on now: asks whether to add the episode or the series (or the movie) to
+     * the library. Null: holding Select on it adds the channel to Custom, like elsewhere.
+     */
+    onLiveProgramLongClick: ((LiveTvChannel, EpgProgram) -> Unit)? = null,
     /** Where to put focus when the guide shows again (after a channel page or the player). */
     returnFocus: GuideReturnFocus? = null,
     onReturnFocusUsed: () -> Unit = {},
@@ -471,6 +476,14 @@ internal fun LiveTvTimelineGuide(
                                             previewProgram = programsOf(channel).firstOrNull { it.isAiringAt(nowMs) }
                                         },
                                         onLogoClick = { onChannelClick(channel) },
+                                        onProgramLongClick = { program ->
+                                            if (onLiveProgramLongClick != null && program.isAiringAt(System.currentTimeMillis())) {
+                                                onLiveProgramLongClick(channel, program)
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        },
                                         onBlockLongClick = {
                                             val added = channel.id !in uiState.customChannelIds
                                             onToggleCustom(channel)
@@ -767,6 +780,8 @@ private fun GuideRow(
     onBlockClick: (EpgProgram?) -> Unit,
     onLogoFocused: () -> Unit,
     onLogoClick: () -> Unit,
+    /** Select held on a program: true when that was handled (what's on now: add it to the library). */
+    onProgramLongClick: (EpgProgram) -> Boolean,
     onBlockLongClick: () -> Unit
 ) {
     Row(
@@ -826,7 +841,8 @@ private fun GuideRow(
                             focusRequester = requesterFor(blockKey(channel, program)),
                             onFocused = { onBlockFocused(program) },
                             onClick = { onBlockClick(program) },
-                            onLongClick = onBlockLongClick,
+                            // What's on now: add it to the library; anything else: Custom, as before.
+                            onLongClick = { if (!onProgramLongClick(program)) onBlockLongClick() },
                             modifier = Modifier
                                 .offset(x = x)
                                 .width(width)
@@ -856,7 +872,8 @@ private fun GuideBlock(
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        // Press and hold: add the channel to (or take it out of) the Custom list.
+        // Press and hold: what's on now goes to the library (episode or series); anything else
+        // adds the channel to (or takes it out of) the Custom list.
         onLongClick = onLongClick,
         modifier = modifier
             .focusRequester(focusRequester)
