@@ -2109,6 +2109,13 @@ private fun MetaDetailsContent(
 
     // Always-composed bottom gradient alpha (avoids add/remove during scroll)
 
+    // While the trailer plays, everything under the hero (the tabs, the rows) fades away.
+    val belowHeroAlpha by animateFloatAsState(
+        targetValue = if (isTrailerPlaying) 0f else 1f,
+        animationSpec = tween(if (isTrailerPlaying) 300 else 600),
+        label = "belowHeroAlpha"
+    )
+
     Box(modifier = modifier.fillMaxSize()) {
         // Sticky background — backdrop or trailer
         BackdropLayer(
@@ -2210,6 +2217,8 @@ private fun MetaDetailsContent(
             // The tab bar, right under the hero (Disney+): EPISODES  SUGGESTED  EXTRAS  DETAILS
             if (hasVisiblePeopleTabs) {
                 item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
+                    // Hidden while the trailer plays, so only the video shows.
+                    Box(modifier = Modifier.graphicsLayer { alpha = belowHeroAlpha }) {
                     PeopleSectionTabs(
                         activeTab = activePeopleTab,
                         tabs = visiblePeopleTabItems,
@@ -2223,6 +2232,7 @@ private fun MetaDetailsContent(
                             }
                         }
                     )
+                    }
                 }
             }
 
@@ -2230,6 +2240,8 @@ private fun MetaDetailsContent(
             val showEpisodesRow = isEpisodesTabOpen
             if (showSeasonTabs && isEpisodesTabOpen) {
                 item(key = "season_tabs", contentType = "season_tabs") {
+                    // Hidden while the trailer plays, so only the video shows.
+                    Box(modifier = Modifier.graphicsLayer { alpha = belowHeroAlpha }) {
                     Box(modifier = Modifier.bringIntoViewResponder(detailRowBringIntoViewResponder)) {
                         SeasonTabs(
                             seasons = seasons,
@@ -2242,10 +2254,13 @@ private fun MetaDetailsContent(
                             isFocusEnabled = pendingRestoreType != RestoreTarget.EPISODE
                         )
                     }
+                    }
                 }
             }
             if (showEpisodesRow) {
                 item(key = "episodes_$selectedSeason", contentType = "episodes") {
+                    // Hidden while the trailer plays, so only the video shows.
+                    Box(modifier = Modifier.graphicsLayer { alpha = belowHeroAlpha }) {
                     val visibleEpisodeRestoreId = if (pendingRestoreType == RestoreTarget.EPISODE) {
                         resolveVisibleEpisodeRestoreId(
                             requestedId = pendingRestoreEpisodeId,
@@ -2333,12 +2348,15 @@ private fun MetaDetailsContent(
                             }
                         )
                     }
-            }
+                    }
+                }
         }
 
         // The open tab (Suggested, Extras, Details, Ratings); Episodes' rows are above.
         if (hasVisiblePeopleSection && !isEpisodesTabOpen) {
                 item(key = "cast_or_more_like", contentType = "horizontal_row") {
+                    // Hidden while the trailer plays, so only the video shows.
+                    Box(modifier = Modifier.graphicsLayer { alpha = belowHeroAlpha }) {
                     val visiblePeopleTabsList = visiblePeopleTabItems.map { it.tab }
                     val visiblePeopleSection = if (hasVisiblePeopleTabs) {
                         activePeopleTab
@@ -2524,11 +2542,14 @@ private fun MetaDetailsContent(
                             }
                         }
                     }
+                    }
                 }
             }
 
             if (shouldShowCommentsSection) {
                 item(key = "trakt_comments", contentType = "horizontal_row") {
+                    // Hidden while the trailer plays, so only the video shows.
+                    Box(modifier = Modifier.graphicsLayer { alpha = belowHeroAlpha }) {
                     CommentsSection(
                         comments = comments,
                         commentsMode = commentsMode,
@@ -2555,6 +2576,7 @@ private fun MetaDetailsContent(
                         onCommentClick = onCommentClick,
                         modifier = Modifier
                     )
+                    }
                 }
             }
 
