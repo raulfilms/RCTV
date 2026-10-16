@@ -440,6 +440,20 @@ internal object ServiceHubs {
         "Road House" to "Road House (Remake)"
     )
 
+    /** Film series on Angel Studios' catalog (name to TMDB collection query). */
+    private val ANGEL_FRANCHISES = listOf(
+        "Paddington" to "Paddington", "God's Not Dead" to "God's Not Dead", "I Can Only Imagine" to "I Can Only Imagine",
+        "Saints and Soldiers" to "Saints and Soldiers", "Red Dog" to "Red Dog", "Chickenhare" to "Chickenhare",
+        "Maya the Bee" to "Maya the Bee"
+    )
+
+    /** Horror series on Shudder's catalog (name to TMDB collection query). */
+    private val SHUDDER_FRANCHISES = listOf(
+        "V/H/S" to "V/H/S", "Halloween" to "Halloween", "The Texas Chain Saw Massacre" to "Texas Chainsaw Massacre",
+        "Living Dead" to "Living Dead", "The Human Centipede" to "The Human Centipede", "Hell House LLC" to "Hell House LLC",
+        "Demons" to "Demons", "Piranha" to "Piranha", "Sharknado" to "Sharknado", "The Toxic Avenger" to "The Toxic Avenger"
+    )
+
     private val BLUMHOUSE_FRANCHISES = listOf(
         "The Purge", "Insidious", "Paranormal Activity", "Halloween", "M3GAN", "Five Nights at Freddy's",
         "The Black Phone", "Happy Death Day", "Ouija", "Sinister"
@@ -891,6 +905,9 @@ internal object ServiceHubs {
                 card("docs", R.string.svc_card_documentaries, sources = angelCatalog.both { copy(genres = "99") })
                 card("international", R.string.svc_card_international, sources = angelCatalog.both { copy(originalLanguage = INTERNATIONAL) })
                 card("soon", R.string.svc_card_coming_soon, sources = listOf(upcomingMovies(ServiceHubIds.CO_ANGEL, untilDays = 730, sort = SOONEST)))
+                cardsPage("collections", R.string.svc_card_all_collections) {
+                    ANGEL_FRANCHISES.forEach { (name, query) -> franchise(name, query) }
+                }
             })
         }
     )
@@ -964,6 +981,9 @@ internal object ServiceHubs {
                 card("horror_comedy", R.string.svc_card_horror_comedy, sources = listOf(shudderCatalog.movies { copy(genres = "27,35") }))
                 card("originals", R.string.svc_card_originals, sources = listOf(shudderOriginalSeries, shudderOriginalFilms))
                 card("catalog", R.string.svc_card_full_catalog, sources = shudderCatalog.both())
+                cardsPage("collections", R.string.svc_card_all_collections) {
+                    SHUDDER_FRANCHISES.forEach { (name, query) -> franchise(name, query) }
+                }
             })
         }
     )
