@@ -19,7 +19,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-data class TeamsLeagueSection(val league: SportsLeague, val teams: List<SportsTeam>)
+/** A league's teams on the Teams page, under its short name ("NFL") and its sport's emoji ("🏈"). */
+data class TeamsLeagueSection(
+    val league: SportsLeague,
+    val teams: List<SportsTeam>,
+    val label: String = league.name,
+    val emoji: String = ""
+)
 
 data class TeamsBrowseUiState(
     val isLoading: Boolean = true,
@@ -92,9 +98,12 @@ class TeamsBrowseViewModel @Inject constructor(
                     // league shows up, not just whoever's playing within the scoreboard's date window.
                     val feedResult = runCatching { client.fetchFeed(feed) }.getOrNull()
                     val fullRoster = runCatching { client.fetchTeams(feed) }.getOrNull()?.takeIf { it.isNotEmpty() }
+                    val league = feedResult?.league ?: SportsLeague(id = cacheKey, name = feed.leaguePath, sportName = feed.sportLabel)
                     TeamsLeagueSection(
-                        league = feedResult?.league ?: SportsLeague(id = cacheKey, name = feed.leaguePath, sportName = feed.sportLabel),
-                        teams = fullRoster ?: feedResult?.teams.orEmpty()
+                        league = league,
+                        teams = fullRoster ?: feedResult?.teams.orEmpty(),
+                        label = filters.firstOrNull { it.id == cacheKey }?.label ?: league.name,
+                        emoji = feed.emoji
                     )
                 }
             }
