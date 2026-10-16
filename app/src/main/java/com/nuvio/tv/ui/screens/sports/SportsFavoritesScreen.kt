@@ -20,7 +20,7 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.theme.NuvioTheme
 
-/** Simple picker for "My Sports" / "My Teams": grid of toggleable chips over the sports/teams already loaded on the Sports screen. */
+/** Simple picker for "My Sports" / "My Teams": grid of toggleable chips over the leagues/teams already loaded on the Sports screen. */
 @Composable
 fun SportsFavoritesScreen(
     modifier: Modifier = Modifier,
@@ -28,7 +28,6 @@ fun SportsFavoritesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet()
-    val sportNames = uiState.leagues.map { it.sportName }.filter { it.isNotBlank() }.distinct().sorted()
 
     Column(
         modifier = modifier
@@ -52,13 +51,12 @@ fun SportsFavoritesScreen(
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
             modifier = Modifier.fillMaxSize().weight(1f, fill = false)
         ) {
-            items(sportNames, key = { "sport_$it" }) { sportName ->
-                com.nuvio.tv.domain.model.SportsLeague(id = sportName, name = sportName, sportName = sportName).let { league ->
-                    LeagueCard(
-                        league = league,
-                        onClick = { viewModel.toggleFavoriteSport(sportName) }
-                    )
-                }
+            // "My Sports" holds leagues (also the Library's Sports Leagues).
+            items(uiState.leagues, key = { "league_${it.id}" }) { league ->
+                LeagueCard(
+                    league = league,
+                    onClick = { viewModel.toggleFavoriteLeague(league) }
+                )
             }
         }
 

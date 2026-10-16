@@ -982,8 +982,9 @@ private fun SportsAddonStreamRow(stream: Stream, onClick: () -> Unit) {
 
 /**
  * Shown when the user holds OK on a team, match, or league card anywhere in Sports. Offers the
- * one/two relevant "add to My Teams" / "add to My Sports" toggles for whatever was held, so
- * favoriting works uniformly across every card type instead of only the dedicated pickers.
+ * relevant "add to My Teams" / "add to My Sports" toggles for whatever was held, so favoriting
+ * works uniformly across every card type instead of only the dedicated pickers. "My Teams" and
+ * "My Sports" are also the Library's Sports Teams and Sports Leagues.
  */
 @Composable
 fun SportsFavoriteOptionsDialog(
@@ -997,13 +998,18 @@ fun SportsFavoriteOptionsDialog(
     onToggleLibrary: (() -> Unit)? = null,
     libraryViewModel: SportsLibraryViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
-    // The Library's Sports Teams and Sports Leagues.
-    val libraryTeamIds by libraryViewModel.teamIds.collectAsState()
-    val libraryLeagueIds by libraryViewModel.leagueIds.collectAsState()
+    // The leagues in "My Sports" (the Library's Sports Leagues).
+    val favoriteLeagueIds by libraryViewModel.favoriteLeagueIds.collectAsState()
     val title = when (target) {
         is SportsFavoriteTarget.TeamTarget -> target.team.name
         is SportsFavoriteTarget.LeagueTarget -> target.league.name
         is SportsFavoriteTarget.EventTarget -> target.event.name
+    }
+
+    // A team in or out of "My Teams"; going in, its name and badge are kept for the Library.
+    fun toggleTeam(team: SportsTeam?, teamId: String) {
+        if (team != null && teamId !in favoriteTeamIds) libraryViewModel.rememberTeam(team)
+        onToggleTeam(teamId)
     }
 
     com.nuvio.tv.ui.components.NuvioDialog(
@@ -1019,43 +1025,33 @@ fun SportsFavoriteOptionsDialog(
                         if (isFavorite) R.string.sports_remove_from_my_teams else R.string.sports_add_to_my_teams
                     ),
                     onClick = {
-                        onToggleTeam(target.team.id)
-                        onDismiss()
-                    }
-                )
-                val inLibrary = target.team.id in libraryTeamIds
-                FavoriteOptionButton(
-                    label = stringResourceCompat(
-                        if (inLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
-                    ),
-                    onClick = {
-                        libraryViewModel.toggleTeam(target.team)
+                        toggleTeam(target.team, target.team.id)
                         onDismiss()
                     }
                 )
             }
             is SportsFavoriteTarget.LeagueTarget -> {
-                val sportName = target.league.sportName
-                if (sportName.isNotBlank()) {
-                    val isFavorite = sportName in favoriteSportNames
+                val league = target.league
+                if (league.isSportOnly()) {
+                    // A whole sport saved in "My Sports" before leagues were: it can be taken out.
+                    val sportName = league.sportName
+                    if (sportName.isNotBlank()) {
+                        val isFavorite = sportName in favoriteSportNames
+                        FavoriteOptionButton(
+                            label = stringResourceCompat(
+                                if (isFavorite) R.string.sports_remove_from_my_sports else R.string.sports_add_to_my_sports
+                            ),
+                            onClick = {
+                                onToggleSport(sportName)
+                                onDismiss()
+                            }
+                        )
+                    }
+                } else {
+                    val isFavorite = league.id in favoriteLeagueIds
                     FavoriteOptionButton(
                         label = stringResourceCompat(
                             if (isFavorite) R.string.sports_remove_from_my_sports else R.string.sports_add_to_my_sports
-                        ),
-                        onClick = {
-                            onToggleSport(sportName)
-                            onDismiss()
-                        }
-                    )
-                }
-                // A real league (not one of "My Sports", which are sports standing in as leagues).
-                val league = target.league
-                val isRealLeague = !(league.id == league.sportName && league.name == league.sportName)
-                if (isRealLeague) {
-                    val inLibrary = league.id in libraryLeagueIds
-                    FavoriteOptionButton(
-                        label = stringResourceCompat(
-                            if (inLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
                         ),
                         onClick = {
                             libraryViewModel.toggleLeague(league)
@@ -1075,7 +1071,7 @@ fun SportsFavoriteOptionsDialog(
                             event.homeTeamName
                         ),
                         onClick = {
-                            onToggleTeam(homeTeamId)
+                            toggleTeam(event.teamOf(homeTeamId), homeTeamId)
                             onDismiss()
                         }
                     )
@@ -1089,24 +1085,40 @@ fun SportsFavoriteOptionsDialog(
                             event.awayTeamName
                         ),
                         onClick = {
-                            onToggleTeam(awayTeamId)
+                            toggleTeam(event.teamOf(awayTeamId), awayTeamId)
                             onDismiss()
                         }
                     )
                 }
-                val sportName = event.sportName
-                if (sportName != null && sportName.isNotBlank()) {
-                    val isFavorite = sportName in favoriteSportNames
+                // The game's league into "My Sports" (and the Library's Sports Leagues).
+                val league = event.leagueOrNull()
+                if (league != null) {
+                    val isFavorite = league.id in favoriteLeagueIds
                     FavoriteOptionButton(
                         label = androidx.compose.ui.res.stringResource(
                             if (isFavorite) R.string.sports_remove_sport_from_my_sports else R.string.sports_add_sport_to_my_sports,
-                            sportName
+                            league.name
                         ),
                         onClick = {
-                            onToggleSport(sportName)
+                            libraryViewModel.toggleLeague(league)
                             onDismiss()
                         }
                     )
+                } else {
+                    val sportName = event.sportName
+                    if (sportName != null && sportName.isNotBlank()) {
+                        val isFavorite = sportName in favoriteSportNames
+                        FavoriteOptionButton(
+                            label = androidx.compose.ui.res.stringResource(
+                                if (isFavorite) R.string.sports_remove_sport_from_my_sports else R.string.sports_add_sport_to_my_sports,
+                                sportName
+                            ),
+                            onClick = {
+                                onToggleSport(sportName)
+                                onDismiss()
+                            }
+                        )
+                    }
                 }
                 if (onToggleLibrary != null) {
                     FavoriteOptionButton(

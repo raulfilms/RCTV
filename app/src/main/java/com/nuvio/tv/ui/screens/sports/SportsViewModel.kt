@@ -69,7 +69,11 @@ data class SportsUiState(
     /** Full pool of teams gathered from the curated leagues, used by the favorites picker (unlike [teams], not the fixed home-row picks). */
     val browsableTeams: List<SportsTeam> = emptyList(),
     val sportsTalk: List<SportsTalkItem> = emptyList(),
+    /** Whole sports saved in "My Sports" before it held leagues (shown after [favoriteLeagues]). */
     val favoriteSportNames: Set<String> = emptySet(),
+    /** The leagues in "My Sports" (also the Library's Sports Leagues). */
+    val favoriteLeagues: List<SportsLeague> = emptyList(),
+    /** "My Teams" (also the Library's Sports Teams). */
     val favoriteTeams: List<SportsTeam> = emptyList(),
     /** Actually-playable live/upcoming events sourced from the user's installed sports addons (phase 3). Separate from the ESPN rows above, which are metadata/schedule-only. */
     val addonEvents: List<SportsAddonEvent> = emptyList(),
@@ -89,7 +93,8 @@ class SportsViewModel @Inject constructor(
     private val client: EspnSportsClient,
     private val preferences: SportsPreferencesDataStore,
     private val sportsAddonRepository: SportsAddonRepository,
-    private val libraryPreferences: LibraryPreferences
+    private val libraryPreferences: LibraryPreferences,
+    private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SportsUiState())
@@ -102,6 +107,11 @@ class SportsViewModel @Inject constructor(
                     _uiState.update { it.copy(favoriteSportNames = sports) }
                     refresh(favoriteTeamIds = teamIds)
                 }
+        }
+        viewModelScope.launch {
+            sportsLibraryStore.leagues.collect { leagues ->
+                _uiState.update { state -> state.copy(favoriteLeagues = leagues.map { it.league }) }
+            }
         }
         viewModelScope.launch {
             libraryPreferences.libraryItems.collect { items ->
@@ -172,8 +182,19 @@ class SportsViewModel @Inject constructor(
         viewModelScope.launch { preferences.toggleFavoriteSport(sportName) }
     }
 
+    /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
     fun toggleFavoriteTeam(teamId: String) {
-        viewModelScope.launch { preferences.toggleFavoriteTeam(teamId) }
+        val state = uiState.value
+        val team = (state.favoriteTeams + state.teams + state.browsableTeams).firstOrNull { it.id == teamId }
+        viewModelScope.launch {
+            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamId)
+        }
+    }
+
+    /** A league in or out of "My Sports" (and the Library). */
+    fun toggleFavoriteLeague(league: SportsLeague) {
+        viewModelScope.launch { sportsLibraryStore.toggleLeague(league) }
     }
 
     /** Opens the "hold to favorite" options dialog for a long-pressed team/match/league card. */
@@ -195,6 +216,11 @@ class SportsViewModel @Inject constructor(
             runCatching { loadAll(favoriteTeamIds) }
         }
         result.onSuccess { loaded ->
+            // The Library shows "My Teams" and "My Sports" with these names and badges.
+            runCatching {
+                sportsLibraryStore.rememberTeams(loaded.favoriteTeams)
+                sportsLibraryStore.refreshLeagues(loaded.leagues)
+            }
             _uiState.update {
                 it.copy(
                     isLoading = false,

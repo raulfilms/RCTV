@@ -2106,7 +2106,9 @@
     <string name="library_type_sports_leagues">Sports Leagues</string>
     <string name="library_type_events">Events</string>
     <string name="library_type_custom_channels">Custom Channels</string>
-    <string name="library_empty_sports">In Sports, hold OK on a team, league or game and choose Add to library</string>
+    <string name="library_empty_sports_teams">Add teams to My Teams on the Sports page to see them here</string>
+    <string name="library_empty_sports_leagues">Add leagues to My Sports on the Sports page to see them here</string>
+    <string name="library_empty_events">On the Sports page, hold OK on a game and choose Add to library</string>
     <string name="library_empty_custom_channels">Add channels to Custom in the Live TV guide to see them here</string>
     <string name="library_empty_local_title">No %1$s yet</string>
     <string name="library_empty_trakt_title">No %1$s in this list</string>

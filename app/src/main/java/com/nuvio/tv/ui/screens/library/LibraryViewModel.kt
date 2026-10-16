@@ -183,6 +183,7 @@ class LibraryViewModel @Inject constructor(
     private val profileManager: com.nuvio.tv.core.profile.ProfileManager,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
     private val sportsLibraryStore: SportsLibraryStore,
+    private val sportsPreferences: com.nuvio.tv.data.local.SportsPreferencesDataStore,
     private val liveTvDataStore: LiveTvDataStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -1141,8 +1142,12 @@ class LibraryViewModel @Inject constructor(
 
     private fun observeLibraryExtras() {
         viewModelScope.launch {
+            // Sports Teams are "My Teams", Sports Leagues "My Sports" (as on the Sports page).
+            val myTeams = combine(sportsLibraryStore.teams, sportsPreferences.favoriteTeamIds) { teams, ids ->
+                teams.filter { it.team.id in ids }
+            }
             combine(
-                sportsLibraryStore.teams,
+                myTeams,
                 sportsLibraryStore.leagues,
                 sportsLibraryStore.eventDetails,
                 libraryPreferences.libraryItems,
@@ -1253,14 +1258,19 @@ class LibraryViewModel @Inject constructor(
         else -> null
     }
 
-    /** Takes the item out of the Library (a channel: out of the Guide's Custom list). */
+    /**
+     * Takes the item out of the Library: a team out of "My Teams", a league out of "My Sports", a
+     * channel out of the Guide's Custom list.
+     */
     fun removeExtra(entry: LibraryEntry) {
         viewModelScope.launch {
             when (entry.type) {
                 LIBRARY_TYPE_CUSTOM_CHANNEL -> {
                     if (entry.id in liveTvDataStore.customChannelIds.value) liveTvDataStore.toggleCustomChannel(entry.id)
                 }
-                LIBRARY_TYPE_SPORTS_TEAM -> sportsLibraryStore.removeTeam(entry.id)
+                LIBRARY_TYPE_SPORTS_TEAM -> {
+                    if (entry.id in sportsPreferences.favoriteTeamIds.value) sportsPreferences.toggleFavoriteTeam(entry.id)
+                }
                 LIBRARY_TYPE_SPORTS_LEAGUE -> sportsLibraryStore.removeLeague(entry.id)
                 LIBRARY_TYPE_EVENT -> {
                     libraryPreferences.removeItem(itemId = entry.id, itemType = LIBRARY_TYPE_EVENT)

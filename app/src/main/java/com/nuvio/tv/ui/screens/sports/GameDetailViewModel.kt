@@ -83,8 +83,13 @@ class GameDetailViewModel @Inject constructor(
         }
     }
 
+    /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
     fun toggleFavoriteTeam(teamId: String) {
-        viewModelScope.launch { preferences.toggleFavoriteTeam(teamId) }
+        val team = event.teamOf(teamId)
+        viewModelScope.launch {
+            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamId)
+        }
     }
 
     fun toggleFavoriteSport(sportName: String) {

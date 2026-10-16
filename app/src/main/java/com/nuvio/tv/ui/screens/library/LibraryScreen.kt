@@ -444,8 +444,12 @@ fun LibraryScreen(
                     EmptyScreenState(
                         title = stringResource(R.string.library_empty_local_title, localizedTypeLabel(selectedExtraType).lowercase()),
                         subtitle = stringResource(
-                            if (selectedExtraType == LIBRARY_TYPE_CUSTOM_CHANNEL) R.string.library_empty_custom_channels
-                            else R.string.library_empty_sports
+                            when (selectedExtraType) {
+                                LIBRARY_TYPE_CUSTOM_CHANNEL -> R.string.library_empty_custom_channels
+                                LIBRARY_TYPE_SPORTS_TEAM -> R.string.library_empty_sports_teams
+                                LIBRARY_TYPE_SPORTS_LEAGUE -> R.string.library_empty_sports_leagues
+                                else -> R.string.library_empty_events
+                            }
                         ),
                         icon = Icons.Default.BookmarkBorder
                     )

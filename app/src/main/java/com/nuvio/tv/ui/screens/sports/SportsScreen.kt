@@ -248,7 +248,7 @@ private fun SportsContent(
 
         item(key = "my_sports") {
             SportsRowSection(title = stringResource(R.string.sports_row_my_sports)) {
-                if (uiState.favoriteSportNames.isEmpty()) {
+                if (uiState.favoriteLeagues.isEmpty() && uiState.favoriteSportNames.isEmpty()) {
                     item(key = "my_sports_empty") {
                         AddFavoritesCard(
                             label = stringResource(R.string.sports_add_favorite_sports),
@@ -256,6 +256,15 @@ private fun SportsContent(
                         )
                     }
                 } else {
+                    // The leagues in "My Sports" (also the Library's Sports Leagues): each opens its page.
+                    items(uiState.favoriteLeagues, key = { "fav_league_${it.id}" }) { league ->
+                        LeagueCard(
+                            league = league,
+                            onClick = { onOpenLeagueDetail(league) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.LeagueTarget(league)) }
+                        )
+                    }
+                    // Whole sports saved before "My Sports" held leagues.
                     items(uiState.favoriteSportNames.toList(), key = { "sport_$it" }) { sportName ->
                         val league = SportsLeague(id = sportName, name = sportName, sportName = sportName)
                         LeagueCard(

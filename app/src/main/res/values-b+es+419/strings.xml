@@ -2100,7 +2100,9 @@
     <string name="library_type_sports_leagues">Ligas</string>
     <string name="library_type_events">Eventos</string>
     <string name="library_type_custom_channels">Canales personalizados</string>
-    <string name="library_empty_sports">En Deportes, mantén OK en un equipo, liga o partido y elige Agregar a la biblioteca</string>
+    <string name="library_empty_sports_teams">Agrega equipos a My Teams en la página de Deportes para verlos aquí</string>
+    <string name="library_empty_sports_leagues">Agrega ligas a My Sports en la página de Deportes para verlas aquí</string>
+    <string name="library_empty_events">En la página de Deportes, mantén OK en un partido y elige Agregar a la biblioteca</string>
     <string name="library_empty_custom_channels">Agrega canales a Custom en la guía de TV en vivo para verlos aquí</string>
     <string name="library_empty_local_title">Aún no hay %1$s</string>
     <string name="library_empty_trakt_title">No hay %1$s en esta lista</string>

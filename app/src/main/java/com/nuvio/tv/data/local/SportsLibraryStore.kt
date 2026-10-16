@@ -21,17 +21,19 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** A sports team in the Library, and when it was added. */
+/** A team's name, badge and league, and when it was first kept. */
 data class SavedSportsTeam(val team: SportsTeam, val addedAt: Long)
 
-/** A sports league in the Library, and when it was added. */
+/** A league in "My Sports", and when it was added. */
 data class SavedSportsLeague(val league: SportsLeague, val addedAt: Long)
 
 /**
- * The sports teams and leagues the person added to the Library, kept whole so the Library shows
- * and opens them without loading ESPN. Also the details of the games they bookmarked (the bookmark
- * itself is a "sports_event" item in [LibraryPreferences]), so a game opens from the Library with
- * its teams, badges and score.
+ * What the Library's sports types are made of:
+ * - Sports Teams are "My Teams" ([SportsPreferencesDataStore.favoriteTeamIds]); [teams] keeps
+ *   each one's name, badge and league, so the Library shows and opens them without loading ESPN.
+ * - Sports Leagues are "My Sports": the leagues in [leagues].
+ * - Events are the games bookmarked to the Library ("sports_event" items in [LibraryPreferences]);
+ *   [eventDetails] keeps each one's teams, badges and score, so it opens from the Library.
  */
 @Singleton
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -64,18 +66,30 @@ class SportsLibraryStore @Inject constructor(
         factory.get(pid, FEATURE).data.map { prefs -> readEvents(prefs).associateBy { it.id } }
     }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
-    /** Adds the team to the Library, or takes it out if it's there. */
-    suspend fun toggleTeam(team: SportsTeam) {
+    /**
+     * Keeps these teams' names, badges and leagues (a team going into "My Teams", or "My Teams"
+     * as loaded by the Sports page). New ones are dated now; known ones keep their date.
+     */
+    suspend fun rememberTeams(teams: List<SportsTeam>) {
+        if (teams.isEmpty()) return
         store().edit { prefs ->
             val current = readTeams(prefs)
-            val updated = if (current.any { it.team.id == team.id }) {
-                current.filterNot { it.team.id == team.id }
-            } else {
-                current + SavedSportsTeam(team, System.currentTimeMillis())
+            val byId = LinkedHashMap<String, SavedSportsTeam>()
+            current.forEach { byId[it.team.id] = it }
+            val now = System.currentTimeMillis()
+            teams.forEach { team ->
+                val known = byId[team.id]
+                byId[team.id] = SavedSportsTeam(
+                    team = if (known == null) team else team.copy(badgeUrl = team.badgeUrl ?: known.team.badgeUrl),
+                    addedAt = known?.addedAt ?: now
+                )
             }
-            prefs[teamsKey] = JSONArray().apply {
-                updated.forEach { put(teamJson(it.team).put("addedAt", it.addedAt)) }
-            }.toString()
+            val updated = byId.values.toList()
+            if (updated != current) {
+                prefs[teamsKey] = JSONArray().apply {
+                    updated.forEach { put(teamJson(it.team).put("addedAt", it.addedAt)) }
+                }.toString()
+            }
         }
     }
 
@@ -88,7 +102,7 @@ class SportsLibraryStore @Inject constructor(
         }
     }
 
-    /** Adds the league to the Library, or takes it out if it's there. */
+    /** Adds the league to "My Sports" (and the Library), or takes it out if it's there. */
     suspend fun toggleLeague(league: SportsLeague) {
         store().edit { prefs ->
             val current = readLeagues(prefs)
@@ -109,6 +123,34 @@ class SportsLibraryStore @Inject constructor(
             prefs[leaguesKey] = JSONArray().apply {
                 updated.forEach { put(leagueJson(it.league).put("addedAt", it.addedAt)) }
             }.toString()
+        }
+    }
+
+    /**
+     * Brings the "My Sports" leagues' names and badges up to date with the leagues the Sports page
+     * loaded (a league added from a game has no badge until then).
+     */
+    suspend fun refreshLeagues(loaded: List<SportsLeague>) {
+        if (loaded.isEmpty()) return
+        store().edit { prefs ->
+            val current = readLeagues(prefs)
+            if (current.isEmpty()) return@edit
+            val byId = loaded.associateBy { it.id }
+            val updated = current.map { saved ->
+                val fresh = byId[saved.league.id] ?: return@map saved
+                saved.copy(
+                    league = saved.league.copy(
+                        name = fresh.name.ifBlank { saved.league.name },
+                        sportName = fresh.sportName.ifBlank { saved.league.sportName },
+                        badgeUrl = fresh.badgeUrl ?: saved.league.badgeUrl
+                    )
+                )
+            }
+            if (updated != current) {
+                prefs[leaguesKey] = JSONArray().apply {
+                    updated.forEach { put(leagueJson(it.league).put("addedAt", it.addedAt)) }
+                }.toString()
+            }
         }
     }
 

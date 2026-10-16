@@ -71,6 +71,7 @@ class LeagueDetailViewModel @Inject constructor(
     private val client: EspnSportsClient,
     private val preferences: SportsPreferencesDataStore,
     private val libraryPreferences: LibraryPreferences,
+    private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -227,8 +228,15 @@ class LeagueDetailViewModel @Inject constructor(
         viewModelScope.launch { preferences.toggleFavoriteSport(sportName) }
     }
 
+    /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
     fun toggleFavoriteTeam(teamId: String) {
-        viewModelScope.launch { preferences.toggleFavoriteTeam(teamId) }
+        val state = uiState.value
+        val team = (state.teams + state.standings.flatMap { group -> group.entries.map { it.team } }).firstOrNull { it.id == teamId }
+            ?: (state.allEvents + state.scheduleEvents).firstNotNullOfOrNull { it.teamOf(teamId) }
+        viewModelScope.launch {
+            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamId)
+        }
     }
 
     fun toggleLibraryEvent(event: SportsEvent) {

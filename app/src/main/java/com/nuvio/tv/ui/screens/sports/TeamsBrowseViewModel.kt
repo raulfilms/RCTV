@@ -38,7 +38,8 @@ data class TeamsBrowseUiState(
 @HiltViewModel
 class TeamsBrowseViewModel @Inject constructor(
     private val client: EspnSportsClient,
-    private val preferences: SportsPreferencesDataStore
+    private val preferences: SportsPreferencesDataStore,
+    private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TeamsBrowseUiState())
@@ -58,8 +59,14 @@ class TeamsBrowseViewModel @Inject constructor(
         selectFilter(null)
     }
 
+    /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
     fun toggleFavoriteTeam(teamId: String) {
-        viewModelScope.launch { preferences.toggleFavoriteTeam(teamId) }
+        val state = uiState.value
+        val team = (state.favoriteTeams + state.sections.flatMap { it.teams }).firstOrNull { it.id == teamId }
+        viewModelScope.launch {
+            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamId)
+        }
     }
 
     fun selectFilter(filterId: String?) {
@@ -112,5 +119,7 @@ class TeamsBrowseViewModel @Inject constructor(
         } else emptyMap()
         val teams = ids.mapNotNull { id -> cached[id] ?: fetched[id] }
         _uiState.update { it.copy(favoriteTeams = teams) }
+        // The Library shows "My Teams" with these names and badges.
+        runCatching { sportsLibraryStore.rememberTeams(teams) }
     }
 }
