@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.nuvio.tv.ui.screens.profile
 
 import androidx.activity.compose.BackHandler
