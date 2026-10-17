@@ -183,16 +183,22 @@ internal fun sportsGameStatus(event: SportsEvent): String {
         SportsEventStatus.FINISHED -> event.statusDetail?.takeIf { it.isNotBlank() } ?: stringResource(R.string.sports_final)
         SportsEventStatus.UPCOMING -> {
             val start = event.startTimeMs ?: return event.statusDetail.orEmpty()
-            val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(start))
-            val zone = ZoneId.systemDefault()
-            val day = Instant.ofEpochMilli(start).atZone(zone).toLocalDate()
-            val today = LocalDate.now(zone)
-            when (day) {
-                today -> stringResource(R.string.livetv_details_today, time)
-                today.plusDays(1) -> stringResource(R.string.livetv_details_tomorrow, time)
-                else -> SimpleDateFormat("EEE, MMM d • h:mm a", Locale.getDefault()).format(Date(start))
-            }
+            sportsStartTimeLabel(start)
         }
+    }
+}
+
+/** When a game starts: "Today, 7:00 PM", "Tomorrow, 7:00 PM", else "Sat, Oct 18 • 7:00 PM". */
+@Composable
+internal fun sportsStartTimeLabel(startMs: Long): String {
+    val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(startMs))
+    val zone = ZoneId.systemDefault()
+    val day = Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate()
+    val today = LocalDate.now(zone)
+    return when (day) {
+        today -> stringResource(R.string.livetv_details_today, time)
+        today.plusDays(1) -> stringResource(R.string.livetv_details_tomorrow, time)
+        else -> SimpleDateFormat("EEE, MMM d • h:mm a", Locale.getDefault()).format(Date(startMs))
     }
 }
 

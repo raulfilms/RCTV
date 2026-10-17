@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,10 +35,14 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.LibraryEntry
+import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.ui.components.AppleTvColors
 import com.nuvio.tv.ui.components.AppleTvFocusGlow
 import com.nuvio.tv.ui.components.AppleTvFocusScale
+import com.nuvio.tv.ui.screens.sports.isLiveAt
+import com.nuvio.tv.ui.screens.sports.sportsStartTimeLabel
 
 /**
  * A team, league, game or custom channel in the Library: its logo (a game: both teams' badges)
@@ -49,6 +54,8 @@ import com.nuvio.tv.ui.components.AppleTvFocusScale
 internal fun LibraryExtraCard(
     entry: LibraryEntry,
     logos: List<String>,
+    /** A saved game: when it starts shows under its name (LIVE when it's on). */
+    event: SportsEvent? = null,
     width: Dp,
     height: Dp,
     cornerRadius: Dp,
@@ -128,9 +135,42 @@ internal fun LibraryExtraCard(
                         .padding(top = 8.dp)
                 )
             }
+            // A game: its day and start time ("Tomorrow, 7:30 PM"), so it's clear when it's on.
+            val start = event?.startTimeMs
+            if (event != null && start != null) {
+                val live = event.isLiveAt(System.currentTimeMillis())
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (live) {
+                        Text(
+                            text = stringResource(R.string.sports_live).uppercase(),
+                            color = LiveRed,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Text(text = "  •  ", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1)
+                    }
+                    Text(
+                        text = sportsStartTimeLabel(start),
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }
+
+private val LiveRed = Color(0xFFFF453A)
 
 @Composable
 private fun ExtraLogo(url: String, name: String, modifier: Modifier) {

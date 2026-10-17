@@ -164,7 +164,9 @@ data class LibraryUiState(
     /** Sports teams, leagues, events and the Guide's custom channels: the Library's extra types. */
     val extraItems: List<LibraryEntry> = emptyList(),
     /** The logos each extra item shows (a game: both teams'), by "type:id". */
-    val extraLogos: Map<String, List<String>> = emptyMap()
+    val extraLogos: Map<String, List<String>> = emptyMap(),
+    /** The saved games (when they start, whether they're on), by "type:id". */
+    val extraEvents: Map<String, SportsEvent> = emptyMap()
 )
 
 @HiltViewModel
@@ -1165,6 +1167,7 @@ class LibraryViewModel @Inject constructor(
                 libraryEvents = eventDetails
                 val items = mutableListOf<LibraryEntry>()
                 val logos = mutableMapOf<String, List<String>>()
+                val events = mutableMapOf<String, SportsEvent>()
                 teams.forEach { (team, addedAt) ->
                     items += extraEntry(
                         id = team.id, type = LIBRARY_TYPE_SPORTS_TEAM, name = team.name,
@@ -1192,6 +1195,7 @@ class LibraryViewModel @Inject constructor(
                         emptyList()
                     }
                     logos["$LIBRARY_TYPE_EVENT:${item.id}"] = badges.ifEmpty { listOfNotNull(item.background) }
+                    if (event != null) events["$LIBRARY_TYPE_EVENT:${item.id}"] = event.withStatusNow()
                 }
                 channels.forEach { channel ->
                     items += extraEntry(
@@ -1200,10 +1204,10 @@ class LibraryViewModel @Inject constructor(
                     )
                     logos["$LIBRARY_TYPE_CUSTOM_CHANNEL:${channel.id}"] = listOfNotNull(channel.logoUrl)
                 }
-                items.toList() to logos.toMap()
-            }.collectLatest { (items, logos) ->
+                Triple(items.toList(), logos.toMap(), events.toMap())
+            }.collectLatest { (items, logos, events) ->
                 _uiState.update { current ->
-                    current.copy(extraItems = items, extraLogos = logos).withVisibleItems()
+                    current.copy(extraItems = items, extraLogos = logos, extraEvents = events).withVisibleItems()
                 }
             }
         }

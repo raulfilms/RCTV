@@ -488,6 +488,7 @@ fun LibraryScreen(
                     LibraryExtraCard(
                         entry = item,
                         logos = uiState.extraLogos[focusKey].orEmpty(),
+                        event = uiState.extraEvents[focusKey],
                         width = if (verticalGrid) posterCardStyle.width else com.nuvio.tv.ui.components.AppleLandscapeCardWidth,
                         height = if (verticalGrid) posterCardStyle.height else com.nuvio.tv.ui.components.AppleLandscapeCardHeight,
                         cornerRadius = posterCardStyle.cornerRadius,
