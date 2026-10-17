@@ -177,7 +177,9 @@ private data class PeopleTabItem(
 
 private data class DetailReturnEpisodeFocusRequest(
     val season: Int?,
-    val episode: Int?
+    val episode: Int?,
+    /** Open on this very episode (one from the library), not on the next one to watch. */
+    val exact: Boolean = false
 )
 
 private fun resolveDetailReturnEpisodeFocusTarget(
@@ -382,6 +384,8 @@ fun MetaDetailsScreen(
     viewModel: MetaDetailsViewModel = hiltViewModel(),
     returnFocusSeason: Int? = null,
     returnFocusEpisode: Int? = null,
+    /** [returnFocusSeason]/[returnFocusEpisode] is an episode to open on exactly (from the library). */
+    returnFocusExact: Boolean = false,
     heroRestoreToken: Int = 0,
     heroBackdropUrl: String? = null,
     playOnLoad: Boolean = false,
@@ -815,7 +819,8 @@ fun MetaDetailsScreen(
                     meta = meta,
                     detailReturnEpisodeFocusRequest = DetailReturnEpisodeFocusRequest(
                         season = returnFocusSeason,
-                        episode = returnFocusEpisode
+                        episode = returnFocusEpisode,
+                        exact = returnFocusExact
                     ),
                     onDetailReturnEpisodeFocusConsumed = onReturnFocusConsumed,
                     lastFocusedEpisodeIdBySeason = viewModel.lastFocusedEpisodeIdBySeason,
@@ -1596,6 +1601,15 @@ private fun MetaDetailsContent(
             onDetailReturnEpisodeFocusConsumed()
             return@LaunchedEffect
         }
+        // Back from playing: on the next episode to watch. An episode from the library: on it.
+        val nextSeasonForReturn = if (request.exact) null else nextToWatch?.nextSeason
+        val nextVideoIdForReturn = if (request.exact) null else nextToWatch?.nextVideoId
+        // An exact episode: its season first, whichever one the page opened on.
+        val targetSeason = targetEpisode.season
+        if (request.exact && targetSeason != null && targetSeason != selectedSeason && targetSeason in seasons) {
+            onSeasonSelected(targetSeason)
+            return@LaunchedEffect
+        }
 
         suspend fun applyReturnFocusStep(step: ReturnFocusStep) {
             when (step) {
@@ -1608,12 +1622,12 @@ private fun MetaDetailsContent(
                             playedSeason = targetEpisode.season,
                             playedEpisode = targetEpisode.episode,
                             selectedSeason = selectedSeason,
-                            nextSeason = nextToWatch?.nextSeason,
+                            nextSeason = nextSeasonForReturn,
                             availableSeasons = seasons,
                             allVideos = meta.videos,
                             requestedEpisodeId = targetEpisode.id,
                             episodesForSeason = episodesForSeason,
-                            nextVideoId = nextToWatch?.nextVideoId,
+                            nextVideoId = nextVideoIdForReturn,
                             alreadyRestoredId = lastReturnFocusRestoreId,
                             hasWaitedForSeasonAdvance = true
                         )
@@ -1644,14 +1658,15 @@ private fun MetaDetailsContent(
                 playedSeason = targetEpisode.season,
                 playedEpisode = targetEpisode.episode,
                 selectedSeason = selectedSeason,
-                nextSeason = nextToWatch?.nextSeason,
+                nextSeason = nextSeasonForReturn,
                 availableSeasons = seasons,
                 allVideos = meta.videos,
                 requestedEpisodeId = targetEpisode.id,
                 episodesForSeason = episodesForSeason,
-                nextVideoId = nextToWatch?.nextVideoId,
+                nextVideoId = nextVideoIdForReturn,
                 alreadyRestoredId = lastReturnFocusRestoreId,
-                hasWaitedForSeasonAdvance = false
+                // An exact episode doesn't wait for the next one to watch to move on.
+                hasWaitedForSeasonAdvance = request.exact
             )
         )
     }

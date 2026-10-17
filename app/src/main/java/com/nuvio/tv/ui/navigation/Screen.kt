@@ -5,7 +5,7 @@ import java.net.URLEncoder
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
-    data object Detail : Screen("detail/{itemId}/{itemType}?addonBaseUrl={addonBaseUrl}&returnFocusSeason={returnFocusSeason}&returnFocusEpisode={returnFocusEpisode}&returnToHomeOnBack={returnToHomeOnBack}&heroBackdropUrl={heroBackdropUrl}&playOnLoad={playOnLoad}&manualSelection={manualSelection}&liveAirings={liveAirings}") {
+    data object Detail : Screen("detail/{itemId}/{itemType}?addonBaseUrl={addonBaseUrl}&returnFocusSeason={returnFocusSeason}&returnFocusEpisode={returnFocusEpisode}&returnToHomeOnBack={returnToHomeOnBack}&heroBackdropUrl={heroBackdropUrl}&playOnLoad={playOnLoad}&manualSelection={manualSelection}&liveAirings={liveAirings}&exactEpisode={exactEpisode}") {
         private fun encode(value: String): String =
             URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
@@ -23,7 +23,9 @@ sealed class Screen(val route: String) {
             heroBackdropUrl: String? = null,
             playOnLoad: Boolean = false,
             manualSelection: Boolean = false,
-            liveAirings: Boolean = false
+            liveAirings: Boolean = false,
+            /** Open on [returnFocusSeason]/[returnFocusEpisode] exactly (an episode in the library). */
+            exactEpisode: Boolean = false
         ): String {
             // An episode saved from the Live TV guide opens its series, on that episode.
             if (itemType == com.nuvio.tv.data.livetv.LiveProgramLibrary.EPISODE_TYPE) {
@@ -38,7 +40,8 @@ sealed class Screen(val route: String) {
                         heroBackdropUrl = heroBackdropUrl,
                         playOnLoad = playOnLoad,
                         manualSelection = manualSelection,
-                        liveAirings = liveAirings
+                        liveAirings = liveAirings,
+                        exactEpisode = true
                     )
                 }
             }
@@ -46,7 +49,7 @@ sealed class Screen(val route: String) {
             val encodedItemType = encode(itemType)
             val encodedAddon = addonBaseUrl?.let { encode(it) } ?: ""
             val encodedHeroBackdrop = heroBackdropUrl?.let { encode(it) } ?: ""
-            return "detail/$encodedItemId/$encodedItemType?addonBaseUrl=$encodedAddon&returnFocusSeason=${returnFocusSeason ?: ""}&returnFocusEpisode=${returnFocusEpisode ?: ""}&returnToHomeOnBack=$returnToHomeOnBack&heroBackdropUrl=$encodedHeroBackdrop&playOnLoad=$playOnLoad&manualSelection=$manualSelection&liveAirings=$liveAirings"
+            return "detail/$encodedItemId/$encodedItemType?addonBaseUrl=$encodedAddon&returnFocusSeason=${returnFocusSeason ?: ""}&returnFocusEpisode=${returnFocusEpisode ?: ""}&returnToHomeOnBack=$returnToHomeOnBack&heroBackdropUrl=$encodedHeroBackdrop&playOnLoad=$playOnLoad&manualSelection=$manualSelection&liveAirings=$liveAirings&exactEpisode=$exactEpisode"
         }
     }
     data object Stream : Screen("stream/{videoId}/{contentType}/{title}?poster={poster}&backdrop={backdrop}&logo={logo}&season={season}&episode={episode}&episodeName={episodeName}&genres={genres}&year={year}&contentId={contentId}&contentName={contentName}&runtime={runtime}&manualSelection={manualSelection}&returnToDetailOnBack={returnToDetailOnBack}&returnToHomeOnBack={returnToHomeOnBack}&startFromBeginning={startFromBeginning}&contentLanguage={contentLanguage}&profileId={profileId}") {

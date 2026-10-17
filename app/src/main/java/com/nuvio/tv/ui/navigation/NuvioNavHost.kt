@@ -279,6 +279,11 @@ private fun PlaybackNavHost(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = "false"
+                },
+                navArgument("exactEpisode") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
                 }
             )
         ) { backStackEntry ->
@@ -295,6 +300,11 @@ private fun PlaybackNavHost(
             ).collectAsState()
             val heroRestoreToken by savedState.getStateFlow(
                 "heroRestoreToken", 0
+            ).collectAsState()
+            // An episode opened from the library: the page opens on that very episode (not on the
+            // next one to watch); only the first time, not when coming back from playing.
+            val returnFocusExact by savedState.getStateFlow(
+                "exactEpisode", detailArgs?.getString("exactEpisode")?.toBooleanStrictOrNull() == true
             ).collectAsState()
             val heroBackdropUrl = detailArgs?.getString("heroBackdropUrl")?.takeIf { it.isNotBlank() }
             val playOnLoad = detailArgs?.getString("playOnLoad")?.toBooleanStrictOrNull() == true
@@ -331,12 +341,14 @@ private fun PlaybackNavHost(
                     returnFocusSeason = returnFocusSeason,
                     returnFocusEpisode = returnFocusEpisode,
                     heroRestoreToken = heroRestoreToken,
+                    returnFocusExact = returnFocusExact,
                     heroBackdropUrl = heroBackdropUrl,
                     playOnLoad = playOnLoad,
                     playOnLoadManually = manualSelection,
                     onReturnFocusConsumed = {
                         savedState["returnFocusSeason"] = null
                         savedState["returnFocusEpisode"] = null
+                        savedState["exactEpisode"] = false
                     },
                     onBackPress = {
                         if (returnToHomeOnBack) {
