@@ -68,6 +68,27 @@ import com.nuvio.tv.ui.screens.tmdb.TmdbEntityBrowseScreen
 import com.nuvio.tv.ui.screens.home.HeroBackdropState
 
 /** Builds the game detail route for any [SportsEvent] tapped from a scoreboard card, anywhere in Sports. */
+/**
+ * What choosing a game does: a live one plays right away on the channel showing it, in the
+ * Guide's player like any channel; an upcoming or finished one opens its page.
+ */
+@androidx.compose.runtime.Composable
+private fun rememberGameOpener(navController: NavHostController): (SportsEvent) -> Unit =
+    com.nuvio.tv.ui.screens.sports.rememberSportsGameOpener(
+        onOpenGamePage = { event -> navController.navigate(gameDetailRoute(event)) },
+        onPlayChannel = { channel ->
+            navController.navigate(
+                Screen.Player.createRoute(
+                    streamUrl = channel.streamUrl,
+                    title = channel.name,
+                    contentType = "live",
+                    contentName = channel.name,
+                    logo = channel.logoUrl
+                )
+            )
+        }
+    )
+
 private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetail.createRoute(
     eventId = event.id,
     name = event.name,
@@ -1231,7 +1252,9 @@ private fun PlaybackNavHost(
         }
 
         composable(Screen.Library.route) {
+            val openGame = rememberGameOpener(navController)
             LibraryScreen(
+                onPlayLiveGame = openGame,
                 showBuiltInHeader = !hideBuiltInHeaders,
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
@@ -1409,8 +1432,10 @@ private fun PlaybackNavHost(
         }
 
         composable(Screen.Sports.route) {
+            // A live game plays on its channel; any other game opens its page.
+            val openGame = rememberGameOpener(navController)
             SportsScreen(
-                onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) },
+                onPlayEvent = openGame,
                 onPlayStream = { stream ->
                     val url = stream.getStreamUrl()
                     if (!url.isNullOrBlank()) {
@@ -1465,8 +1490,9 @@ private fun PlaybackNavHost(
                 navArgument("badgeUrl") { type = NavType.StringType; nullable = true; defaultValue = "" }
             )
         ) {
+            val openGame = rememberGameOpener(navController)
             LeagueDetailScreen(
-                onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) },
+                onPlayEvent = openGame,
                 onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } }
             )
         }
@@ -1481,8 +1507,9 @@ private fun PlaybackNavHost(
                 navArgument("color") { type = NavType.StringType; nullable = true; defaultValue = "" }
             )
         ) {
+            val openGame = rememberGameOpener(navController)
             TeamDetailScreen(
-                onOpenGame = { event -> navController.navigate(gameDetailRoute(event)) },
+                onOpenGame = openGame,
                 // Another team of the league: in place of this one (Back goes where this one came from).
                 onOpenTeam = { team ->
                     teamDetailRoute(team)?.let { route ->

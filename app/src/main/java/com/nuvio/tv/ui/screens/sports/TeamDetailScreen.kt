@@ -127,6 +127,8 @@ fun TeamDetailScreen(
     viewModel: TeamDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // While the page shows: a game goes live on time.
+    LaunchedEffect(viewModel) { viewModel.keepCurrent() }
     val profile = uiState.profile
     val teamColor = sportsTeamColor(profile?.color ?: viewModel.initialColor, viewModel.teamId)
 

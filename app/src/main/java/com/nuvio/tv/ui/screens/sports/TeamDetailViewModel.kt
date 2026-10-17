@@ -135,8 +135,10 @@ class TeamDetailViewModel @Inject constructor(
             val teams = leagueTeams.await()
             val colors = teams.associate { it.id to it.color }
             // The schedule has no colors for the other teams: the league's teams do.
+            val now = System.currentTimeMillis()
             val list = games.getOrDefault(emptyList()).map { game ->
-                val event = game.event
+                // As the clock has it: a game whose start time has come is live.
+                val event = game.event.withClock(now)
                 game.copy(
                     event = event.copy(
                         homeTeamColor = event.homeTeamColor ?: colors[event.homeTeamId],
@@ -156,6 +158,19 @@ class TeamDetailViewModel @Inject constructor(
             }
             // No games played yet to tell the star: the roster's.
             if (_uiState.value.featuredPlayer == null) loadRoster()
+        }
+    }
+
+    /** While the page shows (call it from the page): a game whose start time has come goes live. */
+    suspend fun keepCurrent() {
+        while (true) {
+            kotlinx.coroutines.delay(SPORTS_CLOCK_TICK_MS)
+            val now = System.currentTimeMillis()
+            _uiState.update { state ->
+                val started = state.games.any { it.event.status == SportsEventStatus.UPCOMING && it.event.isLiveAt(now) }
+                if (!started) return@update state
+                state.copy(games = state.games.map { game -> game.copy(event = game.event.withClock(now)) })
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.library
 
+import com.nuvio.tv.ui.screens.sports.isLiveAt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.core.auth.AuthManager
@@ -1287,6 +1288,13 @@ class LibraryViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** A saved game that's live now (it plays on its channel instead of opening its page). */
+    fun liveGameOf(entry: LibraryEntry): SportsEvent? {
+        if (entry.type != LIBRARY_TYPE_EVENT) return null
+        val event = libraryEvents[entry.id]?.withStatusNow() ?: return null
+        return event.takeIf { it.isLiveAt(System.currentTimeMillis()) }
     }
 
     /** A game saved a while ago that should be over by now shows as finished. */

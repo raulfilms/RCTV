@@ -223,6 +223,22 @@ class EspnSportsClient @Inject constructor(
         return "$start-$end"
     }
 
+    /**
+     * A team's names as ESPN gives them ("Chicago Bulls", "Bulls", "CHI" aside), to find its games
+     * in the TV guide: the full name, the short one, the nickname, the city and the nickname.
+     */
+    private fun teamAliasesOf(teamJson: JSONObject?): List<String> {
+        if (teamJson == null) return emptyList()
+        val location = teamJson.str("location")
+        val nickname = teamJson.str("name")
+        return listOfNotNull(
+            teamJson.str("displayName"),
+            teamJson.str("shortDisplayName"),
+            nickname,
+            if (location != null && nickname != null && !nickname.startsWith(location)) "$location $nickname" else null
+        ).distinct()
+    }
+
     private fun statusFrom(type: JSONObject?): Pair<SportsEventStatus, String?> {
         val state = type?.optString("state")?.lowercase(Locale.US).orEmpty()
         val detail = type?.optString("shortDetail")?.takeIf { it.isNotBlank() }
@@ -333,7 +349,9 @@ class EspnSportsClient @Inject constructor(
                 homeTeamAbbreviation = abbreviationOf(homeTeamJson),
                 awayTeamAbbreviation = abbreviationOf(awayTeamJson),
                 homeTeamColor = colorOf(homeTeamJson),
-                awayTeamColor = colorOf(awayTeamJson)
+                awayTeamColor = colorOf(awayTeamJson),
+                homeTeamAliases = teamAliasesOf(homeTeamJson),
+                awayTeamAliases = teamAliasesOf(awayTeamJson)
             )
         }
 
@@ -750,7 +768,9 @@ class EspnSportsClient @Inject constructor(
             homeTeamAbbreviation = homeTeam?.str("abbreviation"),
             awayTeamAbbreviation = awayTeam?.str("abbreviation"),
             homeTeamColor = homeTeam?.str("color")?.removePrefix("#")?.takeIf { it.length == 6 },
-            awayTeamColor = awayTeam?.str("color")?.removePrefix("#")?.takeIf { it.length == 6 }
+            awayTeamColor = awayTeam?.str("color")?.removePrefix("#")?.takeIf { it.length == 6 },
+            homeTeamAliases = teamAliasesOf(homeTeam),
+            awayTeamAliases = teamAliasesOf(awayTeam)
         )
         val week = raw.optJSONObject("week")
         val seasonType = raw.optJSONObject("seasonType")

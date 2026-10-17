@@ -135,7 +135,9 @@ fun LibraryScreen(
     onNavigateToDetail: (String, String, String?) -> Unit,
     onCloudPlaybackResolved: (CloudLibraryPlaybackInfo) -> Unit = {},
     /** Opens a team's, league's, game's or custom channel's page. */
-    onOpenRoute: (String) -> Unit = {}
+    onOpenRoute: (String) -> Unit = {},
+    /** A saved game that's live now: plays it on its channel. */
+    onPlayLiveGame: (com.nuvio.tv.domain.model.SportsEvent) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsState()
@@ -493,7 +495,8 @@ fun LibraryScreen(
                         onFocused = { lastFocusedPosterKey = focusKey },
                         onClick = {
                             lastFocusedPosterKey = focusKey
-                            viewModel.extraRoute(item)?.let(onOpenRoute)
+                            val liveGame = viewModel.liveGameOf(item)
+                            if (liveGame != null) onPlayLiveGame(liveGame) else viewModel.extraRoute(item)?.let(onOpenRoute)
                         },
                         onLongPress = {
                             lastFocusedPosterKey = focusKey

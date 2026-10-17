@@ -3575,6 +3575,8 @@
     <string name="sports_team_bye">Descanso</string>
     <string name="sports_team_recap">Resumen</string>
     <string name="sports_team_all_teams">Todos los equipos de %1$s</string>
+    <string name="sports_finding_game_channel">Buscando el juego en tus canales…</string>
+    <string name="sports_game_not_on_channels">Este juego no está en ninguno de tus canales ahora</string>
     <string name="sports_team_no_games">Todavía no hay juegos programados.</string>
     <string name="sports_team_roster_empty">La plantilla no está disponible ahora.</string>
     <string name="sports_team_stats_empty">Las estadísticas todavía no están disponibles.</string>

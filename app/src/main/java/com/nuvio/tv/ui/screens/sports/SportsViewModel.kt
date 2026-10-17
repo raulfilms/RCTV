@@ -321,12 +321,57 @@ class SportsViewModel @Inject constructor(
         viewModelScope.launch { refresh(favoriteTeamIds = preferences.favoriteTeamIds.value) }
     }
 
-    private suspend fun refresh(favoriteTeamIds: Set<String>) {
-        _uiState.update { it.copy(isLoading = true, error = null) }
+    /** When the games were last loaded. */
+    @Volatile private var loadedAtMs = 0L
+
+    /**
+     * While the page shows (call it from the page): every half minute, games whose start time has
+     * come go live ("Up Next" → "Live Now"); every few minutes, while games are on or about to
+     * start, the scores and states load again, quietly.
+     */
+    suspend fun keepCurrent() {
+        while (true) {
+            val now = System.currentTimeMillis()
+            applyClock(now)
+            val state = _uiState.value
+            val gamesOn = state.liveNow.isNotEmpty() ||
+                state.upcomingGames.any { game -> (game.startTimeMs ?: Long.MAX_VALUE) < now + QUIET_REFRESH_MS }
+            if (!state.isLoading && gamesOn && loadedAtMs > 0 && now - loadedAtMs >= QUIET_REFRESH_MS) {
+                refresh(favoriteTeamIds = preferences.favoriteTeamIds.value, quiet = true)
+            }
+            kotlinx.coroutines.delay(SPORTS_CLOCK_TICK_MS)
+        }
+    }
+
+    /** Upcoming games whose start time has come: live now. */
+    private fun applyClock(now: Long) {
+        _uiState.update { state ->
+            val started = state.upcomingGames.filter { it.isLiveAt(now) }
+            if (started.isEmpty()) return@update state
+            val startedIds = started.map { it.id }.toSet()
+            val liveNow = (state.liveNow + started.map { it.withClock(now) })
+                .distinctBy { it.id }
+                .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
+            val upcoming = state.upcomingGames.filterNot { it.id in startedIds }
+            state.copy(
+                liveNow = liveNow,
+                upcomingGames = upcoming,
+                pickedForYou = state.pickedForYou.map { it.withClock(now) },
+                featuredEvent = liveNow.firstOrNull() ?: upcoming.firstOrNull(),
+                heroEvents = liveNow.take(5).ifEmpty { upcoming.take(5) }
+            )
+        }
+    }
+
+    private suspend fun refresh(favoriteTeamIds: Set<String>, quiet: Boolean = false) {
+        if (!quiet) _uiState.update { it.copy(isLoading = true, error = null) }
         val result = withContext(Dispatchers.IO) {
             runCatching { loadAll(favoriteTeamIds) }
         }
+        // A quiet reload that fails keeps what the page shows.
+        if (quiet && result.isFailure) return
         result.onSuccess { loaded ->
+            loadedAtMs = System.currentTimeMillis()
             // The Library shows "My Teams" and "My Sports" with these names and badges.
             runCatching {
                 sportsLibraryStore.rememberTeams(loaded.favoriteTeams)
@@ -371,7 +416,9 @@ class SportsViewModel @Inject constructor(
         val homeTeamRowPicks = runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList())
 
         val leagues = results.map { it.league }.sortedBy { league -> leagueRank(league.id) }
-        val allEvents = results.flatMap { it.events }
+        // As the clock has them: games whose start time has come are live.
+        val now = System.currentTimeMillis()
+        val allEvents = results.flatMap { it.events }.map { it.withClock(now) }
         val allTeams = results.flatMap { it.teams }.distinctBy { it.id }
 
         val liveNow = allEvents.filter { it.status == SportsEventStatus.LIVE }
@@ -402,6 +449,8 @@ class SportsViewModel @Inject constructor(
     }
 
     private companion object {
+        /** How often the games load again while some are on (scores, ends, new games live). */
+        const val QUIET_REFRESH_MS = 2L * 60 * 1000
         val TMDB_API_KEY: String get() = com.nuvio.tv.BuildConfig.TMDB_API_KEY
         /** TMDB's Talk genre (TV). */
         const val TMDB_TALK_GENRE = "10767"

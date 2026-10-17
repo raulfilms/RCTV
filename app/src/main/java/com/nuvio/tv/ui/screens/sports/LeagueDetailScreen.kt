@@ -61,6 +61,8 @@ fun LeagueDetailScreen(
     viewModel: LeagueDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // While the page shows: games go live on time.
+    androidx.compose.runtime.LaunchedEffect(viewModel) { viewModel.keepCurrent() }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {

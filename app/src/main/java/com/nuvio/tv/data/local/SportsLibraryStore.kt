@@ -257,9 +257,18 @@ class SportsLibraryStore @Inject constructor(
                 venue = obj.str("venue"),
                 status = runCatching { SportsEventStatus.valueOf(obj.str("status").orEmpty()) }
                     .getOrDefault(SportsEventStatus.UPCOMING),
-                statusDetail = obj.str("statusDetail")
+                statusDetail = obj.str("statusDetail"),
+                homeTeamAbbreviation = obj.str("homeTeamAbbreviation"),
+                awayTeamAbbreviation = obj.str("awayTeamAbbreviation"),
+                homeTeamAliases = obj.strings("homeTeamAliases"),
+                awayTeamAliases = obj.strings("awayTeamAliases")
             )
         }
+
+    private fun JSONObject.strings(key: String): List<String> {
+        val array = optJSONArray(key) ?: return emptyList()
+        return (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }
+    }
 
     private fun eventJson(event: SportsEvent): JSONObject = JSONObject()
         .put("id", event.id)
@@ -279,4 +288,8 @@ class SportsLibraryStore @Inject constructor(
         .putOpt("venue", event.venue)
         .put("status", event.status.name)
         .putOpt("statusDetail", event.statusDetail)
+        .putOpt("homeTeamAbbreviation", event.homeTeamAbbreviation)
+        .putOpt("awayTeamAbbreviation", event.awayTeamAbbreviation)
+        .put("homeTeamAliases", JSONArray(event.homeTeamAliases))
+        .put("awayTeamAliases", JSONArray(event.awayTeamAliases))
 }

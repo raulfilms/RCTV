@@ -123,7 +123,10 @@ class LeagueDetailViewModel @Inject constructor(
             val result = withContext(Dispatchers.IO) {
                 runCatching { client.fetchFeed(currentFeed, client.dateRange(-3, 10)) }
             }
-            result.onSuccess { feedResult ->
+            result.onSuccess { loadedFeed ->
+                // As the clock has them: games whose start time has come are live.
+                val now = System.currentTimeMillis()
+                val feedResult = loadedFeed.copy(events = loadedFeed.events.map { it.withClock(now) })
                 val league = feedResult.league
                 val liveEvents = feedResult.events.filter { it.status == SportsEventStatus.LIVE }
                     .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
@@ -218,7 +221,32 @@ class LeagueDetailViewModel @Inject constructor(
                 it.copy(
                     isLoadingSchedule = false,
                     scheduleLoaded = true,
-                    scheduleEvents = events.sortedBy { event -> event.startTimeMs ?: Long.MAX_VALUE }
+                    scheduleEvents = events
+                        .map { event -> event.withClock(System.currentTimeMillis()) }
+                        .sortedBy { event -> event.startTimeMs ?: Long.MAX_VALUE }
+                )
+            }
+        }
+    }
+
+    /** While the page shows (call it from the page): games whose start time has come go live. */
+    suspend fun keepCurrent() {
+        while (true) {
+            kotlinx.coroutines.delay(SPORTS_CLOCK_TICK_MS)
+            val now = System.currentTimeMillis()
+            _uiState.update { state ->
+                val started = state.upcomingEvents.filter { it.isLiveAt(now) }
+                val scheduleStarted = state.scheduleEvents.any { it.status == SportsEventStatus.UPCOMING && it.isLiveAt(now) }
+                if (started.isEmpty() && !scheduleStarted) return@update state
+                val startedIds = started.map { it.id }.toSet()
+                val live = (state.liveEvents + started.map { it.withClock(now) }).sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
+                val upcoming = state.upcomingEvents.filterNot { it.id in startedIds }
+                state.copy(
+                    liveEvents = live,
+                    upcomingEvents = upcoming,
+                    featuredEvent = live.firstOrNull() ?: upcoming.firstOrNull(),
+                    allEvents = state.allEvents.map { it.withClock(now) },
+                    scheduleEvents = state.scheduleEvents.map { it.withClock(now) }
                 )
             }
         }

@@ -60,7 +60,10 @@ data class SportsEvent(
     val awayTeamAbbreviation: String? = null,
     /** The teams' main colors ("002244", no #), when the source gives them. */
     val homeTeamColor: String? = null,
-    val awayTeamColor: String? = null
+    val awayTeamColor: String? = null,
+    /** The teams' other names ("Chicago Bulls", "Bulls"), to find the game in the TV guide. */
+    val homeTeamAliases: List<String> = emptyList(),
+    val awayTeamAliases: List<String> = emptyList()
 )
 
 /** A lightweight "sports talk" article/discussion item. No live API for this yet; curated/mock. */

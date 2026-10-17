@@ -65,6 +65,8 @@ fun SportsScreen(
     viewModel: SportsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // While the page shows: games go live on time, and the scores stay current.
+    LaunchedEffect(viewModel) { viewModel.keepCurrent() }
     var seeAllName by rememberSaveable { mutableStateOf<String?>(null) }
     val seeAll = seeAllName?.let { name -> SportsSeeAll.entries.firstOrNull { it.name == name } }
     val rowRequesters = remember { mutableMapOf<String, FocusRequester>() }
