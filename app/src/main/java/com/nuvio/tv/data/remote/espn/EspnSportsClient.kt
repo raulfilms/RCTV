@@ -14,6 +14,10 @@ import com.nuvio.tv.domain.model.SportsTeamGame
 import com.nuvio.tv.domain.model.SportsTeamHistory
 import com.nuvio.tv.domain.model.SportsTeamProfile
 import com.nuvio.tv.domain.model.SportsTeamStatCategory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -159,6 +163,21 @@ class EspnSportsClient @Inject constructor(
         }
 
         private const val BASE_URL = "https://site.api.espn.com/apis/site/v2/sports"
+
+        /** The European competitions a club of the big five leagues can play. */
+        private val SOCCER_UEFA_COMPETITIONS = listOf("uefa.champions", "uefa.europa", "uefa.europa.conf", "uefa.super_cup")
+        private val SOCCER_UEFA_LEAGUES = setOf("eng.1", "esp.1", "ita.1", "ger.1", "fra.1")
+
+        /** Each league's cups and super cup (and CONCACAF's for MLS and Liga MX). */
+        private val SOCCER_DOMESTIC_CUPS = mapOf(
+            "eng.1" to listOf("eng.fa", "eng.league_cup", "eng.charity"),
+            "esp.1" to listOf("esp.copa_del_rey", "esp.super_cup"),
+            "ita.1" to listOf("ita.coppa_italia", "ita.super_cup"),
+            "ger.1" to listOf("ger.dfb_pokal", "ger.super_cup"),
+            "fra.1" to listOf("fra.coupe_de_france", "fra.super_cup"),
+            "usa.1" to listOf("usa.open", "concacaf.champions", "concacaf.leagues.cup"),
+            "mex.1" to listOf("concacaf.champions", "concacaf.leagues.cup")
+        )
 
         /** Standings live under a different, older ESPN API shape than scoreboard/teams/news. */
         private const val STANDINGS_BASE_URL = "https://site.api.espn.com/apis/v2/sports"
@@ -643,7 +662,23 @@ class EspnSportsClient @Inject constructor(
     }
 
     /** One game of a team schedule's `events`. */
-    private fun parseScheduleGame(raw: JSONObject, feed: Feed, leagueName: String): SportsTeamGame? {
+    private fun parseScheduleGame(raw: JSONObject, sourceFeed: Feed, sourceLeagueName: String): SportsTeamGame? {
+        // The game's own competition (soccer: the league, the Champions League, a cup...).
+        val leagueJson = raw.optJSONObject("league")
+        val competitionSlug = leagueJson?.str("slug")?.takeIf { it != "all" }
+        val feed = if (competitionSlug != null && competitionSlug != sourceFeed.leaguePath) {
+            sourceFeed.copy(leaguePath = competitionSlug)
+        } else {
+            sourceFeed
+        }
+        val competitionName = leagueJson?.let { it.str("shortName") ?: it.str("abbreviation") ?: it.str("name") }
+        val leagueName = if (competitionSlug != null && competitionSlug != sourceFeed.leaguePath) {
+            competitionName ?: sourceLeagueName
+        } else {
+            sourceLeagueName
+        }
+        val competitionLogo = leagueJson?.str("alternateId")?.takeIf { feed.sportPath == "soccer" }
+            ?.let { "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/$it.png" }
         val competition = raw.optJSONArray("competitions")?.optJSONObject(0) ?: return null
         val competitors = competition.optJSONArray("competitors") ?: return null
         var home: JSONObject? = null
@@ -726,7 +761,9 @@ class EspnSportsClient @Inject constructor(
             seasonTypeLabel = seasonType?.str("name"),
             seasonType = seasonType?.optInt("type", 0)?.takeIf { it > 0 },
             broadcast = broadcast,
-            leaders = leaders
+            leaders = leaders,
+            competitionName = competitionName,
+            competitionLogoUrl = competitionLogo
         )
     }
 
@@ -734,7 +771,8 @@ class EspnSportsClient @Inject constructor(
      * A team's whole season, in order: the regular season and the playoffs (soccer: the results
      * played and the fixtures to come).
      */
-    fun fetchTeamSchedule(feed: Feed, teamId: String, leagueName: String): List<SportsTeamGame> {
+    suspend fun fetchTeamSchedule(feed: Feed, teamId: String, leagueName: String): List<SportsTeamGame> {
+        if (feed.sportPath == "soccer") return fetchSoccerSchedule(feed, teamId, leagueName)
         val base = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId/schedule"
         val urls = if (feed.sportPath == "soccer") {
             listOf(base, "$base?fixture=true")
@@ -767,6 +805,54 @@ class EspnSportsClient @Inject constructor(
         if (!anyLoaded) throw EspnException("Schedule unavailable")
         return games.values.sortedBy { it.event.startTimeMs ?: Long.MAX_VALUE }
     }
+
+    /**
+     * A soccer club's season in every competition it plays: its league, the Champions League (or
+     * Europa / Conference League), its country's cups and super cup — each game with its
+     * competition's name and logo. The competitions are loaded together; one that the club isn't
+     * in (or ESPN doesn't have) just adds nothing.
+     */
+    private suspend fun fetchSoccerSchedule(feed: Feed, teamId: String, leagueName: String): List<SportsTeamGame> =
+        coroutineScope {
+            val anyLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
+            suspend fun load(slug: String): List<SportsTeamGame> {
+                val base = "$BASE_URL/soccer/$slug/teams/$teamId/schedule"
+                val source = feed.copy(leaguePath = slug)
+                val sourceName = if (slug == feed.leaguePath) leagueName else slug
+                return listOf(base, "$base?fixture=true").map { url ->
+                    async(Dispatchers.IO) {
+                        val json = runCatching { JSONObject(get(url)) }.getOrNull() ?: return@async emptyList()
+                        anyLoaded.set(true)
+                        val events = json.optJSONArray("events") ?: return@async emptyList()
+                        (0 until events.length()).mapNotNull { i ->
+                            events.optJSONObject(i)?.let { parseScheduleGame(it, source, sourceName) }
+                        }
+                    }
+                }.awaitAll().flatten()
+            }
+
+            val home = feed.leaguePath.takeIf { it in SOCCER_DOMESTIC_CUPS }
+            val first = buildList {
+                add(feed.leaguePath)
+                // ESPN's "all": the club's own league, whichever page it was opened from.
+                add("all")
+                if (home != null) addAll(SOCCER_DOMESTIC_CUPS.getValue(home))
+                if (home == null || home in SOCCER_UEFA_LEAGUES) addAll(SOCCER_UEFA_COMPETITIONS)
+            }.distinct()
+            val firstGames = first.map { slug -> async { load(slug) } }.awaitAll().flatten()
+
+            // Opened from the Champions League: the club's league's cups too, once it's known.
+            val domestic = home ?: firstGames.asSequence()
+                .mapNotNull { EspnSportsClient.parseEventId(it.event.id)?.leaguePath }
+                .firstOrNull { it in SOCCER_DOMESTIC_CUPS }
+            val second = domestic?.let { SOCCER_DOMESTIC_CUPS.getValue(it) }.orEmpty().filter { it !in first }
+            val secondGames = second.map { slug -> async { load(slug) } }.awaitAll().flatten()
+
+            if (!anyLoaded.get()) throw EspnException("Schedule unavailable")
+            (firstGames + secondGames)
+                .distinctBy { EspnSportsClient.parseEventId(it.event.id)?.rawEventId ?: it.event.id }
+                .sortedBy { it.event.startTimeMs ?: Long.MAX_VALUE }
+        }
 
     /** A team's players, with their photos; NFL rosters come in groups (Offense, Defense...). */
     fun fetchTeamRoster(feed: Feed, teamId: String): List<SportsAthlete> {

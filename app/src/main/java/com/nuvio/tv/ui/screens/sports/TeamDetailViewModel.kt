@@ -277,10 +277,13 @@ class TeamDetailViewModel @Inject constructor(
         val feed = feed ?: return
         val eventId = game.event.id
         if (eventId in _uiState.value.gamePlayers || !loadingPlayers.add(eventId)) return
-        val rawId = EspnSportsClient.parseEventId(eventId)?.rawEventId ?: return
+        val parsed = EspnSportsClient.parseEventId(eventId) ?: return
+        val rawId = parsed.rawEventId
+        // The game's own competition (a club's Champions League game, say).
+        val gameFeed = if (parsed.leaguePath != feed.leaguePath) feed.copy(leaguePath = parsed.leaguePath) else feed
         viewModelScope.launch {
             val players = withContext(Dispatchers.IO) {
-                runCatching { client.fetchGamePlayers(feed, rawId) }.getOrDefault(emptyMap())
+                runCatching { client.fetchGamePlayers(gameFeed, rawId) }.getOrDefault(emptyMap())
             }
             // The schedule's own leaders fill in a team the summary has none for.
             val merged = LinkedHashMap(game.leaders.mapValues { (_, list) -> list.filter { it.headshotUrl != null } })

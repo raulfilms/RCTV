@@ -44,7 +44,11 @@ data class SportsTeamGame(
     /** "CBS", "ESPN"... */
     val broadcast: String?,
     /** The players who led each team (by team id), when the schedule has them (games played). */
-    val leaders: Map<String, List<SportsAthlete>> = emptyMap()
+    val leaders: Map<String, List<SportsAthlete>> = emptyMap(),
+    /** The competition the game is in ("LALIGA", "UEFA Champions League", "Copa del Rey"). */
+    val competitionName: String? = null,
+    /** That competition's logo (the light one, for dark backgrounds). */
+    val competitionLogoUrl: String? = null
 )
 
 /** A player: on a team's roster, or one of a game's leaders. */

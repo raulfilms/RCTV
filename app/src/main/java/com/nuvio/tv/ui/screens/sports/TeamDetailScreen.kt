@@ -96,7 +96,7 @@ import java.util.Date
 import java.util.Locale
 
 private val PageMargin: Dp = AppleTvSpacing.SafeX
-private val GameCardHeight = 196.dp
+private val GameCardHeight = 208.dp
 private val HeaderPlayerHeight = 236.dp
 
 /** A line of the schedule: a game, or a week the team doesn't play (NFL bye). */
@@ -758,7 +758,14 @@ private fun TeamGameCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 520.dp)
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                // The competition: the league, the Champions League, a cup...
+                if (game.competitionName != null || game.competitionLogoUrl != null) {
+                    Spacer(modifier = Modifier.height(5.dp))
+                    CompetitionChip(name = game.competitionName, logoUrl = game.competitionLogoUrl)
+                    Spacer(modifier = Modifier.height(6.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val awayWon = isFinal && (event.awayScore ?: 0) > (event.homeScore ?: 0)
                     val homeWon = isFinal && (event.homeScore ?: 0) > (event.awayScore ?: 0)
@@ -804,6 +811,39 @@ private fun TeamGameCard(
                     letterSpacing = 0.8.sp
                 )
             }
+        }
+    }
+}
+
+/** The competition a game is in: its logo and its name, on a dark pill. */
+@Composable
+private fun CompetitionChip(name: String?, logoUrl: String?) {
+    Row(
+        modifier = Modifier
+            .height(22.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .background(Color.Black.copy(alpha = 0.35f))
+            .padding(horizontal = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!logoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = logoUrl,
+                contentDescription = name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(16.dp)
+            )
+            if (!name.isNullOrBlank()) Spacer(modifier = Modifier.width(6.dp))
+        }
+        if (!name.isNullOrBlank()) {
+            Text(
+                text = name,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
