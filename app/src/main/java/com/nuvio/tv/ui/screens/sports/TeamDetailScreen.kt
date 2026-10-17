@@ -396,13 +396,14 @@ private fun TeamHeader(
             TeamLogo(url = profile?.logoUrl ?: initialBadgeUrl, size = 128.dp)
             Spacer(modifier = Modifier.width(26.dp))
             Column {
+                // Like the layout: the city small and gray, the team's name big, white and bold.
                 if (!city.isNullOrBlank()) {
                     Text(
                         text = city.uppercase(),
-                        color = Color.White.copy(alpha = 0.58f),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.5.sp,
+                        color = HeaderGray,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.5.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -415,7 +416,7 @@ private fun TeamHeader(
                         name.length > 15 -> 34.sp
                         else -> 44.sp
                     },
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -435,6 +436,9 @@ private fun TeamHeader(
         }
     }
 }
+
+/** The header's small gray lines (the city, the stats' names): gray on any team's colors. */
+private val HeaderGray = Color(0xFFA1A1A6)
 
 /** Record, conference rank and division rank (soccer: record, league rank and points). */
 @Composable
@@ -465,7 +469,7 @@ private fun TeamStatsLine(profile: SportsTeamProfile?, isSoccer: Boolean, sportP
                 )
             }
             Column {
-                Text(text = label, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1)
+                Text(text = label, color = HeaderGray, fontSize = 12.sp, fontWeight = FontWeight.Normal, maxLines = 1)
                 Text(text = value, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }

@@ -15,21 +15,30 @@ val DMSansFamily = FontFamily(
     Font(R.font.dm_sans_variable, FontWeight.Normal),
     Font(R.font.dm_sans_variable, FontWeight.Medium),
     Font(R.font.dm_sans_variable, FontWeight.SemiBold),
-    Font(R.font.dm_sans_variable, FontWeight.Bold)
+    Font(R.font.dm_sans_variable, FontWeight.Bold),
+    // Heavier than bold too (titles in Black): without them those fell back to the regular weight.
+    Font(R.font.dm_sans_variable, FontWeight.ExtraBold),
+    Font(R.font.dm_sans_variable, FontWeight.Black)
 )
 
 val InterFamily = FontFamily(
     Font(R.font.inter_variable, FontWeight.Normal),
     Font(R.font.inter_variable, FontWeight.Medium),
     Font(R.font.inter_variable, FontWeight.SemiBold),
-    Font(R.font.inter_variable, FontWeight.Bold)
+    Font(R.font.inter_variable, FontWeight.Bold),
+    // Heavier than bold too (titles in Black): without them those fell back to the regular weight.
+    Font(R.font.inter_variable, FontWeight.ExtraBold),
+    Font(R.font.inter_variable, FontWeight.Black)
 )
 
 val OpenSansFamily = FontFamily(
     Font(R.font.opensans_variable, FontWeight.Normal),
     Font(R.font.opensans_variable, FontWeight.Medium),
     Font(R.font.opensans_variable, FontWeight.SemiBold),
-    Font(R.font.opensans_variable, FontWeight.Bold)
+    Font(R.font.opensans_variable, FontWeight.Bold),
+    // Heavier than bold too (titles in Black): without them those fell back to the regular weight.
+    Font(R.font.opensans_variable, FontWeight.ExtraBold),
+    Font(R.font.opensans_variable, FontWeight.Black)
 )
 
 fun getFontFamily(appFont: AppFont): FontFamily = when (appFont) {
