@@ -1271,6 +1271,12 @@ private fun MetaDetailsContent(
     var pinnedPageIndex by remember { mutableIntStateOf(-1) }
     var pinnedPageOffset by remember { mutableIntStateOf(0) }
     // Suppress auto-scroll when hero buttons get focus
+    // A sports talk show's page: "On Now & Upcoming" (its showings in the Live TV guide) right
+    // under the hero, before the episodes.
+    val showAiringsActions = LocalShowAiringsActions.current
+    val airingsRowCount = if (showAiringsActions != null) 1 else 0
+    val airingsRowFocusRequester = remember { FocusRequester() }
+    var airingsHaveCards by remember { mutableStateOf(false) }
     val heroNoScrollResponder = remember {
         object : BringIntoViewResponder {
             override fun calculateRectForParent(localRect: Rect): Rect = Rect.Zero
@@ -1626,7 +1632,7 @@ private fun MetaDetailsContent(
                     if (seasons.isNotEmpty()) {
                         // Ensure the episodes row is composed before requesting focus on a card
                         // (index 1: the tab bar, with the Episodes tab's rows right below it).
-                        listState.scrollToItem(1)
+                        listState.scrollToItem(1 + airingsRowCount)
                     }
                 }
                 ReturnFocusStep.Idle -> Unit
@@ -1815,8 +1821,8 @@ private fun MetaDetailsContent(
     // The list: the hero, the tab bar, then the open tab (Episodes: season tabs and episodes).
     val isEpisodesTabOpen = hasEpisodesSection && activePeopleTab == PeopleSectionTab.EPISODES
     /** Where the episodes row is in the page's list. */
-    val episodesItemIndex = 1 + (if (hasVisiblePeopleTabs) 1 else 0) + (if (showSeasonTabs) 1 else 0)
-    val commentsItemIndex = 1 + (if (hasVisiblePeopleTabs) 1 else 0) + when {
+    val episodesItemIndex = 1 + airingsRowCount + (if (hasVisiblePeopleTabs) 1 else 0) + (if (showSeasonTabs) 1 else 0)
+    val commentsItemIndex = 1 + airingsRowCount + (if (hasVisiblePeopleTabs) 1 else 0) + when {
         !hasVisiblePeopleSection -> 0
         isEpisodesTabOpen -> (if (showSeasonTabs) 1 else 0) + 1
         else -> 1
@@ -2214,6 +2220,23 @@ private fun MetaDetailsContent(
                 }
             }
 
+            // A sports talk show: where it's on now and next in the Live TV guide.
+            if (showAiringsActions != null) {
+                item(key = "on_now_upcoming", contentType = "horizontal_row") {
+                    // Hidden while the trailer plays, so only the video shows.
+                    Box(modifier = Modifier.graphicsLayer { alpha = belowHeroAlpha }) {
+                        ShowAiringsRow(
+                            showName = meta.name,
+                            fallbackImageUrl = meta.background ?: heroBackdropUrl ?: meta.poster,
+                            actions = showAiringsActions,
+                            rowFocusRequester = airingsRowFocusRequester,
+                            upFocusRequester = heroPlayFocusRequester,
+                            onHasCards = { airingsHaveCards = it }
+                        )
+                    }
+                }
+            }
+
             // The tab bar, right under the hero (Disney+): EPISODES  SUGGESTED  EXTRAS  DETAILS
             if (hasVisiblePeopleTabs) {
                 item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
@@ -2222,7 +2245,7 @@ private fun MetaDetailsContent(
                     PeopleSectionTabs(
                         activeTab = activePeopleTab,
                         tabs = visiblePeopleTabItems,
-                        upFocusRequester = heroPlayFocusRequester,
+                        upFocusRequester = if (airingsHaveCards) airingsRowFocusRequester else heroPlayFocusRequester,
                         ratingsDownFocusRequester = ratingsContentFocusRequester,
                         episodesDownFocusRequester = if (showSeasonTabs) selectedSeasonFocusRequester else seasonDownFocusRequester,
                         onTabFocused = { tab ->

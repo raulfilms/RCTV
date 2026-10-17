@@ -3584,4 +3584,8 @@
     <string name="sports_team_venue">Estadio</string>
     <string name="sports_team_league">Liga</string>
     <string name="sports_team_standing">Posición</string>
+    <string name="detail_on_now_upcoming">En vivo y próximamente</string>
+    <string name="detail_airings_loading">Buscando en la guía…</string>
+    <string name="detail_airings_empty">No sale en tus canales ahora ni en las próximas horas.</string>
+    <string name="detail_airing_on_now">En vivo · hasta las %1$s</string>
 </resources>

@@ -5,10 +5,14 @@ import java.net.URLEncoder
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
-    data object Detail : Screen("detail/{itemId}/{itemType}?addonBaseUrl={addonBaseUrl}&returnFocusSeason={returnFocusSeason}&returnFocusEpisode={returnFocusEpisode}&returnToHomeOnBack={returnToHomeOnBack}&heroBackdropUrl={heroBackdropUrl}&playOnLoad={playOnLoad}&manualSelection={manualSelection}") {
+    data object Detail : Screen("detail/{itemId}/{itemType}?addonBaseUrl={addonBaseUrl}&returnFocusSeason={returnFocusSeason}&returnFocusEpisode={returnFocusEpisode}&returnToHomeOnBack={returnToHomeOnBack}&heroBackdropUrl={heroBackdropUrl}&playOnLoad={playOnLoad}&manualSelection={manualSelection}&liveAirings={liveAirings}") {
         private fun encode(value: String): String =
             URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
+        /**
+         * [liveAirings]: the page shows "On Now & Upcoming", the title's showings in the Live TV
+         * guide (a sports talk show opened from Sports).
+         */
         fun createRoute(
             itemId: String,
             itemType: String,
@@ -18,7 +22,8 @@ sealed class Screen(val route: String) {
             returnToHomeOnBack: Boolean = false,
             heroBackdropUrl: String? = null,
             playOnLoad: Boolean = false,
-            manualSelection: Boolean = false
+            manualSelection: Boolean = false,
+            liveAirings: Boolean = false
         ): String {
             // An episode saved from the Live TV guide opens its series, on that episode.
             if (itemType == com.nuvio.tv.data.livetv.LiveProgramLibrary.EPISODE_TYPE) {
@@ -32,7 +37,8 @@ sealed class Screen(val route: String) {
                         returnToHomeOnBack = returnToHomeOnBack,
                         heroBackdropUrl = heroBackdropUrl,
                         playOnLoad = playOnLoad,
-                        manualSelection = manualSelection
+                        manualSelection = manualSelection,
+                        liveAirings = liveAirings
                     )
                 }
             }
@@ -40,7 +46,7 @@ sealed class Screen(val route: String) {
             val encodedItemType = encode(itemType)
             val encodedAddon = addonBaseUrl?.let { encode(it) } ?: ""
             val encodedHeroBackdrop = heroBackdropUrl?.let { encode(it) } ?: ""
-            return "detail/$encodedItemId/$encodedItemType?addonBaseUrl=$encodedAddon&returnFocusSeason=${returnFocusSeason ?: ""}&returnFocusEpisode=${returnFocusEpisode ?: ""}&returnToHomeOnBack=$returnToHomeOnBack&heroBackdropUrl=$encodedHeroBackdrop&playOnLoad=$playOnLoad&manualSelection=$manualSelection"
+            return "detail/$encodedItemId/$encodedItemType?addonBaseUrl=$encodedAddon&returnFocusSeason=${returnFocusSeason ?: ""}&returnFocusEpisode=${returnFocusEpisode ?: ""}&returnToHomeOnBack=$returnToHomeOnBack&heroBackdropUrl=$encodedHeroBackdrop&playOnLoad=$playOnLoad&manualSelection=$manualSelection&liveAirings=$liveAirings"
         }
     }
     data object Stream : Screen("stream/{videoId}/{contentType}/{title}?poster={poster}&backdrop={backdrop}&logo={logo}&season={season}&episode={episode}&episodeName={episodeName}&genres={genres}&year={year}&contentId={contentId}&contentName={contentName}&runtime={runtime}&manualSelection={manualSelection}&returnToDetailOnBack={returnToDetailOnBack}&returnToHomeOnBack={returnToHomeOnBack}&startFromBeginning={startFromBeginning}&contentLanguage={contentLanguage}&profileId={profileId}") {

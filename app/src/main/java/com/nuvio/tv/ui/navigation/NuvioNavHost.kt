@@ -274,6 +274,11 @@ private fun PlaybackNavHost(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = "false"
+                },
+                navArgument("liveAirings") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
                 }
             )
         ) { backStackEntry ->
@@ -294,114 +299,143 @@ private fun PlaybackNavHost(
             val heroBackdropUrl = detailArgs?.getString("heroBackdropUrl")?.takeIf { it.isNotBlank() }
             val playOnLoad = detailArgs?.getString("playOnLoad")?.toBooleanStrictOrNull() == true
             val manualSelection = detailArgs?.getString("manualSelection")?.toBooleanStrictOrNull() == true
-            MetaDetailsScreen(
-                returnFocusSeason = returnFocusSeason,
-                returnFocusEpisode = returnFocusEpisode,
-                heroRestoreToken = heroRestoreToken,
-                heroBackdropUrl = heroBackdropUrl,
-                playOnLoad = playOnLoad,
-                playOnLoadManually = manualSelection,
-                onReturnFocusConsumed = {
-                    savedState["returnFocusSeason"] = null
-                    savedState["returnFocusEpisode"] = null
-                },
-                onBackPress = {
-                    if (returnToHomeOnBack) {
-                        val popped = navController.popBackStack(Screen.Home.route, inclusive = false)
-                        if (!popped) {
-                            navController.navigate(Screen.Home.route) {
-                                launchSingleTop = true
-                            }
+            val liveAirings = detailArgs?.getString("liveAirings")?.toBooleanStrictOrNull() == true
+            // A sports talk show's page: its showings in the guide play their channel (on now) or
+            // open it (later).
+            val showAiringsActions = androidx.compose.runtime.remember(liveAirings) {
+                if (!liveAirings) {
+                    null
+                } else {
+                    com.nuvio.tv.ui.screens.detail.ShowAiringsActions(
+                        onPlayChannel = { channel ->
+                            navController.navigate(
+                                Screen.Player.createRoute(
+                                    streamUrl = channel.streamUrl,
+                                    title = channel.name,
+                                    contentType = "live",
+                                    contentName = channel.name,
+                                    logo = channel.logoUrl
+                                )
+                            )
+                        },
+                        onOpenChannel = { channel ->
+                            navController.navigate(Screen.ChannelProfile.createRoute(channel.id))
                         }
-                    } else {
-                        navController.popBackStack()
-                    }
-                },
-                onNavigateToCastDetail = { personId, personName, preferCrew ->
-                    navController.navigate(Screen.CastDetail.createRoute(personId, personName, preferCrew))
-                },
-                onNavigateToTmdbEntityBrowse = { entityKind, entityId, entityName, sourceType ->
-                    navController.navigate(
-                        Screen.TmdbEntityBrowse.createRoute(
-                            entityKind = entityKind,
-                            entityId = entityId,
-                            entityName = entityName,
-                            sourceType = sourceType
-                        )
-                    )
-                },
-                onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
-                    navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
-                },
-                onPlayClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
-                    navController.navigate(
-                        Screen.Stream.createRoute(
-                            videoId = videoId,
-                            contentType = contentType,
-                            title = title,
-                            poster = poster,
-                            backdrop = backdrop,
-                            logo = logo,
-                            season = season,
-                            episode = episode,
-                            episodeName = episodeName,
-                            genres = genres,
-                            year = year,
-                            contentId = contentId,
-                            contentName = title,
-                            runtime = runtime,
-                            returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
-                            contentLanguage = contentLanguage
-                        )
-                    )
-                },
-                onPlayManuallyClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
-                    navController.navigate(
-                        Screen.Stream.createRoute(
-                            videoId = videoId,
-                            contentType = contentType,
-                            title = title,
-                            poster = poster,
-                            backdrop = backdrop,
-                            logo = logo,
-                            season = season,
-                            episode = episode,
-                            episodeName = episodeName,
-                            genres = genres,
-                            year = year,
-                            contentId = contentId,
-                            contentName = title,
-                            runtime = runtime,
-                            manualSelection = true,
-                            returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
-                            contentLanguage = contentLanguage
-                        )
-                    )
-                },
-                onPlayStartFromBeginningClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
-                    navController.navigate(
-                        Screen.Stream.createRoute(
-                            videoId = videoId,
-                            contentType = contentType,
-                            title = title,
-                            poster = poster,
-                            backdrop = backdrop,
-                            logo = logo,
-                            season = season,
-                            episode = episode,
-                            episodeName = episodeName,
-                            genres = genres,
-                            year = year,
-                            contentId = contentId,
-                            contentName = title,
-                            runtime = runtime,
-                            startFromBeginning = true,
-                            returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
-                            contentLanguage = contentLanguage
-                        )
                     )
                 }
-            )
+            }
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.nuvio.tv.ui.screens.detail.LocalShowAiringsActions provides showAiringsActions
+            ) {
+                MetaDetailsScreen(
+                    returnFocusSeason = returnFocusSeason,
+                    returnFocusEpisode = returnFocusEpisode,
+                    heroRestoreToken = heroRestoreToken,
+                    heroBackdropUrl = heroBackdropUrl,
+                    playOnLoad = playOnLoad,
+                    playOnLoadManually = manualSelection,
+                    onReturnFocusConsumed = {
+                        savedState["returnFocusSeason"] = null
+                        savedState["returnFocusEpisode"] = null
+                    },
+                    onBackPress = {
+                        if (returnToHomeOnBack) {
+                            val popped = navController.popBackStack(Screen.Home.route, inclusive = false)
+                            if (!popped) {
+                                navController.navigate(Screen.Home.route) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    },
+                    onNavigateToCastDetail = { personId, personName, preferCrew ->
+                        navController.navigate(Screen.CastDetail.createRoute(personId, personName, preferCrew))
+                    },
+                    onNavigateToTmdbEntityBrowse = { entityKind, entityId, entityName, sourceType ->
+                        navController.navigate(
+                            Screen.TmdbEntityBrowse.createRoute(
+                                entityKind = entityKind,
+                                entityId = entityId,
+                                entityName = entityName,
+                                sourceType = sourceType
+                            )
+                        )
+                    },
+                    onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
+                        navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
+                    },
+                    onPlayClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
+                        navController.navigate(
+                            Screen.Stream.createRoute(
+                                videoId = videoId,
+                                contentType = contentType,
+                                title = title,
+                                poster = poster,
+                                backdrop = backdrop,
+                                logo = logo,
+                                season = season,
+                                episode = episode,
+                                episodeName = episodeName,
+                                genres = genres,
+                                year = year,
+                                contentId = contentId,
+                                contentName = title,
+                                runtime = runtime,
+                                returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                contentLanguage = contentLanguage
+                            )
+                        )
+                    },
+                    onPlayManuallyClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
+                        navController.navigate(
+                            Screen.Stream.createRoute(
+                                videoId = videoId,
+                                contentType = contentType,
+                                title = title,
+                                poster = poster,
+                                backdrop = backdrop,
+                                logo = logo,
+                                season = season,
+                                episode = episode,
+                                episodeName = episodeName,
+                                genres = genres,
+                                year = year,
+                                contentId = contentId,
+                                contentName = title,
+                                runtime = runtime,
+                                manualSelection = true,
+                                returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                contentLanguage = contentLanguage
+                            )
+                        )
+                    },
+                    onPlayStartFromBeginningClick = { videoId, contentType, contentId, title, poster, backdrop, logo, season, episode, episodeName, genres, year, runtime, contentLanguage ->
+                        navController.navigate(
+                            Screen.Stream.createRoute(
+                                videoId = videoId,
+                                contentType = contentType,
+                                title = title,
+                                poster = poster,
+                                backdrop = backdrop,
+                                logo = logo,
+                                season = season,
+                                episode = episode,
+                                episodeName = episodeName,
+                                genres = genres,
+                                year = year,
+                                contentId = contentId,
+                                contentName = title,
+                                runtime = runtime,
+                                startFromBeginning = true,
+                                returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                contentLanguage = contentLanguage
+                            )
+                        )
+                    }
+                )
+            }
         }
 
         composable(
@@ -1390,8 +1424,11 @@ private fun PlaybackNavHost(
                         )
                     )
                 },
+                // A sports talk show: its page, with where it's on now and next in the guide.
                 onOpenDetail = { itemId, itemType ->
-                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = ""))
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = "", liveAirings = true)
+                    )
                 },
                 onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } }
             )

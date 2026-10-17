@@ -4117,4 +4117,8 @@
     <string name="sports_team_venue">Stadium</string>
     <string name="sports_team_league">League</string>
     <string name="sports_team_standing">Standing</string>
+    <string name="detail_on_now_upcoming">On Now &amp; Upcoming</string>
+    <string name="detail_airings_loading">Looking in the guide…</string>
+    <string name="detail_airings_empty">Not on your channels right now or in the next day.</string>
+    <string name="detail_airing_on_now">On now · until %1$s</string>
 </resources>
