@@ -53,6 +53,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -69,6 +71,7 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Surface
+import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
@@ -558,13 +561,32 @@ internal fun SportsGameCard(
                         )
                     )
             ) {
+                // Darker under the names, so they read on any team's colors (yellow, silver...).
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    0.5f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = 0.45f)
+                                )
+                            )
+                        )
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 10.dp, end = 10.dp, top = 22.dp, bottom = 10.dp),
+                        .padding(start = 10.dp, end = 10.dp, top = 22.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    GameTeam(name = event.homeTeamName, logo = event.homeTeamBadgeUrl, modifier = Modifier.weight(1f))
+                    GameTeam(
+                        name = event.homeTeamName,
+                        logo = event.homeTeamBadgeUrl,
+                        background = lerp(homeColor, Color.Black, 0.25f),
+                        modifier = Modifier.weight(1f)
+                    )
                     val showScore = event.status != SportsEventStatus.UPCOMING &&
                         event.homeScore != null && event.awayScore != null
                     Text(
@@ -572,9 +594,15 @@ internal fun SportsGameCard(
                         color = Color.White,
                         fontSize = if (showScore) 19.sp else 14.sp,
                         fontWeight = FontWeight.Bold,
+                        style = LocalTextStyle.current.copy(shadow = CardTextShadow),
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
-                    GameTeam(name = event.awayTeamName, logo = event.awayTeamBadgeUrl, modifier = Modifier.weight(1f))
+                    GameTeam(
+                        name = event.awayTeamName,
+                        logo = event.awayTeamBadgeUrl,
+                        background = lerp(awayColor, Color.Black, 0.25f),
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 Box(
                     modifier = Modifier
@@ -610,16 +638,21 @@ internal fun SportsGameCard(
     }
 }
 
+/** A dark shadow under white text on a game card: it reads on light team colors too. */
+private val CardTextShadow = Shadow(color = Color.Black.copy(alpha = 0.85f), offset = Offset(0f, 2f), blurRadius = 6f)
+
+/** One team on a game card: its logo, its name under it (bold, big enough to read, shadowed). */
 @Composable
-private fun GameTeam(name: String, logo: String?, modifier: Modifier = Modifier) {
+private fun GameTeam(name: String, logo: String?, background: Color, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        TeamLogo(url = logo, size = 50.dp)
-        Spacer(modifier = Modifier.height(6.dp))
+        TeamLogo(url = logo, size = 48.dp, background = background)
+        Spacer(modifier = Modifier.height(5.dp))
         Text(
             text = name,
             color = Color.White,
-            fontSize = 12.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
+            style = LocalTextStyle.current.copy(shadow = CardTextShadow),
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
