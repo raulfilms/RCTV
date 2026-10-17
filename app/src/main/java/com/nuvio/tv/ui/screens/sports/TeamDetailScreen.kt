@@ -652,7 +652,8 @@ private fun ScheduleTab(
                                 color = sportsTeamColor(team.color, team.id),
                                 isFavorite = team.id in uiState.favoriteTeamIds,
                                 onClick = { onOpenTeam(team) },
-                                onLongPress = null
+                                onLongPress = null,
+                                prominentName = true
                             )
                         }
                     }
@@ -850,10 +851,10 @@ private fun CompetitionChip(name: String?, logoUrl: String?) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!logoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = logoUrl,
+            SportsLogoImage(
+                url = logoUrl,
+                background = SportsLogoDarkBackground,
                 contentDescription = name,
-                contentScale = ContentScale.Fit,
                 modifier = Modifier.size(16.dp)
             )
             if (!name.isNullOrBlank()) Spacer(modifier = Modifier.width(6.dp))

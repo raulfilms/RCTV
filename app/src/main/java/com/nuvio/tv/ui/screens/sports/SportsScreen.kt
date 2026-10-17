@@ -554,7 +554,8 @@ private fun TeamTile(
         isFavorite = team.id in favoriteTeamIds,
         onClick = { onClick(team) },
         onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
-        modifier = modifier
+        modifier = modifier,
+        prominentName = true
     )
 }
 

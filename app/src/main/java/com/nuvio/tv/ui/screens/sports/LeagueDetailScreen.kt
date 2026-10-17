@@ -163,10 +163,10 @@ private fun LeagueSimpleHeader(name: String, badgeUrl: String?) {
             .padding(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.md)
     ) {
         if (!badgeUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = badgeUrl,
+            SportsLogoImage(
+                url = badgeUrl,
+                background = SportsLogoDarkBackground,
                 contentDescription = null,
-                contentScale = ContentScale.Fit,
                 modifier = Modifier.size(40.dp)
             )
             Spacer(modifier = Modifier.width(NuvioTheme.spacing.sm))
@@ -389,10 +389,10 @@ private fun StandingsGroupTable(group: SportsStandingsGroup) {
                     contentAlignment = Alignment.Center
                 ) {
                     if (!entry.team.badgeUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = entry.team.badgeUrl,
+                        SportsLogoImage(
+                            url = entry.team.badgeUrl,
+                            background = SportsLogoDarkBackground,
                             contentDescription = null,
-                            contentScale = ContentScale.Fit,
                             modifier = Modifier.size(18.dp)
                         )
                     }

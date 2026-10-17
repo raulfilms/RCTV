@@ -30,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,7 +40,6 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsGameStat
@@ -236,10 +234,10 @@ private fun GameDetailTeam(name: String, badgeUrl: String?, score: Int?, modifie
             contentAlignment = Alignment.Center
         ) {
             if (!badgeUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = badgeUrl,
+                SportsLogoImage(
+                    url = badgeUrl,
+                    background = SportsLogoDarkBackground,
                     contentDescription = null,
-                    contentScale = ContentScale.Fit,
                     modifier = Modifier.size(48.dp)
                 )
             } else {

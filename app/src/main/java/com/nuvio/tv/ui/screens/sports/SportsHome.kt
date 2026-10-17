@@ -376,6 +376,7 @@ private fun SportsHeroBackdrop(event: SportsEvent) {
         TeamLogo(
             url = event.homeTeamBadgeUrl,
             size = 250.dp,
+            background = lerp(homeColor, Color.Black, 0.15f),
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .offset(x = 40.dp)
@@ -384,6 +385,7 @@ private fun SportsHeroBackdrop(event: SportsEvent) {
         TeamLogo(
             url = event.awayTeamBadgeUrl,
             size = 250.dp,
+            background = lerp(awayColor, Color.Black, 0.15f),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .offset(x = (-40).dp)
@@ -422,13 +424,18 @@ private fun SportsHeroBackdrop(event: SportsEvent) {
 }
 
 @Composable
-internal fun TeamLogo(url: String?, size: Dp, modifier: Modifier = Modifier) {
+internal fun TeamLogo(
+    url: String?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    background: Color = SportsLogoDarkBackground
+) {
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
         if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = url,
+            SportsLogoImage(
+                url = url,
+                background = background,
                 contentDescription = null,
-                contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -626,7 +633,11 @@ internal fun SportsLogoTile(
     isFavorite: Boolean,
     onClick: () -> Unit,
     onLongPress: (() -> Unit)?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Its name big and white (the Teams page), instead of small and gray. */
+    prominentName: Boolean = false,
+    /** A gray line under its name ("MLB"). */
+    subtitle: String? = null
 ) {
     Column(modifier = Modifier.width(SportsTileWidth)) {
         HomeCard(
@@ -646,10 +657,10 @@ internal fun SportsLogoTile(
                     )
             ) {
                 if (!logoUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = logoUrl,
+                    SportsLogoImage(
+                        url = logoUrl,
+                        background = color,
                         contentDescription = name,
-                        contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .align(Alignment.Center)
                             .fillMaxHeight(0.64f)
@@ -690,13 +701,33 @@ internal fun SportsLogoTile(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = name,
-            color = AppleTvColors.LabelSecondary,
-            style = AppleTvType.Caption1,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        if (prominentName) {
+            Text(
+                text = name,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        } else {
+            Text(
+                text = name,
+                color = AppleTvColors.LabelSecondary,
+                style = AppleTvType.Caption1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                text = subtitle,
+                color = AppleTvColors.LabelSecondary,
+                style = AppleTvType.Caption1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

@@ -2,7 +2,6 @@
 
 package com.nuvio.tv.ui.screens.sports
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,13 +24,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.SportsBasketball
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,31 +45,25 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.SportsTeam
 import com.nuvio.tv.ui.components.AppleTvColors
 import com.nuvio.tv.ui.components.AppleTvSpacing
-import com.nuvio.tv.ui.util.longPressable
 
-/** Team cards across the page. */
-private const val TEAM_COLUMNS = 5
+/** Team tiles across the page: as many as the Leagues page shows. */
+private const val TEAM_COLUMNS = 4
 private val PageSideMargin: Dp = AppleTvSpacing.SafeX
 private val FavoriteStar = Color(0xFFFFC53D)
 
@@ -109,8 +97,8 @@ fun TeamsBrowseScreen(
             columns = GridCells.Fixed(TEAM_COLUMNS),
             state = gridState,
             contentPadding = PaddingValues(start = PageSideMargin, end = PageSideMargin, bottom = 56.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.GridGap),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
@@ -137,10 +125,10 @@ fun TeamsBrowseScreen(
                 item(key = "my_teams_hint") { FollowTeamsHintCard() }
             } else {
                 items(uiState.favoriteTeams, key = { "fav_${it.id}" }) { team ->
-                    TeamBrowseCard(
+                    TeamBrowseTile(
                         team = team,
                         isFavorite = true,
-                        subtitle = listOfNotNull(team.shortName?.takeIf { it != team.name }, team.leagueName).joinToString(" • "),
+                        subtitle = team.leagueName,
                         onClick = { onTeamClick(team) },
                         onLongPress = { longPressedTeam = team }
                     )
@@ -164,10 +152,10 @@ fun TeamsBrowseScreen(
                     TeamsSectionTitle(text = listOf(section.emoji, section.label).filter { it.isNotBlank() }.joinToString(" "))
                 }
                 items(section.teams, key = { "${section.league.id}_${it.id}" }) { team ->
-                    TeamBrowseCard(
+                    TeamBrowseTile(
                         team = team,
                         isFavorite = team.id in uiState.favoriteTeamIds,
-                        subtitle = listOfNotNull(team.shortName?.takeIf { it != team.name }, section.label).joinToString(" • "),
+                        subtitle = null,
                         onClick = { onTeamClick(team) },
                         onLongPress = { longPressedTeam = team }
                     )
@@ -327,10 +315,10 @@ private fun CollageTile(item: SportsCollageItem) {
         contentAlignment = Alignment.Center
     ) {
         if (!item.logoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = item.logoUrl,
+            SportsLogoImage(
+                url = item.logoUrl,
+                background = item.color,
                 contentDescription = item.name,
-                contentScale = ContentScale.Fit,
                 modifier = Modifier.size(70.dp)
             )
         }
@@ -405,12 +393,12 @@ private fun TeamsSectionTitle(text: String, trailingStar: Boolean = false) {
     }
 }
 
-/** My Teams with no team yet. */
+/** My Teams with no team yet: a tile the size of the teams'. */
 @Composable
 private fun FollowTeamsHintCard() {
     Box(
         modifier = Modifier
-            .aspectRatio(TEAM_CARD_RATIO)
+            .size(width = SportsTileWidth, height = SportsTileHeight)
             .clip(RoundedCornerShape(12.dp))
             .background(AppleTvColors.Contrast),
         contentAlignment = Alignment.Center
@@ -429,129 +417,28 @@ private fun FollowTeamsHintCard() {
     }
 }
 
-private const val TEAM_CARD_RATIO = 1.42f
-
 /**
- * A team: its color, its logo at the top left and again large and faded on the right, a star when
- * it's in My Teams, a heart at the top right, its name and league at the bottom. White ring when
- * focused.
+ * A team, like the Leagues page's tiles: 16:9 in its color with its logo big in the middle (white
+ * when it's too dark to see), a star when it's in My Teams, and its name under it, big and white.
  */
 @Composable
-private fun TeamBrowseCard(
+private fun TeamBrowseTile(
     team: SportsTeam,
     isFavorite: Boolean,
-    subtitle: String,
+    subtitle: String?,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val color = sportsTeamColor(team.color, team.id)
-    val shape = RoundedCornerShape(12.dp)
-    Surface(
+    SportsLogoTile(
+        name = team.name,
+        logoUrl = team.badgeUrl,
+        color = sportsTeamColor(team.color, team.id),
+        isFavorite = isFavorite,
         onClick = onClick,
-        modifier = modifier
-            .aspectRatio(TEAM_CARD_RATIO)
-            .longPressable(onLongPress),
-        shape = ClickableSurfaceDefaults.shape(shape = shape),
-        colors = ClickableSurfaceDefaults.colors(containerColor = color, focusedContainerColor = color),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), shape = shape),
-            focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = shape)
-        ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow(elevationColor = Color.Black.copy(alpha = 0.5f), elevation = 18.dp))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.linearGradient(listOf(lerp(color, Color.White, 0.1f), lerp(color, Color.Black, 0.5f)))
-                )
-        ) {
-            if (!team.badgeUrl.isNullOrBlank()) {
-                // Large and faded on the right.
-                AsyncImage(
-                    model = team.badgeUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = 18.dp)
-                        .fillMaxHeight(0.9f)
-                        .aspectRatio(1f)
-                        .alpha(0.22f)
-                )
-                AsyncImage(
-                    model = team.badgeUrl,
-                    contentDescription = team.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 12.dp, top = if (isFavorite) 24.dp else 12.dp)
-                        .size(40.dp)
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.SportsBasketball,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 12.dp, top = if (isFavorite) 24.dp else 12.dp)
-                        .size(34.dp)
-                )
-            }
-            if (isFavorite) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = null,
-                    tint = FavoriteStar,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 8.dp, top = 6.dp)
-                        .size(14.dp)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(7.dp)
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.3f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (isFavorite) Color(0xFFFF4D5E) else Color.White,
-                    modifier = Modifier.size(13.dp)
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 10.dp, bottom = 10.dp)
-            ) {
-                Text(
-                    text = team.name,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        color = Color.White.copy(alpha = 0.72f),
-                        fontSize = 10.5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
+        onLongPress = onLongPress,
+        modifier = modifier,
+        prominentName = true,
+        subtitle = subtitle
+    )
 }
