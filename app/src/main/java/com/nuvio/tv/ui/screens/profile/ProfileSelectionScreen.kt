@@ -1774,12 +1774,19 @@ private fun EditProfileOverlay(
     onCopySettings: () -> Unit,
     onDelete: (() -> Unit)?
 ) {
-    BackHandler(onBack = onDismiss)
+    // RCTV's avatar gallery ("Choose Avatar"), open over the editor.
+    var showAvatarGallery by remember { mutableStateOf(false) }
+    val galleryButtonRequester = remember { FocusRequester() }
+    BackHandler(onBack = { if (showAvatarGallery) showAvatarGallery = false else onDismiss() })
 
     var profileName by remember { mutableStateOf(profile.name) }
     var selectedColorHex by remember { mutableStateOf(profile.avatarColorHex) }
     var selectedAvatarId by remember(profile.id, profile.avatarId) {
         mutableStateOf(profile.avatarId)
+    }
+    // A picture by its address: one of RCTV's avatars (or a custom one the profile had).
+    var selectedAvatarUrl by remember(profile.id, profile.avatarUrl) {
+        mutableStateOf(profile.avatarUrl?.takeIf { it.isNotBlank() })
     }
     var selectedBackgroundId by remember(profile.id, profile.profileBackgroundId) {
         mutableStateOf(profile.profileBackgroundId)
@@ -1792,13 +1799,9 @@ private fun EditProfileOverlay(
     val selectedAvatar = remember(avatarCatalog, selectedAvatarId) {
         avatarCatalog.find { it.id == selectedAvatarId }
     }
-    val hasChangedAvatarSelection = selectedAvatarId != profile.avatarId
-    val previewAvatarImageUrl = when {
-        selectedAvatar != null -> selectedAvatar.imageUrl
-        !hasChangedAvatarSelection -> profile.avatarUrl?.takeIf { it.isNotBlank() }
-            ?: avatarUrlResolver(profile.avatarId)
-        else -> null
-    }
+    val previewAvatarImageUrl = selectedAvatarUrl
+        ?: selectedAvatar?.imageUrl
+        ?: selectedAvatarId?.let { avatarUrlResolver(it) }
     val saveFocusRequester = remember { FocusRequester() }
     val nameFocusRequester = remember { FocusRequester() }
     val profileColor = parseProfileColor(selectedColorHex)
@@ -1818,8 +1821,8 @@ private fun EditProfileOverlay(
             profile.copy(
                 name = profileName.trim(),
                 avatarColorHex = selectedColorHex,
-                avatarId = selectedAvatarId,
-                avatarUrl = if (hasChangedAvatarSelection) null else profile.avatarUrl,
+                avatarId = if (selectedAvatarUrl != null) null else selectedAvatarId,
+                avatarUrl = selectedAvatarUrl,
                 profileBackgroundId = selectedBackgroundId,
                 profileBackgroundUrl = selectedBackgroundUrl
             )
@@ -1844,7 +1847,7 @@ private fun EditProfileOverlay(
                 if (native.action == AndroidKeyEvent.ACTION_UP &&
                     native.keyCode == AndroidKeyEvent.KEYCODE_BACK
                 ) {
-                    onDismiss()
+                    if (showAvatarGallery) showAvatarGallery = false else onDismiss()
                     true
                 } else {
                     false
@@ -1856,6 +1859,8 @@ private fun EditProfileOverlay(
                 onClick = {}
             )
     ) {
+        // While the gallery is open, only it shows (and takes the focus).
+        if (!showAvatarGallery) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -2018,6 +2023,7 @@ private fun EditProfileOverlay(
                                             selectedColorHex = hex
                                             // A color shows instead of the avatar picture.
                                             selectedAvatarId = null
+                                            selectedAvatarUrl = null
                                         }
                                     )
                                 }
@@ -2027,23 +2033,32 @@ private fun EditProfileOverlay(
                             EditSectionLabel(stringResource(R.string.profile_choose_avatar))
                             Spacer(modifier = Modifier.height(10.dp))
 
+                            // RCTV's avatars: the gallery opens over the editor ("Choose Avatar").
+                            AvatarGalleryButton(
+                                previewUrls = avatarPreviewUrls(5),
+                                subtitle = stringResource(R.string.avatar_gallery_count, avatarCount),
+                                modifier = Modifier.focusRequester(galleryButtonRequester),
+                                onClick = { showAvatarGallery = true }
+                            )
                             if (avatarCatalog.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(16.dp))
                                 AvatarPickerGrid(
                                     avatars = avatarCatalog,
-                                    selectedAvatarId = selectedAvatarId,
+                                    selectedAvatarId = selectedAvatarId.takeIf { selectedAvatarUrl == null },
                                     onAvatarSelected = { avatar ->
-                                        if (selectedAvatarId == avatar.id) {
+                                        if (selectedAvatarUrl == null && selectedAvatarId == avatar.id) {
                                             selectedAvatarId = null
                                             selectedColorHex = profile.avatarColorHex
                                         } else {
                                             selectedAvatarId = avatar.id
+                                            selectedAvatarUrl = null
                                             avatar.bgColor?.let { selectedColorHex = it }
                                         }
                                     },
                                     onAvatarFocused = { avatar ->
                                         focusedAvatarName = avatar?.displayName
                                     },
-                                    modifier = Modifier.heightIn(max = 230.dp)
+                                    modifier = Modifier.heightIn(max = 170.dp)
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
@@ -2052,45 +2067,6 @@ private fun EditProfileOverlay(
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                            } else {
-                                // No pictures to choose from yet: the profile shows its color and initial.
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(ProfileScreenColors.Panel)
-                                        .border(1.dp, ProfileScreenColors.PanelBorder, RoundedCornerShape(16.dp))
-                                        .padding(horizontal = 22.dp, vertical = 20.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(modifier = Modifier.width(116.dp).height(48.dp)) {
-                                        listOf("#8E24AA", "#00ACC1", "#FB8C00").forEachIndexed { index, hex ->
-                                            ProfileAvatarCircle(
-                                                name = profileName.ifEmpty { "?" },
-                                                colorHex = hex,
-                                                size = 48.dp,
-                                                modifier = Modifier
-                                                    .offset(x = (index * 34).dp)
-                                                    .border(2.dp, ProfileScreenColors.Background, CircleShape)
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(20.dp))
-                                    Column {
-                                        Text(
-                                            text = stringResource(R.string.profile_edit_avatars_soon_title),
-                                            color = Color.White,
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = stringResource(R.string.profile_edit_avatars_soon),
-                                            color = ProfileScreenColors.Label,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                }
                             }
                         }
 
@@ -2143,6 +2119,68 @@ private fun EditProfileOverlay(
                 }
             }
         }
+        }
+
+        // "Choose Avatar": every RCTV avatar in rows, over the editor.
+        if (showAvatarGallery) {
+            AvatarGallery(
+                profileName = profileName.ifBlank { profile.name },
+                selectedUrl = selectedAvatarUrl,
+                onSelect = { url ->
+                    selectedAvatarUrl = url
+                    selectedAvatarId = null
+                    showAvatarGallery = false
+                },
+                onDismiss = { showAvatarGallery = false }
+            )
+        }
+    }
+
+    // Back from the gallery: on its button again.
+    var galleryWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(showAvatarGallery) {
+        if (showAvatarGallery) {
+            galleryWasOpen = true
+        } else if (galleryWasOpen) {
+            galleryWasOpen = false
+            repeat(8) {
+                withFrameNanos { }
+                if (runCatching { galleryButtonRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            }
+        }
+    }
+}
+
+/** The editor's way into "Choose Avatar": a few avatars, its name and how many there are; white when focused. */
+@Composable
+private fun AvatarGalleryButton(
+    previewUrls: List<String>,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val background by animateColorAsState(
+        if (isFocused) Color.White else ProfileScreenColors.Panel,
+        tween(120),
+        label = "avatarGalleryButton"
+    )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(background)
+            .border(1.dp, if (isFocused) Color.White else ProfileScreenColors.PanelBorder, RoundedCornerShape(16.dp))
+            .onFocusChanged { isFocused = it.isFocused }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+    ) {
+        AvatarGalleryButtonContent(
+            previewUrls = previewUrls,
+            title = stringResource(R.string.avatar_gallery_open),
+            subtitle = subtitle,
+            titleColor = if (isFocused) Color.Black else Color.White
+        )
     }
 }
 

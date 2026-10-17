@@ -4121,4 +4121,20 @@
     <string name="detail_airings_loading">Looking in the guide…</string>
     <string name="detail_airings_empty">Not on your channels right now or in the next day.</string>
     <string name="detail_airing_on_now">On now · until %1$s</string>
+    <string name="avatar_category_featured">Featured</string>
+    <string name="avatar_category_characters">Characters</string>
+    <string name="avatar_category_cartoons">Cartoons</string>
+    <string name="avatar_category_sketches">Sketches</string>
+    <string name="avatar_category_cats">Cats</string>
+    <string name="avatar_category_dogs">Dogs</string>
+    <string name="avatar_category_monsters">Monsters</string>
+    <string name="avatar_category_robots">Robots</string>
+    <string name="avatar_category_emoji">Emoji</string>
+    <string name="avatar_category_pixel">Pixel &amp; Voxel</string>
+    <string name="avatar_category_space">Space</string>
+    <string name="avatar_gallery_for">For %1$s</string>
+    <string name="avatar_gallery_open">Browse all avatars</string>
+    <string name="avatar_gallery_count">%1$d avatars · characters, pets, robots and more</string>
+    <string name="licenses_attributions_avatars_title">Profile avatars (DiceBear)</string>
+    <string name="licenses_attributions_avatars_body">RCTV\'s profile avatars are made with DiceBear (MIT). Styles in the public domain (CC0 1.0): Lorelei and Notionists (remixes of work by Lisa Wischofsky and Zoish), Open Peeps (Pablo Stanley), Cats, Dogs, Critters, Clay, Moods, Thumbs, Pixel Art, Voxel Art, Voxel Bot and Planets (DiceBear). Free for personal and commercial use: Avataaars and Bottts by Pablo Stanley. Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), remixed by DiceBear and drawn as avatars by RCTV: Adventurer by Lisa Wischofsky, Big Smile by Ashley Seo, Fun Emoji by Davis Uche, Micah by Micah Lanier, Miniavs by Webpixels, Personas by Draftbit and ToonHead by Johan Melin.</string>
 </resources>
