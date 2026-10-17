@@ -1469,6 +1469,14 @@ private fun LegacySidebarScaffold(
 
     BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Open) {
         if (longPressBackHeld.value) return@BackHandler
+        // Sports: Back opened the menu; Back again goes Home (like choosing Home in the menu).
+        if (currentRoute in backToHomeRoutes) {
+            onNavigate(Screen.Home.route)
+            navigateToDrawerRoute(navController = navController, currentRoute = currentRoute, targetRoute = Screen.Home.route)
+            pendingSidebarFocusRequest = false
+            drawerState.setValue(DrawerValue.Closed)
+            return@BackHandler
+        }
         onExitApp()
     }
 
@@ -1918,6 +1926,15 @@ private fun ModernSidebarScaffold(
 
     BackHandler(enabled = currentRoute in rootRoutes && isSidebarExpanded && !sidebarCollapsePending) {
         if (longPressBackHeld.value) return@BackHandler
+        // Sports: Back opened the menu; Back again goes Home (like choosing Home in the menu).
+        if (currentRoute in backToHomeRoutes) {
+            onNavigate(Screen.Home.route)
+            navigateToDrawerRoute(navController = navController, currentRoute = currentRoute, targetRoute = Screen.Home.route)
+            pendingSidebarFocusRequest = false
+            isSidebarExpanded = false
+            sidebarCollapsePending = false
+            return@BackHandler
+        }
         onExitApp()
     }
 
@@ -2376,6 +2393,12 @@ private fun CollapsedSidebarPill(
         }
     }
 }
+
+/**
+ * Menu sections where Back, once the menu is open, goes Home instead of leaving the app: Back on
+ * Sports opens the menu, Back again returns Home.
+ */
+private val backToHomeRoutes: Set<String> = setOf(Screen.Sports.route)
 
 private fun navigateToDrawerRoute(
     navController: NavHostController,
