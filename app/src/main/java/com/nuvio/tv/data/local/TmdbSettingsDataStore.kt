@@ -47,11 +47,13 @@ class TmdbSettingsDataStore @Inject constructor(
     private val useMoreLikeThisKey = booleanPreferencesKey("tmdb_use_more_like_this")
     private val useCollectionsKey = booleanPreferencesKey("tmdb_use_collections")
 
+    // RCTV: TMDB is on from the start, with everything it adds (artwork, logos and backdrops, details,
+    // Modern Home...); nobody has to turn it on in Settings > Integrations > TMDB.
     val settings: StateFlow<TmdbSettings> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs ->
             TmdbSettings(
-                enabled = prefs[enabledKey] ?: false,
-                modernHomeEnabled = prefs[modernHomeEnabledKey] ?: false,
+                enabled = prefs[enabledKey] ?: true,
+                modernHomeEnabled = prefs[modernHomeEnabledKey] ?: true,
                 enrichContinueWatching = prefs[enrichContinueWatchingKey] ?: true,
                 language = prefs[languageKey] ?: "en",
                 useArtwork = prefs[useArtworkKey] ?: true,
@@ -66,7 +68,7 @@ class TmdbSettingsDataStore @Inject constructor(
                 useCollections = prefs[useCollectionsKey] ?: true
             )
         }
-    }.stateIn(scope, SharingStarted.Eagerly, TmdbSettings())
+    }.stateIn(scope, SharingStarted.Eagerly, TmdbSettings(enabled = true, modernHomeEnabled = true))
 
     suspend fun setEnabled(enabled: Boolean) {
         store().edit { it[enabledKey] = enabled }

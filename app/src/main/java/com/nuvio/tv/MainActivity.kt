@@ -168,6 +168,7 @@ import com.nuvio.tv.domain.model.CardDepthStyle
 import com.nuvio.tv.domain.model.CosmeticEntitlement
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.ExperienceMode
+import com.nuvio.tv.domain.model.HomeLayout
 import com.nuvio.tv.domain.model.MemberAccess
 import com.nuvio.tv.domain.model.ProfileBackgroundSelection
 import com.nuvio.tv.domain.model.resolveProfileBackgroundSelection
@@ -837,9 +838,19 @@ open class MainActivity : ComponentActivity() {
                     val layoutChosen = mainUiPrefs.hasChosenLayout
                     val prefsLoading = layoutChosen == null || !mainUiPrefs.experienceModeLoaded || installedAddons == null
                     if (!prefsLoading) {
-                    val effectiveExperienceMode = mainUiPrefs.experienceMode
-                        ?: if (layoutChosen) ExperienceMode.ADVANCED else null
-                    val needsExperienceSelection = effectiveExperienceMode == null
+                    // RCTV: no "Essential or Advanced" page and no layout page after the first page
+                    // (Continue as Guest): the app opens straight on Home, in Advanced mode with the
+                    // Apple TV layout. Both are saved the first time, so Settings shows them.
+                    val effectiveExperienceMode = mainUiPrefs.experienceMode ?: ExperienceMode.ADVANCED
+                    val needsDefaultMode = mainUiPrefs.experienceMode == null
+                    LaunchedEffect(needsDefaultMode, layoutChosen) {
+                        if (needsDefaultMode) {
+                            runCatching { experienceModeDataStore.setMode(ExperienceMode.ADVANCED) }
+                        }
+                        if (!layoutChosen) {
+                            runCatching { layoutPreferenceDataStore.setLayout(HomeLayout.CLASSIC) }
+                        }
+                    }
                     val needsEssentialAddonSetup =
                         effectiveExperienceMode == ExperienceMode.ESSENTIAL &&
                             installedAddons.orEmpty().isEmpty() &&
@@ -875,11 +886,7 @@ open class MainActivity : ComponentActivity() {
                         mainUiPrefs.modernSidebarBlurPref && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
                     val hideBuiltInHeadersForFloatingPill = modernSidebarEnabled && !sidebarCollapsed
 
-                    val startDestination = when {
-                        needsExperienceSelection -> Screen.ExperienceModeSelection.route
-                        layoutChosen -> Screen.Home.route
-                        else -> Screen.LayoutSelection.route
-                    }
+                    val startDestination = Screen.Home.route
                     val navController = rememberNavController()
                     var optimisticRoute by remember { mutableStateOf<String?>(null) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()

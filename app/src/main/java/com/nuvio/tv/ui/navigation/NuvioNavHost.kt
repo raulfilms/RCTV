@@ -23,10 +23,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.nuvio.tv.core.build.AppFeaturePolicy
-import com.nuvio.tv.domain.model.ExperienceMode
 import com.nuvio.tv.ui.screens.CatalogSeeAllScreen
-import com.nuvio.tv.ui.screens.ExperienceModeSelectionScreen
-import com.nuvio.tv.ui.screens.LayoutSelectionScreen
 import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.home.HomeViewModel
@@ -203,31 +200,6 @@ private fun PlaybackNavHost(
             }
         }
     ) {
-        composable(Screen.ExperienceModeSelection.route) {
-            ExperienceModeSelectionScreen(
-                onContinue = { mode ->
-                    val destination = if (mode == ExperienceMode.ESSENTIAL) {
-                        Screen.Home.route
-                    } else {
-                        Screen.LayoutSelection.route
-                    }
-                    navController.navigate(destination) {
-                        popUpTo(Screen.ExperienceModeSelection.route) { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable(Screen.LayoutSelection.route) {
-            LayoutSelectionScreen(
-                onContinue = {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.LayoutSelection.route) { inclusive = true }
-                    }
-                }
-            )
-        }
-
         composable(Screen.Home.route) { backStackEntry ->
             HomeRouteContent(
                 navController = navController,
