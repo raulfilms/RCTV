@@ -89,13 +89,30 @@ secreto de GitHub `LOCAL_PROPERTIES_BASE64`, igual que la de TMDB, **nunca en el
 
 ## 6. Página de cada equipo
 
-**Pendiente:** Raúl va a mandar el layout de la página de cada equipo. Cuando llegue, se pone aquí y
-se construye siguiendo las reglas de este documento (señal del IPTV/EPG, Watch Live y Watch Replay).
+Archivos: `ui/screens/sports/TeamDetailScreen.kt` y `TeamDetailViewModel.kt` (ruta `sports_team/{leagueId}/{teamId}`).
+Es la misma página para todos los equipos de todas las ligas. Se abre al escoger un equipo en Sports
+(Teams, My Teams), en la página de Teams, en la pestaña Teams de una liga y en la Library.
+
+- **Header:** el logo del equipo; arriba en gris la ciudad o el estado ("Buffalo", "New Orleans",
+  "Green Bay") y abajo en blanco el nombre ("Bills", "Saints", "Packers"), en NFL, NBA, MLB y NHL.
+  En **soccer** el nombre completo va en blanco ("Real Madrid", "Barcelona"), sin línea gris.
+- **Datos:** Team Record, Conference Rank y Division Rank (soccer: récord, posición en la liga y puntos).
+- **Botón:** solo **Add to Library**. Pone el equipo en My Teams (equipos favoritos) y en la Library.
+- **Foto del jugador** a la derecha: la estrella del equipo (el que más juegos lideró), con las fotos
+  recortadas de ESPN (`a.espncdn.com/i/headshots/...`).
+- **Pestañas:** Schedule, Roster, Stats, News, Videos, History.
+- **Schedule:** abre en el juego (o la semana) de ahora. Hacia abajo, lo que viene; hacia arriba, lo
+  que ya pasó. NFL por semanas ("Week 5", con las semanas de descanso); las demás ligas por día. Cada
+  juego: colores de los dos equipos, logos, abreviaturas y marcador, Final / hora / canal, fotos de
+  jugadores en las esquinas y Recap / Watch Live / Details. Abajo, todos los equipos de la liga.
+- **Roster:** los jugadores con foto, número y posición. **Stats:** las estadísticas de la temporada.
+  **News:** las noticias del equipo en ESPN. **History:** el resumen del equipo en Wikipedia y su estadio.
+- **Videos:** pendiente; ahí irán los highlights y el Watch Replay (punto 5).
 
 ## 7. Orden de trabajo (paso a paso)
 
 1. Este documento.
-2. Layout de la página de cada equipo (Raúl lo manda).
+2. Página de cada equipo (hecha, punto 6).
 3. Conectar los juegos al IPTV/EPG (punto 3).
 4. Watch Live con la señal del IPTV.
 5. Watch Replay con los highlights de YouTube (punto 5).
