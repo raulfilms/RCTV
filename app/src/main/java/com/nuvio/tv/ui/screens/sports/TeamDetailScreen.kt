@@ -3,6 +3,7 @@
 package com.nuvio.tv.ui.screens.sports
 
 import android.content.Intent
+import android.view.KeyEvent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -64,6 +65,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -196,6 +198,11 @@ fun TeamDetailScreen(
                         onShowGame = viewModel::loadGamePlayers,
                         onOpenGame = onOpenGame,
                         onLongPressGame = { optionsEvent = it },
+                        // Left / Right on a game: up to the tabs (Left: Schedule; Right: the next tab, Roster).
+                        onSideFromGame = { toRight ->
+                            val tab = if (toRight) TeamPageTab.ROSTER else TeamPageTab.SCHEDULE
+                            runCatching { tabRequesters.getValue(tab).requestFocus() }
+                        },
                         onOpenTeam = onOpenTeam
                     )
                     TeamPageTab.ROSTER -> RosterTab(uiState = uiState, teamColor = teamColor)
@@ -571,6 +578,7 @@ private fun ScheduleTab(
     onShowGame: (SportsTeamGame) -> Unit,
     onOpenGame: (SportsEvent) -> Unit,
     onLongPressGame: (SportsEvent) -> Unit,
+    onSideFromGame: (toRight: Boolean) -> Unit,
     onOpenTeam: (SportsTeam) -> Unit
 ) {
     if (uiState.isLoadingSchedule) {
@@ -607,6 +615,21 @@ private fun ScheduleTab(
                             modifier = Modifier
                                 .focusRequester(requesterFor(game.event.id))
                                 .onFocusChanged { if (it.isFocused) onGameFocused(game.event.id) }
+                                .onPreviewKeyEvent { event ->
+                                    val native = event.nativeKeyEvent
+                                    if (native.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                                    when (native.keyCode) {
+                                        KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                            onSideFromGame(false)
+                                            true
+                                        }
+                                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                            onSideFromGame(true)
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
                         )
                     }
                 }
