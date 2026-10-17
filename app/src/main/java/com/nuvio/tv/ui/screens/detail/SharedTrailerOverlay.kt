@@ -62,7 +62,9 @@ fun SharedTrailerOverlay(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    /** The line under the title (default: "Press back to exit trailer"). */
+    hint: String? = null
 ) {
     var isPaused by remember { mutableStateOf(false) }
     var seekOverlayVisible by remember { mutableStateOf(false) }
@@ -202,7 +204,7 @@ fun SharedTrailerOverlay(
                     color = Color.White
                 )
                 Text(
-                    text = stringResource(R.string.hero_press_back_trailer),
+                    text = hint ?: stringResource(R.string.hero_press_back_trailer),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.82f)
                 )

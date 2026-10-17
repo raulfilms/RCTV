@@ -106,7 +106,7 @@ internal object SportsGameChannels {
     }
 
     /** "Man Utd" and "Manchester United" are one name. */
-    private fun canonical(text: String): String = (" $text ")
+    internal fun canonical(text: String): String = (" $text ")
         .replace(" man utd ", " manchester united ")
         .replace(" man united ", " manchester united ")
         .replace(" man city ", " manchester city ")

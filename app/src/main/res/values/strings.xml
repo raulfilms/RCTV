@@ -4110,6 +4110,9 @@
     <string name="sports_team_all_teams">All %1$s Teams</string>
     <string name="sports_finding_game_channel">Finding the game on your channels…</string>
     <string name="sports_game_not_on_channels">This game isn\'t on any of your channels right now</string>
+    <string name="game_detail_watch_recap">Watch Recap</string>
+    <string name="game_detail_recap_not_found">Couldn\'t find this game\'s highlights</string>
+    <string name="game_detail_recap_back_hint">Game highlights • Press Back to return</string>
     <string name="sports_team_no_games">No games scheduled yet.</string>
     <string name="sports_team_roster_empty">The roster isn\'t available right now.</string>
     <string name="sports_team_stats_empty">Stats aren\'t available yet.</string>

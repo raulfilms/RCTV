@@ -20,12 +20,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SportsBasketball
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +63,23 @@ fun GameDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val event = viewModel.event
+    val isOver = viewModel.isOver
+    val recapRequester = remember { FocusRequester() }
+    // A game that's over opens on Watch Recap.
+    LaunchedEffect(isOver) { if (isOver) requestFocusSoon(recapRequester) }
+
+    uiState.recap?.let { recap ->
+        com.nuvio.tv.ui.screens.detail.SharedTrailerOverlay(
+            title = recap.title.ifBlank { "${event.awayTeamName} vs ${event.homeTeamName}" },
+            trailerUrl = recap.videoUrl,
+            trailerAudioUrl = recap.audioUrl,
+            isLoading = recap.isLoading,
+            errorMessage = if (recap.notFound) stringResource(R.string.game_detail_recap_not_found) else null,
+            onDismiss = viewModel::closeRecap,
+            onRetry = viewModel::watchRecap,
+            hint = stringResource(R.string.game_detail_recap_back_hint)
+        )
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -62,7 +89,17 @@ fun GameDetailScreen(
         item(key = "header") {
             GameDetailHeader(
                 event = event,
-                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg),
+                recapButton = if (isOver) {
+                    {
+                        WatchRecapButton(
+                            onClick = viewModel::watchRecap,
+                            modifier = Modifier.focusRequester(recapRequester)
+                        )
+                    }
+                } else {
+                    null
+                }
             )
         }
 
@@ -164,7 +201,12 @@ fun GameDetailScreen(
 }
 
 @Composable
-private fun GameDetailHeader(event: com.nuvio.tv.domain.model.SportsEvent, modifier: Modifier = Modifier) {
+private fun GameDetailHeader(
+    event: com.nuvio.tv.domain.model.SportsEvent,
+    modifier: Modifier = Modifier,
+    /** Watch Recap, big under the score (a game that's over). */
+    recapButton: (@Composable () -> Unit)? = null
+) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -220,6 +262,48 @@ private fun GameDetailHeader(event: com.nuvio.tv.domain.model.SportsEvent, modif
                 textAlign = TextAlign.Center
             )
         }
+        if (recapButton != null) {
+            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { recapButton() }
+        }
+    }
+}
+
+/** YouTube's red. */
+private val RecapRed = Color(0xFFFF0033)
+
+/** "Watch Recap": big and red like YouTube's; the game's highlights. */
+@Composable
+private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(52.dp),
+        shape = ButtonDefaults.shape(shape),
+        colors = ButtonDefaults.colors(
+            containerColor = RecapRed,
+            contentColor = Color.White,
+            focusedContainerColor = RecapRed,
+            focusedContentColor = Color.White
+        ),
+        border = ButtonDefaults.border(
+            focusedBorder = androidx.tv.material3.Border(
+                border = androidx.compose.foundation.BorderStroke(3.dp, Color.White),
+                shape = shape
+            )
+        ),
+        scale = ButtonDefaults.scale(focusedScale = 1.08f),
+        contentPadding = PaddingValues(horizontal = 28.dp)
+    ) {
+        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(26.dp))
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = stringResource(R.string.game_detail_watch_recap).uppercase(),
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            letterSpacing = 0.5.sp,
+            maxLines = 1
+        )
     }
 }
 
@@ -298,13 +382,22 @@ private fun GameActionButton(label: String, icon: androidx.compose.ui.graphics.v
     }
 }
 
+/**
+ * One stat, both teams' values at the sides. It takes focus (lighter when focused), so Down goes
+ * through the comparison and the page scrolls with it.
+ */
 @Composable
 private fun GameStatRow(stat: SportsGameStat, modifier: Modifier = Modifier) {
+    var focused by remember { mutableStateOf(false) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = NuvioTheme.spacing.xs)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .padding(horizontal = 12.dp, vertical = NuvioTheme.spacing.xs)
     ) {
         Text(
             text = stat.homeValue,

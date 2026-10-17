@@ -529,9 +529,35 @@ class EspnSportsClient @Inject constructor(
      * `boxscore.teams` in their summary at all, so this simply returns an empty list for those rather
      * than failing - the game detail screen treats an empty list as "stats aren't available".
      */
-    fun fetchGameStats(sportPath: String, leaguePath: String, eventId: String): List<SportsGameStat> {
+    fun fetchGameStats(sportPath: String, leaguePath: String, eventId: String): List<SportsGameStat> =
+        fetchGameSummary(sportPath, leaguePath, eventId).stats
+
+    /** A game's page data: the team-vs-team stats, and the teams' names (to find its highlights). */
+    data class GameSummary(
+        val stats: List<SportsGameStat>,
+        val homeTeamAliases: List<String>,
+        val awayTeamAliases: List<String>
+    )
+
+    fun fetchGameSummary(sportPath: String, leaguePath: String, eventId: String): GameSummary {
         val url = "$BASE_URL/$sportPath/$leaguePath/summary?event=$eventId"
         val json = JSONObject(get(url))
+        var homeAliases = emptyList<String>()
+        var awayAliases = emptyList<String>()
+        val competitors = json.optJSONObject("header")?.optJSONArray("competitions")?.optJSONObject(0)?.optJSONArray("competitors")
+        if (competitors != null) {
+            for (i in 0 until competitors.length()) {
+                val competitor = competitors.optJSONObject(i) ?: continue
+                when (competitor.optString("homeAway")) {
+                    "home" -> homeAliases = teamAliasesOf(competitor.optJSONObject("team"))
+                    "away" -> awayAliases = teamAliasesOf(competitor.optJSONObject("team"))
+                }
+            }
+        }
+        return GameSummary(stats = gameStatsOf(json), homeTeamAliases = homeAliases, awayTeamAliases = awayAliases)
+    }
+
+    private fun gameStatsOf(json: JSONObject): List<SportsGameStat> {
         val teamsJson = json.optJSONObject("boxscore")?.optJSONArray("teams") ?: JSONArray()
         if (teamsJson.length() < 2) return emptyList()
 

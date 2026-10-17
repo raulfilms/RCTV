@@ -11,6 +11,7 @@ import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsGameStat
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,18 @@ data class GameDetailUiState(
     val isLoadingStats: Boolean = true,
     val favoriteTeamIds: Set<String> = emptySet(),
     val favoriteSportNames: Set<String> = emptySet(),
-    val isInLibrary: Boolean = false
+    val isInLibrary: Boolean = false,
+    /** The game's highlights, playing full screen (Watch Recap); null when not open. */
+    val recap: GameRecapState? = null
+)
+
+/** Watch Recap: looking for the game's highlights on YouTube, playing them, or none found. */
+data class GameRecapState(
+    val isLoading: Boolean = true,
+    val title: String = "",
+    val videoUrl: String? = null,
+    val audioUrl: String? = null,
+    val notFound: Boolean = false
 )
 
 /**
@@ -42,10 +54,20 @@ class GameDetailViewModel @Inject constructor(
     private val preferences: SportsPreferencesDataStore,
     private val libraryPreferences: LibraryPreferences,
     private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
+    private val youTubeSearch: com.nuvio.tv.data.trailer.YouTubeVideoSearch,
+    private val youTubeExtractor: com.nuvio.tv.data.trailer.InAppYouTubeExtractor,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     val event: SportsEvent = buildEvent(savedStateHandle)
+
+    /** The game is over: its page offers Watch Recap (its highlights). */
+    val isOver: Boolean get() = event.isOverAt(System.currentTimeMillis())
+
+    /** The teams' full names from the game's summary (to find its highlights). */
+    @Volatile private var homeAliases: List<String> = emptyList()
+    @Volatile private var awayAliases: List<String> = emptyList()
+    private var recapJob: kotlinx.coroutines.Job? = null
 
     private val _uiState = MutableStateFlow(GameDetailUiState())
     val uiState: StateFlow<GameDetailUiState> = _uiState.asStateFlow()
@@ -75,12 +97,52 @@ class GameDetailViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val stats = withContext(Dispatchers.IO) {
-                runCatching { client.fetchGameStats(parsed.sportPath, parsed.leaguePath, parsed.rawEventId) }
-                    .getOrDefault(emptyList())
+            val summary = withContext(Dispatchers.IO) {
+                runCatching { client.fetchGameSummary(parsed.sportPath, parsed.leaguePath, parsed.rawEventId) }.getOrNull()
             }
-            _uiState.update { it.copy(isLoadingStats = false, stats = stats) }
+            homeAliases = summary?.homeTeamAliases.orEmpty()
+            awayAliases = summary?.awayTeamAliases.orEmpty()
+            _uiState.update { it.copy(isLoadingStats = false, stats = summary?.stats.orEmpty()) }
         }
+    }
+
+    /**
+     * Watch Recap: finds the game's highlights on YouTube (both teams, "Highlights", after the game)
+     * and plays them full screen; says so when there are none.
+     */
+    fun watchRecap() {
+        if (recapJob?.isActive == true) return
+        _uiState.update { it.copy(recap = GameRecapState(isLoading = true)) }
+        recapJob = viewModelScope.launch {
+            val game = event.copy(
+                homeTeamAliases = (event.homeTeamAliases + homeAliases).distinct(),
+                awayTeamAliases = (event.awayTeamAliases + awayAliases).distinct()
+            )
+            val now = System.currentTimeMillis()
+            val found = ArrayList<com.nuvio.tv.data.trailer.YouTubeSearchResult>()
+            for (query in SportsRecapPicker.queriesFor(game)) {
+                val results = runCatching { youTubeSearch.search(query) }.getOrDefault(emptyList())
+                ensureActive() // Closed meanwhile.
+                found += SportsRecapPicker.pick(results, game, now).filter { candidate -> found.none { it.videoId == candidate.videoId } }
+                if (found.isNotEmpty()) break
+            }
+            // The likeliest first; the next one if a video can't play.
+            for (video in found.take(3)) {
+                val source = runCatching { youTubeExtractor.extractPlaybackSource(video.watchUrl) }.getOrNull()
+                ensureActive()
+                if (source == null) continue
+                _uiState.update {
+                    it.copy(recap = GameRecapState(isLoading = false, title = video.title, videoUrl = source.videoUrl, audioUrl = source.audioUrl))
+                }
+                return@launch
+            }
+            _uiState.update { it.copy(recap = GameRecapState(isLoading = false, notFound = true)) }
+        }
+    }
+
+    fun closeRecap() {
+        recapJob?.cancel()
+        _uiState.update { it.copy(recap = null) }
     }
 
     /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
