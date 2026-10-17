@@ -41,6 +41,7 @@ import com.nuvio.tv.ui.screens.sports.GameDetailScreen
 import com.nuvio.tv.ui.screens.sports.LeagueDetailScreen
 import com.nuvio.tv.ui.screens.sports.SportsFavoritesScreen
 import com.nuvio.tv.ui.screens.sports.SportsScreen
+import com.nuvio.tv.ui.screens.sports.TeamDetailScreen
 import com.nuvio.tv.ui.screens.sports.TeamsBrowseScreen
 import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
@@ -86,6 +87,18 @@ private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetai
     status = event.status.name,
     statusDetail = event.statusDetail
 )
+
+/** A team's page; null for a team without its league (it can't be looked up). */
+private fun teamDetailRoute(team: com.nuvio.tv.domain.model.SportsTeam): String? {
+    val leagueId = team.leagueId?.takeIf { it.contains(':') } ?: return null
+    return Screen.SportsTeamDetail.createRoute(
+        leagueId = leagueId,
+        teamId = team.id,
+        name = team.name,
+        badgeUrl = team.badgeUrl,
+        color = team.color
+    )
+}
 
 /** Stream route for resuming a Continue Watching card from the Disney+ page (back returns to Disney+). */
 private fun disneyContinueWatchingRoute(item: ContinueWatchingItem): String = when (item) {
@@ -1379,7 +1392,8 @@ private fun PlaybackNavHost(
                 },
                 onOpenDetail = { itemId, itemType ->
                     navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType, addonBaseUrl = ""))
-                }
+                },
+                onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } }
             )
         }
 
@@ -1389,7 +1403,7 @@ private fun PlaybackNavHost(
 
         composable(Screen.SportsTeams.route) {
             TeamsBrowseScreen(
-                onTeamClick = { /* No stream source yet; tapping a team currently just toggles nothing extra. */ }
+                onTeamClick = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } }
             )
         }
 
@@ -1403,7 +1417,31 @@ private fun PlaybackNavHost(
             )
         ) {
             LeagueDetailScreen(
-                onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) }
+                onPlayEvent = { event -> navController.navigate(gameDetailRoute(event)) },
+                onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } }
+            )
+        }
+
+        composable(
+            route = Screen.SportsTeamDetail.route,
+            arguments = listOf(
+                navArgument("leagueId") { type = NavType.StringType },
+                navArgument("teamId") { type = NavType.StringType },
+                navArgument("name") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("badgeUrl") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                navArgument("color") { type = NavType.StringType; nullable = true; defaultValue = "" }
+            )
+        ) {
+            TeamDetailScreen(
+                onOpenGame = { event -> navController.navigate(gameDetailRoute(event)) },
+                // Another team of the league: in place of this one (Back goes where this one came from).
+                onOpenTeam = { team ->
+                    teamDetailRoute(team)?.let { route ->
+                        navController.navigate(route) {
+                            popUpTo(Screen.SportsTeamDetail.route) { inclusive = true }
+                        }
+                    }
+                }
             )
         }
 

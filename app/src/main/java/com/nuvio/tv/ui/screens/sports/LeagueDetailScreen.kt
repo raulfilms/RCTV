@@ -56,6 +56,8 @@ import java.util.Locale
 fun LeagueDetailScreen(
     modifier: Modifier = Modifier,
     onPlayEvent: (SportsEvent) -> Unit = {},
+    /** A team's page. */
+    onOpenTeam: (com.nuvio.tv.domain.model.SportsTeam) -> Unit = {},
     viewModel: LeagueDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -112,6 +114,7 @@ fun LeagueDetailScreen(
                             )
                             LeagueDetailTab.TEAMS -> LeagueTeamsContent(
                                 uiState = uiState,
+                                onOpenTeam = onOpenTeam,
                                 onToggleFavoriteTeam = viewModel::toggleFavoriteTeam,
                                 onShowFavoriteOptions = viewModel::showFavoriteOptions
                             )
@@ -289,6 +292,7 @@ private fun LeagueGamesContent(
 @Composable
 private fun LeagueTeamsContent(
     uiState: LeagueDetailUiState,
+    onOpenTeam: (com.nuvio.tv.domain.model.SportsTeam) -> Unit,
     onToggleFavoriteTeam: (String) -> Unit,
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit
 ) {
@@ -307,7 +311,7 @@ private fun LeagueTeamsContent(
                     TeamGridCard(
                         team = team,
                         isFavorite = team.id in uiState.favoriteTeamIds,
-                        onClick = { onToggleFavoriteTeam(team.id) },
+                        onClick = { onOpenTeam(team) },
                         onToggleFavorite = { onToggleFavoriteTeam(team.id) },
                         onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
                     )

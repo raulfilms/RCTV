@@ -1251,10 +1251,13 @@ class LibraryViewModel @Inject constructor(
             val team = libraryTeams[entry.id]
             val leagueId = team?.leagueId
             if (team != null && leagueId != null) {
-                Screen.SportsLeagueDetail.createRoute(
+                // The team's own page.
+                Screen.SportsTeamDetail.createRoute(
                     leagueId = leagueId,
-                    leagueName = team.leagueName.orEmpty(),
-                    sportName = team.sportName.orEmpty()
+                    teamId = team.id,
+                    name = team.name,
+                    badgeUrl = team.badgeUrl,
+                    color = team.color
                 )
             } else {
                 Screen.SportsTeams.route

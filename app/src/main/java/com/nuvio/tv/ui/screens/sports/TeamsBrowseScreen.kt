@@ -82,7 +82,7 @@ private val FavoriteStar = Color(0xFFFFC53D)
 /**
  * The Teams page: a big "TEAMS" banner with a collage of team logos, the leagues to filter by, My
  * Teams, then every league's teams under its name — in rows going down the page. Choosing a team
- * puts it in (or takes it out of) My Teams; holding OK opens its options.
+ * opens its page; holding OK opens its options (My Teams).
  */
 @Composable
 fun TeamsBrowseScreen(
@@ -141,10 +141,7 @@ fun TeamsBrowseScreen(
                         team = team,
                         isFavorite = true,
                         subtitle = listOfNotNull(team.shortName?.takeIf { it != team.name }, team.leagueName).joinToString(" • "),
-                        onClick = {
-                            viewModel.toggleFavoriteTeam(team.id)
-                            onTeamClick(team)
-                        },
+                        onClick = { onTeamClick(team) },
                         onLongPress = { longPressedTeam = team }
                     )
                 }
@@ -171,10 +168,7 @@ fun TeamsBrowseScreen(
                         team = team,
                         isFavorite = team.id in uiState.favoriteTeamIds,
                         subtitle = listOfNotNull(team.shortName?.takeIf { it != team.name }, section.label).joinToString(" • "),
-                        onClick = {
-                            viewModel.toggleFavoriteTeam(team.id)
-                            onTeamClick(team)
-                        },
+                        onClick = { onTeamClick(team) },
                         onLongPress = { longPressedTeam = team }
                     )
                 }

@@ -189,6 +189,14 @@ sealed class Screen(val route: String) {
             return "sports_league/${encode(leagueId)}?leagueName=${encode(leagueName)}&sportName=${encode(sportName)}&badgeUrl=$encodedBadge"
         }
     }
+    /** A team's page (any league): opened from a team's tile, My Teams or the Library. */
+    data object SportsTeamDetail : Screen("sports_team/{leagueId}/{teamId}?name={name}&badgeUrl={badgeUrl}&color={color}") {
+        private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+        fun createRoute(leagueId: String, teamId: String, name: String, badgeUrl: String? = null, color: String? = null): String =
+            "sports_team/${encode(leagueId)}/${encode(teamId)}?name=${encode(name)}" +
+                "&badgeUrl=${badgeUrl?.let { encode(it) }.orEmpty()}&color=${color?.let { encode(it) }.orEmpty()}"
+    }
     data object SportsGameDetail : Screen(
         "sports_game/{eventId}?name={name}&sportName={sportName}&leagueId={leagueId}&leagueName={leagueName}" +
             "&homeTeamId={homeTeamId}&homeTeamName={homeTeamName}&homeTeamBadgeUrl={homeTeamBadgeUrl}&homeScore={homeScore}" +

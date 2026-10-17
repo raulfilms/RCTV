@@ -9,6 +9,11 @@ import com.nuvio.tv.domain.model.SportsStandingEntry
 import com.nuvio.tv.domain.model.SportsStandingStat
 import com.nuvio.tv.domain.model.SportsStandingsGroup
 import com.nuvio.tv.domain.model.SportsTeam
+import com.nuvio.tv.domain.model.SportsAthlete
+import com.nuvio.tv.domain.model.SportsTeamGame
+import com.nuvio.tv.domain.model.SportsTeamHistory
+import com.nuvio.tv.domain.model.SportsTeamProfile
+import com.nuvio.tv.domain.model.SportsTeamStatCategory
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -523,5 +528,384 @@ class EspnSportsClient @Inject constructor(
             val label = home?.first ?: away?.first ?: return@mapNotNull null
             SportsGameStat(label = label, homeValue = home?.second ?: "-", awayValue = away?.second ?: "-")
         }
+    }
+
+    // ------------------------------------------------------------------ Team page
+
+    /** A JSON value that ESPN gives either as text or as `{ "value": 24.0, "displayValue": "24" }`. */
+    private fun JSONObject.textOrDisplayValue(key: String): String? {
+        return when (val value = opt(key)) {
+            is JSONObject -> value.optString("displayValue").takeIf { it.isNotBlank() }
+                ?: value.optDouble("value").takeIf { !it.isNaN() }?.let { number ->
+                    if (number % 1.0 == 0.0) number.toLong().toString() else number.toString()
+                }
+            is String -> value.takeIf { it.isNotBlank() }
+            is Number -> value.toString()
+            else -> null
+        }
+    }
+
+    private fun JSONObject.str(key: String): String? = optString(key).takeIf { it.isNotBlank() && it != "null" }
+
+    /** The logo of a team as ESPN lists it: `logo`, else the first of `logos`. */
+    private fun logoOf(teamJson: JSONObject?): String? =
+        teamJson?.str("logo") ?: teamJson?.optJSONArray("logos")?.optJSONObject(0)?.str("href")
+
+    /** Where ESPN keeps a player's photo when the data has none ("nfl", "nba", "mlb", "nhl"). */
+    private fun headshotFallback(feed: Feed, athleteId: String): String? = when (feed.leaguePath) {
+        "nfl", "nba", "mlb", "nhl" -> "https://a.espncdn.com/i/headshots/${feed.leaguePath}/players/full/$athleteId.png"
+        else -> null
+    }
+
+    /** A player from ESPN's athlete JSON (roster, leaders or box score). */
+    private fun parseAthlete(json: JSONObject?, feed: Feed, group: String? = null, useFallbackPhoto: Boolean = false): SportsAthlete? {
+        json ?: return null
+        val id = json.str("id") ?: return null
+        val name = json.str("displayName") ?: json.str("fullName") ?: json.str("shortName") ?: return null
+        val headshot = json.optJSONObject("headshot")?.str("href")
+            ?: (json.opt("headshot") as? String)?.takeIf { it.startsWith("http") }
+            ?: if (useFallbackPhoto) headshotFallback(feed, id) else null
+        val position = json.optJSONObject("position")?.let { it.str("abbreviation") ?: it.str("displayName") }
+        return SportsAthlete(
+            id = id,
+            name = name,
+            shortName = json.str("shortName"),
+            jersey = json.str("jersey"),
+            position = position,
+            headshotUrl = headshot,
+            age = json.optInt("age", 0).takeIf { it > 0 },
+            height = json.str("displayHeight"),
+            weight = json.str("displayWeight"),
+            experienceYears = json.optJSONObject("experience")?.optInt("years", -1)?.takeIf { it >= 0 },
+            college = json.optJSONObject("college")?.let { it.str("name") ?: it.str("shortName") },
+            group = group
+        )
+    }
+
+    /** The athletes in an ESPN `leaders` list: `[{ leaders: [{ athlete }] }]`, in order, once each. */
+    private fun athletesOfLeaders(leadersJson: JSONArray?, feed: Feed): List<SportsAthlete> {
+        leadersJson ?: return emptyList()
+        val athletes = LinkedHashMap<String, SportsAthlete>()
+        for (i in 0 until leadersJson.length()) {
+            val category = leadersJson.optJSONObject(i) ?: continue
+            val entries = category.optJSONArray("leaders") ?: continue
+            for (j in 0 until entries.length()) {
+                val athlete = parseAthlete(entries.optJSONObject(j)?.optJSONObject("athlete"), feed) ?: continue
+                athletes.putIfAbsent(athlete.id, athlete)
+            }
+        }
+        return athletes.values.toList()
+    }
+
+    /** A team's page header: names, colors, logo, record, standing and stadium. */
+    fun fetchTeamProfile(feed: Feed, teamId: String): SportsTeamProfile {
+        val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId"))
+        val team = json.optJSONObject("team") ?: throw EspnException("No team")
+        val items = team.optJSONObject("record")?.optJSONArray("items") ?: JSONArray()
+        var total: JSONObject? = null
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            if (item.optString("type") == "total" || total == null) total = item
+            if (item.optString("type") == "total") break
+        }
+        fun totalStat(name: String): Double? {
+            val stats = total?.optJSONArray("stats") ?: return null
+            for (i in 0 until stats.length()) {
+                val stat = stats.optJSONObject(i) ?: continue
+                if (stat.optString("name") == name) return stat.optDouble("value").takeIf { !it.isNaN() }
+            }
+            return null
+        }
+        val venue = team.optJSONObject("franchise")?.optJSONObject("venue") ?: team.optJSONObject("venue")
+        val address = venue?.optJSONObject("address")
+        val city = listOfNotNull(address?.str("city"), address?.str("state") ?: address?.str("country"))
+            .joinToString(", ")
+            .takeIf { it.isNotBlank() }
+        val displayName = team.str("displayName") ?: team.str("name") ?: throw EspnException("No team name")
+        return SportsTeamProfile(
+            id = team.str("id") ?: teamId,
+            leagueId = "${feed.sportPath}:${feed.leaguePath}",
+            location = team.str("location"),
+            nickname = team.str("name") ?: team.str("nickname"),
+            displayName = displayName,
+            abbreviation = team.str("abbreviation"),
+            color = team.str("color")?.removePrefix("#")?.takeIf { it.length == 6 },
+            alternateColor = team.str("alternateColor")?.removePrefix("#")?.takeIf { it.length == 6 },
+            logoUrl = logoOf(team),
+            recordSummary = total?.str("summary"),
+            standingSummary = team.str("standingSummary"),
+            playoffSeed = totalStat("playoffSeed")?.toInt()?.takeIf { it > 0 },
+            points = totalStat("points")?.toInt()?.takeIf { feed.sportPath == "soccer" },
+            venueName = venue?.str("fullName"),
+            venueCity = city,
+            venueImageUrl = venue?.optJSONArray("images")?.optJSONObject(0)?.str("href")
+        )
+    }
+
+    /** One game of a team schedule's `events`. */
+    private fun parseScheduleGame(raw: JSONObject, feed: Feed, leagueName: String): SportsTeamGame? {
+        val competition = raw.optJSONArray("competitions")?.optJSONObject(0) ?: return null
+        val competitors = competition.optJSONArray("competitors") ?: return null
+        var home: JSONObject? = null
+        var away: JSONObject? = null
+        for (j in 0 until competitors.length()) {
+            val competitor = competitors.optJSONObject(j) ?: continue
+            when (competitor.optString("homeAway")) {
+                "home" -> home = competitor
+                "away" -> away = competitor
+            }
+        }
+        if (home == null || away == null) {
+            // A few feeds leave homeAway out: the first is home.
+            home = home ?: competitors.optJSONObject(0)
+            away = away ?: competitors.optJSONObject(1)
+        }
+        val homeTeam = home?.optJSONObject("team")
+        val awayTeam = away?.optJSONObject("team")
+        fun nameOf(teamJson: JSONObject?): String =
+            teamJson?.str("displayName") ?: teamJson?.str("shortDisplayName") ?: teamJson?.str("name").orEmpty()
+        val homeName = nameOf(homeTeam)
+        val awayName = nameOf(awayTeam)
+        if (homeName.isBlank() && awayName.isBlank()) return null
+
+        val statusType = competition.optJSONObject("status")?.optJSONObject("type")
+            ?: raw.optJSONObject("status")?.optJSONObject("type")
+        val (status, statusDetail) = statusFrom(statusType)
+        val leagueId = "${feed.sportPath}:${feed.leaguePath}"
+        val rawId = raw.str("id") ?: competition.str("id") ?: return null
+
+        val broadcasts = competition.optJSONArray("broadcasts")
+        var broadcast: String? = null
+        if (broadcasts != null) {
+            val names = ArrayList<String>()
+            for (i in 0 until broadcasts.length()) {
+                val entry = broadcasts.optJSONObject(i) ?: continue
+                val name = entry.optJSONObject("media")?.str("shortName")
+                    ?: entry.optJSONArray("names")?.optString(0)?.takeIf { it.isNotBlank() }
+                if (name != null && name !in names) names += name
+            }
+            broadcast = names.take(2).joinToString(" • ").takeIf { it.isNotBlank() }
+        }
+
+        val leaders = LinkedHashMap<String, List<SportsAthlete>>()
+        listOfNotNull(home, away).forEach { competitor ->
+            val teamId = competitor.optJSONObject("team")?.str("id") ?: return@forEach
+            val athletes = athletesOfLeaders(competitor.optJSONArray("leaders"), feed)
+            if (athletes.isNotEmpty()) leaders[teamId] = athletes
+        }
+
+        val event = SportsEvent(
+            id = "espn:${feed.sportPath}:${feed.leaguePath}:$rawId",
+            name = raw.str("shortName") ?: raw.str("name") ?: "$awayName @ $homeName",
+            sportName = feed.sportLabel,
+            leagueId = leagueId,
+            leagueName = leagueName,
+            homeTeamId = homeTeam?.str("id"),
+            homeTeamName = homeName,
+            homeTeamBadgeUrl = logoOf(homeTeam),
+            awayTeamId = awayTeam?.str("id"),
+            awayTeamName = awayName,
+            awayTeamBadgeUrl = logoOf(awayTeam),
+            homeScore = home?.textOrDisplayValue("score")?.toIntOrNull()?.takeIf { status != SportsEventStatus.UPCOMING },
+            awayScore = away?.textOrDisplayValue("score")?.toIntOrNull()?.takeIf { status != SportsEventStatus.UPCOMING },
+            startTimeMs = parseNewsDate(raw.str("date") ?: competition.str("date")),
+            venue = competition.optJSONObject("venue")?.str("fullName"),
+            status = status,
+            statusDetail = statusDetail,
+            homeTeamAbbreviation = homeTeam?.str("abbreviation"),
+            awayTeamAbbreviation = awayTeam?.str("abbreviation"),
+            homeTeamColor = homeTeam?.str("color")?.removePrefix("#")?.takeIf { it.length == 6 },
+            awayTeamColor = awayTeam?.str("color")?.removePrefix("#")?.takeIf { it.length == 6 }
+        )
+        val week = raw.optJSONObject("week")
+        val seasonType = raw.optJSONObject("seasonType")
+        return SportsTeamGame(
+            event = event,
+            weekLabel = week?.str("text"),
+            weekNumber = week?.optInt("number", 0)?.takeIf { it > 0 },
+            seasonTypeLabel = seasonType?.str("name"),
+            seasonType = seasonType?.optInt("type", 0)?.takeIf { it > 0 },
+            broadcast = broadcast,
+            leaders = leaders
+        )
+    }
+
+    /**
+     * A team's whole season, in order: the regular season and the playoffs (soccer: the results
+     * played and the fixtures to come).
+     */
+    fun fetchTeamSchedule(feed: Feed, teamId: String, leagueName: String): List<SportsTeamGame> {
+        val base = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId/schedule"
+        val urls = if (feed.sportPath == "soccer") {
+            listOf(base, "$base?fixture=true")
+        } else {
+            listOf("$base?seasontype=2", "$base?seasontype=3")
+        }
+        val games = LinkedHashMap<String, SportsTeamGame>()
+        var anyLoaded = false
+        urls.forEach { url ->
+            val json = runCatching { JSONObject(get(url)) }.getOrNull() ?: return@forEach
+            anyLoaded = true
+            val events = json.optJSONArray("events") ?: return@forEach
+            for (i in 0 until events.length()) {
+                val game = parseScheduleGame(events.optJSONObject(i) ?: continue, feed, leagueName) ?: continue
+                games.putIfAbsent(game.event.id, game)
+            }
+        }
+        // Nothing in the regular season yet (or a feed without season types): ESPN's own default.
+        if (games.isEmpty() && feed.sportPath != "soccer") {
+            val json = runCatching { JSONObject(get(base)) }.getOrNull()
+            if (json != null) {
+                anyLoaded = true
+                val events = json.optJSONArray("events") ?: JSONArray()
+                for (i in 0 until events.length()) {
+                    val game = parseScheduleGame(events.optJSONObject(i) ?: continue, feed, leagueName) ?: continue
+                    games.putIfAbsent(game.event.id, game)
+                }
+            }
+        }
+        if (!anyLoaded) throw EspnException("Schedule unavailable")
+        return games.values.sortedBy { it.event.startTimeMs ?: Long.MAX_VALUE }
+    }
+
+    /** A team's players, with their photos; NFL rosters come in groups (Offense, Defense...). */
+    fun fetchTeamRoster(feed: Feed, teamId: String): List<SportsAthlete> {
+        val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId/roster"))
+        val entries = json.optJSONArray("athletes") ?: return emptyList()
+        val athletes = ArrayList<SportsAthlete>()
+        fun groupLabel(raw: String?): String? = raw?.takeIf { it.isNotBlank() }?.let { value ->
+            when (value) {
+                "specialTeam" -> "Special Teams"
+                else -> value.replace(Regex("([a-z])([A-Z])"), "$1 $2").replaceFirstChar { it.uppercase() }
+            }
+        }
+        for (i in 0 until entries.length()) {
+            val entry = entries.optJSONObject(i) ?: continue
+            val items = entry.optJSONArray("items")
+            if (items != null) {
+                val group = groupLabel(entry.str("position") ?: entry.str("name"))
+                for (j in 0 until items.length()) {
+                    parseAthlete(items.optJSONObject(j), feed, group, useFallbackPhoto = true)?.let { athletes += it }
+                }
+            } else {
+                parseAthlete(entry, feed, useFallbackPhoto = true)?.let { athletes += it }
+            }
+        }
+        return athletes
+    }
+
+    /** A team's season stats, by group ("Passing", "Rushing"...). */
+    fun fetchTeamStats(feed: Feed, teamId: String): List<SportsTeamStatCategory> {
+        val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId/statistics"))
+        val categories = json.optJSONObject("results")?.optJSONObject("stats")?.optJSONArray("categories")
+            ?: json.optJSONObject("statistics")?.optJSONArray("splits")
+            ?: return emptyList()
+        val result = ArrayList<SportsTeamStatCategory>()
+        for (i in 0 until categories.length()) {
+            val category = categories.optJSONObject(i) ?: continue
+            val name = category.str("displayName") ?: category.str("name") ?: continue
+            val statsJson = category.optJSONArray("stats") ?: continue
+            val stats = ArrayList<SportsStandingStat>()
+            for (j in 0 until statsJson.length()) {
+                val stat = statsJson.optJSONObject(j) ?: continue
+                val value = stat.str("displayValue") ?: continue
+                val label = stat.str("displayName") ?: stat.str("shortDisplayName") ?: stat.str("name") ?: continue
+                stats += SportsStandingStat(label = label, value = value)
+            }
+            if (stats.isNotEmpty()) result += SportsTeamStatCategory(name = name, stats = stats)
+        }
+        return result
+    }
+
+    /** A team's ESPN news. */
+    fun fetchTeamNews(feed: Feed, teamId: String, limit: Int = 24): List<SportsNewsArticle> {
+        val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/news?team=$teamId&limit=$limit"
+        val json = JSONObject(get(url))
+        val articlesJson = json.optJSONArray("articles") ?: JSONArray()
+        val articles = ArrayList<SportsNewsArticle>(articlesJson.length())
+        for (i in 0 until articlesJson.length()) {
+            val articleJson = articlesJson.optJSONObject(i) ?: continue
+            val headline = articleJson.str("headline") ?: continue
+            articles += SportsNewsArticle(
+                id = articleJson.str("id") ?: "news:${feed.leaguePath}:$teamId:$i",
+                headline = headline,
+                description = articleJson.str("description"),
+                imageUrl = articleJson.optJSONArray("images")?.optJSONObject(0)?.str("url"),
+                publishedMs = parseNewsDate(articleJson.str("published")),
+                link = articleJson.optJSONObject("links")?.optJSONObject("web")?.str("href")
+            )
+        }
+        return articles
+    }
+
+    /**
+     * The players of a game, by team id (the game's leaders: who led each team in it, or before it
+     * the season's leaders), from ESPN's game summary; the box score's players when it has no leaders.
+     */
+    fun fetchGamePlayers(feed: Feed, rawEventId: String): Map<String, List<SportsAthlete>> {
+        val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/summary?event=$rawEventId"))
+        val result = LinkedHashMap<String, List<SportsAthlete>>()
+        val leaders = json.optJSONArray("leaders")
+        if (leaders != null) {
+            for (i in 0 until leaders.length()) {
+                val entry = leaders.optJSONObject(i) ?: continue
+                val teamId = entry.optJSONObject("team")?.str("id") ?: continue
+                val athletes = athletesOfLeaders(entry.optJSONArray("leaders"), feed).filter { it.headshotUrl != null }
+                if (athletes.isNotEmpty()) result[teamId] = athletes
+            }
+        }
+        if (result.isEmpty()) {
+            val players = json.optJSONObject("boxscore")?.optJSONArray("players") ?: JSONArray()
+            for (i in 0 until players.length()) {
+                val entry = players.optJSONObject(i) ?: continue
+                val teamId = entry.optJSONObject("team")?.str("id") ?: continue
+                val athletes = LinkedHashMap<String, SportsAthlete>()
+                val statistics = entry.optJSONArray("statistics") ?: continue
+                for (j in 0 until statistics.length()) {
+                    val first = statistics.optJSONObject(j)?.optJSONArray("athletes")?.optJSONObject(0) ?: continue
+                    val athlete = parseAthlete(first.optJSONObject("athlete"), feed) ?: continue
+                    if (athlete.headshotUrl != null) athletes.putIfAbsent(athlete.id, athlete)
+                }
+                if (athletes.isNotEmpty()) result[teamId] = athletes.values.toList()
+            }
+        }
+        return result
+    }
+
+    /**
+     * A team's history from Wikipedia: the summary of the first of [titles] that is a page about a
+     * team (not a disambiguation page), in [language] ("es"), else in English.
+     */
+    fun fetchTeamHistory(titles: List<String>, language: String, keywords: List<String>): SportsTeamHistory? {
+        val languages = listOf(language, "en").distinct()
+        for (lang in languages) {
+            for (title in titles) {
+                val encoded = java.net.URLEncoder.encode(title.replace(' ', '_'), "UTF-8").replace("+", "_")
+                val url = "https://$lang.wikipedia.org/api/rest_v1/page/summary/$encoded?redirect=true"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "RCTV/1.0 (Android TV)")
+                    .build()
+                val body = runCatching {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) response.body?.string() else null
+                    }
+                }.getOrNull() ?: continue
+                val json = runCatching { JSONObject(body) }.getOrNull() ?: continue
+                if (json.optString("type") == "disambiguation") continue
+                val extract = json.str("extract") ?: continue
+                val about = (json.optString("description") + " " + extract).lowercase(Locale.ROOT)
+                if (keywords.none { it in about }) continue
+                return SportsTeamHistory(
+                    title = json.str("title") ?: title,
+                    summary = extract,
+                    imageUrl = json.optJSONObject("originalimage")?.str("source")
+                        ?: json.optJSONObject("thumbnail")?.str("source"),
+                    pageUrl = json.optJSONObject("content_urls")?.optJSONObject("desktop")?.str("page")
+                )
+            }
+        }
+        return null
     }
 }

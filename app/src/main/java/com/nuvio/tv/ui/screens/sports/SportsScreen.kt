@@ -60,6 +60,8 @@ fun SportsScreen(
     onOpenLeagueDetail: (SportsLeague) -> Unit = {},
     /** A title's page (a sports talk show): its id ("tmdb:123") and type ("series"). */
     onOpenDetail: (String, String) -> Unit = { _, _ -> },
+    /** A team's page. */
+    onOpenTeam: (SportsTeam) -> Unit = {},
     viewModel: SportsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -92,6 +94,7 @@ fun SportsScreen(
                     onPlayEvent = onPlayEvent,
                     onOpenLeagueDetail = onOpenLeagueDetail,
                     onOpenDetail = onOpenDetail,
+                    onOpenTeam = onOpenTeam,
                     onShowFavoriteOptions = viewModel::showFavoriteOptions,
                     onLoadMoreTalk = viewModel::loadMoreSportsTalk
                 )
@@ -135,6 +138,7 @@ fun SportsScreen(
                     onOpenLeagueDetail = onOpenLeagueDetail,
                     onOpenDetail = onOpenDetail,
                     onOpenSeeAll = { seeAllName = it.name },
+                    onOpenTeam = onOpenTeam,
                     onToggleFavoriteTeam = viewModel::toggleFavoriteTeam,
                     onSelectAddonEvent = viewModel::selectAddonEvent,
                     onShowFavoriteOptions = viewModel::showFavoriteOptions,
@@ -186,6 +190,7 @@ private fun SportsContent(
     onOpenLeagueDetail: (SportsLeague) -> Unit,
     onOpenDetail: (String, String) -> Unit,
     onOpenSeeAll: (SportsSeeAll) -> Unit,
+    onOpenTeam: (SportsTeam) -> Unit,
     onToggleFavoriteTeam: (String) -> Unit,
     onSelectAddonEvent: (com.nuvio.tv.domain.model.SportsAddonEvent) -> Unit,
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
@@ -331,7 +336,8 @@ private fun SportsContent(
                     teams = uiState.teams,
                     favoriteTeamIds = favoriteTeamIds,
                     rowFocusRequester = requester("teams"),
-                    onClick = { team -> onToggleFavoriteTeam(team.id) },
+                    // A team: its page (holding OK: My Teams and the rest).
+                    onClick = onOpenTeam,
                     onShowFavoriteOptions = onShowFavoriteOptions,
                     onSeeAll = onOpenTeamsSeeAll,
                     modifier = rowGap
@@ -418,8 +424,8 @@ private fun SportsContent(
                     teams = teams,
                     favoriteTeamIds = favoriteTeamIds,
                     rowFocusRequester = requester(SportsSeeAll.MY_TEAMS.name),
-                    // A team of My Teams: its options (remove it, and the rest).
-                    onClick = { team -> onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
+                    // A team of My Teams: its page (holding OK: its options).
+                    onClick = onOpenTeam,
                     onShowFavoriteOptions = onShowFavoriteOptions,
                     onSeeAll = { onOpenSeeAll(SportsSeeAll.MY_TEAMS) },
                     modifier = rowGap
@@ -560,6 +566,7 @@ private fun SportsSeeAllPage(
     onPlayEvent: (SportsEvent) -> Unit,
     onOpenLeagueDetail: (SportsLeague) -> Unit,
     onOpenDetail: (String, String) -> Unit,
+    onOpenTeam: (SportsTeam) -> Unit,
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
     onLoadMoreTalk: () -> Unit
 ) {
@@ -625,7 +632,7 @@ private fun SportsSeeAllPage(
                 TeamTile(
                     team = teams[index],
                     favoriteTeamIds = favoriteTeamIds,
-                    onClick = { team -> onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
+                    onClick = onOpenTeam,
                     onShowFavoriteOptions = onShowFavoriteOptions,
                     modifier = itemModifier
                 )

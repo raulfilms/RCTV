@@ -422,7 +422,7 @@ private fun SportsHeroBackdrop(event: SportsEvent) {
 }
 
 @Composable
-private fun TeamLogo(url: String?, size: Dp, modifier: Modifier = Modifier) {
+internal fun TeamLogo(url: String?, size: Dp, modifier: Modifier = Modifier) {
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
         if (!url.isNullOrBlank()) {
             AsyncImage(
@@ -444,7 +444,7 @@ private fun TeamLogo(url: String?, size: Dp, modifier: Modifier = Modifier) {
 
 /** A rounded banner button: white (Watch Live) or outlined (Add to Library); white when focused. */
 @Composable
-private fun HeroPillButton(
+internal fun HeroPillButton(
     text: String,
     icon: ImageVector,
     primary: Boolean,
