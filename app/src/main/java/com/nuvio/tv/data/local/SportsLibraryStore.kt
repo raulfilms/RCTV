@@ -261,7 +261,11 @@ class SportsLibraryStore @Inject constructor(
                 homeTeamAbbreviation = obj.str("homeTeamAbbreviation"),
                 awayTeamAbbreviation = obj.str("awayTeamAbbreviation"),
                 homeTeamAliases = obj.strings("homeTeamAliases"),
-                awayTeamAliases = obj.strings("awayTeamAliases")
+                awayTeamAliases = obj.strings("awayTeamAliases"),
+                leaderName = obj.str("leaderName"),
+                leaderScore = obj.str("leaderScore"),
+                endTimeMs = obj.longOrNull("endTimeMs"),
+                imageUrl = obj.str("imageUrl")
             )
         }
 
@@ -292,4 +296,8 @@ class SportsLibraryStore @Inject constructor(
         .putOpt("awayTeamAbbreviation", event.awayTeamAbbreviation)
         .put("homeTeamAliases", JSONArray(event.homeTeamAliases))
         .put("awayTeamAliases", JSONArray(event.awayTeamAliases))
+        .putOpt("leaderName", event.leaderName)
+        .putOpt("leaderScore", event.leaderScore)
+        .putOpt("endTimeMs", event.endTimeMs)
+        .putOpt("imageUrl", event.imageUrl)
 }

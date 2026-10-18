@@ -81,7 +81,8 @@ class TeamsBrowseViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, selectedFilterId = filterId) }
             val feeds = if (filterId == null) {
-                EspnSportsClient.FEEDS
+                // The leagues with teams (not golf's tours, NASCAR's series or PPV Events).
+                filters.map { it.feed }
             } else {
                 filters.firstOrNull { it.id == filterId }?.let { listOf(it.feed) }.orEmpty()
             }

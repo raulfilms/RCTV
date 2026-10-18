@@ -138,6 +138,8 @@ private fun leagueColor(name: String): Color? {
         "college" in n || "ncaa" in n -> Color(0xFF0B3B60)
         "ufc" in n || "mma" in n -> Color(0xFFD20A0A)
         "f1" in n || "formula" in n -> Color(0xFFE10600)
+        "nascar" in n -> RaceNavy
+        "ppv" in n -> PpvCrimson
         "pga" in n || "golf" in n -> Color(0xFF0B5A2B)
         "liga mx" in n || "mexican" in n || n == "mex.1" -> Color(0xFF00573F)
         "tennis" in n || n == "atp" || n == "wta" -> Color(0xFF0F3B73)
@@ -549,9 +551,9 @@ internal fun SportsGameCard(
             containerColor = AppleTvColors.Surface2,
             modifier = modifier.longPressable(onLongPress)
         ) {
-            // A golf tournament: its name and leader on golf's green.
-            if (event.isGolf()) {
-                GolfGameCardBody(event = event, status = status)
+            // A golf tournament, a race, a PPV show: its name (and leader, or picture) on its color.
+            if (event.isSoloEvent()) {
+                SoloEventCardBody(event = event, status = status, liveBadge = { SportsLiveBadge() })
                 return@HomeCard
             }
             Box(
@@ -641,43 +643,6 @@ internal fun SportsGameCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-/** A golf tournament's card: the tour's logo, the tournament, its leader; LIVE or its days in the corner. */
-@Composable
-private fun GolfGameCardBody(event: SportsEvent, status: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(GolfGreen, lerp(GolfGreen, Color.Black, 0.55f))))
-    ) {
-        GolfCardContent(
-            event = event,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 12.dp, end = 12.dp, top = 26.dp, bottom = 10.dp)
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp)
-        ) {
-            when (event.status) {
-                SportsEventStatus.LIVE -> SportsLiveBadge()
-                else -> Text(
-                    text = status,
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp)
-                )
-            }
-        }
     }
 }
 

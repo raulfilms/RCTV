@@ -36,7 +36,11 @@ data class GameDetailUiState(
     val week: Int? = null,
     val seasonType: Int? = null,
     /** A golf tournament's leaderboard (instead of team stats). */
-    val golfPlayers: List<EspnSportsClient.GolfPlayer> = emptyList()
+    val golfPlayers: List<EspnSportsClient.GolfPlayer> = emptyList(),
+    /** A race's results, or its running order while it's on (NASCAR). */
+    val raceResults: List<com.nuvio.tv.domain.model.SportsRaceResult> = emptyList(),
+    /** A PPV show's poster, description and card. */
+    val showDetails: com.nuvio.tv.domain.model.SportsShowDetails? = null
 )
 
 /** Watch Recap: looking for the game's highlights on YouTube, playing them, or none found. */
@@ -111,6 +115,32 @@ class GameDetailViewModel @Inject constructor(
                         .getOrDefault(emptyList())
                 }
                 _uiState.update { it.copy(isLoadingStats = false, golfPlayers = players) }
+            }
+            return
+        }
+        if (event.isNascar()) {
+            viewModelScope.launch {
+                // While it's on, the running order every half minute.
+                while (true) {
+                    val results = withContext(Dispatchers.IO) {
+                        runCatching { client.fetchRaceResults(parsed.leaguePath, parsed.rawEventId, event.startTimeMs) }
+                            .getOrDefault(emptyList())
+                    }
+                    _uiState.update { state ->
+                        state.copy(isLoadingStats = false, raceResults = results.ifEmpty { state.raceResults })
+                    }
+                    if (event.status != SportsEventStatus.LIVE) break
+                    kotlinx.coroutines.delay(RACE_REFRESH_MS)
+                }
+            }
+            return
+        }
+        if (event.isPpv()) {
+            viewModelScope.launch {
+                val details = withContext(Dispatchers.IO) {
+                    runCatching { client.fetchShowDetails(parsed.rawEventId) }.getOrNull()
+                }
+                _uiState.update { it.copy(isLoadingStats = false, showDetails = details) }
             }
             return
         }
@@ -199,6 +229,9 @@ class GameDetailViewModel @Inject constructor(
     }
 
     private companion object {
+        /** How often a race on now looks at its running order again. */
+        const val RACE_REFRESH_MS = 30_000L
+
         fun decodeArg(raw: String?): String {
             if (raw.isNullOrEmpty()) return ""
             return runCatching { java.net.URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)

@@ -167,9 +167,9 @@ fun ScoreboardCard(
                 }
             }
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
-            if (event.isGolf()) {
-                // A golf tournament: its name and leader.
-                GolfCardContent(
+            if (event.isSoloEvent()) {
+                // A golf tournament, a race, a PPV show: its name and leader (or where it is).
+                SoloEventContent(
                     event = event,
                     nameSize = 14.sp,
                     textColor = NuvioTheme.colors.TextPrimary,
@@ -549,10 +549,10 @@ fun SportsHeroBanner(
             )
         }
 
-        if (event.isGolf()) {
-            // A golf tournament: its name and leader, and where it's at.
+        if (event.isSoloEvent()) {
+            // A golf tournament, a race, a PPV show: its name and leader, and where it's at.
             Column(modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.7f)) {
-                GolfCardContent(
+                SoloEventContent(
                     event = event,
                     nameSize = 26.sp,
                     textColor = NuvioTheme.colors.TextPrimary,

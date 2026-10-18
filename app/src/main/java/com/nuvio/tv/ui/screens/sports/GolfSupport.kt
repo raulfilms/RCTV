@@ -72,55 +72,6 @@ internal fun golfLeaderLine(event: SportsEvent): String? {
     return listOfNotNull(leader, event.leaderScore?.takeIf { it.isNotBlank() && it != "-" }).joinToString("  ")
 }
 
-/**
- * A tournament on a card: the tour's logo, its name big, then its leader (or its days before it
- * starts). Fits the cards' middle, where two teams go for a game.
- */
-@Composable
-internal fun GolfCardContent(
-    event: SportsEvent,
-    modifier: Modifier = Modifier,
-    nameSize: TextUnit = 15.sp,
-    textColor: Color = Color.White,
-    secondaryColor: Color = Color.White.copy(alpha = 0.78f)
-) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        event.homeTeamBadgeUrl?.let { logo ->
-            SportsLogoImage(
-                url = logo,
-                background = GolfGreen,
-                contentDescription = event.leagueName,
-                modifier = Modifier.size(40.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = event.name,
-                color = textColor,
-                fontSize = nameSize,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            val second = golfLeaderLine(event)?.let { leader ->
-                if (event.status == SportsEventStatus.FINISHED) "🏆 $leader" else "1. $leader"
-            } ?: event.venue?.takeIf { it.isNotBlank() }
-            if (second != null) {
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = second,
-                    color = secondaryColor,
-                    fontSize = (nameSize.value - 3f).coerceAtLeast(10f).sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
 /** The leaderboard's columns: how many rounds, and whether "thru" shows (a round on now). */
 internal data class GolfColumns(val rounds: Int, val showThru: Boolean) {
     companion object {

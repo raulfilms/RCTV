@@ -1,5 +1,7 @@
 package com.nuvio.tv.data.remote.espn
 
+import android.content.Context
+import com.nuvio.tv.data.remote.sportsdb.PpvEventsSource
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsGameStat
@@ -14,6 +16,9 @@ import com.nuvio.tv.domain.model.SportsTeamGame
 import com.nuvio.tv.domain.model.SportsTeamHistory
 import com.nuvio.tv.domain.model.SportsTeamProfile
 import com.nuvio.tv.domain.model.SportsTeamStatCategory
+import com.nuvio.tv.domain.model.SportsRaceResult
+import com.nuvio.tv.domain.model.SportsShowDetails
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -44,7 +49,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class EspnSportsClient @Inject constructor(
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient
+    @Named("addonPermissive") private val okHttpClient: OkHttpClient,
+    @ApplicationContext private val appContext: Context
 ) {
     class EspnException(message: String) : Exception(message)
 
@@ -74,6 +80,7 @@ class EspnSportsClient @Inject constructor(
             Feed("soccer", "usa.1", "Soccer", "⚽"),
             Feed("soccer", "mex.1", "Soccer", "⚽"),
             Feed("basketball", "nba", "Basketball", "🏀"),
+            Feed("basketball", "wnba", "Basketball", "🏀"),
             Feed("football", "nfl", "Football", "🏈"),
             Feed("baseball", "mlb", "Baseball", "⚾"),
             // Banana Ball (the Savannah Bananas' league): not on ESPN, see [BananaBallSource].
@@ -81,6 +88,12 @@ class EspnSportsClient @Inject constructor(
             Feed("hockey", "nhl", "Hockey", "🏒"),
             Feed("mma", "ufc", "MMA", "🥊"),
             Feed("racing", "f1", "Motorsport", "🏎️"),
+            // NASCAR's three national series: from NASCAR's own feeds, see [NascarSource].
+            Feed(NascarSource.SPORT_PATH, "nascar-premier", NascarSource.SPORT_LABEL, "🏁"),
+            Feed(NascarSource.SPORT_PATH, "nascar-secondary", NascarSource.SPORT_LABEL, "🏁"),
+            Feed(NascarSource.SPORT_PATH, "nascar-truck", NascarSource.SPORT_LABEL, "🏁"),
+            // Boxing and the big wrestling shows: from TheSportsDB, see [PpvEventsSource].
+            Feed(PpvEventsSource.SPORT_PATH, PpvEventsSource.LEAGUE_PATH, PpvEventsSource.SPORT_LABEL, "🥊"),
             Feed("tennis", "atp", "Tennis", "🎾"),
             // Golf: tournaments (a leaderboard of players), not games between teams.
             Feed("golf", "pga", "Golf", "⛳"),
@@ -115,12 +128,17 @@ class EspnSportsClient @Inject constructor(
             "usa.1" to "MLS",
             "mex.1" to "Liga MX",
             "nba" to "NBA",
+            "wnba" to "WNBA",
             "nfl" to "NFL",
             "mlb" to "MLB",
             BananaBallSource.LEAGUE_PATH to BananaBallSource.LEAGUE_NAME,
             "nhl" to "NHL",
             "ufc" to "UFC",
             "f1" to "Formula 1",
+            "nascar-premier" to "NASCAR Cup Series",
+            "nascar-secondary" to "NASCAR O'Reilly Series",
+            "nascar-truck" to "NASCAR Truck Series",
+            PpvEventsSource.LEAGUE_PATH to PpvEventsSource.LEAGUE_NAME,
             "atp" to "Tennis",
             "pga" to "PGA Tour",
             "champions-tour" to "PGA Tour Champions",
@@ -133,9 +151,12 @@ class EspnSportsClient @Inject constructor(
             "college-baseball" to "NCAA Baseball"
         )
 
+        /** Golf's tours, NASCAR's series and PPV Events have players, drivers and fighters, not teams. */
+        private fun hasTeams(feed: Feed): Boolean =
+            feed.sportPath != GOLF && feed.leaguePath !in NascarSource.LEAGUE_PATHS && feed.leaguePath != PpvEventsSource.LEAGUE_PATH
+
         /** One filter chip per curated feed, for the Teams browse screen. */
-        // Golf's tours have players, not teams.
-        val TEAMS_FILTERS: List<TeamsFilterChip> = FEEDS.filter { it.sportPath != GOLF }.map { feed ->
+        val TEAMS_FILTERS: List<TeamsFilterChip> = FEEDS.filter { hasTeams(it) }.map { feed ->
             TeamsFilterChip(
                 id = "${feed.sportPath}:${feed.leaguePath}",
                 label = FEED_LABELS[feed.leaguePath] ?: feed.leaguePath,
@@ -230,6 +251,25 @@ class EspnSportsClient @Inject constructor(
     private val bananaBall by lazy { BananaBallSource(okHttpClient) }
 
     private fun Feed.isBananaBall(): Boolean = leaguePath == BananaBallSource.LEAGUE_PATH
+
+    /** NASCAR: from NASCAR's own feeds. */
+    private val nascar by lazy { NascarSource(okHttpClient) }
+
+    private fun Feed.isNascar(): Boolean = leaguePath in NascarSource.LEAGUE_PATHS
+
+    /** PPV Events (boxing, wrestling's big shows): from TheSportsDB, kept in the app's cache. */
+    private val ppv by lazy { PpvEventsSource(okHttpClient, java.io.File(appContext.cacheDir, "ppv_events.json")) }
+
+    private fun Feed.isPpv(): Boolean = leaguePath == PpvEventsSource.LEAGUE_PATH
+
+    /** A race's places: the running order while it's on, else its results (NASCAR). */
+    fun fetchRaceResults(leaguePath: String, rawEventId: String, startTimeMs: Long?): List<SportsRaceResult> {
+        val raceId = rawEventId.toLongOrNull() ?: return emptyList()
+        return nascar.raceResults(leaguePath, raceId, startTimeMs)
+    }
+
+    /** A PPV show's poster, description and card. */
+    fun fetchShowDetails(rawEventId: String): SportsShowDetails? = ppv.details(rawEventId)
 
     // ------------------------------------------------------------------ golf
 
@@ -455,6 +495,8 @@ class EspnSportsClient @Inject constructor(
      */
     fun fetchFeed(feed: Feed, datesRange: String? = null): FeedResult {
         if (feed.isBananaBall()) return bananaBall.fetchFeed(feed, datesRange)
+        if (feed.isNascar()) return nascar.fetchFeed(feed, datesRange)
+        if (feed.isPpv()) return ppv.fetchFeed(feed, datesRange)
         val base = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/scoreboard"
         val url = if (datesRange != null) "$base?dates=$datesRange" else base
         val body = get(url)
@@ -608,8 +650,8 @@ class EspnSportsClient @Inject constructor(
      * all of them, at the cost of not knowing in advance how many groups a given league will return.
      */
     fun fetchStandings(feed: Feed): List<SportsStandingsGroup> {
-        // Banana Ball's site has no standings to read.
-        if (feed.isBananaBall()) return emptyList()
+        // Banana Ball's site has no standings to read; nor have NASCAR's feeds read here, or PPV Events.
+        if (feed.isBananaBall() || feed.isNascar() || feed.isPpv()) return emptyList()
         val url = "$STANDINGS_BASE_URL/${feed.sportPath}/${feed.leaguePath}/standings"
         val json = JSONObject(get(url))
         val leagueId = "${feed.sportPath}:${feed.leaguePath}"
@@ -670,7 +712,7 @@ class EspnSportsClient @Inject constructor(
 
     /** Fetches recent ESPN news headlines for a league. */
     fun fetchNews(feed: Feed, limit: Int = 20): List<SportsNewsArticle> {
-        if (feed.isBananaBall()) return emptyList()
+        if (feed.isBananaBall() || feed.isPpv()) return emptyList()
         val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/news?limit=$limit"
         val json = JSONObject(get(url))
         val articlesJson = json.optJSONArray("articles") ?: JSONArray()
@@ -699,7 +741,7 @@ class EspnSportsClient @Inject constructor(
      * whichever teams happen to be playing within the requested date window).
      */
     fun fetchTeams(feed: Feed): List<SportsTeam> {
-        if (feed.sportPath == GOLF) return emptyList()
+        if (!hasTeams(feed)) return emptyList()
         if (feed.isBananaBall()) return bananaBall.teams()
         // Every team (the NCAA's leagues have hundreds).
         val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=1000"
@@ -742,7 +784,7 @@ class EspnSportsClient @Inject constructor(
      * ("FBS (I-A) · SEC", "NCAA Division II", "NCAA Division III"), the rest (A to Z) first.
      */
     fun fetchTeamGroups(feed: Feed): List<TeamGroup> {
-        if (feed.sportPath == GOLF) return emptyList()
+        if (!hasTeams(feed)) return emptyList()
         if (feed.isBananaBall()) return listOf(TeamGroup(null, bananaBall.teams()))
         val all = runCatching { fetchTeams(feed) }.getOrDefault(emptyList())
         val colors = all.associate { it.id to it.color }
@@ -836,6 +878,10 @@ class EspnSportsClient @Inject constructor(
         // A golf tournament has a leaderboard ([fetchGolfLeaderboard]), not team stats.
         if (sportPath == GOLF) return GameSummary(emptyList(), emptyList(), emptyList())
         if (leaguePath == BananaBallSource.LEAGUE_PATH) return GameSummary(emptyList(), emptyList(), emptyList())
+        // A race has its results ([fetchRaceResults]); a PPV show its card ([fetchShowDetails]).
+        if (leaguePath in NascarSource.LEAGUE_PATHS || leaguePath == PpvEventsSource.LEAGUE_PATH) {
+            return GameSummary(emptyList(), emptyList(), emptyList())
+        }
         val url = "$BASE_URL/$sportPath/$leaguePath/summary?event=$eventId"
         val json = JSONObject(get(url))
         var homeAliases = emptyList<String>()
@@ -919,7 +965,7 @@ class EspnSportsClient @Inject constructor(
 
     /** Where ESPN keeps a player's photo when the data has none ("nfl", "nba", "mlb", "nhl"). */
     private fun headshotFallback(feed: Feed, athleteId: String): String? = when (feed.leaguePath) {
-        "nfl", "nba", "mlb", "nhl", "college-football", "mens-college-basketball" ->
+        "nfl", "nba", "wnba", "mlb", "nhl", "college-football", "mens-college-basketball" ->
             "https://a.espncdn.com/i/headshots/${feed.leaguePath}/players/full/$athleteId.png"
         else -> null
     }
@@ -1382,7 +1428,7 @@ class EspnSportsClient @Inject constructor(
      * the season's leaders), from ESPN's game summary; the box score's players when it has no leaders.
      */
     fun fetchGamePlayers(feed: Feed, rawEventId: String): Map<String, List<SportsAthlete>> {
-        if (feed.isBananaBall()) return emptyMap()
+        if (feed.isBananaBall() || !hasTeams(feed)) return emptyMap()
         val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/summary?event=$rawEventId"))
         val result = LinkedHashMap<String, List<SportsAthlete>>()
         val leaders = json.optJSONArray("leaders")

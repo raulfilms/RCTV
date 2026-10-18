@@ -56,7 +56,9 @@ internal object SportsRecapPicker {
         "espn", "espn fc", "fox sports", "fox soccer", "premier league", "laliga", "bundesliga",
         "serie a", "ligue 1", "mls", "major league soccer", "liga mx", "tudn", "telemundo deportes",
         "univision deportes", "ufc", "formula 1", "f1", "bein sports", "tnt sports", "dazn",
-        "house of highlights", "uefa", "concacaf", "ncaa", "big ten", "sec network"
+        "house of highlights", "uefa", "concacaf", "ncaa", "big ten", "sec network",
+        "nascar", "nascar on fox", "nascar on nbc", "wwe", "aew", "all elite wrestling", "top rank", "top rank boxing",
+        "matchroom", "matchroom boxing", "premier boxing champions", "golden boy", "queensberry", "the ring", "dazn boxing"
     )
 
     /** Words too common to stand for a team on their own ("City", "United"). */
@@ -81,6 +83,10 @@ internal object SportsRecapPicker {
             return listOf("$home vs $away resumen y goles", "$away vs $home resumen goles ${year ?: ""}".trim()).distinct()
         }
         val suffix = listOfNotNull("highlights", year?.toString()).joinToString(" ")
+        // A race or a wrestling show: the event and its series ("YellaWood 500 NASCAR Cup Series highlights").
+        if (event.isSoloEvent() && !event.isFight()) {
+            return listOf("${event.name} $away $suffix", "${event.name} highlights").distinct()
+        }
         return listOf("$away vs $home $suffix", "$home vs $away highlights").distinct()
     }
 

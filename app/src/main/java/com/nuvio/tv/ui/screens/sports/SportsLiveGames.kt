@@ -59,6 +59,18 @@ internal fun SportsEvent.isLiveAt(now: Long): Boolean = when (status) {
 internal fun SportsEvent.startTimeTba(): Boolean =
     status == SportsEventStatus.UPCOMING && statusDetail.equals(com.nuvio.tv.data.remote.espn.BananaBallSource.TIME_TBA, ignoreCase = true)
 
+/**
+ * Its time isn't set (TBA) but it's its day: it may be on now, so a channel showing it is looked
+ * for before its page opens.
+ */
+internal fun SportsEvent.mayBeOnNow(now: Long): Boolean {
+    val start = startTimeMs ?: return false
+    return startTimeTba() && abs(now - start) < TBA_DAY_MS
+}
+
+/** A TBA game is put in its day's evening: this far either side is still its day. */
+private const val TBA_DAY_MS = 14L * 60 * 60 * 1000
+
 /** "Sat, Feb 6 • TBA": the day of a game whose time isn't set yet. */
 internal fun tbaStartLabel(startMs: Long): String =
     java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(java.util.Date(startMs)) + " • TBA"
@@ -118,6 +130,9 @@ internal object SportsGameChannels {
             "hockey" in sport -> listOf("hockey")
             "soccer" in sport || "futbol" in sport -> listOf("soccer", "futbol", "football", "liga", "league", "cup", "copa")
             "football" in sport -> listOf("football", "futbol americano")
+            "motor" in sport || "racing" in sport -> listOf("racing", "motorsport", "motorsports", "auto racing", "carreras")
+            "boxing" in sport -> listOf("boxing", "boxeo", "ppv", "pay per view")
+            "wrestling" in sport -> listOf("wrestling", "lucha libre", "ppv", "pay per view")
             else -> listOf(sport)
         }
         return words.filter { it.length >= 3 }.distinct()
@@ -172,12 +187,20 @@ internal object SportsGameChannels {
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
         if (home.isEmpty() && away.isEmpty()) return emptyList()
         val sportWords = sportWords(event)
-        // Banana Ball's times are often "TBA" (or just its schedule's): any program of the game on now is it.
-        val gameStart = event.startTimeMs?.takeUnless { event.isBananaBall() || event.isGolf() }
+        // Banana Ball's times are often "TBA" (or just its schedule's), as are some PPV shows': any
+        // program of the game on now is it.
+        val gameStart = event.startTimeMs?.takeUnless { event.isBananaBall() || event.isGolf() || event.startTimeTba() }
         val found = ArrayList<GameAiring>()
         val seen = HashSet<String>()
         channels.forEach { channel ->
-            val programs = epgByChannel[channel.epgChannelId ?: channel.id] ?: return@forEach
+            val channelPrograms = epgByChannel[channel.epgChannelId ?: channel.id]
+            // A PPV channel named after the show ("PPV 1: Fundora vs Hadribeaj"), often with no guide.
+            if (event.isPpv()) {
+                ppvChannelAiring(channel, channelPrograms, home, away, event, now)?.let { airing ->
+                    if (seen.add("${channel.id}|ppv")) found += airing
+                }
+            }
+            val programs = channelPrograms ?: return@forEach
             programs.forEach program@{ program ->
                 // On now, or starting in a few minutes.
                 if (program.endMs <= now || program.startMs > now + STARTING_SOON_MS) return@program
@@ -208,7 +231,7 @@ internal object SportsGameChannels {
             val score = scoreOf(program, home, away, sportWords(event), null)
             return if (score >= MIN_SCORE) score else 0
         }
-        if (event.isBananaBall()) {
+        if (event.isBananaBall() || event.startTimeTba()) {
             // Its schedule's time is often "TBA": the game's day is what counts.
             if (abs(program.startMs - gameStart) > BANANA_BALL_DAY_MS) return 0
             val score = scoreOf(program, home, away, sportWords(event), null)
@@ -255,6 +278,35 @@ internal object SportsGameChannels {
         if (sportWords.any { has(everything, it) }) score += 10
         return score
     }
+
+    /**
+     * A channel whose name is the PPV show (both fighters, or the show and its promotion), on the
+     * show's day: it's showing it (its program now, else the show itself).
+     */
+    private fun ppvChannelAiring(
+        channel: LiveTvChannel,
+        programs: List<EpgProgram>?,
+        home: List<String>,
+        away: List<String>,
+        event: SportsEvent,
+        now: Long
+    ): GameAiring? {
+        val name = canonical(normalize(channel.name))
+        if (teamIn(name, home) == 0 || teamIn(name, away) == 0) return null
+        val start = event.startTimeMs ?: return null
+        if (abs(now - start) > BANANA_BALL_DAY_MS) return null
+        val program = programs?.firstOrNull { it.isAiringAt(now) } ?: EpgProgram(
+            channelId = channel.epgChannelId ?: channel.id,
+            title = event.name,
+            startMs = now,
+            endMs = now + LIVE_WINDOW_MS,
+            isLive = true
+        )
+        return GameAiring(channel, program, PPV_CHANNEL_SCORE + channelBonus(channel))
+    }
+
+    /** A channel named after the show: as sure as a program with both teams in its title. */
+    private const val PPV_CHANNEL_SCORE = 110
 
     /** Between copies of a channel: the HD one first, the backups last. */
     private fun channelBonus(channel: LiveTvChannel): Int {
@@ -333,7 +385,10 @@ fun rememberSportsGameOpener(
     val busy = remember { booleanArrayOf(false) }
     return remember(viewModel, scope, context) {
         { event: SportsEvent ->
-            if (!event.isLiveAt(System.currentTimeMillis())) {
+            val now = System.currentTimeMillis()
+            // Its time not set but its day: played if a channel has it on, else its page.
+            val maybeOn = !event.isLiveAt(now) && event.mayBeOnNow(now)
+            if (!event.isLiveAt(now) && !maybeOn) {
                 openPage(event)
             } else if (!busy[0]) {
                 busy[0] = true
@@ -357,7 +412,7 @@ fun rememberSportsGameOpener(
                     if (!isActive) return@launch
                     // Not on a channel: Banana Ball streams its games on YouTube.
                     val streamPlayer = playStream
-                    val youTubeStream = if (channel == null && streamPlayer != null && event.isBananaBall()) {
+                    val youTubeStream = if (channel == null && streamPlayer != null && event.isBananaBall() && !maybeOn) {
                         Toast.makeText(context, R.string.sports_finding_game_youtube, Toast.LENGTH_SHORT).show()
                         busy[0] = true
                         try {
@@ -378,7 +433,8 @@ fun rememberSportsGameOpener(
                     } else if (youTubeStream != null && streamPlayer != null) {
                         streamPlayer(youTubeStream, event)
                     } else {
-                        Toast.makeText(context, R.string.sports_game_not_on_channels, Toast.LENGTH_LONG).show()
+                        // Only a game surely on now says it isn't on the channels.
+                        if (!maybeOn) Toast.makeText(context, R.string.sports_game_not_on_channels, Toast.LENGTH_LONG).show()
                         openPage(event)
                     }
                 }

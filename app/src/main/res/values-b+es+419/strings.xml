@@ -3627,6 +3627,13 @@
     <string name="game_detail_leaderboard">Clasificación</string>
     <string name="game_detail_loading_leaderboard">Cargando la clasificación…</string>
     <string name="game_detail_no_leaderboard">Aún no hay clasificación: sale cuando empiece el torneo</string>
+    <string name="game_detail_results">Resultados</string>
+    <string name="game_detail_running_order">Orden de carrera</string>
+    <string name="game_detail_loading_results">Cargando resultados…</string>
+    <string name="game_detail_no_results">Aún no hay resultados: salen cuando se corra la carrera</string>
+    <string name="game_detail_card">Cartelera</string>
+    <string name="game_detail_loading_card">Cargando la cartelera…</string>
+    <string name="game_detail_no_card">La cartelera aún no ha salido</string>
     <string name="game_detail_recap_not_found">No encontramos los highlights de este juego</string>
     <string name="game_detail_recap_back_hint">Highlights del juego • Presiona atrás para volver</string>
     <string name="sports_recap_week">Semana %1$d</string>

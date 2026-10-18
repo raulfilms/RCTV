@@ -68,7 +68,34 @@ data class SportsEvent(
     val leaderName: String? = null,
     val leaderScore: String? = null,
     /** When a tournament (golf: four days) ends. */
-    val endTimeMs: Long? = null
+    val endTimeMs: Long? = null,
+    /** A picture of the event (a fight's poster), when the source has one. */
+    val imageUrl: String? = null
+)
+
+/** A driver's place in a race: in its results once it's run, in the running order while it's on. */
+data class SportsRaceResult(
+    val position: Int,
+    val driver: String,
+    val carNumber: String,
+    /** The car's number badge. */
+    val carBadgeUrl: String?,
+    val team: String?,
+    val laps: Int?,
+    val lapsLed: Int?,
+    /** "Running", "Accident"... (results); the gap to the leader ("+1.234", "-2 L") while it's on. */
+    val status: String?,
+    val points: Int?
+)
+
+/** A PPV show's page (a fight card, a wrestling event): its poster, what it's about and its card. */
+data class SportsShowDetails(
+    val promotion: String,
+    val posterUrl: String?,
+    val imageUrl: String?,
+    val description: String?,
+    /** The fights or matches, one a line (with their results once it's over). */
+    val card: List<String>
 )
 
 /** A lightweight "sports talk" article/discussion item. No live API for this yet; curated/mock. */

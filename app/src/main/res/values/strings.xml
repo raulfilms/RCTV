@@ -4160,6 +4160,13 @@
     <string name="game_detail_leaderboard">Leaderboard</string>
     <string name="game_detail_loading_leaderboard">Loading the leaderboard…</string>
     <string name="game_detail_no_leaderboard">No leaderboard yet: it shows once the tournament starts</string>
+    <string name="game_detail_results">Results</string>
+    <string name="game_detail_running_order">Running Order</string>
+    <string name="game_detail_loading_results">Loading results…</string>
+    <string name="game_detail_no_results">No results yet: they show once the race is run</string>
+    <string name="game_detail_card">Card</string>
+    <string name="game_detail_loading_card">Loading the card…</string>
+    <string name="game_detail_no_card">The card isn\'t out yet</string>
     <string name="game_detail_recap_not_found">Couldn\'t find this game\'s highlights</string>
     <string name="game_detail_recap_back_hint">Game highlights • Press Back to return</string>
     <string name="sports_recap_week">Week %1$d</string>

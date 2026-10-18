@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -147,6 +148,14 @@ fun GameDetailScreen(
             golfLeaderboardItems(uiState)
             return@LazyColumn
         }
+        if (event.isNascar()) {
+            raceResultsItems(uiState, live = event.status == SportsEventStatus.LIVE)
+            return@LazyColumn
+        }
+        if (event.isPpv()) {
+            showDetailsItems(uiState)
+            return@LazyColumn
+        }
 
         item(key = "stats_title") {
             Text(
@@ -226,9 +235,9 @@ private fun GameDetailHeader(
             color = NuvioTheme.colors.TextSecondary
         )
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-        if (event.isGolf()) {
-            // A golf tournament: the tour's logo, its name, its leader.
-            GolfCardContent(
+        if (event.isSoloEvent()) {
+            // A golf tournament, a race, a PPV show: the tour's (series', promotion's) logo, its name, its leader.
+            SoloEventContent(
                 event = event,
                 nameSize = 28.sp,
                 textColor = NuvioTheme.colors.TextPrimary,
@@ -531,6 +540,95 @@ private fun androidx.compose.foundation.lazy.LazyListScope.golfLeaderboardItems(
             items(uiState.golfPlayers, key = { "golfer_${it.id}_${it.name}" }) { player ->
                 GolfLeaderboardRow(player = player, columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
+        }
+    }
+}
+
+/** A race's page: its results (or the running order while it's on), car badge and driver a line. */
+private fun androidx.compose.foundation.lazy.LazyListScope.raceResultsItems(uiState: GameDetailUiState, live: Boolean) {
+    item(key = "results_title") {
+        Text(
+            text = stringResource(if (live) R.string.game_detail_running_order else R.string.game_detail_results),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = NuvioTheme.colors.TextPrimary,
+            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+        )
+    }
+    when {
+        uiState.isLoadingStats -> item(key = "results_loading") {
+            Text(
+                text = stringResource(R.string.game_detail_loading_results),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+        uiState.raceResults.isEmpty() -> item(key = "results_empty") {
+            Text(
+                text = stringResource(R.string.game_detail_no_results),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+        else -> {
+            // The running order has no points yet: its columns say so.
+            val running = live && uiState.raceResults.all { it.points == null }
+            item(key = "results_header") {
+                RaceResultsHeader(live = running, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+            }
+            items(uiState.raceResults, key = { "driver_${it.position}_${it.carNumber}_${it.driver}" }) { result ->
+                RaceResultRow(result = result, live = running, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+            }
+        }
+    }
+}
+
+/** A PPV show's page: its poster and what it's about, then its card (the fights or matches). */
+private fun androidx.compose.foundation.lazy.LazyListScope.showDetailsItems(uiState: GameDetailUiState) {
+    val details = uiState.showDetails
+    if (uiState.isLoadingStats) {
+        item(key = "show_loading") {
+            Text(
+                text = stringResource(R.string.game_detail_loading_card),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+        return
+    }
+    if (details != null && (details.posterUrl != null || details.imageUrl != null || !details.description.isNullOrBlank())) {
+        item(key = "show_about") {
+            ShowAbout(
+                posterUrl = details.posterUrl,
+                imageUrl = details.imageUrl,
+                description = details.description,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+    }
+    item(key = "show_card_title") {
+        Text(
+            text = stringResource(R.string.game_detail_card),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = NuvioTheme.colors.TextPrimary,
+            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+        )
+    }
+    val card = details?.card.orEmpty()
+    if (card.isEmpty()) {
+        item(key = "show_card_empty") {
+            Text(
+                text = stringResource(R.string.game_detail_no_card),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+    } else {
+        itemsIndexed(card, key = { index, _ -> "card_line_$index" }) { _, line ->
+            ShowCardLine(line = line, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
         }
     }
 }
