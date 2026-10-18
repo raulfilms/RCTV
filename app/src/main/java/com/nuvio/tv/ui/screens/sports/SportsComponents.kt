@@ -257,6 +257,7 @@ private fun statusLine(event: SportsEvent): String {
     }
     val startTimeMs = event.startTimeMs
     if (startTimeMs != null) {
+        if (event.startTimeTba()) return tbaStartLabel(startTimeMs)
         val format = SimpleDateFormat("EEE, MMM d • h:mm a", Locale.getDefault())
         return format.format(Date(startTimeMs))
     }

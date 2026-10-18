@@ -481,7 +481,7 @@ class SportsViewModel @Inject constructor(
 
         /** The order of the leagues (ESPN's league path, the part after ":" in the id): the US leagues first, then soccer, then the rest. */
         val LEAGUE_ORDER = listOf(
-            "nfl", "nba", "mlb", "nhl", "college-football", "mens-college-basketball", "college-baseball",
+            "nfl", "nba", "mlb", "nhl", "college-football", "mens-college-basketball", "college-baseball", "banana-ball",
             "usa.1", "eng.1", "esp.1", "uefa.champions", "ita.1", "ger.1", "fra.1", "mex.1", "ufc", "f1", "atp"
         )
 

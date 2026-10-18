@@ -414,6 +414,7 @@ private fun statusLine(event: com.nuvio.tv.domain.model.SportsEvent): String {
     }
     val startTimeMs = event.startTimeMs
     if (startTimeMs != null) {
+        if (event.startTimeTba()) return tbaStartLabel(startTimeMs)
         val format = java.text.SimpleDateFormat("EEE, MMM d • h:mm a", java.util.Locale.getDefault())
         return format.format(java.util.Date(startTimeMs))
     }

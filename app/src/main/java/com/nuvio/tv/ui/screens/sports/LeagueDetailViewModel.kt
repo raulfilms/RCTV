@@ -66,6 +66,9 @@ data class LeagueDetailUiState(
     val favoriteOptionsTarget: SportsFavoriteTarget? = null
 )
 
+/** A week, for moving the Schedule tab. */
+private const val WEEK_MS = 7L * 24 * 60 * 60 * 1000
+
 @HiltViewModel
 class LeagueDetailViewModel @Inject constructor(
     private val client: EspnSportsClient,
@@ -121,7 +124,11 @@ class LeagueDetailViewModel @Inject constructor(
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { client.fetchFeed(currentFeed, client.dateRange(-3, 10)) }
+                runCatching {
+                    val near = client.fetchFeed(currentFeed, client.dateRange(-3, 10))
+                    // Banana Ball between seasons: its next season's games instead of nothing.
+                    if (near.events.isEmpty() && currentFeed.isBananaBall()) client.fetchFeed(currentFeed) else near
+                }
             }
             result.onSuccess { loadedFeed ->
                 // As the clock has them: games whose start time has come are live.
@@ -200,8 +207,18 @@ class LeagueDetailViewModel @Inject constructor(
 
     private fun loadScheduleIfNeeded() {
         if (uiState.value.scheduleLoaded || uiState.value.isLoadingSchedule) return
-        loadScheduleWeek(uiState.value.scheduleWeekOffset)
+        var weekOffset = uiState.value.scheduleWeekOffset
+        // Banana Ball between seasons: the schedule opens on the week its next game is in.
+        if (weekOffset == 0 && feed?.isBananaBall() == true) {
+            val now = System.currentTimeMillis()
+            val firstGame = uiState.value.upcomingEvents.mapNotNull { it.startTimeMs }.filter { it > now }.minOrNull()
+            if (firstGame != null) weekOffset = ((firstGame - now) / WEEK_MS).toInt()
+        }
+        loadScheduleWeek(weekOffset)
     }
+
+    private fun EspnSportsClient.Feed.isBananaBall(): Boolean =
+        leaguePath == com.nuvio.tv.data.remote.espn.BananaBallSource.LEAGUE_PATH
 
     /** Moves the Schedule tab by [delta] weeks (e.g. -1/+1 for the mockup's "< WEEK >" control) and reloads. */
     fun changeScheduleWeek(delta: Int) {

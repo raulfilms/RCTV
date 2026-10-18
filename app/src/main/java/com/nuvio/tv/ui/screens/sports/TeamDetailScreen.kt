@@ -895,7 +895,7 @@ private fun CardMiddle(event: SportsEvent, broadcast: String?) {
                 SportsEventStatus.FINISHED -> (event.statusDetail ?: stringResource(R.string.sports_final)) to
                     start?.let { SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(it)) }
                 SportsEventStatus.UPCOMING -> (start?.let { SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(Date(it)) } ?: "") to
-                    start?.let { SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(it)) }
+                    (if (event.startTimeTba()) "TBA" else start?.let { SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(it)) })
             }
             Text(text = first, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, textAlign = TextAlign.Center)
             if (!second.isNullOrBlank()) {

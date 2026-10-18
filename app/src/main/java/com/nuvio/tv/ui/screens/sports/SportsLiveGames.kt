@@ -47,9 +47,18 @@ internal fun SportsEvent.isLiveAt(now: Long): Boolean = when (status) {
     SportsEventStatus.FINISHED -> false
     SportsEventStatus.UPCOMING -> {
         val start = startTimeMs
-        start != null && now >= start && now < start + LIVE_WINDOW_MS
+        // A game whose time isn't set yet (TBA) doesn't go live by the clock.
+        !startTimeTba() && start != null && now >= start && now < start + LIVE_WINDOW_MS
     }
 }
+
+/** Its start time isn't set yet ("TBA", Banana Ball's schedule): only its day is known. */
+internal fun SportsEvent.startTimeTba(): Boolean =
+    status == SportsEventStatus.UPCOMING && statusDetail.equals(com.nuvio.tv.data.remote.espn.BananaBallSource.TIME_TBA, ignoreCase = true)
+
+/** "Sat, Feb 6 • TBA": the day of a game whose time isn't set yet. */
+internal fun tbaStartLabel(startMs: Long): String =
+    java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(java.util.Date(startMs)) + " • TBA"
 
 /** The game as the clock has it: an upcoming game whose time has come shows as live. */
 internal fun SportsEvent.withClock(now: Long): SportsEvent =

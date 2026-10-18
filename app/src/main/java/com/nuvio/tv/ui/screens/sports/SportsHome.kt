@@ -186,7 +186,7 @@ internal fun sportsGameStatus(event: SportsEvent): String {
         SportsEventStatus.FINISHED -> event.statusDetail?.takeIf { it.isNotBlank() } ?: stringResource(R.string.sports_final)
         SportsEventStatus.UPCOMING -> {
             val start = event.startTimeMs ?: return event.statusDetail.orEmpty()
-            sportsStartTimeLabel(start)
+            if (event.startTimeTba()) tbaStartLabel(start) else sportsStartTimeLabel(start)
         }
     }
 }
