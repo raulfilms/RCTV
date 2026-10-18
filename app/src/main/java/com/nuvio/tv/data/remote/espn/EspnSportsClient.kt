@@ -182,6 +182,9 @@ class EspnSportsClient @Inject constructor(
         /** Standings live under a different, older ESPN API shape than scoreboard/teams/news. */
         private const val STANDINGS_BASE_URL = "https://site.api.espn.com/apis/v2/sports"
 
+        /** League-table numbers that say nothing on a team's page. */
+        private val SKIPPED_TABLE_STATS = setOf("advanced", "rankChange", "deductions", "overall", "streak", "clincher", "playoffSeed")
+
         private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
@@ -926,9 +929,46 @@ class EspnSportsClient @Inject constructor(
         return athletes
     }
 
-    /** A team's season stats, by group ("Passing", "Rushing"...). */
-    fun fetchTeamStats(feed: Feed, teamId: String): List<SportsTeamStatCategory> {
-        val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId/statistics"))
+    /** A team's stats: which season they're for ("2025-26 Regular Season"), and the groups of stats. */
+    data class TeamStats(val seasonLabel: String?, val categories: List<SportsTeamStatCategory>)
+
+    /**
+     * A team's season stats, by group ("Passing", "Rushing"...): the regular season on now (ESPN
+     * gives the last one until it's asked for this one); before it starts, the last one, said so.
+     * Soccer (ESPN has no team stats for it): the team's numbers in the league table (played, won,
+     * drawn, lost, goals, points).
+     */
+    fun fetchTeamStats(feed: Feed, teamId: String): TeamStats {
+        val base = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams/$teamId/statistics"
+        val json = JSONObject(get(base))
+        var categories = statCategoriesOf(json)
+        val current = json.optJSONObject("season")
+        val requested = json.optJSONObject("requestedSeason")
+        var label = seasonLabelOf(requested ?: current)
+        // The regular season on now, when ESPN gave an older one.
+        val currentYear = current?.optInt("year", 0) ?: 0
+        val currentType = current?.optInt("type", 0) ?: 0
+        val sameAsRequested = requested != null &&
+            requested.optInt("year", 0) == currentYear && requested.optInt("type", 0) == currentType
+        if (currentYear > 0 && currentType == 2 && !sameAsRequested) {
+            val currentJson = runCatching { JSONObject(get("$base?season=$currentYear&seasontype=2")) }.getOrNull()
+            val currentCategories = currentJson?.let { statCategoriesOf(it) }.orEmpty()
+            if (hasGamesPlayed(currentCategories)) {
+                categories = currentCategories
+                label = seasonLabelOf(current)
+            }
+        }
+        if (categories.isEmpty()) {
+            standingStatsOf(feed, teamId)?.let { (tableName, stats) ->
+                categories = listOf(stats)
+                label = tableName
+            }
+        }
+        return TeamStats(seasonLabel = label, categories = categories)
+    }
+
+    /** The stat groups of a team statistics response, every stat of each. */
+    private fun statCategoriesOf(json: JSONObject): List<SportsTeamStatCategory> {
         val categories = json.optJSONObject("results")?.optJSONObject("stats")?.optJSONArray("categories")
             ?: json.optJSONObject("statistics")?.optJSONArray("splits")
             ?: return emptyList()
@@ -947,6 +987,66 @@ class EspnSportsClient @Inject constructor(
             if (stats.isNotEmpty()) result += SportsTeamStatCategory(name = name, stats = stats)
         }
         return result
+    }
+
+    /** Some games are in these stats (a season just started has none yet). */
+    private fun hasGamesPlayed(categories: List<SportsTeamStatCategory>): Boolean {
+        if (categories.isEmpty()) return false
+        val played = categories.flatMap { it.stats }.firstOrNull { it.label.equals("Games Played", ignoreCase = true) }
+            ?: return true
+        return (played.value.replace(",", "").toDoubleOrNull() ?: 0.0) > 0.0
+    }
+
+    /** "2025-26 Regular Season" from ESPN's season JSON; "2026-27 English Premier League" for soccer. */
+    private fun seasonLabelOf(season: JSONObject?): String? {
+        season ?: return null
+        val display = season.str("displayName")
+        val name = season.str("name")
+        return when {
+            display != null && name != null && !display.contains(name, ignoreCase = true) -> "$display $name"
+            display != null -> display
+            else -> name
+        }
+    }
+
+    /**
+     * A team's numbers in its league table ("2026-27 English Premier League": Rank 19, Games Played
+     * 5, Wins 0, Draws 2...), from ESPN's standings; null when the team isn't in them.
+     */
+    private fun standingStatsOf(feed: Feed, teamId: String): Pair<String, SportsTeamStatCategory>? {
+        val json = runCatching { JSONObject(get("$STANDINGS_BASE_URL/${feed.sportPath}/${feed.leaguePath}/standings")) }.getOrNull()
+            ?: return null
+        fun find(group: JSONObject, groupName: String?): Pair<String, SportsTeamStatCategory>? {
+            val name = group.str("name") ?: groupName
+            val entries = group.optJSONObject("standings")?.optJSONArray("entries")
+            if (entries != null) {
+                for (i in 0 until entries.length()) {
+                    val entry = entries.optJSONObject(i) ?: continue
+                    if (entry.optJSONObject("team")?.str("id") != teamId) continue
+                    val statsJson = entry.optJSONArray("stats") ?: return null
+                    val stats = ArrayList<SportsStandingStat>()
+                    var rank: SportsStandingStat? = null
+                    for (j in 0 until statsJson.length()) {
+                        val stat = statsJson.optJSONObject(j) ?: continue
+                        val key = stat.str("name") ?: stat.str("type")
+                        if (key in SKIPPED_TABLE_STATS) continue
+                        val value = stat.str("displayValue") ?: stat.str("summary") ?: continue
+                        val label = stat.str("displayName") ?: stat.str("shortDisplayName") ?: key ?: continue
+                        val item = SportsStandingStat(label = label, value = value)
+                        if (key == "rank") rank = item else stats += item
+                    }
+                    if (stats.isEmpty()) return null
+                    val title = name ?: feed.sportLabel
+                    return title to SportsTeamStatCategory(name = title, stats = listOfNotNull(rank) + stats)
+                }
+            }
+            val children = group.optJSONArray("children") ?: return null
+            for (i in 0 until children.length()) {
+                find(children.optJSONObject(i) ?: continue, name)?.let { return it }
+            }
+            return null
+        }
+        return find(json, null)
     }
 
     /** A team's ESPN news. */

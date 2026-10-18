@@ -99,7 +99,7 @@ import java.util.Locale
 
 private val PageMargin: Dp = AppleTvSpacing.SafeX
 private val GameCardHeight = 208.dp
-private val HeaderPlayerHeight = 236.dp
+private val HeaderHeight = 236.dp
 
 /** A line of the schedule: a game, or a week the team doesn't play (NFL bye). */
 private sealed interface ScheduleRow {
@@ -168,7 +168,6 @@ fun TeamDetailScreen(
                     initialBadgeUrl = viewModel.initialBadgeUrl,
                     isSoccer = viewModel.isSoccer,
                     sportPath = viewModel.leagueId.substringBefore(':'),
-                    featuredPlayer = uiState.featuredPlayer,
                     isInLibrary = uiState.isInLibrary,
                     libraryRequester = libraryRequester,
                     onLibraryFocus = { libraryFocused = it },
@@ -344,7 +343,6 @@ private fun TeamHeader(
     initialBadgeUrl: String?,
     isSoccer: Boolean,
     sportPath: String,
-    featuredPlayer: SportsAthlete?,
     isInLibrary: Boolean,
     libraryRequester: FocusRequester,
     onLibraryFocus: (Boolean) -> Unit,
@@ -358,39 +356,12 @@ private fun TeamHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(HeaderPlayerHeight)
+            .height(HeaderHeight)
     ) {
-        // The team's star, on the right.
-        val headshot = featuredPlayer?.headshotUrl
-        if (!headshot.isNullOrBlank()) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 24.dp)
-                    .height(HeaderPlayerHeight - 6.dp)
-                    .aspectRatio(350f / 254f)
-            ) {
-                AsyncImage(
-                    model = headshot,
-                    contentDescription = featuredPlayer?.name,
-                    contentScale = ContentScale.Fit,
-                    alignment = Alignment.BottomCenter,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, AppleTvColors.Background.copy(alpha = 0.9f))))
-                )
-            }
-        }
-
         Row(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = PageMargin, top = 14.dp, end = 340.dp),
+                .padding(start = PageMargin, top = 14.dp, end = PageMargin),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TeamLogo(url = profile?.logoUrl ?: initialBadgeUrl, size = 128.dp)
@@ -1075,11 +1046,23 @@ private fun StatsTab(uiState: TeamDetailUiState) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.fillMaxSize()
         ) {
+            // Which season these are ("2025-26 Regular Season" before this one starts).
+            uiState.statsSeason?.let { season ->
+                item(key = "season", span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text = season,
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
             stats.items.forEachIndexed { categoryIndex, category ->
                 item(key = "cat_$categoryIndex", span = { GridItemSpan(maxLineSpan) }) {
                     Box(modifier = Modifier.padding(top = 8.dp)) { ScheduleLabel(text = category.name) }
                 }
-                items(category.stats.take(8).withIndex().toList(), key = { "stat_${categoryIndex}_${it.index}" }) { (_, stat) ->
+                items(category.stats.withIndex().toList(), key = { "stat_${categoryIndex}_${it.index}" }) { (_, stat) ->
                     val shape = RoundedCornerShape(10.dp)
                     Surface(
                         onClick = {},

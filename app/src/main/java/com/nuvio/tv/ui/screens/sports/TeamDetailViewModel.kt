@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.net.URLDecoder
 import java.util.Locale
@@ -51,8 +52,8 @@ data class TeamDetailUiState(
     val historyLoaded: Boolean = false,
     /** Every team of the league ("All NFL Teams"), with their colors. */
     val leagueTeams: List<SportsTeam> = emptyList(),
-    /** The team's star (the player who led it most this season), for the header. */
-    val featuredPlayer: SportsAthlete? = null,
+    /** Which season the stats are for ("2025-26 Regular Season", "2026-27 English Premier League"). */
+    val statsSeason: String? = null,
     /** Each game's players, by event id, then by team id (loaded as the games show). */
     val gamePlayers: Map<String, Map<String, List<SportsAthlete>>> = emptyMap(),
     val isInLibrary: Boolean = false,
@@ -72,6 +73,7 @@ class TeamDetailViewModel @Inject constructor(
     private val preferences: SportsPreferencesDataStore,
     private val libraryPreferences: LibraryPreferences,
     private val sportsLibraryStore: SportsLibraryStore,
+    private val playerPhotos: com.nuvio.tv.data.remote.sportsdb.PlayerPhotoFinder,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -152,12 +154,9 @@ class TeamDetailViewModel @Inject constructor(
                     currentGameIndex = currentIndexOf(list),
                     isLoadingSchedule = false,
                     scheduleFailed = games.isFailure,
-                    leagueTeams = teams.sortedBy { team -> team.name },
-                    featuredPlayer = it.featuredPlayer ?: starOf(list)
+                    leagueTeams = teams.sortedBy { team -> team.name }
                 )
             }
-            // No games played yet to tell the star: the roster's.
-            if (_uiState.value.featuredPlayer == null) loadRoster()
         }
     }
 
@@ -182,35 +181,6 @@ class TeamDetailViewModel @Inject constructor(
         return games.lastIndex
     }
 
-    /** The player who led the team in the most games played. */
-    private fun starOf(games: List<SportsTeamGame>): SportsAthlete? {
-        val counts = LinkedHashMap<String, Pair<SportsAthlete, Int>>()
-        games.asReversed().forEach { game ->
-            game.leaders[teamId].orEmpty().take(1).forEach { athlete ->
-                if (athlete.headshotUrl == null) return@forEach
-                val known = counts[athlete.id]
-                counts[athlete.id] = athlete to ((known?.second ?: 0) + 1)
-            }
-        }
-        return counts.values.maxByOrNull { it.second }?.first
-    }
-
-    /** The roster's star: by position (QB, C...), then the most years in the league. */
-    private fun rosterStar(roster: List<SportsAthlete>): SportsAthlete? {
-        val withPhoto = roster.filter { it.headshotUrl != null }
-        if (withPhoto.isEmpty()) return null
-        val preferred = when (feed?.sportPath) {
-            "football" -> listOf("QB")
-            "hockey" -> listOf("C", "LW", "RW")
-            "basketball" -> listOf("PG", "SF", "SG", "G", "F")
-            "baseball" -> listOf("SS", "CF", "RF", "DH", "1B", "SP")
-            "soccer" -> listOf("F", "FW", "ST", "M", "AM")
-            else -> emptyList()
-        }
-        val byPosition = withPhoto.filter { athlete -> preferred.any { it.equals(athlete.position, ignoreCase = true) } }
-        return (byPosition.ifEmpty { withPhoto }).maxByOrNull { it.experienceYears ?: 0 }
-    }
-
     fun onTabShown(tab: TeamPageTab) {
         when (tab) {
             TeamPageTab.ROSTER -> loadRoster()
@@ -228,11 +198,30 @@ class TeamDetailViewModel @Inject constructor(
         _uiState.update { it.copy(roster = it.roster.copy(isLoading = true)) }
         viewModelScope.launch {
             val roster = withContext(Dispatchers.IO) { runCatching { client.fetchTeamRoster(feed, teamId) }.getOrDefault(emptyList()) }
-            _uiState.update {
-                it.copy(
-                    roster = TeamTabData(items = roster, isLoading = false, loaded = true),
-                    featuredPlayer = it.featuredPlayer ?: rosterStar(roster)
-                )
+            _uiState.update { it.copy(roster = TeamTabData(items = roster, isLoading = false, loaded = true)) }
+            fillRosterPhotos(roster)
+        }
+    }
+
+    /**
+     * The players ESPN has no photo of (soccer players, mostly): their photos from TheSportsDB, a
+     * few at a time, shown as they come.
+     */
+    private suspend fun fillRosterPhotos(roster: List<SportsAthlete>) {
+        val missing = roster.filter { it.headshotUrl == null }
+        if (missing.isEmpty()) return
+        val team = _uiState.value.profile?.displayName ?: initialName
+        val sportPath = feed?.sportPath
+        val gate = kotlinx.coroutines.sync.Semaphore(3)
+        kotlinx.coroutines.coroutineScope {
+            missing.forEach { athlete ->
+                launch {
+                    val photo = gate.withPermit { playerPhotos.photoFor(athlete.name, team, sportPath) } ?: return@launch
+                    _uiState.update { state ->
+                        val items = state.roster.items.map { if (it.id == athlete.id) it.copy(headshotUrl = photo) else it }
+                        state.copy(roster = state.roster.copy(items = items))
+                    }
+                }
             }
         }
     }
@@ -243,8 +232,13 @@ class TeamDetailViewModel @Inject constructor(
         if (state.isLoading || state.loaded) return
         _uiState.update { it.copy(stats = it.stats.copy(isLoading = true)) }
         viewModelScope.launch {
-            val stats = withContext(Dispatchers.IO) { runCatching { client.fetchTeamStats(feed, teamId) }.getOrDefault(emptyList()) }
-            _uiState.update { it.copy(stats = TeamTabData(items = stats, isLoading = false, loaded = true)) }
+            val stats = withContext(Dispatchers.IO) { runCatching { client.fetchTeamStats(feed, teamId) }.getOrNull() }
+            _uiState.update {
+                it.copy(
+                    stats = TeamTabData(items = stats?.categories.orEmpty(), isLoading = false, loaded = true),
+                    statsSeason = stats?.seasonLabel
+                )
+            }
         }
     }
 
