@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -272,38 +273,65 @@ private fun GameDetailHeader(
 /** YouTube's red. */
 private val RecapRed = Color(0xFFFF0033)
 
-/** "Watch Recap": big and red like YouTube's; the game's highlights. */
+/**
+ * "Watch Recap": big and red like YouTube's; the game's highlights. The play icon and the words
+ * sit together in the very middle of the red (the text without its font's extra top and bottom).
+ */
 @Composable
 private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
-    Button(
+    val shape = RoundedCornerShape(14.dp)
+    androidx.tv.material3.Surface(
         onClick = onClick,
-        modifier = modifier.height(52.dp),
-        shape = ButtonDefaults.shape(shape),
-        colors = ButtonDefaults.colors(
+        modifier = modifier
+            .height(56.dp)
+            .widthIn(min = 300.dp),
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
             containerColor = RecapRed,
             contentColor = Color.White,
             focusedContainerColor = RecapRed,
             focusedContentColor = Color.White
         ),
-        border = ButtonDefaults.border(
+        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
             focusedBorder = androidx.tv.material3.Border(
                 border = androidx.compose.foundation.BorderStroke(3.dp, Color.White),
                 shape = shape
             )
         ),
-        scale = ButtonDefaults.scale(focusedScale = 1.08f),
-        contentPadding = PaddingValues(horizontal = 28.dp)
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f)
     ) {
-        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(26.dp))
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = stringResource(R.string.game_detail_watch_recap).uppercase(),
-            fontWeight = FontWeight.Bold,
-            fontSize = 17.sp,
-            letterSpacing = 0.5.sp,
-            maxLines = 1
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.game_detail_watch_recap).uppercase(),
+                    color = Color.White,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        lineHeight = 18.sp,
+                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                            alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                            trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both
+                        )
+                    )
+                )
+            }
+        }
     }
 }
 
