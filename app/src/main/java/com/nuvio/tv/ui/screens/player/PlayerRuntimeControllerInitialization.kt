@@ -180,6 +180,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 )
             }
             resetLoadingOverlayForNewStream()
+            // RCTV: a live channel is watched and reconnected by itself whichever engine plays it.
+            startLiveTvWatchdog(url)
             if (startPaused) {
                 userPausedManually = true
                 shouldEnforceAutoplayOnFirstReady = false
@@ -479,7 +481,9 @@ internal fun PlayerRuntimeController.initializePlayer(
             )
             val isHlsStream = isHls || resolvedStreamMime == MimeTypes.APPLICATION_M3U8
             val isDashStream = resolvedStreamMime == MimeTypes.APPLICATION_MPD
-            val parallelActive = playerSettings.parallelNetworkEnabled && playerSettings.useParallelConnections
+            // RCTV: a live stream has no end to split into ranges, so it always uses one connection.
+            val liveTv = isLiveTvPlayback
+            val parallelActive = !liveTv && playerSettings.parallelNetworkEnabled && playerSettings.useParallelConnections
             val useChunkSessionSource = parallelActive && !isHlsStream && !isDashStream
 
             val parallelOverheadMb = if (useChunkSessionSource) {
@@ -492,7 +496,20 @@ internal fun PlayerRuntimeController.initializePlayer(
             }
             currentParallelChunkOverheadMb = parallelOverheadMb
 
-            val loadControl = if (playerSettings.nuvioPerformanceModeEnabled) {
+            val loadControl = if (liveTv) {
+                // RCTV: live TV gets its own buffer (see LiveTvPlaybackTuning), whatever the
+                // movie buffer settings are.
+                effectiveBackBufferDurationMs = 0
+                currentBitrateAwareLoadControl = null
+                Log.i(
+                    PlayerRuntimeController.TAG,
+                    "BUFFER_GATE: engine=exo-live minMs=${LiveTvPlaybackTuning.MIN_BUFFER_MS} " +
+                        "maxMs=${LiveTvPlaybackTuning.MAX_BUFFER_MS} " +
+                        "startMs=${LiveTvPlaybackTuning.BUFFER_FOR_PLAYBACK_MS} " +
+                        "afterRebufferMs=${LiveTvPlaybackTuning.BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS}"
+                )
+                LiveTvPlaybackTuning.buildLoadControl()
+            } else if (playerSettings.nuvioPerformanceModeEnabled) {
                 effectiveBackBufferDurationMs = NuvioExoPlayerPerformanceHelper.backBufferMs
                 currentBitrateAwareLoadControl = null
                 Log.i(
@@ -588,6 +605,12 @@ internal fun PlayerRuntimeController.initializePlayer(
             } else {
                 // Reset each playback so the factory doesn't keep last stream's state.
                 mediaSourceFactory.useParallelConnections = false
+            }
+            // RCTV: a live stream never touches the disk cache nor split connections.
+            mediaSourceFactory.liveStream = liveTv
+            if (liveTv) {
+                mediaSourceFactory.useParallelConnections = false
+                mediaSourceFactory.vodCacheEnabled = false
             }
 
             // Log the effective state (post-gating), not the raw settings.
@@ -1027,6 +1050,8 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                 if (playerSettings.skipSilence) skipSilenceEnabled = true
                 setHandleAudioBecomingNoisy(true)
+                // RCTV: keeps Wi-Fi at full speed (no power saving) while a channel plays.
+                if (liveTv) setWakeMode(C.WAKE_MODE_NETWORK)
 
                 try {
                     currentMediaSession?.release()
@@ -1048,7 +1073,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 applySubtitlePreferences(preferred, secondary)
                 applyStartupSubtitlePreparation(startupSubtitlePreparation)
                 val startupSubtitleConfigurations = buildStartupSubtitleConfigurations(startupSubtitlePreparation)
-                val initialResumePosition = resolvePendingInitialResumePosition()
+                // A live channel always starts at its live edge.
+                val initialResumePosition = if (liveTv) 0L else resolvePendingInitialResumePosition()
                 playbackAnalyticsDiagnostics.setStartupStartPosition(initialResumePosition)
                 playbackAnalyticsDiagnostics.recordRawEventLine(
                     "PLAYER_INIT: engine=EXOPLAYER host=${url.safeHost()} " +
@@ -1135,7 +1161,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         updatePlaybackTimeline(duration = playerDuration.coerceAtLeast(0L))
                         // Only mark playbackEnded for real finishes so PlayerScreen does not
                         // dispatch next-episode navigation for short debrid/error placeholders.
-                        val naturalEnded = playbackState == Player.STATE_ENDED &&
+                        val liveChannelEnded = playbackState == Player.STATE_ENDED && isLiveTvStreamNow()
+                        val naturalEnded = !liveChannelEnded && playbackState == Player.STATE_ENDED &&
                             shouldTreatAsNaturalPlaybackCompletion(
                                 hasRenderedFirstFrame = hasRenderedFirstFrame,
                                 hasFatalError = !_uiState.value.error.isNullOrBlank(),
@@ -1311,7 +1338,12 @@ internal fun PlayerRuntimeController.initializePlayer(
                             cancelFirstFrameWatchdog()
                         }
 
-                        if (playbackState == Player.STATE_ENDED) {
+                        if (liveChannelEnded && hasRenderedFirstFrame) {
+                            // RCTV: a channel never ends; its server dropped the connection.
+                            if (errorRetryJob?.isActive != true) {
+                                reconnectLiveTv(reason = "stream ended")
+                            }
+                        } else if (playbackState == Player.STATE_ENDED) {
                             // Re-persist diagnostics with the final rebuffer totals (the
                             // first-frame snapshot captured 0, since rebuffers accrue after).
                             Log.i(
@@ -1448,6 +1480,16 @@ internal fun PlayerRuntimeController.initializePlayer(
                             errorRetryJob = scope.launch {
                                 releasePlayer(flushPlaybackState = false)
                             }
+                            return
+                        }
+
+                        // RCTV: a live channel that drops, falls behind its window or stalls on
+                        // the network reconnects at its live edge instead of showing an error.
+                        if (shouldReconnectLiveTv(error)) {
+                            reconnectLiveTv(
+                                reason = "error ${error.errorCodeName}",
+                                light = error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+                            )
                             return
                         }
 

@@ -611,6 +611,12 @@ class PlayerRuntimeController(
     internal var consecutiveAutoPlayCount: Int = 0
     internal var errorRetryJob: Job? = null
     internal var stableProgressResetJob: Job? = null
+    // RCTV: live TV keep-alive (PlayerRuntimeControllerLiveTv.kt).
+    internal var liveWatchdogJob: Job? = null
+    internal var liveReconnectAttempts: Int = 0
+    internal var liveTvHasPlayed: Boolean = false
+    internal var liveTvUrl: String? = null
+    internal var liveStuckSinceMs: Long = 0L
     @Volatile internal var currentPlayerSettingsForReport: PlayerSettings = PlayerSettings()
 
     internal val dv7ToHevcForcedStreamUrls: MutableSet<String> = mutableSetOf()

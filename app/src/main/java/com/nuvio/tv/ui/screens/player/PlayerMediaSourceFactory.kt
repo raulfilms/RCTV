@@ -64,6 +64,10 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
     private var customExtractorsFactory: ExtractorsFactory? = null
     private var customSubtitleParserFactory: SubtitleParser.Factory? = null
     private val loadErrorHandlingPolicy = PlayerLoadErrorHandlingPolicy()
+    private val liveLoadErrorHandlingPolicy = PlayerLoadErrorHandlingPolicy(live = true)
+
+    /** RCTV: a live channel: played at 1x behind its live edge, retried patiently, never cached or split. */
+    var liveStream: Boolean = false
 
     @Volatile private var currentVodCacheUrl: String? = null
     @Volatile private var currentVodCacheResolvedUrl: String? = null
@@ -173,6 +177,10 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
             cacheKey?.takeIf { it.isNotBlank() }?.let(mediaItemBuilder::setCustomCacheKey)
         }
         mediaMetadata?.let(mediaItemBuilder::setMediaMetadata)
+        if (liveStream) {
+            mediaItemBuilder.setLiveConfiguration(LiveTvPlaybackTuning.liveConfiguration)
+        }
+        val errorPolicy = if (liveStream) liveLoadErrorHandlingPolicy else loadErrorHandlingPolicy
 
         if (subtitleConfigurations.isNotEmpty()) {
             mediaItemBuilder.setSubtitleConfigurations(subtitleConfigurations)
@@ -193,7 +201,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 PlayerMemoryReporter.snapshot(context)
         )
         PlayerMemoryReporter.startSampling(context)
-        val useChunkSessionSource = useParallelConnections && !isHls && !isDash
+        val useChunkSessionSource = useParallelConnections && !liveStream && !isHls && !isDash
         parallelStartupPrefetchUnlocked.set(!useChunkSessionSource)
         val progressiveUpstreamFactory: DataSource.Factory = if (useChunkSessionSource) {
             val okHttpFactory = OkHttpDataSource.Factory(playbackHttpClient).apply {
@@ -228,7 +236,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         }
 
         // 2. VOD disk cache (opt-in).
-        val useVodCache = ENABLE_VOD_CACHE && vodCacheEnabled && !isHls && !isDash && shouldUseVodCache(url)
+        val useVodCache = ENABLE_VOD_CACHE && vodCacheEnabled && !liveStream && !isHls && !isDash && shouldUseVodCache(url)
         // A playback started inside the delay window would have its own data swept out from under it.
         pendingEvictionJob?.cancel()
         pendingEvictionJob = null
@@ -274,7 +282,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
             progressiveFactory
         }
         val defaultFactory = DefaultMediaSourceFactory(defaultSourceFactory, extractorsFactory).apply {
-            setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+            setLoadErrorHandlingPolicy(errorPolicy)
             customSubtitleParserFactory?.let { parserFactory ->
                 setSubtitleParserFactory(parserFactory)
             }
@@ -292,10 +300,10 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         val mediaSource = when {
             isHls && !forceDefaultFactory -> HlsMediaSource.Factory(httpDataSourceFactory)
                 .setAllowChunklessPreparation(true)
-                .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+                .setLoadErrorHandlingPolicy(errorPolicy)
                 .createMediaSource(mediaItem)
             isDash && !forceDefaultFactory -> DashMediaSource.Factory(httpDataSourceFactory)
-                .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+                .setLoadErrorHandlingPolicy(errorPolicy)
                 .createMediaSource(mediaItem)
             else -> defaultFactory.createMediaSource(mediaItem)
         }
@@ -1148,7 +1156,13 @@ private inline fun <reified T : Throwable> Throwable.findCause(): T? {
     return null
 }
 
-private class PlayerLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy(6) {
+/**
+ * [live]: a channel keeps retrying a dropped segment or connection quickly (half a second, then
+ * up to two) many more times before giving up, since a live server's hiccups are short.
+ */
+private class PlayerLoadErrorHandlingPolicy(
+    private val live: Boolean = false
+) : DefaultLoadErrorHandlingPolicy(if (live) LIVE_MIN_LOADABLE_RETRY_COUNT else 6) {
     override fun getFallbackSelectionFor(
         fallbackOptions: LoadErrorHandlingPolicy.FallbackOptions,
         loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo
@@ -1183,6 +1197,9 @@ private class PlayerLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy(6) 
                 return androidx.media3.common.C.TIME_UNSET
             }
         }
+        if (live) {
+            return (loadErrorInfo.errorCount * 500L).coerceAtMost(2_000L)
+        }
         val timeout = loadErrorInfo.exception.findCause<SocketTimeoutException>() != null
         return if (timeout) {
             when (loadErrorInfo.errorCount) {
@@ -1193,6 +1210,8 @@ private class PlayerLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy(6) 
         } else super.getRetryDelayMsFor(loadErrorInfo)
     }
 }
+
+private const val LIVE_MIN_LOADABLE_RETRY_COUNT = 15
 
 internal fun shouldPreferAlternativeHlsTrack(
     responseCode: Int?,

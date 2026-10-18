@@ -25,6 +25,7 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
         performPendingMpvHardRestartIfNeeded(view)
         view.applyHi10pGnextSoftwareFallback(shouldUseMpvHi10pGnextSoftwareFallback())
         view.applyHardwareDecodeMode(mpvHardwareDecodeModeSetting)
+        view.applyLiveStreamTuning(isLiveTvPlayback)
         view.setMedia(currentStreamUrl, currentHeaders)
         view.setPlaybackSpeed(_uiState.value.playbackSpeed)
         view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb)
@@ -122,10 +123,12 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
         performPendingMpvHardRestartIfNeeded(view)
         view.applyHi10pGnextSoftwareFallback(shouldUseMpvHi10pGnextSoftwareFallback())
         view.applyHardwareDecodeMode(mpvHardwareDecodeModeSetting)
-        val initialResumePosition = resolvePendingInitialResumePosition()
+        // A live channel always starts at its live edge.
+        val initialResumePosition = if (isLiveTvPlayback) 0L else resolvePendingInitialResumePosition()
             .takeIf { it > 0L }
             ?: (_uiState.value.pendingSeekPosition?.coerceAtLeast(0L) ?: 0L)
         playbackAnalyticsDiagnostics.setStartupStartPosition(initialResumePosition)
+        view.applyLiveStreamTuning(isLiveTvPlayback)
         view.setMedia(url, headers, initialResumePosition)
         playbackAnalyticsDiagnostics.recordRawEventLine(
             "PLAYER_INIT: engine=MPV host=${url.safeMpvTraceHost()} " +

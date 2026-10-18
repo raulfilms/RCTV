@@ -147,6 +147,24 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * RCTV: a live channel keeps a deep cache, waits for a few seconds of it before starting and
+     * after a stall (instead of stuttering on every hiccup) and reconnects to its server by itself.
+     * Movies keep mpv's own defaults.
+     */
+    fun applyLiveStreamTuning(live: Boolean) {
+        if (!live && !liveTuningApplied) return
+        ensureInitialized()
+        val values = if (live) LIVE_TUNING else LIVE_TUNING_DEFAULTS
+        values.forEach { (name, value) ->
+            runCatching { mpv.setPropertyString(name, value) }
+                .onFailure { Log.w(TAG, "Live tuning: couldn't set $name: ${it.message}") }
+        }
+        liveTuningApplied = live
+    }
+
+    private var liveTuningApplied = false
+
     private fun applyDefaultTrackSelectionForNewLoad() {
         runCatching {
             // Let mpv choose the default streams for every new media load.
@@ -772,6 +790,32 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         private const val LOADFILE_DEFAULT_INDEX = "-1"
         private const val MPV_COVER_FALLBACK_SCALE = 1.15f
         private const val MPV_MAX_VOLUME_PERCENT = 400.0
+
+        /** Live channels: cache on, ~30 s read ahead, 4 s gathered before (re)starting, auto-reconnect. */
+        private val LIVE_TUNING = listOf(
+            "cache" to "yes",
+            "cache-secs" to "60",
+            "demuxer-readahead-secs" to "30",
+            "cache-pause" to "yes",
+            "cache-pause-initial" to "yes",
+            "cache-pause-wait" to "4",
+            "network-timeout" to "20",
+            "stream-lavf-o" to "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=4",
+            "demuxer-lavf-o" to "seg_max_retry=5"
+        )
+
+        /** mpv's own values, put back when a movie follows a channel. */
+        private val LIVE_TUNING_DEFAULTS = listOf(
+            "cache" to "auto",
+            "cache-secs" to "3600000",
+            "demuxer-readahead-secs" to "1",
+            "cache-pause" to "yes",
+            "cache-pause-initial" to "no",
+            "cache-pause-wait" to "1",
+            "network-timeout" to "60",
+            "stream-lavf-o" to "",
+            "demuxer-lavf-o" to ""
+        )
         private const val ASPECT_RETRY_DELAY_MS = 120L
         private const val MAX_ASPECT_RETRY_COUNT = 10
         private const val SUBTITLE_VERTICAL_OFFSET_MIN = -20

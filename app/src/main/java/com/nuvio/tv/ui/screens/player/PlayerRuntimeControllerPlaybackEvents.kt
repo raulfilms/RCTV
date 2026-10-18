@@ -243,7 +243,7 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                     val eofNow = view.isEofReached()
                     if (!eofNow) mpvEofSeenClear = true
                     val mpvEofReached = mpvEofSeenClear && eofNow
-                    val naturalEnded = !view.isLiveStreamNow() && (nearEnd || mpvEofReached) && shouldTreatAsNaturalPlaybackCompletion(
+                    val naturalEnded = !isLiveTvStreamNow() && !view.isLiveStreamNow() && (nearEnd || mpvEofReached) && shouldTreatAsNaturalPlaybackCompletion(
                         hasRenderedFirstFrame = firstFrameReady,
                         hasFatalError = !_uiState.value.error.isNullOrBlank(),
                         durationMs = effectiveDuration

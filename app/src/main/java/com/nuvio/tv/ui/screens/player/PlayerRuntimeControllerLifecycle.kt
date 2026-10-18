@@ -63,6 +63,7 @@ internal fun PlayerRuntimeController.releasePlayer(flushPlaybackState: Boolean) 
     errorRetryJob = null
     stableProgressResetJob?.cancel()
     stableProgressResetJob = null
+    stopLiveTvWatchdog()
     releaseMpvPlayer()
     _exoPlayer?.let { player ->
         runCatching { player.playWhenReady = false }

@@ -13,6 +13,14 @@ object LivePlaybackUiPolicy {
         return contentType.equals("channel", ignoreCase = true)
     }
 
+    /**
+     * RCTV: what the Live TV guide, sports channels and live events open the player with. Some
+     * are replays, so the player's own live signal still decides seeking and the timeline.
+     */
+    fun isLiveTvContentType(contentType: String?): Boolean {
+        return isLiveContentType(contentType) || contentType.equals("live", ignoreCase = true)
+    }
+
     fun nextLiveLatch(playerReportsLive: Boolean, previouslyLatched: Boolean): Boolean {
         return previouslyLatched || playerReportsLive
     }
