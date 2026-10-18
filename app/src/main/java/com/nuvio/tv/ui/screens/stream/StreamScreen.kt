@@ -757,12 +757,8 @@ private fun RightStreamSection(
     var firstResultFocusAssigned by remember { mutableStateOf(shouldRestoreFocusedStream) }
     val scope = rememberCoroutineScope()
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val orderedAddonNames = remember(availableAddons, sourceChips) {
-        buildList {
-            addAll(availableAddons)
-            sourceChips.forEach { if (it.name !in this) add(it.name) }
-        }
-    }
+    // RCTV: the addons are never named: only "Refresh" and "All" above the streams.
+    val orderedAddonNames = remember { emptyList<String>() }
     val firstStreamKey = streams.firstOrNull()?.stableKey(0)
     val refreshFocusRequester = remember { FocusRequester() }
     val allFocusRequester = remember { FocusRequester() }
@@ -846,16 +842,16 @@ private fun RightStreamSection(
                 exit = fadeOut(animationSpec = tween(300))
             ) {
                 AddonFilterChips(
-                    addons = availableAddons,
-                    sourceChips = sourceChips,
-                    selectedAddon = selectedAddonFilter,
+                    addons = emptyList(),
+                    sourceChips = emptyList(),
+                    selectedAddon = null,
                     isStillFetching = sourceChips.any { it.status == SourceChipStatus.LOADING },
                     onRefresh = {
                         userMovedFromFirstResult = false
                         firstResultFocusAssigned = false
                         onRefresh()
                     },
-                    onAddonSelected = { onAddonFilterSelected(it) },
+                    onAddonSelected = { onAddonFilterSelected(null) },
                     externalFocusRequesters = chipFocusRequesters,
                     externalOrderedNames = orderedAddonNames,
                     debugTag = "StreamScreen"
@@ -1255,10 +1251,13 @@ private fun StreamCard(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val unknownStreamLabel = stringResource(R.string.stream_unknown)
-    val streamName = remember(stream, unknownStreamLabel) { stream.getDisplayNameOrNull() ?: unknownStreamLabel }
-    val streamDescription = remember(stream) { stream.getDisplayDescription() }
-    val hasBadges = stream.badges.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints?.videoSize != null) || reserveBadgeSpace
+    val unknownStreamLabel = stringResource(R.string.stream_generic_label)
+    // RCTV: what the stream is (4K, HDR, size, language), never its addon's or service's words.
+    val label = remember(stream, unknownStreamLabel) { com.nuvio.tv.ui.util.SourcePrivacy.streamLabel(stream, unknownStreamLabel) }
+    val streamName = label.title
+    val streamDescription = label.details
+    // Neither the addons' badges (they name services): the file's size alone.
+    val hasBadges = (showFileSizeBadges && stream.behaviorHints?.videoSize != null) || reserveBadgeSpace
     val cardShape = RoundedCornerShape(NuvioTheme.radii.md)
     val hasGradientFocusRing = NuvioTheme.palette.focusRingGradient.size > 1
 
@@ -1267,23 +1266,8 @@ private fun StreamCard(
     // Track whether badges transitioned from empty to non-empty while this
     // card was composed. If they did, we animate. If the card enters
     // composition with badges already present (tab switch), no animation.
-    val hadBadgesOnFirstComposition = remember { stream.badges.isNotEmpty() }
-    val shouldAnimateBadges = stream.badges.isNotEmpty() && !hadBadgesOnFirstComposition
-    // Pre-upscale: decode at 2× target pixels so the hardware compositor
-    // has enough pixel data for smooth edges inside Card RenderNodes.
-    val logoDecodeSize = remember(density) {
-        with(density) { NuvioTheme.spacing.xxl.roundToPx() } * 2
-    }
-    val addonLogoModel = remember(context, stream.addonLogo, logoDecodeSize) {
-        stream.addonLogo?.let { logo ->
-            ImageRequest.Builder(context)
-                .data(logo)
-                .size(width = logoDecodeSize, height = logoDecodeSize)
-                .memoryCacheKey("${logo}_${logoDecodeSize}x${logoDecodeSize}")
-                .crossfade(false)
-                .build()
-        }
-    }
+    val hadBadgesOnFirstComposition = remember { true }
+    val shouldAnimateBadges = !hadBadgesOnFirstComposition
 
     Card(
         onClick = onClick,
@@ -1328,9 +1312,9 @@ private fun StreamCard(
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
             ) {
                 if (hasBadges && badgePlacement == StreamBadgePlacement.TOP) {
-                    if (stream.badges.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints?.videoSize != null)) {
+                    if (showFileSizeBadges && stream.behaviorHints?.videoSize != null) {
                         StreamBadgeChips(
-                            badges = stream.badges,
+                            badges = emptyList(),
                             fileSizeBytes = stream.behaviorHints?.videoSize,
                             showFileSizeBadge = showFileSizeBadges,
                             animate = shouldAnimateBadges,
@@ -1365,9 +1349,9 @@ private fun StreamCard(
                 }
 
                 if (hasBadges && badgePlacement == StreamBadgePlacement.BOTTOM) {
-                    if (stream.badges.isNotEmpty() || (showFileSizeBadges && stream.behaviorHints?.videoSize != null)) {
+                    if (showFileSizeBadges && stream.behaviorHints?.videoSize != null) {
                         StreamBadgeChips(
-                            badges = stream.badges,
+                            badges = emptyList(),
                             fileSizeBytes = stream.behaviorHints?.videoSize,
                             showFileSizeBadge = showFileSizeBadges,
                             animate = shouldAnimateBadges,
@@ -1380,33 +1364,7 @@ private fun StreamCard(
                 }
             }
 
-            if (showAddonLogo) {
-                Column(
-                    horizontalAlignment = Alignment.End
-                ) {
-                    if (addonLogoModel != null) {
-                        AsyncImage(
-                            model = addonLogoModel,
-                            contentDescription = stream.addonName,
-                            modifier = Modifier
-                                .size(NuvioTheme.spacing.xxl)
-                                .clip(RoundedCornerShape(NuvioTheme.radii.xs)),
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
-
-                    Text(
-                        text = stream.addonName,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            textDirection = stream.addonName.contentTextDirection()
-                        ),
-                        color = NuvioTheme.extendedColors.textTertiary,
-                        maxLines = 1
-                    )
-                }
-            }
+            // RCTV: no addon's logo or name.
         }
     }
 }

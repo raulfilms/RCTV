@@ -1275,21 +1275,23 @@ private fun PlaybackNavHost(
                 onOpenRoute = { route -> navController.navigate(route) },
                 onCloudPlaybackResolved = { info ->
                     val filename = info.filename ?: info.file.name
+                    // RCTV: the movie's or show's name, not the file's or the service's.
+                    val cleanName = com.nuvio.tv.ui.util.SourcePrivacy.cleanReleaseName(filename)
                     navController.navigate(
                         Screen.Player.createRoute(
                             streamUrl = info.url,
-                            title = filename,
+                            title = cleanName,
                             streamName = filename,
                             contentType = "cloud",
-                            contentName = info.item.name,
+                            contentName = com.nuvio.tv.ui.util.SourcePrivacy.cleanReleaseName(info.item.name),
                             videoId = "${info.item.stableKey}:${info.file.stableKey}",
                             season = 1,
                             episode = info.sequenceIndex + 1,
-                            episodeTitle = filename,
+                            episodeTitle = cleanName,
                             filename = filename,
                             videoSize = info.videoSizeBytes,
-                            addonName = info.item.providerName,
-                            streamDescription = info.item.name,
+                            addonName = null,
+                            streamDescription = null,
                             cloudSessionToken = info.sessionToken
                         )
                     )

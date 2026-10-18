@@ -871,13 +871,7 @@ fun SportsAddonEventCard(event: SportsAddonEvent, onClick: () -> Unit, modifier:
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = event.addonName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.75f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // RCTV: not the addon it's from.
                 }
             }
         }
@@ -921,12 +915,7 @@ fun SportsAddonStreamPickerOverlay(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
-            Text(
-                text = event.addonName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = NuvioTheme.colors.TextSecondary
-            )
+            // RCTV: not the addon it's from.
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
             when {
@@ -986,15 +975,17 @@ private fun SportsAddonStreamRow(stream: Stream, onClick: () -> Unit) {
         ) {
             Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(NuvioTheme.spacing.sm))
+            // RCTV: what the stream is (4K, HDR, size), never its addon's words.
+            val label = com.nuvio.tv.ui.util.SourcePrivacy.streamLabel(stream, stringResourceCompat(R.string.stream_generic_label))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stream.getDisplayName(),
+                    text = label.title,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color = NuvioTheme.colors.TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                val description = stream.getDisplayDescription()
+                val description = label.details
                 if (!description.isNullOrBlank()) {
                     Text(
                         text = description,

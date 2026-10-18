@@ -35,10 +35,8 @@ class CloudLibraryRepository @Inject constructor(
             if (api == null) {
                 return@map CloudLibraryProviderState(
                     provider = credential.provider,
-                    errorMessage = context.getString(
-                        R.string.cloud_library_error_provider_unavailable,
-                        credential.provider.displayName
-                    )
+                    // RCTV: not the service's name.
+                    errorMessage = context.getString(R.string.cloud_library_error_unavailable)
                 )
             }
 

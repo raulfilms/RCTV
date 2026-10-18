@@ -1763,12 +1763,11 @@ class StreamScreenViewModel @Inject constructor(
                 videoHash = playbackInfo.videoHash,
                 videoSize = playbackInfo.videoSize,
                 filename = playbackInfo.filename,
-                onProgress = { completed, total, addonName ->
+                onProgress = { completed, total, _ ->
                     val msg = if (completed == 0) {
                         context.getString(R.string.player_loading_subtitles_from, total)
-                    } else if (addonName != null) {
-                        context.getString(R.string.player_loading_subtitles_addon, addonName, completed, total)
                     } else {
+                        // RCTV: not which addon the subtitles came from.
                         context.getString(R.string.player_loading_subtitles_progress, completed, total)
                     }
                     if (showLoadingStatus) {

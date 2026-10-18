@@ -114,73 +114,15 @@ fun StreamInfoOverlay(
 
 @Composable
 private fun StreamInfoContent(data: StreamInfoData) {
-    // SOURCE section
-    val hasSourceInfo = data.addonName != null || data.streamName != null
-    if (hasSourceInfo) {
-        SectionLabel(stringResource(R.string.stream_info_section_source))
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!data.addonLogo.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(data.addonLogo)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = data.addonName,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(NuvioTheme.radii.sm)),
-                    contentScale = ContentScale.Fit
-                )
-                Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
-            }
-            Column {
-                if (data.addonName != null) {
-                    Text(
-                        text = data.addonName,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (data.streamName != null && data.streamName != data.addonName) {
-                    Text(
-                        text = data.streamName.replace("\n", " · "),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = NuvioTheme.colors.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        if (!data.streamDescription.isNullOrBlank()) {
-            Text(
-                text = data.streamDescription.replace("\n", " · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = NuvioTheme.colors.TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = NuvioTheme.spacing.xs)
-            )
-        }
-        if (data.playerEngine != null) {
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-            InfoItem(label = stringResource(R.string.stream_info_player_engine), value = data.playerEngine)
-        }
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
-    }
-
-    // FILE section
-    val hasFileInfo = data.filename != null || data.fileSize != null
-    if (hasFileInfo) {
-        SectionLabel(stringResource(R.string.stream_info_section_file))
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
+    // RCTV: no source (the addon, its name for the stream, the file's name): the player and the size.
+    if (data.playerEngine != null || data.fileSize != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(36.dp)) {
-            InfoItem(label = stringResource(R.string.stream_info_filename), value = data.filename, modifier = Modifier.weight(1f))
-            InfoItem(label = stringResource(R.string.stream_info_size), value = data.fileSize?.let { formatFileSize(it) })
+            if (data.playerEngine != null) {
+                InfoItem(label = stringResource(R.string.stream_info_player_engine), value = data.playerEngine)
+            }
+            if (data.fileSize != null) {
+                InfoItem(label = stringResource(R.string.stream_info_size), value = formatFileSize(data.fileSize))
+            }
         }
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
     }

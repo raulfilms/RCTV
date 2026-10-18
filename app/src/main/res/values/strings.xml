@@ -1995,6 +1995,16 @@
     <string name="next_episode_label">Next Episode</string>
     <string name="next_episode_finding_source">Finding source…</string>
     <string name="next_episode_playing_via">Playing via %1$s in %2$ds</string>
+    <string name="stream_generic_label">Video</string>
+    <string name="next_episode_playing_in">Playing in %1$ds</string>
+    <string name="error_streams_none">No streams found for this title.</string>
+    <string name="error_streams_failed">Streams couldn\'t be loaded. Try again in a moment.</string>
+    <string name="error_meta_failed">This title\'s details couldn\'t be loaded.</string>
+    <string name="cloud_library_account_n">Account %1$d</string>
+    <string name="cloud_library_error_unavailable">The cloud library isn\'t available.</string>
+    <string name="livetv_channels_load_failed">Couldn\'t load the channels. Try again.</string>
+    <string name="livetv_channels_none">No channels found for this connection.</string>
+    <string name="livetv_channels_some_failed">Some channels couldn\'t load.</string>
     <string name="next_episode_play">Play</string>
     <string name="player_next_episode_prompt_title">Continue watching?</string>
     <string name="player_next_episode_prompt_message">Do you want to play the next episode?</string>

@@ -208,8 +208,8 @@ internal fun DiscoverSection(
         }
 
         selectedCatalog?.let { catalog ->
+            // RCTV: not the catalog's addon.
             val metadataSegments = buildList {
-                add(catalog.addonName)
                 if (uiState.catalogTypeSuffixEnabled) {
                     localizedTypeLabel(catalog.type)
                         .takeIf { it.isNotEmpty() }

@@ -448,7 +448,8 @@ fun LayoutSettingsContent(
                             onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
                         )
                     }
-                    if (uiState.selectedLayout != HomeLayout.MODERN) {
+                    // RCTV: catalogs never name their addon, so there's nothing to turn on.
+                    if (false && uiState.selectedLayout != HomeLayout.MODERN) {
                         CompactToggleRow(
                             title = stringResource(R.string.layout_addon_name),
                             subtitle = stringResource(R.string.layout_addon_name_sub),

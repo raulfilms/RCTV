@@ -169,7 +169,7 @@ internal fun PlaybackException.toDisplayMessage(context: android.content.Context
         }
         return buildString {
             append("HTTP $code")
-            statusText?.let { append(" $it") }
+            statusText?.let { append(" ${com.nuvio.tv.ui.util.SourcePrivacy.scrubText(it)}") }
             append(" [$errorCodeName]")
             append(providerHint)
         }
@@ -192,7 +192,10 @@ internal fun PlaybackException.toDisplayMessage(context: android.content.Context
         }
     }
 
-    val meaningfulMessage = findMostRelevantCauseMessage() ?: cause?.message ?: message
+    // RCTV: never the server or the service it came from.
+    val meaningfulMessage = (findMostRelevantCauseMessage() ?: cause?.message ?: message)
+        ?.let(com.nuvio.tv.ui.util.SourcePrivacy::scrubText)
+        ?.takeIf { it.isNotBlank() }
     return if (meaningfulMessage != null) {
         "$meaningfulMessage [$errorCodeName]"
     } else {
@@ -210,9 +213,11 @@ private inline fun <reified T : Throwable> Throwable.findCauseOfType(): T? {
 }
 
 internal fun Throwable.toDisplayMessage(context: android.content.Context, fallback: String? = null): String {
-    val meaningfulMessage = findMostRelevantCauseMessage()
+    // RCTV: never the server or the service it came from.
+    val meaningfulMessage = (findMostRelevantCauseMessage() ?: message?.takeIf { it.isNotBlank() })
+        ?.let(com.nuvio.tv.ui.util.SourcePrivacy::scrubText)
+        ?.takeIf { it.isNotBlank() }
     return meaningfulMessage
-        ?: message?.takeIf { it.isNotBlank() }
         ?: fallback
         ?: context.getString(com.nuvio.tv.R.string.player_error_playback_fallback)
 }

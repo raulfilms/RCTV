@@ -206,7 +206,8 @@ private fun AutoPlayBody(
                 !isPlayable && !nextEpisode.unairedMessage.isNullOrBlank() -> nextEpisode.unairedMessage
                 mode.searching -> stringResource(R.string.next_episode_finding_source)
                 !mode.sourceName.isNullOrBlank() && mode.countdownSec != null ->
-                    stringResource(R.string.next_episode_playing_via, mode.sourceName, mode.countdownSec)
+                    // RCTV: when it starts, not where it's from.
+                    stringResource(R.string.next_episode_playing_in, mode.countdownSec)
                 else -> null
             }
             if (statusText != null) {

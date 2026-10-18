@@ -343,7 +343,7 @@ class MetaRepositoryImpl @Inject constructor(
             }
 
             val fallbackMessage = if (fallbackAddons.isEmpty()) {
-                context.getString(R.string.error_meta_no_supported_addon, requestedType)
+                context.getString(R.string.error_meta_failed)
             } else {
                 buildAggregateFailureMessage(
                     type = requestedType,
@@ -501,7 +501,7 @@ class MetaRepositoryImpl @Inject constructor(
         )
 
         if (candidate == null) {
-            emit(NetworkResult.Error(context.getString(R.string.error_meta_no_supported_addon, requestedType)))
+            emit(NetworkResult.Error(context.getString(R.string.error_meta_failed)))
             return@flow
         }
 
@@ -712,27 +712,8 @@ class MetaRepositoryImpl @Inject constructor(
         attemptedAddonNames: List<String>,
         failures: List<MetaAttemptFailure>
     ): String {
-        if (attemptedAddonNames.isEmpty()) {
-            return context.getString(R.string.error_meta_no_addon_for_id, id, type)
-        }
-
-        val triedAddons = attemptedAddonNames.joinToString(", ")
-        val missingOnly = failures.isNotEmpty() && failures.all { it.kind == MetaFailureKind.MISSING }
-
-        return if (missingOnly) {
-            context.getString(R.string.error_meta_tried_none, triedAddons, id, type)
-        } else {
-            val issueSummary = failures
-                .filter { it.kind == MetaFailureKind.REQUEST_FAILED }
-                .distinctBy { it.addonName to it.detail }
-                .take(3)
-                .joinToString("; ") { "${it.addonName}: ${it.detail}" }
-            if (issueSummary.isBlank()) {
-                context.getString(R.string.error_meta_tried_generic, triedAddons, id, type)
-            } else {
-                context.getString(R.string.error_meta_tried_issues, triedAddons, id, type, issueSummary)
-            }
-        }
+        // RCTV: never which addons were asked, nor the ids.
+        return context.getString(R.string.error_meta_failed)
     }
     
     /**

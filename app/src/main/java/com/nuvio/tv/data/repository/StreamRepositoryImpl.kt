@@ -712,26 +712,13 @@ class StreamRepositoryImpl @Inject constructor(
         attemptedAddonNames: List<String>,
         failures: List<StreamAttemptFailure>
     ): String? {
-        if (attemptedAddonNames.isEmpty()) {
-            return context.getString(R.string.error_stream_no_supported_addon, type)
-        }
-
-        val triedAddons = attemptedAddonNames.joinToString(", ")
+        // RCTV: never which addons were asked, nor the ids: that there are none, or that they couldn't load.
+        if (attemptedAddonNames.isEmpty()) return context.getString(R.string.error_streams_none)
         val missingOnly = failures.isNotEmpty() && failures.all { it.kind == StreamFailureKind.MISSING }
-        if (failures.isEmpty() || missingOnly) {
-            return context.getString(R.string.error_stream_tried_none, triedAddons, id, type)
-        }
-
-        val issueSummary = failures
-            .filter { it.kind == StreamFailureKind.REQUEST_FAILED }
-            .distinctBy { it.addonName to it.detail }
-            .take(3)
-            .joinToString("; ") { "${it.addonName}: ${it.detail}" }
-
-        return if (issueSummary.isBlank()) {
-            context.getString(R.string.error_stream_tried_generic, triedAddons, id, type)
+        return if (failures.isEmpty() || missingOnly) {
+            context.getString(R.string.error_streams_none)
         } else {
-            context.getString(R.string.error_stream_tried_issues, triedAddons, id, type, issueSummary)
+            context.getString(R.string.error_streams_failed)
         }
     }
 

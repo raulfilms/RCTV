@@ -311,9 +311,6 @@ private fun buildAddonIssue(addonName: String?, issue: String, strings: ErrorSta
     val normalizedIssue = issue.replaceFirstChar { char ->
         if (char.isLowerCase()) char.titlecase() else char.toString()
     }
-    return if (addonName.isNullOrBlank()) {
-        normalizedIssue
-    } else {
-        strings.addonIssueTemplate.format(addonName, normalizedIssue)
-    }
+    // RCTV: an error never names the addon it came from.
+    return normalizedIssue
 }

@@ -1067,8 +1067,9 @@ private fun CloudLibraryCard(
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
+            // RCTV: the movie's or show's name, not the release's file name.
             Text(
-                text = item.name,
+                text = com.nuvio.tv.ui.util.SourcePrivacy.cleanReleaseName(item.name),
                 style = MaterialTheme.typography.titleSmall,
                 color = NuvioTheme.colors.TextPrimary,
                 fontWeight = FontWeight.SemiBold
@@ -1109,7 +1110,8 @@ private fun CloudLibraryCard(
 private fun cloudLibraryFileLine(item: CloudLibraryItem): String? =
     when (val count = item.playableFiles.size) {
         0 -> stringResource(R.string.cloud_library_no_playable_files)
-        1 -> item.playableFiles.first().name.takeIf { it != item.name }
+        1 -> com.nuvio.tv.ui.util.SourcePrivacy.cleanReleaseName(item.playableFiles.first().name)
+            .takeIf { it != com.nuvio.tv.ui.util.SourcePrivacy.cleanReleaseName(item.name) }
         else -> stringResource(R.string.cloud_library_playable_file_count, count)
     }
 
@@ -1123,8 +1125,8 @@ private fun cloudLibraryPlayableLabel(item: CloudLibraryItem): String =
 
 @Composable
 private fun cloudLibraryMetadata(item: CloudLibraryItem): String {
+    // RCTV: not the service it's on.
     val parts = listOfNotNull(
-        item.providerName.takeIf { it.isNotBlank() },
         item.type.localizedLabel(),
         item.status?.takeIf { it.isNotBlank() } ?: stringResource(R.string.cloud_library_status_ready),
         formatCloudSize(item.sizeBytes)

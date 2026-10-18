@@ -2233,7 +2233,8 @@ private fun PlayerControlsOverlay(
                     }
 
                     val hasYear = !uiState.releaseYear.isNullOrBlank()
-                    val showVia = !uiState.isPlaying && !uiState.currentStreamName.isNullOrBlank()
+                    // RCTV: never "via" the stream's source.
+                    val showVia = false
                     val yearText = uiState.releaseYear.orEmpty()
 
                     if (hasYear || showVia) {

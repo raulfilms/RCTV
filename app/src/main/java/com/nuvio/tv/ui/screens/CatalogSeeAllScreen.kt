@@ -364,7 +364,8 @@ fun CatalogSeeAllScreen(
                     overflow = TextOverflow.Ellipsis,
                     style = AppleTvType.Title2.copy(shadow = AppleTvTextShadow)
                 )
-                if (uiState.catalogAddonNameEnabled) {
+                // RCTV: a catalog never says which addon it's from.
+                if (false && uiState.catalogAddonNameEnabled) {
                     catalogRow?.addonName?.let { addonName ->
                         // White on the gray backdrop: a dimmer secondary gray would not read there.
                         Text(

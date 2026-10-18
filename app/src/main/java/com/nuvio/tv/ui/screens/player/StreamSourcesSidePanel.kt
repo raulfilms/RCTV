@@ -79,12 +79,8 @@ internal fun StreamSourcesSidePanel(
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val closeButtonFocusRequester = remember { FocusRequester() }
 
-    val orderedAddonNames = remember(uiState.sourceAvailableAddons, uiState.sourceChips) {
-        buildList {
-            addAll(uiState.sourceAvailableAddons)
-            uiState.sourceChips.forEach { if (it.name !in this) add(it.name) }
-        }
-    }
+    // RCTV: the addons are never named: only "Refresh" and "All" above the streams.
+    val orderedAddonNames = remember { emptyList<String>() }
     val refreshFocusRequester = remember { FocusRequester() }
     val allFocusRequester = remember { FocusRequester() }
     val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
@@ -284,9 +280,9 @@ internal fun StreamSourcesSidePanel(
             ) {
                 Box(modifier = Modifier.onFocusChanged { chipsHasFocus = it.hasFocus }) {
                     AddonFilterChips(
-                        addons = uiState.sourceAvailableAddons,
-                        sourceChips = uiState.sourceChips,
-                        selectedAddon = uiState.sourceSelectedAddonFilter,
+                        addons = emptyList(),
+                        sourceChips = emptyList(),
+                        selectedAddon = null,
                         isStillFetching = uiState.isLoadingSourceStreams ||
                             uiState.sourceChips.any { it.status == SourceChipStatus.LOADING },
                         onRefresh = {
@@ -294,7 +290,7 @@ internal fun StreamSourcesSidePanel(
                             firstResultFocusAssigned = false
                             onReload()
                         },
-                        onAddonSelected = { onAddonFilterSelected(it) },
+                        onAddonSelected = { onAddonFilterSelected(null) },
                         externalFocusRequesters = chipFocusRequesters,
                         externalOrderedNames = orderedAddonNames,
                         onUpKey = {

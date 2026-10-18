@@ -177,12 +177,8 @@ private fun EpisodeStreamsView(
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val backButtonFocusRequester = remember { FocusRequester() }
 
-    val orderedAddonNames = remember(uiState.episodeAvailableAddons, uiState.episodeSourceChips) {
-        buildList {
-            addAll(uiState.episodeAvailableAddons)
-            uiState.episodeSourceChips.forEach { if (it.name !in this) add(it.name) }
-        }
-    }
+    // RCTV: the addons are never named: only "Refresh" and "All" above the streams.
+    val orderedAddonNames = remember { emptyList<String>() }
     val refreshFocusRequester = remember { FocusRequester() }
     val allFocusRequester = remember { FocusRequester() }
     val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
@@ -352,9 +348,9 @@ private fun EpisodeStreamsView(
     ) {
         Box(modifier = Modifier.onFocusChanged { chipsHasFocus = it.hasFocus }) {
             AddonFilterChips(
-                addons = uiState.episodeAvailableAddons,
-                sourceChips = uiState.episodeSourceChips,
-                selectedAddon = uiState.episodeSelectedAddonFilter,
+                addons = emptyList(),
+                sourceChips = emptyList(),
+                selectedAddon = null,
                 isStillFetching = uiState.isLoadingEpisodeStreams ||
                     uiState.episodeSourceChips.any { it.status == SourceChipStatus.LOADING },
                 onRefresh = {
@@ -362,7 +358,7 @@ private fun EpisodeStreamsView(
                     firstResultFocusAssigned = false
                     onReload()
                 },
-                onAddonSelected = { onAddonFilterSelected(it) },
+                onAddonSelected = { onAddonFilterSelected(null) },
                 externalFocusRequesters = chipFocusRequesters,
                 externalOrderedNames = orderedAddonNames,
                 onUpKey = {

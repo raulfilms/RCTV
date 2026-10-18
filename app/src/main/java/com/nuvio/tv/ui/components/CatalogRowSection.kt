@@ -350,7 +350,8 @@ fun CatalogRowSection(
                     maxLines = 3,
                     overflow = TextOverflow.Clip
                 )
-                if (showAddonName) {
+                // RCTV: a catalog never says which addon it's from.
+                if (false && showAddonName) {
                     Text(
                         text = if (catalogTitle.isBlank()) " " else stringResource(R.string.catalog_from_addon, catalogRow.addonName),
                         style = MaterialTheme.typography.labelMedium,

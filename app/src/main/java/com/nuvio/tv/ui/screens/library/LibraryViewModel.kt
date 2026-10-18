@@ -1113,10 +1113,14 @@ class LibraryViewModel @Inject constructor(
                     item.files.any { file -> file.name.contains(query, ignoreCase = true) }
             }
         }
+        // RCTV: the services aren't named: "Account 1", "Account 2".
         val providerCounts = allCloudItems
-            .groupBy { it.providerId to it.providerName }
-            .map { (provider, items) -> FilterOption(key = provider.first, label = provider.second, count = items.size) }
-            .sortedBy { it.label.lowercase(Locale.ROOT) }
+            .groupBy { it.providerId }
+            .entries
+            .sortedBy { it.key }
+            .mapIndexed { index, (providerId, items) ->
+                FilterOption(key = providerId, label = context.getString(R.string.cloud_library_account_n, index + 1), count = items.size)
+            }
         val typeCounts = providerFiltered
             .groupBy { it.type }
             .map { (type, items) -> FilterOption(key = type.name, label = cloudTypeLabel(type), count = items.size) }

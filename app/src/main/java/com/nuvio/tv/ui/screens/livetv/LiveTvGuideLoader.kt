@@ -288,11 +288,11 @@ class LiveTvGuideLoader @Inject constructor(
             publish(key, previous.copy(isLoading = false, isEpgLoading = false))
             return
         }
+        // RCTV: never which IPTV source (or server) it was: that the channels couldn't load.
         val error = when {
-            channels.isEmpty() && failures.isNotEmpty() ->
-                failures.first().second.message ?: "Couldn't load channels for ${failures.first().first}."
-            channels.isEmpty() -> "No channels found for this connection."
-            failures.isNotEmpty() -> "Loaded channels, but ${failures.size} source(s) failed: ${failures.joinToString { it.first }}."
+            channels.isEmpty() && failures.isNotEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_load_failed)
+            channels.isEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_none)
+            failures.isNotEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_some_failed)
             else -> null
         }
         // The programs already loaded stay while the new ones come.
