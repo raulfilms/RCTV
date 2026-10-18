@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -316,6 +318,19 @@ internal fun LiveTvTimelineGuide(
         if (returnFocus != null) onReturnFocusUsed()
         if (focusedRow !in channels.indices) runCatching { listState.scrollToItem((row - 2).coerceAtLeast(0)) }
         focusBlock(row, program)
+    }
+
+    // Back down the guide (or later in time): first back to the top, on the first channel's show
+    // on now; from there Back is the app's (the menu, then Home). Only while the grid has focus.
+    val backScope = androidx.compose.runtime.rememberCoroutineScope()
+    BackHandler(
+        enabled = channels.isNotEmpty() && !detailsOpen &&
+            (focusedRow > 0 || (focusedRow == 0 && (focusedOnLogo.not() && viewStartMs > floorToSlot(nowMs))))
+    ) {
+        viewStartMs = floorToSlot(System.currentTimeMillis())
+        anchorMs = nowMs
+        backScope.launch { runCatching { listState.scrollToItem(0) } }
+        focusBlock(0, programsOf(channels[0]).firstOrNull { it.isAiringAt(nowMs) })
     }
 
     fun onDirection(key: Key): Boolean {

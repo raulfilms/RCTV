@@ -16,6 +16,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -210,20 +213,36 @@ private fun SportsContent(
     }
     val rowGap = Modifier.padding(top = 26.dp)
 
+    // Back down the page: first back up to the top (the banner); from there Back is the app's
+    // (the menu, then Home). Only while the page has focus (not the menu).
+    var contentFocused by remember { mutableStateOf(false) }
+    var heroFocused by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    BackHandler(enabled = contentFocused && !heroFocused && uiState.heroEvents.isNotEmpty()) {
+        scope.launch {
+            runCatching { listState.animateScrollToItem(0) }
+            requestFocusSoon(heroRequester)
+        }
+    }
+
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .onFocusChanged { contentFocused = it.hasFocus },
         contentPadding = PaddingValues(bottom = 56.dp)
     ) {
         if (uiState.heroEvents.isNotEmpty()) {
             item(key = "hero") {
-                SportsHeroCarousel(
-                    events = uiState.heroEvents,
-                    libraryEventIds = uiState.libraryEventIds,
-                    primaryFocusRequester = heroRequester,
-                    onWatch = onPlayEvent,
-                    onToggleLibrary = onToggleLibraryEvent
-                )
+                Box(modifier = Modifier.onFocusChanged { heroFocused = it.hasFocus }) {
+                    SportsHeroCarousel(
+                        events = uiState.heroEvents,
+                        libraryEventIds = uiState.libraryEventIds,
+                        primaryFocusRequester = heroRequester,
+                        onWatch = onPlayEvent,
+                        onToggleLibrary = onToggleLibraryEvent
+                    )
+                }
             }
         }
 

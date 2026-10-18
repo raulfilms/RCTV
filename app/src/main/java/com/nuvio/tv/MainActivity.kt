@@ -2395,10 +2395,10 @@ private fun CollapsedSidebarPill(
 }
 
 /**
- * Menu sections where Back, once the menu is open, goes Home instead of leaving the app: Back on
- * Sports opens the menu, Back again returns Home.
+ * Menu sections where Back, once the menu is open, goes Home instead of leaving the app: on the
+ * Guide and Sports, Back goes up to the top, then opens the menu, then returns Home.
  */
-private val backToHomeRoutes: Set<String> = setOf(Screen.Sports.route)
+private val backToHomeRoutes: Set<String> = setOf(Screen.Sports.route, Screen.LiveTv.route)
 
 private fun navigateToDrawerRoute(
     navController: NavHostController,
