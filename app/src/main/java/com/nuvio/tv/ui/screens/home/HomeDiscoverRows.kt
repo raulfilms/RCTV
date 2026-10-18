@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -206,51 +207,56 @@ fun HomeFranchiseRow(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+                // Darker at the bottom, under the title.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
                                 0f to Color.Transparent,
-                                0.45f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.8f)
+                                0.5f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.6f)
                             )
                         )
                 )
+                // The title as artwork, big and centered at the bottom, with COLLECTION under it.
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 7.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (!logo.isNullOrBlank() && !logoFailed) {
                         AsyncImage(
                             model = logo,
                             contentDescription = name,
                             contentScale = ContentScale.Fit,
-                            alignment = Alignment.BottomStart,
+                            alignment = Alignment.BottomCenter,
                             onError = { logoFailed = true },
                             modifier = Modifier
-                                .fillMaxWidth(0.62f)
-                                .height(44.dp)
-                                .padding(bottom = 3.dp)
+                                .fillMaxWidth(0.74f)
+                                .height(54.dp)
                         )
                     } else {
                         Text(
                             text = name,
                             color = Color.White,
-                            fontSize = 14.sp,
-                            lineHeight = 16.sp,
+                            fontSize = 15.sp,
+                            lineHeight = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = "COLLECTION",
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = Color.White.copy(alpha = 0.9f),
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 2.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.5.sp,
                         maxLines = 1
                     )
                 }

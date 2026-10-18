@@ -288,51 +288,57 @@ private fun PictureCard(label: String, caption: String, image: String?, logo: St
                     modifier = Modifier.fillMaxSize()
                 )
             }
+            // Darker at the bottom, under the title.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             0f to Color.Transparent,
-                            0.45f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.8f)
+                            0.5f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.6f)
                         )
                     )
             )
+            // The title as artwork, big and centered at the bottom (like a titled picture), with
+            // COLLECTION right under it; the written name when there's no artwork.
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 7.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (showLogo) {
                     AsyncImage(
                         model = logo,
                         contentDescription = label,
                         contentScale = ContentScale.Fit,
-                        alignment = Alignment.BottomStart,
+                        alignment = Alignment.BottomCenter,
                         onError = { logoFailed = true },
                         modifier = Modifier
-                            .fillMaxWidth(0.62f)
-                            .height(44.dp)
-                            .padding(bottom = 3.dp)
+                            .fillMaxWidth(0.74f)
+                            .height(54.dp)
                     )
                 } else {
                     Text(
                         text = label,
                         color = Color.White,
-                        fontSize = 15.sp,
-                        lineHeight = 17.sp,
+                        fontSize = 16.sp,
+                        lineHeight = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = caption,
-                    color = Color.White.copy(alpha = 0.75f),
+                    color = Color.White.copy(alpha = 0.9f),
                     fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 2.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.5.sp,
                     maxLines = 1
                 )
             }
