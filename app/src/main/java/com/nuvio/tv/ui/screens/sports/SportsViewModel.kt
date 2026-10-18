@@ -111,15 +111,23 @@ class SportsViewModel @Inject constructor(
     /** Title art for the Sports Talk cards (the show's name on its backdrop). */
     val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = titleArtService
 
+    /** When the games were last loaded. */
+    @Volatile private var loadedAtMs = 0L
+
     private val _uiState = MutableStateFlow(SportsUiState())
     val uiState: StateFlow<SportsUiState> = _uiState.asStateFlow()
 
     init {
+        // Back on Sports: the games it last loaded show at once (they load again quietly).
+        lastLoaded?.let { (loaded, at) ->
+            applyLoaded(loaded)
+            loadedAtMs = at
+        }
         viewModelScope.launch {
             combine(preferences.favoriteSports, preferences.favoriteTeamIds) { sports, teamIds -> sports to teamIds }
                 .collect { (sports, teamIds) ->
                     _uiState.update { it.copy(favoriteSportNames = sports) }
-                    refresh(favoriteTeamIds = teamIds)
+                    refresh(favoriteTeamIds = teamIds, quiet = _uiState.value.leagues.isNotEmpty())
                 }
         }
         viewModelScope.launch {
@@ -321,8 +329,6 @@ class SportsViewModel @Inject constructor(
         viewModelScope.launch { refresh(favoriteTeamIds = preferences.favoriteTeamIds.value) }
     }
 
-    /** When the games were last loaded. */
-    @Volatile private var loadedAtMs = 0L
 
     /**
      * While the page shows (call it from the page): every half minute, games whose start time has
@@ -372,31 +378,37 @@ class SportsViewModel @Inject constructor(
         if (quiet && result.isFailure) return
         result.onSuccess { loaded ->
             loadedAtMs = System.currentTimeMillis()
+            lastLoaded = loaded to loadedAtMs
             // The Library shows "My Teams" and "My Sports" with these names and badges.
             runCatching {
                 sportsLibraryStore.rememberTeams(loaded.favoriteTeams)
                 sportsLibraryStore.refreshLeagues(loaded.leagues)
             }
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    error = null,
-                    featuredEvent = loaded.liveNow.firstOrNull() ?: loaded.upcomingGames.firstOrNull(),
-                    heroEvents = loaded.liveNow.take(5).ifEmpty { loaded.upcomingGames.take(5) },
-                    liveNow = loaded.liveNow,
-                    upcomingGames = loaded.upcomingGames,
-                    pickedForYou = loaded.pickedForYou,
-                    leagues = loaded.leagues,
-                    // The marquee teams first, then every other team of the leagues followed.
-                    teams = (loaded.homeTeamRowPicks + loaded.teams).distinctBy { team -> team.id },
-                    browsableTeams = loaded.teams,
-                    sportsTalk = mockSportsTalk(),
-                    continueWatching = emptyList(),
-                    favoriteTeams = loaded.favoriteTeams
-                )
-            }
+            applyLoaded(loaded)
         }.onFailure { throwable ->
             _uiState.update { it.copy(isLoading = false, error = throwable.message ?: "error") }
+        }
+    }
+
+    /** Shows loaded games and leagues on the page. */
+    private fun applyLoaded(loaded: LoadedData) {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                error = null,
+                featuredEvent = loaded.liveNow.firstOrNull() ?: loaded.upcomingGames.firstOrNull(),
+                heroEvents = loaded.liveNow.take(5).ifEmpty { loaded.upcomingGames.take(5) },
+                liveNow = loaded.liveNow,
+                upcomingGames = loaded.upcomingGames,
+                pickedForYou = loaded.pickedForYou,
+                leagues = loaded.leagues,
+                // The marquee teams first, then every other team of the leagues followed.
+                teams = (loaded.homeTeamRowPicks + loaded.teams).distinctBy { team -> team.id },
+                browsableTeams = loaded.teams,
+                sportsTalk = mockSportsTalk(),
+                continueWatching = emptyList(),
+                favoriteTeams = loaded.favoriteTeams
+            )
         }
     }
 
@@ -411,9 +423,11 @@ class SportsViewModel @Inject constructor(
     )
 
     /** Fetches every curated ESPN feed and aggregates events/teams/leagues across all of them (each feed already carries its own league + team metadata, so no separate lookups are needed). */
-    private fun loadAll(favoriteTeamIds: Set<String>): LoadedData {
-        val results = client.fetchAllFixtures()
-        val homeTeamRowPicks = runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList())
+    private suspend fun loadAll(favoriteTeamIds: Set<String>): LoadedData = kotlinx.coroutines.coroutineScope {
+        // The marquee teams and every league's games, all at once.
+        val picks = async(Dispatchers.IO) { runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList()) }
+        val results = withContext(Dispatchers.IO) { client.fetchAllFixtures() }
+        val homeTeamRowPicks = picks.await()
 
         val leagues = results.map { it.league }.sortedBy { league -> leagueRank(league.id) }
         // As the clock has them: games whose start time has come are live.
@@ -437,7 +451,7 @@ class SportsViewModel @Inject constructor(
             upcomingGames.take(10)
         }
 
-        return LoadedData(
+        LoadedData(
             liveNow = liveNow,
             upcomingGames = upcomingGames,
             pickedForYou = pickedForYou.ifEmpty { upcomingGames.take(10) },
@@ -449,6 +463,9 @@ class SportsViewModel @Inject constructor(
     }
 
     private companion object {
+        /** The games and leagues Sports last loaded (and when), kept while the app runs. */
+        @Volatile var lastLoaded: Pair<LoadedData, Long>? = null
+
         /** How often the games load again while some are on (scores, ends, new games live). */
         const val QUIET_REFRESH_MS = 2L * 60 * 1000
         val TMDB_API_KEY: String get() = com.nuvio.tv.BuildConfig.TMDB_API_KEY

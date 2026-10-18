@@ -384,10 +384,15 @@ class EspnSportsClient @Inject constructor(
         val end = dayFormat.format(calendar.time)
         val range = "$start-$end"
 
-        return feeds.mapNotNull { feed ->
-            runCatching { fetchFeed(feed, range) }
-                .recoverCatching { fetchFeed(feed) }
-                .getOrNull()
+        // Every league at once (one after another took many seconds), in the feeds' order.
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            feeds.map { feed ->
+                async {
+                    runCatching { fetchFeed(feed, range) }
+                        .recoverCatching { fetchFeed(feed) }
+                        .getOrNull()
+                }
+            }.awaitAll().filterNotNull()
         }
     }
 
@@ -585,13 +590,15 @@ class EspnSportsClient @Inject constructor(
      * breaking the whole row.
      */
     fun fetchHomeTeamRowPicks(): List<SportsTeam> {
-        val rosterCache = mutableMapOf<String, List<SportsTeam>>()
+        // Each league's teams once, all at once.
+        val feeds = HOME_TEAM_ROW_PICKS.map { it.feed }.distinct()
+        val rosters = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            feeds.map { feed -> async { feed to runCatching { fetchTeams(feed) }.getOrDefault(emptyList()) } }
+                .awaitAll()
+                .toMap()
+        }
         return HOME_TEAM_ROW_PICKS.mapNotNull { pick ->
-            val cacheKey = "${pick.feed.sportPath}:${pick.feed.leaguePath}"
-            val roster = rosterCache.getOrPut(cacheKey) {
-                runCatching { fetchTeams(pick.feed) }.getOrDefault(emptyList())
-            }
-            roster.firstOrNull { it.name.contains(pick.teamNameContains, ignoreCase = true) }
+            rosters[pick.feed].orEmpty().firstOrNull { it.name.contains(pick.teamNameContains, ignoreCase = true) }
         }
     }
 
