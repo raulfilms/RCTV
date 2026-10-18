@@ -51,7 +51,7 @@ internal fun SportsEvent.isRace(): Boolean = leagueId?.startsWith("${NascarSourc
 internal fun SportsEvent.isNascar(): Boolean = isRace() && leagueId?.substringAfter(':') in NascarSource.LEAGUE_PATHS
 
 /** A PPV Events show: a fight card or a wrestling event. */
-internal fun SportsEvent.isPpv(): Boolean = leagueId == PpvEventsSource.LEAGUE_ID
+internal fun SportsEvent.isPpv(): Boolean = leagueId?.startsWith("${PpvEventsSource.SPORT_PATH}:") == true
 
 /** A fight among PPV Events (two fighters): its highlights are searched as a matchup. */
 internal fun SportsEvent.isFight(): Boolean =
@@ -192,16 +192,55 @@ internal fun SoloEventCardBody(event: SportsEvent, status: String, liveBadge: @C
 // A race's results (or running order, while it's on).
 // ---------------------------------------------------------------------------------------------
 
-/** The results' heading: POS, DRIVER, LAPS, LED, STATUS, PTS (running order: POS, DRIVER, LAPS, GAP). */
+/**
+ * The results' columns: only what the source has (NASCAR: laps, led, status, points; MotoGP:
+ * laps, gap, points; Formula 1 and IndyCar on ESPN: the order alone).
+ */
+internal data class RaceColumns(
+    val laps: Boolean,
+    val led: Boolean,
+    /** "STATUS" ("Running", "Accident") or "GAP" ("+4.260"); null: none. */
+    val statusLabel: String?,
+    val points: Boolean
+) {
+    val widths: List<androidx.compose.ui.unit.Dp>
+        get() = listOfNotNull(
+            64.dp.takeIf { laps },
+            52.dp.takeIf { led },
+            120.dp.takeIf { statusLabel != null },
+            52.dp.takeIf { points }
+        )
+
+    companion object {
+        fun of(results: List<SportsRaceResult>): RaceColumns = RaceColumns(
+            laps = results.any { it.laps != null },
+            led = results.any { (it.lapsLed ?: 0) > 0 },
+            statusLabel = when {
+                results.none { !it.status.isNullOrBlank() } -> null
+                results.count { it.status?.startsWith("+") == true } > results.size / 3 -> "GAP"
+                else -> "STATUS"
+            },
+            points = results.any { it.points != null }
+        )
+    }
+}
+
+/** The results' heading: POS, DRIVER, then the columns there are. */
 @Composable
-internal fun RaceResultsHeader(live: Boolean, modifier: Modifier = Modifier) {
+internal fun RaceResultsHeader(columns: RaceColumns, modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
         RaceRow(
             position = "POS",
             badgeUrl = null,
             driver = "DRIVER",
             team = null,
-            values = if (live) listOf("LAPS", "GAP") else listOf("LAPS", "LED", "STATUS", "PTS"),
+            values = listOfNotNull(
+                "LAPS".takeIf { columns.laps },
+                "LED".takeIf { columns.led },
+                columns.statusLabel,
+                "PTS".takeIf { columns.points }
+            ),
+            widths = columns.widths,
             header = true
         )
     }
@@ -209,31 +248,25 @@ internal fun RaceResultsHeader(live: Boolean, modifier: Modifier = Modifier) {
 
 /** One driver's place (focusable, to scroll through the field with the remote). */
 @Composable
-internal fun RaceResultRow(result: SportsRaceResult, live: Boolean, modifier: Modifier = Modifier) {
+internal fun RaceResultRow(result: SportsRaceResult, columns: RaceColumns, modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
         RaceRow(
             position = result.position.toString(),
             badgeUrl = result.carBadgeUrl,
-            driver = result.driver,
+            driver = result.carNumber.takeIf { it.isNotBlank() && result.carBadgeUrl?.contains("carbadges") != true }
+                ?.let { "${result.driver}  #$it" } ?: result.driver,
             team = result.team,
-            values = if (live) {
-                listOf(result.laps?.toString().orEmpty(), result.status.orEmpty())
-            } else {
-                listOf(
-                    result.laps?.toString().orEmpty(),
-                    result.lapsLed?.takeIf { it > 0 }?.toString() ?: "–",
-                    result.status.orEmpty(),
-                    result.points?.toString().orEmpty()
-                )
-            },
+            values = listOfNotNull(
+                result.laps?.toString().orEmpty().takeIf { columns.laps },
+                (result.lapsLed?.takeIf { it > 0 }?.toString() ?: "–").takeIf { columns.led },
+                result.status.orEmpty().takeIf { columns.statusLabel != null },
+                result.points?.toString().orEmpty().takeIf { columns.points }
+            ),
+            widths = columns.widths,
             header = false
         )
     }
 }
-
-/** The values' widths: laps, led, status, points (or laps, gap). */
-private val RaceValueWidths = listOf(64.dp, 52.dp, 120.dp, 52.dp)
-private val RaceLiveValueWidths = listOf(64.dp, 110.dp)
 
 @Composable
 private fun RaceRow(
@@ -242,13 +275,13 @@ private fun RaceRow(
     driver: String,
     team: String?,
     values: List<String>,
+    widths: List<androidx.compose.ui.unit.Dp>,
     header: Boolean
 ) {
     var focused by remember { mutableStateOf(false) }
     val labelColor = if (header) Color.White.copy(alpha = 0.55f) else Color.White
     val size = if (header) 11.sp else 15.sp
     val weight = if (header) FontWeight.SemiBold else FontWeight.Medium
-    val widths = if (values.size == 2) RaceLiveValueWidths else RaceValueWidths
     Row(
         modifier = Modifier
             .fillMaxWidth()

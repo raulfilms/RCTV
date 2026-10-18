@@ -6,7 +6,7 @@ import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsLeague
 import com.nuvio.tv.domain.model.SportsShowDetails
 import okhttp3.OkHttpClient
-import okhttp3.Request
+
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -73,16 +73,18 @@ internal class PpvEventsSource(
         Thread(runnable, "ppv-events").apply { isDaemon = true }
     }
     @Volatile private var refreshing: Future<*>? = null
-    /** When the last requests went out (TheSportsDB's free key: 30 a minute). */
-    private val requestTimes = ArrayDeque<Long>()
 
-    val league: SportsLeague = SportsLeague(
-        id = LEAGUE_ID,
-        name = LEAGUE_NAME,
-        sportName = SPORT_LABEL,
-        badgeUrl = LEAGUE_LOGO,
-        country = null
-    )
+    /** PPV Events itself, or one of boxing's bodies or promoters (their fights). */
+    fun league(leaguePath: String): SportsLeague {
+        val boxing = boxingLeagueOf(leaguePath)
+        return SportsLeague(
+            id = "$SPORT_PATH:$leaguePath",
+            name = boxing?.name ?: LEAGUE_NAME,
+            sportName = SPORT_LABEL,
+            badgeUrl = boxing?.logo ?: LEAGUE_LOGO,
+            country = null
+        )
+    }
 
     /**
      * The shows in [datesRange] (ESPN's "yyyyMMdd[-yyyyMMdd]", UTC days); none given, from three
@@ -93,10 +95,14 @@ internal class PpvEventsSource(
         val shows = shows(waitWhenEmpty = true)
         val now = System.currentTimeMillis()
         val (from, to) = rangeOf(datesRange)
+        val league = league(feed.leaguePath)
+        // A body's or promoter's league: the fights its name is in (their titles, the card, the story).
+        val boxing = boxingLeagueOf(feed.leaguePath)
         val events = shows
+            .filter { show -> boxing == null || (show.sport == SPORT_BOXING && boxing.matches(show)) }
             .filter { show -> inRange(show.startMs, from, to, now) }
             .sortedBy { it.startMs ?: Long.MAX_VALUE }
-            .map { eventOf(it, now) }
+            .map { eventOf(it, now).copy(leagueId = league.id, leagueName = league.name) }
         return EspnSportsClient.FeedResult(feed = feed, league = league, events = events, teams = emptyList())
     }
 
@@ -104,7 +110,7 @@ internal class PpvEventsSource(
     fun show(showId: String): Show? {
         shows(waitWhenEmpty = false).firstOrNull { it.id == showId }?.let { return it }
         return runCatching {
-            val json = JSONObject(api("lookupevent.php?id=$showId") ?: return null)
+            val json = JSONObject(SportsDbRequests.get(okHttpClient, "lookupevent.php?id=$showId") ?: return null)
             val raw = json.optJSONArray("events")?.optJSONObject(0) ?: return null
             val promotion = Promotion.values().firstOrNull { it.leagueId == raw.optInt("idLeague") } ?: Promotion.BOXING
             showOf(raw, promotion)
@@ -168,7 +174,7 @@ internal class PpvEventsSource(
 
     private fun refreshPromotion(promotion: Promotion, kept: Saved?): Saved? {
         val now = System.currentTimeMillis()
-        val nextJson = api("eventsnextleague.php?id=${promotion.leagueId}") ?: return null
+        val nextJson = SportsDbRequests.get(okHttpClient, "eventsnextleague.php?id=${promotion.leagueId}") ?: return null
         val next = JSONObject(nextJson).optJSONArray("events")?.optJSONObject(0)
         if (next == null) {
             // None coming (between seasons): what was kept, looked at again later.
@@ -190,7 +196,7 @@ internal class PpvEventsSource(
                 shows += oldShows
                 continue
             }
-            val body = api("eventsround.php?id=${promotion.leagueId}&r=$r&s=$season")
+            val body = SportsDbRequests.get(okHttpClient, "eventsround.php?id=${promotion.leagueId}&r=$r&s=$season")
             if (body == null) {
                 // Out of requests for this minute: what was kept for the rest, the next look finishes it.
                 shows += keptShows.filter { it.round >= r }
@@ -303,36 +309,6 @@ internal class PpvEventsSource(
         )
     }
 
-    // ------------------------------------------------------------------ TheSportsDB
-
-    /** One request to TheSportsDB's API; null when this minute's requests are used up (or it fails). */
-    private fun api(path: String): String? {
-        if (!takeRequest()) return null
-        val request = Request.Builder()
-            .url("$API/$path")
-            .header("Accept", "application/json")
-            .build()
-        return runCatching {
-            okHttpClient.newCall(request).execute().use { response ->
-                if (response.code == 429) {
-                    // Over the limit: no more this minute.
-                    synchronized(requestTimes) { repeat(MAX_REQUESTS_PER_MINUTE) { requestTimes.addLast(System.currentTimeMillis()) } }
-                    return@use null
-                }
-                if (!response.isSuccessful) throw EspnSportsClient.EspnException("HTTP ${response.code}")
-                response.body?.string().orEmpty()
-            }
-        }.getOrNull()
-    }
-
-    private fun takeRequest(): Boolean = synchronized(requestTimes) {
-        val now = System.currentTimeMillis()
-        while (requestTimes.isNotEmpty() && now - requestTimes.first() > 60_000L) requestTimes.removeFirst()
-        if (requestTimes.size >= MAX_REQUESTS_PER_MINUTE) return@synchronized false
-        requestTimes.addLast(now)
-        true
-    }
-
     // ------------------------------------------------------------------ the disk
 
     private fun readCache(): Map<String, Saved> {
@@ -412,6 +388,30 @@ internal class PpvEventsSource(
     companion object {
         const val SPORT_PATH = "ppv"
         const val LEAGUE_PATH = "ppv-events"
+
+        /** Boxing's sanctioning bodies and big promoters: each a league of the fights it's in. */
+        data class BoxingLeague(val leaguePath: String, val name: String, val logo: String, private val words: Regex) {
+            fun matches(show: Show): Boolean =
+                words.containsMatchIn(listOfNotNull(show.name, show.description, show.card).joinToString("\n"))
+        }
+
+        val BOXING_LEAGUES = listOf(
+            BoxingLeague("boxing-wbc", "WBC", favicon("wbcboxing.com"), Regex("""\bWBC\b|World Boxing Council""", RegexOption.IGNORE_CASE)),
+            BoxingLeague("boxing-wba", "WBA", favicon("wbaboxing.com"), Regex("""\bWBA\b|World Boxing Association""", RegexOption.IGNORE_CASE)),
+            BoxingLeague("boxing-ibf", "IBF", favicon("ibf-usba-boxing.com"), Regex("""\bIBF\b|International Boxing Federation""", RegexOption.IGNORE_CASE)),
+            BoxingLeague("boxing-wbo", "WBO", favicon("wboboxing.com"), Regex("""\bWBO\b|World Boxing Organi[sz]ation""", RegexOption.IGNORE_CASE)),
+            BoxingLeague("boxing-top-rank", "Top Rank", favicon("toprank.com"), Regex("""\bTop\s*Rank\b""", RegexOption.IGNORE_CASE)),
+            BoxingLeague("boxing-pbc", "PBC", favicon("premierboxingchampions.com"), Regex("""\bPBC\b|Premier Boxing Champions""", RegexOption.IGNORE_CASE)),
+            BoxingLeague("boxing-matchroom", "Matchroom Boxing", favicon("matchroomboxing.com"), Regex("""\bMatchroom\b""", RegexOption.IGNORE_CASE))
+        )
+
+        /** PPV Events and the boxing leagues: every league this source answers for. */
+        val LEAGUE_PATHS: Set<String> = setOf(LEAGUE_PATH) + BOXING_LEAGUES.map { it.leaguePath }
+
+        fun boxingLeagueOf(leaguePath: String): BoxingLeague? = BOXING_LEAGUES.firstOrNull { it.leaguePath == leaguePath }
+
+        /** A site's own icon, big (the bodies and promoters have no logo anywhere open). */
+        private fun favicon(domain: String): String = "https://www.google.com/s2/favicons?domain=$domain&sz=256"
         const val LEAGUE_ID = "$SPORT_PATH:$LEAGUE_PATH"
         const val LEAGUE_NAME = "PPV Events"
         const val SPORT_LABEL = "PPV"
@@ -420,10 +420,7 @@ internal class PpvEventsSource(
         /** TheSportsDB's boxing badge. */
         const val LEAGUE_LOGO = "https://r2.thesportsdb.com/images/media/league/badge/j14hx41784791003.png"
 
-        private const val API = "https://www.thesportsdb.com/api/v1/json/123"
         private const val CACHE_VERSION = 1
-        /** Leaves a few of the key's 30 a minute for the rest of the app (players' photos). */
-        private const val MAX_REQUESTS_PER_MINUTE = 24
         private const val REFRESH_MS = 3L * 60 * 60 * 1000
         private const val RETRY_MS = 2L * 60 * 1000
         private const val FIRST_WAIT_MS = 8_000L

@@ -144,7 +144,10 @@ class LiveEventLibrary @Inject constructor(
             "nhl", "ncaa", "mls", "college football", "college basketball", "college baseball", "liga",
             "laliga", "premier league", "champions league", "europa league", "serie a", "bundesliga",
             "ligue 1", "copa", "cup", "partido", "golf", "pga", "lpga", "banana ball", "nascar", "racing",
-            "motorsports", "auto racing", "boxing", "boxeo", "wrestling", "lucha libre", "wwe", "aew", "ppv"
+            "motorsports", "auto racing", "boxing", "boxeo", "wrestling", "lucha libre", "wwe", "aew", "ppv",
+            "tennis", "tenis", "motogp", "indycar", "formula 1", "f1", "cfl", "ufl", "lidom", "pelota invernal",
+            "beisbol invernal", "serie del caribe", "minor league", "milb", "copa libertadores", "copa sudamericana",
+            "europa league", "nations league", "copa america", "world cup", "mundial"
         )
 
         /** "Bulls vs. Knicks", "Real Madrid v Barcelona", "Bears @ Packers", "América contra Chivas". */

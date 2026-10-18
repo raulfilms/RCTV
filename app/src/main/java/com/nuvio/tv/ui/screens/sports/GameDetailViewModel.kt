@@ -118,7 +118,7 @@ class GameDetailViewModel @Inject constructor(
             }
             return
         }
-        if (event.isNascar()) {
+        if (event.isRace()) {
             viewModelScope.launch {
                 // While it's on, the running order every half minute.
                 while (true) {

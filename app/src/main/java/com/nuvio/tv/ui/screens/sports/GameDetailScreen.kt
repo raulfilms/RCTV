@@ -148,7 +148,7 @@ fun GameDetailScreen(
             golfLeaderboardItems(uiState)
             return@LazyColumn
         }
-        if (event.isNascar()) {
+        if (event.isRace()) {
             raceResultsItems(uiState, live = event.status == SportsEventStatus.LIVE)
             return@LazyColumn
         }
@@ -572,13 +572,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.raceResultsItems(uiSt
             )
         }
         else -> {
-            // The running order has no points yet: its columns say so.
-            val running = live && uiState.raceResults.all { it.points == null }
+            // Only the columns the race's source has (the running order has no points yet).
+            val columns = RaceColumns.of(uiState.raceResults)
             item(key = "results_header") {
-                RaceResultsHeader(live = running, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+                RaceResultsHeader(columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
             items(uiState.raceResults, key = { "driver_${it.position}_${it.carNumber}_${it.driver}" }) { result ->
-                RaceResultRow(result = result, live = running, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+                RaceResultRow(result = result, columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
         }
     }

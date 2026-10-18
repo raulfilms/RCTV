@@ -125,11 +125,8 @@ class LeagueDetailViewModel @Inject constructor(
         _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val near = client.fetchFeed(currentFeed, client.dateRange(-3, 10))
-                    // Banana Ball between seasons: its next season's games instead of nothing.
-                    if (near.events.isEmpty() && currentFeed.isBananaBall()) client.fetchFeed(currentFeed) else near
-                }
+                // Between seasons (or a tournament's editions): its next games, else its last ones.
+                runCatching { client.fetchLeagueHome(currentFeed) }
             }
             result.onSuccess { loadedFeed ->
                 // As the clock has them: games whose start time has come are live.
@@ -209,17 +206,21 @@ class LeagueDetailViewModel @Inject constructor(
     private fun loadScheduleIfNeeded() {
         if (uiState.value.scheduleLoaded || uiState.value.isLoadingSchedule) return
         var weekOffset = uiState.value.scheduleWeekOffset
-        // Banana Ball between seasons: the schedule opens on the week its next game is in.
-        if (weekOffset == 0 && feed?.isBananaBall() == true) {
+        // Between seasons: the schedule opens on the week its next game is in (else its last game's).
+        if (weekOffset == 0) {
             val now = System.currentTimeMillis()
-            val firstGame = uiState.value.upcomingEvents.mapNotNull { it.startTimeMs }.filter { it > now }.minOrNull()
-            if (firstGame != null) weekOffset = ((firstGame - now) / WEEK_MS).toInt()
+            val starts = uiState.value.allEvents.mapNotNull { it.startTimeMs }
+            val nextGame = starts.filter { it > now }.minOrNull()
+            val lastGame = starts.filter { it <= now }.maxOrNull()
+            val target = when {
+                nextGame != null && nextGame - now >= WEEK_MS -> nextGame
+                nextGame == null && lastGame != null && now - lastGame >= WEEK_MS -> lastGame
+                else -> null
+            }
+            if (target != null) weekOffset = Math.floorDiv(target - now, WEEK_MS).toInt()
         }
         loadScheduleWeek(weekOffset)
     }
-
-    private fun EspnSportsClient.Feed.isBananaBall(): Boolean =
-        leaguePath == com.nuvio.tv.data.remote.espn.BananaBallSource.LEAGUE_PATH
 
     /** Moves the Schedule tab by [delta] weeks (e.g. -1/+1 for the mockup's "< WEEK >" control) and reloads. */
     fun changeScheduleWeek(delta: Int) {

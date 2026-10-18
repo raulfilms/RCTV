@@ -442,9 +442,11 @@ class SportsViewModel @Inject constructor(
 
         val liveNow = allEvents.filter { it.status == SportsEventStatus.LIVE }
             .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
+            .fewPerTour()
         val upcomingGames = allEvents.filter { it.status == SportsEventStatus.UPCOMING }
             .distinctBy { it.id }
             .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
+            .fewPerTour()
             .take(30)
 
         val favoriteTeams = allTeams.filter { it.id in favoriteTeamIds }
@@ -487,10 +489,30 @@ class SportsViewModel @Inject constructor(
         /** The order of the leagues (ESPN's league path, the part after ":" in the id): the US leagues first, then soccer, then the rest. */
         val LEAGUE_ORDER = listOf(
             "nfl", "nba", "wnba", "mlb", "nhl", "college-football", "mens-college-basketball", "college-baseball", "banana-ball",
-            "usa.1", "eng.1", "esp.1", "uefa.champions", "ita.1", "ger.1", "fra.1", "mex.1", "ufc", "ppv-events", "f1",
-            "nascar-premier", "nascar-secondary", "nascar-truck", "atp",
-            "pga", "champions-tour", "lpga", "eur", "ntw", "liv"
+            "lidom", "caribbean-series", "world-baseball-classic", "milb-aaa", "milb-aa", "milb-high-a", "milb-a",
+            "ufl", "cfl",
+            "usa.1", "eng.1", "esp.1", "uefa.champions", "uefa.europa", "ita.1", "ger.1", "fra.1", "mex.1",
+            "conmebol.libertadores", "conmebol.sudamericana", "concacaf.champions", "fifa.world", "fifa.cwc",
+            "uefa.nations", "conmebol.america",
+            "ufc", "ppv-events", "boxing-wbc", "boxing-wba", "boxing-ibf", "boxing-wbo", "boxing-top-rank", "boxing-pbc",
+            "boxing-matchroom",
+            "f1", "nascar-premier", "nascar-secondary", "nascar-truck", "irl", "motogp",
+            "atp", "wta", "australian-open", "roland-garros", "wimbledon", "us-open",
+            "pga", "masters", "pga-championship", "golf-us-open", "the-open", "champions-tour", "lpga", "eur", "ntw", "liv"
         )
+
+        /** Tennis plays dozens of matches a day: a few of each tour's in the rows, the rest on its page. */
+        private const val MATCHES_PER_TOUR = 6
+
+        private fun List<SportsEvent>.fewPerTour(): List<SportsEvent> {
+            val counts = HashMap<String, Int>()
+            return filter { event ->
+                val league = event.leagueId?.takeIf { it.startsWith("tennis:") } ?: return@filter true
+                val count = (counts[league] ?: 0) + 1
+                counts[league] = count
+                count <= MATCHES_PER_TOUR
+            }
+        }
 
         /** Where a league goes in [LEAGUE_ORDER]; leagues not in it go last, in the order they came. */
         fun leagueRank(leagueId: String): Int {
