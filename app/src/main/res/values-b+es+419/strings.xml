@@ -3512,6 +3512,9 @@
     <string name="livetv_library_dialog_subtitle">Agregar a tu biblioteca</string>
     <string name="livetv_library_add_episode">Agregar el episodio</string>
     <string name="livetv_library_add_series">Agregar la serie</string>
+    <string name="livetv_library_add_event">Agregar a Eventos</string>
+    <string name="livetv_library_adding_event">No está en TMDB: se agrega a tus Eventos.</string>
+    <string name="livetv_library_added_event">Agregado a Eventos en tu biblioteca: %1$s</string>
     <string name="livetv_library_add_movie">Agregar la película</string>
     <string name="livetv_library_looking_up">Buscando en TMDB…</string>
     <string name="livetv_library_lookup_failed">No se pudo conectar con TMDB. Inténtalo de nuevo en un momento.</string>

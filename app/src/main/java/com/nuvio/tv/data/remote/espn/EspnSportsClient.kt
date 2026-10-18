@@ -382,8 +382,22 @@ class EspnSportsClient @Inject constructor(
         val start = dayFormat.format(calendar.time)
         calendar.add(Calendar.DAY_OF_YEAR, rangeDays)
         val end = dayFormat.format(calendar.time)
-        val range = "$start-$end"
+        return fetchFixturesInRange("$start-$end", feeds)
+    }
 
+    /**
+     * Every curated league's games the day before, the day of and the day after [timeMs]: to find
+     * which game a TV guide program is.
+     */
+    fun fetchFixturesAround(timeMs: Long, feeds: List<Feed> = FEEDS): List<FeedResult> {
+        val dayMs = 24L * 60 * 60 * 1000
+        val format = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        val start = format.format(java.util.Date(timeMs - dayMs))
+        val end = format.format(java.util.Date(timeMs + dayMs))
+        return fetchFixturesInRange("$start-$end", feeds)
+    }
+
+    private fun fetchFixturesInRange(range: String, feeds: List<Feed>): List<FeedResult> {
         // Every league at once (one after another took many seconds), in the feeds' order.
         return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
             feeds.map { feed ->

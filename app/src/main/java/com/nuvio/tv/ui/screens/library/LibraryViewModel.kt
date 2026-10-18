@@ -1268,7 +1268,15 @@ class LibraryViewModel @Inject constructor(
                 Screen.SportsTeams.route
             }
         }
-        LIBRARY_TYPE_EVENT -> gameRoute(libraryEvents[entry.id]?.withStatusNow() ?: eventFromEntry(entry))
+        LIBRARY_TYPE_EVENT -> {
+            // A program saved from the Guide (not a game ESPN has): its channel's page.
+            val guideChannelId = com.nuvio.tv.ui.screens.livetv.LiveEventLibrary.channelIdOf(entry.id)
+            if (guideChannelId != null) {
+                Screen.ChannelProfile.createRoute(guideChannelId)
+            } else {
+                gameRoute(libraryEvents[entry.id]?.withStatusNow() ?: eventFromEntry(entry))
+            }
+        }
         else -> null
     }
 
@@ -1297,6 +1305,7 @@ class LibraryViewModel @Inject constructor(
     /** A saved game that's live now (it plays on its channel instead of opening its page). */
     fun liveGameOf(entry: LibraryEntry): SportsEvent? {
         if (entry.type != LIBRARY_TYPE_EVENT) return null
+        if (com.nuvio.tv.ui.screens.livetv.LiveEventLibrary.isProgramEventId(entry.id)) return null
         val event = libraryEvents[entry.id]?.withStatusNow() ?: return null
         return event.takeIf { it.isLiveAt(System.currentTimeMillis()) }
     }

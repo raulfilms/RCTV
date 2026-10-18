@@ -173,6 +173,20 @@ internal object SportsGameChannels {
         return found.sortedByDescending { it.score }
     }
 
+    /**
+     * How surely a guide program (now or later) is [event] itself, 0 when it isn't: the game's teams
+     * in it, at the game's time (not another game between the same teams, nor a show about it).
+     */
+    fun scoreFor(program: EpgProgram, event: SportsEvent): Int {
+        val home = teamNames(event.homeTeamName, event.homeTeamAliases)
+        val away = teamNames(event.awayTeamName, event.awayTeamAliases)
+        if (home.isEmpty() || away.isEmpty()) return 0
+        val gameStart = event.startTimeMs ?: return 0
+        if (program.endMs <= gameStart || program.startMs >= gameStart + LIVE_WINDOW_MS) return 0
+        val score = scoreOf(program, home, away, sportWords(event), gameStart)
+        return if (score >= MIN_SCORE) score else 0
+    }
+
     private fun scoreOf(
         program: EpgProgram,
         home: List<String>,

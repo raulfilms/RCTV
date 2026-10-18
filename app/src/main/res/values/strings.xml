@@ -4045,6 +4045,9 @@
     <string name="livetv_library_dialog_subtitle">Add to your library</string>
     <string name="livetv_library_add_episode">Add Episode</string>
     <string name="livetv_library_add_series">Add TV Series</string>
+    <string name="livetv_library_add_event">Add to Events</string>
+    <string name="livetv_library_adding_event">Not on TMDB: adding it to your Events.</string>
+    <string name="livetv_library_added_event">Added to Events in your library: %1$s</string>
     <string name="livetv_library_add_movie">Add Movie</string>
     <string name="livetv_library_looking_up">Looking it up on TMDB…</string>
     <string name="livetv_library_lookup_failed">Couldn\'t reach TMDB. Try again in a moment.</string>

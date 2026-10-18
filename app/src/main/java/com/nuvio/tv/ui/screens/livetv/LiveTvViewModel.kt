@@ -31,8 +31,11 @@ import javax.inject.Inject
 
 enum class LiveTvSetupMethod { M3U, XTREAM, STALKER }
 
-/** What to add from a program on now: the episode airing, the whole series, or the movie. */
-enum class LiveLibraryChoice { EPISODE, SERIES, MOVIE }
+/**
+ * What to add from a program on now: the episode airing, the whole series, the movie, or (not on
+ * TMDB) the program itself, to the Library's Events.
+ */
+enum class LiveLibraryChoice { EPISODE, SERIES, MOVIE, EVENT }
 
 /** The "add to library" question for a program on now, and its TMDB lookup. */
 data class LiveLibraryPrompt(
@@ -40,6 +43,8 @@ data class LiveLibraryPrompt(
     val program: EpgProgram,
     /** The guide calls it a movie (until TMDB says what it is). */
     val looksLikeMovie: Boolean,
+    /** It looks like a game (ESPN is asked too): no episode or series to choose meanwhile. */
+    val looksLikeGame: Boolean = false,
     /** TMDB is being asked. */
     val isMatching: Boolean = true,
     /** What TMDB has (null: not found, once [isMatching] is over). */
@@ -153,7 +158,10 @@ data class ProgramDetailsTmdb(
     val isLoading: Boolean = true,
     /** The movie or series (null: TMDB doesn't have it, once [isLoading] is over). */
     val match: LiveProgramMatch? = null,
+    /** The game it is, on ESPN (it goes to the Library's Events as the game). */
+    val game: com.nuvio.tv.domain.model.SportsEvent? = null,
     val art: GuideProgramArt? = null,
+    /** Its movie or series, its game, or (neither) the program itself is in the library. */
     val inLibrary: Boolean = false,
     /** It's being added to the library. */
     val isAdding: Boolean = false
@@ -168,6 +176,7 @@ class LiveTvViewModel @Inject constructor(
     private val liveTvDataStore: LiveTvDataStore,
     private val guideLoader: LiveTvGuideLoader,
     private val liveProgramLibrary: LiveProgramLibrary,
+    private val liveEventLibrary: LiveEventLibrary,
     private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
     private val playerSession: com.nuvio.tv.data.livetv.LiveTvPlayerSession
 ) : ViewModel() {
@@ -240,19 +249,51 @@ class LiveTvViewModel @Inject constructor(
     /** The TMDB lookup of the program Select was last held on. */
     private var libraryMatch: Deferred<LiveProgramMatch?>? = null
 
+    /** The ESPN lookup of the program Select was last held on, when it looks like a game. */
+    private var gameMatch: Deferred<com.nuvio.tv.domain.model.SportsEvent?>? = null
+
     /**
      * Select held on what's on now. A movie goes straight into the library, with nothing asked; a
      * series asks right away whether to add the episode or the whole series, while TMDB is looked
-     * up. When TMDB turns out to have a movie, it's added and the question closes on its own.
+     * up. When TMDB turns out to have a movie, it's added and the question closes on its own. A game
+     * (on ESPN) goes to the Library's Events as the game; anything else TMDB doesn't have (a
+     * special, an award show) goes there as the program.
      */
     fun openLibraryPrompt(channel: LiveTvChannel, program: EpgProgram) {
         libraryMatch?.cancel()
+        gameMatch?.cancel()
         val looksLikeMovie = (program.categories + listOfNotNull(program.category))
             .any { val word = it.lowercase(java.util.Locale.ROOT); "movie" in word || "film" in word }
+        val looksLikeGame = !looksLikeMovie && LiveEventLibrary.looksLikeGame(program)
         val lookup = viewModelScope.async { liveProgramLibrary.match(program) }
+        val gameLookup = if (looksLikeGame) viewModelScope.async { liveEventLibrary.findGame(program) } else null
         libraryMatch = lookup
-        _libraryPrompt.value = if (looksLikeMovie) null else LiveLibraryPrompt(channel, program, looksLikeMovie = false)
+        gameMatch = gameLookup
+        _libraryPrompt.value = if (looksLikeMovie) null else LiveLibraryPrompt(channel, program, looksLikeMovie = false, looksLikeGame = looksLikeGame)
         viewModelScope.launch {
+            // A game ESPN has: saved as the game, nothing to ask.
+            if (gameLookup != null) {
+                val game = try {
+                    gameLookup.await()
+                } catch (e: CancellationException) {
+                    return@launch
+                } catch (e: Exception) {
+                    null
+                }
+                if (libraryMatch !== lookup) return@launch
+                if (game != null) {
+                    if (_libraryPrompt.value?.isAdding == true) return@launch
+                    _libraryPrompt.update { prompt -> if (prompt?.program == program) prompt.copy(isAdding = true) else prompt }
+                    val result = liveEventLibrary.addGame(game)
+                    toastEvent(result, gameName(game))
+                    if (result == LiveEventResult.FAILED) {
+                        _libraryPrompt.update { prompt -> if (prompt?.program == program) prompt.copy(isAdding = false, isMatching = false) else prompt }
+                    } else if (_libraryPrompt.value?.program == program || _libraryPrompt.value == null) {
+                        dismissLibraryPrompt()
+                    }
+                    return@launch
+                }
+            }
             val result = try {
                 Result.success(lookup.await())
             } catch (e: CancellationException) {
@@ -267,13 +308,14 @@ class LiveTvViewModel @Inject constructor(
                 match?.isMovie == true -> {
                     if (_libraryPrompt.value?.isAdding != true) addMatched(match, LiveLibraryChoice.MOVIE, program)
                 }
-                // The guide called it a movie, but TMDB doesn't have it (or couldn't be reached).
+                // Not on TMDB (a special, a game ESPN doesn't have): the program, in the Library's Events.
+                match == null && result.isSuccess -> {
+                    if (_libraryPrompt.value?.isAdding != true) addProgramEvent(channel, program)
+                }
+                // The guide called it a movie, but TMDB couldn't be reached.
                 looksLikeMovie && match == null -> {
                     libraryMatch = null
-                    toast(
-                        if (result.isFailure) appContext.getString(R.string.livetv_library_lookup_failed)
-                        else appContext.getString(R.string.livetv_library_not_found, LiveProgramLibrary.cleanTitle(program.title))
-                    )
+                    toast(appContext.getString(R.string.livetv_library_lookup_failed))
                 }
                 // The guide called it a movie, but on TMDB it's a series: ask after all.
                 looksLikeMovie -> _libraryPrompt.value = LiveLibraryPrompt(
@@ -294,6 +336,8 @@ class LiveTvViewModel @Inject constructor(
     fun dismissLibraryPrompt() {
         libraryMatch?.cancel()
         libraryMatch = null
+        gameMatch?.cancel()
+        gameMatch = null
         _libraryPrompt.value = null
     }
 
@@ -301,6 +345,10 @@ class LiveTvViewModel @Inject constructor(
     fun addFromLibraryPrompt(choice: LiveLibraryChoice) {
         val prompt = _libraryPrompt.value ?: return
         if (prompt.isAdding) return
+        if (choice == LiveLibraryChoice.EVENT) {
+            viewModelScope.launch { addProgramEvent(prompt.channel, prompt.program) }
+            return
+        }
         val lookup = libraryMatch ?: return
         _libraryPrompt.update { it?.copy(isAdding = true) }
         viewModelScope.launch {
@@ -312,12 +360,37 @@ class LiveTvViewModel @Inject constructor(
                 null
             }
             if (match == null) {
-                toast(appContext.getString(R.string.livetv_library_not_found, LiveProgramLibrary.cleanTitle(prompt.program.title)))
-                _libraryPrompt.update { it?.copy(isAdding = false, isMatching = false) }
+                // Not on TMDB: the program, in the Library's Events.
+                addProgramEvent(prompt.channel, prompt.program)
                 return@launch
             }
             addMatched(match, choice, prompt.program)
         }
+    }
+
+    /** Saves the program itself to the Library's Events, says how it went, and closes the question. */
+    private suspend fun addProgramEvent(channel: LiveTvChannel, program: EpgProgram) {
+        _libraryPrompt.update { prompt -> if (prompt?.program == program) prompt.copy(isAdding = true) else prompt }
+        val result = liveEventLibrary.addProgram(channel, program)
+        toastEvent(result, LiveProgramLibrary.cleanTitle(program.title).ifBlank { program.title })
+        if (result == LiveEventResult.FAILED) {
+            _libraryPrompt.update { prompt -> if (prompt?.program == program) prompt.copy(isAdding = false, isMatching = false) else prompt }
+        } else if (_libraryPrompt.value?.program == program) {
+            dismissLibraryPrompt()
+        }
+    }
+
+    private fun gameName(game: com.nuvio.tv.domain.model.SportsEvent): String =
+        game.name.ifBlank { "${game.awayTeamName} vs ${game.homeTeamName}" }
+
+    private fun toastEvent(result: LiveEventResult, name: String) {
+        toast(
+            when (result) {
+                LiveEventResult.ADDED -> appContext.getString(R.string.livetv_library_added_event, name)
+                LiveEventResult.ALREADY_IN_LIBRARY -> appContext.getString(R.string.livetv_library_already, name)
+                LiveEventResult.FAILED -> appContext.getString(R.string.livetv_library_failed)
+            }
+        )
     }
 
     /** Saves [choice] of [match] to the library, says how it went, and closes the question. */
@@ -640,19 +713,39 @@ class LiveTvViewModel @Inject constructor(
         programDetailsJob?.cancel()
         _programDetailsTmdb.value = ProgramDetailsTmdb(art = cachedProgramArt(program))
         programDetailsJob = viewModelScope.launch {
+            // A game: ESPN is asked meanwhile.
+            val gameLookup = if (LiveEventLibrary.looksLikeGame(program)) {
+                async {
+                    try {
+                        liveEventLibrary.findGame(program)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            } else {
+                null
+            }
             val art = programArt(program)
-            val match = try {
+            val found = try {
                 liveProgramLibrary.findTitle(program)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 null
             }
-            _programDetailsTmdb.value = ProgramDetailsTmdb(isLoading = false, match = match, art = art)
-            if (match != null) {
-                liveProgramLibrary.isInLibrary(match).collect { inLibrary ->
-                    _programDetailsTmdb.update { it.copy(inLibrary = inLibrary) }
-                }
+            val game = gameLookup?.await()
+            // The game it is comes first; not on TMDB either, the program goes to the Events as is.
+            val match = if (game != null) null else found
+            _programDetailsTmdb.value = ProgramDetailsTmdb(isLoading = false, match = match, game = game, art = art)
+            val inLibrary = when {
+                game != null -> liveEventLibrary.isGameInLibrary(game)
+                match != null -> liveProgramLibrary.isInLibrary(match)
+                else -> liveEventLibrary.isProgramInLibrary(channel, program)
+            }
+            inLibrary.collect { saved ->
+                _programDetailsTmdb.update { it.copy(inLibrary = saved) }
             }
         }
     }
@@ -664,11 +757,36 @@ class LiveTvViewModel @Inject constructor(
         _uiState.update { it.copy(selectedProgramChannel = null, selectedProgram = null) }
     }
 
-    /** "Add to library" in a program's details: its movie, or its whole series. */
+    /**
+     * "Add to library" in a program's details: its movie, or its whole series; not on TMDB, its game
+     * (or the program itself) in the Library's Events.
+     */
     fun addProgramDetailsToLibrary() {
         val state = _programDetailsTmdb.value
-        val match = state.match ?: return
-        if (state.isAdding || state.inLibrary) return
+        if (state.isLoading || state.isAdding || state.inLibrary) return
+        val match = state.match
+        if (match == null) {
+            val game = state.game
+            val channel = _uiState.value.selectedProgramChannel
+            val program = _uiState.value.selectedProgram
+            if (game == null && (channel == null || program == null)) return
+            _programDetailsTmdb.update { it.copy(isAdding = true) }
+            viewModelScope.launch {
+                val result = when {
+                    game != null -> liveEventLibrary.addGame(game)
+                    channel != null && program != null -> liveEventLibrary.addProgram(channel, program)
+                    else -> LiveEventResult.FAILED
+                }
+                val name = when {
+                    game != null -> gameName(game)
+                    program != null -> LiveProgramLibrary.cleanTitle(program.title).ifBlank { program.title }
+                    else -> ""
+                }
+                toastEvent(result, name)
+                _programDetailsTmdb.update { it.copy(isAdding = false) }
+            }
+            return
+        }
         _programDetailsTmdb.update { it.copy(isAdding = true) }
         viewModelScope.launch {
             val result = liveProgramLibrary.addTitle(match)

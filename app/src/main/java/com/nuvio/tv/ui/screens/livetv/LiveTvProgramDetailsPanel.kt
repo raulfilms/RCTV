@@ -188,12 +188,22 @@ internal fun LiveTvProgramDetailsOverlay(
                             )
                         )
                     }
-                    else -> add(DetailsAction(Icons.Default.Close, stringResource(R.string.livetv_close_btn), onDismiss))
+                    // Not on TMDB: its game (or the program itself) goes to the Library's Events.
+                    else -> {
+                        add(
+                            if (tmdb.inLibrary) {
+                                DetailsAction(Icons.Default.Check, stringResource(R.string.livetv_details_in_library), onClick = {})
+                            } else {
+                                DetailsAction(Icons.Default.Add, stringResource(R.string.hero_add_to_library), onAddToLibrary, enabled = !tmdb.isAdding)
+                            }
+                        )
+                        add(DetailsAction(Icons.Default.Close, stringResource(R.string.livetv_close_btn), onDismiss))
+                    }
                 }
             }
             val firstAction = remember { FocusRequester() }
             // The actions change once TMDB answers: focus the first one again.
-            LaunchedEffect(tmdb.isLoading, match?.tmdbId, actions.size) {
+            LaunchedEffect(tmdb.isLoading, match?.tmdbId, tmdb.game?.id, actions.size) {
                 repeat(6) {
                     withFrameNanos { }
                     if (runCatching { firstAction.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
