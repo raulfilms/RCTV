@@ -60,6 +60,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -544,8 +546,9 @@ private fun NetworksRow(
             .take(NETWORKS_ROW_LIMIT)
     }
     LazyRow(
+        modifier = Modifier.bleedHorizontally(RowBleed),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(vertical = 6.dp)
+        contentPadding = PaddingValues(horizontal = RowBleed, vertical = 8.dp)
     ) {
         itemsIndexed(channels, key = { _, item -> item.id }) { index, item ->
             val onNow = guide.programAt(item, nowMs)
@@ -796,6 +799,22 @@ private fun LivePillButton(
     }
 }
 
+/** Room at a row's ends for its focused card (a bit bigger, with its white border). */
+private val RowBleed = 14.dp
+
+/**
+ * Lets a row reach [bleed] past its sides while its first card stays lined up with the tabs: a
+ * row cuts off what's outside it, so a focused card at either end (bigger, with its border) would
+ * be cut. With the row's own padding of [bleed] at both ends, it shows whole.
+ */
+private fun Modifier.bleedHorizontally(bleed: Dp): Modifier = layout { measurable, constraints ->
+    val extra = bleed.roundToPx()
+    val wider = if (constraints.hasBoundedWidth) constraints.copy(maxWidth = constraints.maxWidth + extra * 2) else constraints
+    val placeable = measurable.measure(wider)
+    val width = (placeable.width - extra * 2).coerceIn(constraints.minWidth, constraints.maxWidth)
+    layout(width, placeable.height) { placeable.place(-extra, 0) }
+}
+
 /** A choice in an options row (captions, quality, more): an icon or a glyph ("CC", "HD"), a check when chosen. */
 private data class LiveOption(
     val icon: ImageVector? = null,
@@ -816,8 +835,9 @@ private fun OptionsRow(
     onFocused: () -> Unit
 ) {
     LazyRow(
+        modifier = Modifier.bleedHorizontally(RowBleed),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 6.dp)
+        contentPadding = PaddingValues(horizontal = RowBleed, vertical = 8.dp)
     ) {
         itemsIndexed(options) { index, option ->
             Column(
@@ -982,8 +1002,9 @@ private fun EpisodesContent(
         }
         LazyRow(
             state = listState,
+            modifier = Modifier.bleedHorizontally(RowBleed),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(vertical = 4.dp)
+            contentPadding = PaddingValues(horizontal = RowBleed, vertical = 6.dp)
         ) {
             itemsIndexed(state.episodes, key = { _, item -> "${item.season}:${item.episode}" }) { _, episode ->
                 val isAiring = airing != null && airing.season == episode.season && airing.episode == episode.episode
