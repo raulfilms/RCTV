@@ -48,19 +48,21 @@ class YouTubeVideoSearch @Inject constructor() {
             .build()
     }
 
-    suspend fun search(query: String): List<YouTubeSearchResult> = withContext(Dispatchers.IO) {
+    /** [spanish]: results as YouTube shows them to Spanish speakers in the US (Spanish channels first). */
+    suspend fun search(query: String, spanish: Boolean = false): List<YouTubeSearchResult> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
-        val fromApi = runCatching { searchApi(query) }
+        val language = if (spanish) "es" else "en"
+        val fromApi = runCatching { searchApi(query, language) }
             .onFailure { Log.w(SEARCH_TAG, "Search API failed: ${it.message}") }
             .getOrDefault(emptyList())
         if (fromApi.isNotEmpty()) return@withContext fromApi
-        runCatching { searchPage(query) }
+        runCatching { searchPage(query, language) }
             .onFailure { Log.w(SEARCH_TAG, "Search page failed: ${it.message}") }
             .getOrDefault(emptyList())
     }
 
     /** YouTube's search API (what its website calls), videos only. */
-    private fun searchApi(query: String): List<YouTubeSearchResult> {
+    private fun searchApi(query: String, language: String): List<YouTubeSearchResult> {
         val body = JSONObject()
             .put(
                 "context",
@@ -69,7 +71,7 @@ class YouTubeVideoSearch @Inject constructor() {
                     JSONObject()
                         .put("clientName", "WEB")
                         .put("clientVersion", WEB_CLIENT_VERSION)
-                        .put("hl", "en")
+                        .put("hl", language)
                         .put("gl", "US")
                 )
             )
@@ -81,7 +83,7 @@ class YouTubeVideoSearch @Inject constructor() {
             .url("https://www.youtube.com/youtubei/v1/search?prettyPrint=false")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .header("User-Agent", SEARCH_USER_AGENT)
-            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Language", "$language-US,$language;q=0.9")
             .header("Origin", "https://www.youtube.com")
             .header("X-YouTube-Client-Name", "1")
             .header("X-YouTube-Client-Version", WEB_CLIENT_VERSION)
@@ -95,12 +97,12 @@ class YouTubeVideoSearch @Inject constructor() {
     }
 
     /** YouTube's results page: the same data, inside the page (`ytInitialData`). */
-    private fun searchPage(query: String): List<YouTubeSearchResult> {
-        val url = "https://www.youtube.com/results?search_query=${URLEncoder.encode(query, "UTF-8")}&sp=EgIQAQ%253D%253D&hl=en&gl=US"
+    private fun searchPage(query: String, language: String): List<YouTubeSearchResult> {
+        val url = "https://www.youtube.com/results?search_query=${URLEncoder.encode(query, "UTF-8")}&sp=EgIQAQ%253D%253D&hl=$language&gl=US"
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", SEARCH_USER_AGENT)
-            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Language", "$language-US,$language;q=0.9")
             .header("Cookie", CONSENT_COOKIE)
             .build()
         httpClient.newCall(request).execute().use { response ->
@@ -174,18 +176,24 @@ class YouTubeVideoSearch @Inject constructor() {
             return parts.fold(0) { total, part -> total * 60 + part }
         }
 
-        /** "3 days ago", "Streamed 2 weeks ago", "1 hour ago" → days. */
+        /** "3 days ago", "Streamed 2 weeks ago", "hace 3 días", "Transmitido hace 2 semanas" → days. */
         internal fun ageDaysOf(published: String): Double? {
-            val match = Regex("""(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago""", RegexOption.IGNORE_CASE)
-                .find(published) ?: return null
+            val english = Regex("""(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago""", RegexOption.IGNORE_CASE)
+                .find(published)
+            val spanish = if (english == null) {
+                Regex("""hace\s+(\d+)\s+(segundo|minuto|hora|d[ií]a|semana|mes|año|ano)""", RegexOption.IGNORE_CASE).find(published)
+            } else {
+                null
+            }
+            val match = english ?: spanish ?: return null
             val count = match.groupValues[1].toDoubleOrNull() ?: return null
             val unitDays = when (match.groupValues[2].lowercase()) {
-                "second" -> 1.0 / 86_400
-                "minute" -> 1.0 / 1_440
-                "hour" -> 1.0 / 24
-                "day" -> 1.0
-                "week" -> 7.0
-                "month" -> 30.0
+                "second", "segundo" -> 1.0 / 86_400
+                "minute", "minuto" -> 1.0 / 1_440
+                "hour", "hora" -> 1.0 / 24
+                "day", "dia", "día" -> 1.0
+                "week", "semana" -> 7.0
+                "month", "mes" -> 30.0
                 else -> 365.0
             }
             return count * unitDays

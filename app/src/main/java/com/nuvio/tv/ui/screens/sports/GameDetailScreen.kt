@@ -70,15 +70,14 @@ fun GameDetailScreen(
     LaunchedEffect(isOver) { if (isOver) requestFocusSoon(recapRequester) }
 
     uiState.recap?.let { recap ->
-        com.nuvio.tv.ui.screens.detail.SharedTrailerOverlay(
-            title = recap.title.ifBlank { "${event.awayTeamName} vs ${event.homeTeamName}" },
-            trailerUrl = recap.videoUrl,
-            trailerAudioUrl = recap.audioUrl,
+        SportsRecapPlayer(
+            title = recapTitle(event, uiState),
+            videoUrl = recap.videoUrl,
+            audioUrl = recap.audioUrl,
             isLoading = recap.isLoading,
             errorMessage = if (recap.notFound) stringResource(R.string.game_detail_recap_not_found) else null,
             onDismiss = viewModel::closeRecap,
-            onRetry = viewModel::watchRecap,
-            hint = stringResource(R.string.game_detail_recap_back_hint)
+            onRetry = viewModel::watchRecap
         )
     }
 
@@ -268,6 +267,35 @@ private fun GameDetailHeader(
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { recapButton() }
         }
     }
+}
+
+/**
+ * The highlights' title: the teams playing ("Tampa Bay Buccaneers vs Dallas Cowboys"; soccer home
+ * first: "Fulham vs Chelsea"), and for the NFL the week ("• Week 5", "• Wild Card"...).
+ */
+@Composable
+private fun recapTitle(event: com.nuvio.tv.domain.model.SportsEvent, uiState: GameDetailUiState): String {
+    val home = uiState.homeTeamFullName ?: event.homeTeamName
+    val away = uiState.awayTeamFullName ?: event.awayTeamName
+    val soccer = event.leagueId?.startsWith("soccer") == true
+    val matchup = if (soccer) "$home vs $away" else "$away vs $home"
+    val week = uiState.week
+    val weekLabel = if (event.leagueId == "football:nfl" && week != null) {
+        when (uiState.seasonType) {
+            1 -> stringResource(R.string.sports_recap_preseason_week, week)
+            3 -> when (week) {
+                1 -> stringResource(R.string.sports_recap_wild_card)
+                2 -> stringResource(R.string.sports_recap_divisional)
+                3 -> stringResource(R.string.sports_recap_conference)
+                5 -> stringResource(R.string.sports_recap_super_bowl)
+                else -> stringResource(R.string.sports_recap_playoffs)
+            }
+            else -> stringResource(R.string.sports_recap_week, week)
+        }
+    } else {
+        null
+    }
+    return listOfNotNull(matchup, weekLabel).joinToString("  •  ")
 }
 
 /** YouTube's red. */

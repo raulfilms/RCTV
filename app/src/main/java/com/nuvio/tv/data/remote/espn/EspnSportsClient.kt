@@ -539,7 +539,11 @@ class EspnSportsClient @Inject constructor(
     data class GameSummary(
         val stats: List<SportsGameStat>,
         val homeTeamAliases: List<String>,
-        val awayTeamAliases: List<String>
+        val awayTeamAliases: List<String>,
+        /** The game's week (NFL, college football), when the league plays in weeks. */
+        val week: Int? = null,
+        /** ESPN's season type: 1 preseason, 2 regular season, 3 postseason. */
+        val seasonType: Int? = null
     )
 
     fun fetchGameSummary(sportPath: String, leaguePath: String, eventId: String): GameSummary {
@@ -557,7 +561,14 @@ class EspnSportsClient @Inject constructor(
                 }
             }
         }
-        return GameSummary(stats = gameStatsOf(json), homeTeamAliases = homeAliases, awayTeamAliases = awayAliases)
+        val header = json.optJSONObject("header")
+        return GameSummary(
+            stats = gameStatsOf(json),
+            homeTeamAliases = homeAliases,
+            awayTeamAliases = awayAliases,
+            week = header?.optInt("week", 0)?.takeIf { it > 0 },
+            seasonType = header?.optJSONObject("season")?.optInt("type", 0)?.takeIf { it > 0 }
+        )
     }
 
     private fun gameStatsOf(json: JSONObject): List<SportsGameStat> {

@@ -35,7 +35,20 @@ internal object SportsRecapPicker {
     /** "NBA 2K26", "FC 26", "Madden 27": video games. */
     private val VIDEO_GAME = Regex("""\b(2k\d{0,2}|fc \d{2}|madden \d{2})\b""")
 
-    private val HIGHLIGHT_WORDS = listOf("highlights", "highlight", "recap", "resumen", "goles", "all goals", "extended highlights")
+    private val HIGHLIGHT_WORDS = listOf(
+        "highlights", "highlight", "recap", "resumen", "resumenes", "goles", "all goals", "extended highlights",
+        "mejores jugadas", "lo mejor"
+    )
+
+    /** A title in Spanish: "Resumen", "Goles", "Mejores jugadas", "Jornada". */
+    private val SPANISH_WORDS = listOf("resumen", "resumenes", "goles", "gol", "mejores jugadas", "lo mejor", "jornada", "partido", "y goles")
+
+    /** Channels in Spanish (soccer highlights in Spanish first). */
+    private val SPANISH_CHANNELS = listOf(
+        "espn deportes", "espn fans", "espn mx", "espn fc latam", "tudn", "telemundo deportes", "univision deportes",
+        "fox deportes", "vix", "laliga", "liga mx", "movistar", "dazn espana", "tyc sports", "caracol",
+        "sky sports mexico", "mls en espanol", "concacaf", "deportes", "futbol"
+    )
 
     /** Channels that post the leagues' own highlights. */
     private val OFFICIAL_CHANNELS = listOf(
@@ -52,14 +65,27 @@ internal object SportsRecapPicker {
         "wanderers", "albion", "state", "real", "sporting", "fc", "sc", "cf", "de", "the", "new", "san", "los", "las"
     )
 
-    /** What to search: both teams and "highlights" (and the year, for this season's game). */
+    /** Soccer's highlights are in Spanish; every other sport's in English. */
+    fun isSpanish(event: SportsEvent): Boolean =
+        event.leagueId?.startsWith("soccer") == true || event.sportName.equals("soccer", ignoreCase = true)
+
+    /**
+     * What to search: both teams and "highlights" (and the year, for this season's game); soccer in
+     * Spanish ("Real Madrid vs Barcelona resumen y goles").
+     */
     fun queriesFor(event: SportsEvent): List<String> {
         val home = fullName(event.homeTeamName, event.homeTeamAliases)
         val away = fullName(event.awayTeamName, event.awayTeamAliases)
         val year = event.startTimeMs?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).year }
+        if (isSpanish(event)) {
+            return listOf("$home vs $away resumen y goles", "$away vs $home resumen goles ${year ?: ""}".trim()).distinct()
+        }
         val suffix = listOfNotNull("highlights", year?.toString()).joinToString(" ")
         return listOf("$away vs $home $suffix", "$home vs $away highlights").distinct()
     }
+
+    /** The team's longest name ("Dallas Cowboys" before "Cowboys"), for titles. */
+    fun fullNameOf(name: String, aliases: List<String>): String = fullName(name, aliases)
 
     /** The team's longest name ("Dallas Cowboys" before "Cowboys"). */
     private fun fullName(name: String, aliases: List<String>): String =
@@ -84,8 +110,9 @@ internal object SportsRecapPicker {
         val home = teamNames(event.homeTeamName, event.homeTeamAliases)
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
         val daysSinceGame = event.startTimeMs?.let { start -> (now - start) / 86_400_000.0 }
+        val spanish = isSpanish(event)
         return results
-            .mapNotNull { result -> scoreOf(result, home, away, daysSinceGame)?.let { result to it } }
+            .mapNotNull { result -> scoreOf(result, home, away, daysSinceGame, spanish)?.let { result to it } }
             .sortedByDescending { it.second }
             .map { it.first }
     }
@@ -94,7 +121,8 @@ internal object SportsRecapPicker {
         result: YouTubeSearchResult,
         home: List<String>,
         away: List<String>,
-        daysSinceGame: Double?
+        daysSinceGame: Double?,
+        spanish: Boolean
     ): Int? {
         val title = SportsGameChannels.canonical(SportsGameChannels.normalize(result.title))
         val channel = SportsGameChannels.normalize(result.channel.orEmpty())
@@ -122,6 +150,19 @@ internal object SportsRecapPicker {
             else -> -40
         }
         if (age != null && daysSinceGame != null) score += 10
+        // Soccer: in Spanish first (a Spanish title or channel); English ones only when there's none.
+        val spanishTitle = SPANISH_WORDS.any { has(title, it) }
+        if (spanish) {
+            val spanishChannel = SPANISH_CHANNELS.any { has(channel, it) }
+            score += when {
+                spanishTitle && spanishChannel -> 60
+                spanishTitle || spanishChannel -> 40
+                else -> -40
+            }
+        } else if (spanishTitle) {
+            // Every other sport: in English.
+            score -= 40
+        }
         return score
     }
 }

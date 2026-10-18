@@ -1387,6 +1387,13 @@
     <string name="game_detail_watch_recap">Ver resumen</string>
     <string name="game_detail_recap_not_found">No encontramos los highlights de este juego</string>
     <string name="game_detail_recap_back_hint">Highlights del juego • Presiona atrás para volver</string>
+    <string name="sports_recap_week">Semana %1$d</string>
+    <string name="sports_recap_preseason_week">Pretemporada, semana %1$d</string>
+    <string name="sports_recap_wild_card">Wild Card</string>
+    <string name="sports_recap_divisional">Ronda divisional</string>
+    <string name="sports_recap_conference">Final de conferencia</string>
+    <string name="sports_recap_super_bowl">Super Bowl</string>
+    <string name="sports_recap_playoffs">Playoffs</string>
     <string name="sports_team_no_games">Todavía no hay juegos programados.</string>
     <string name="sports_team_roster_empty">La plantilla no está disponible ahora.</string>
     <string name="sports_team_stats_empty">Las estadísticas todavía no están disponibles.</string>

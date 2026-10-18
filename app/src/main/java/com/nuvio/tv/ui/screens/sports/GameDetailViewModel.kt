@@ -28,7 +28,13 @@ data class GameDetailUiState(
     val favoriteSportNames: Set<String> = emptySet(),
     val isInLibrary: Boolean = false,
     /** The game's highlights, playing full screen (Watch Recap); null when not open. */
-    val recap: GameRecapState? = null
+    val recap: GameRecapState? = null,
+    /** The teams' full names ("Tampa Bay Buccaneers"), from the game's summary. */
+    val homeTeamFullName: String? = null,
+    val awayTeamFullName: String? = null,
+    /** The game's week (NFL) and season type (1 preseason, 2 regular season, 3 postseason). */
+    val week: Int? = null,
+    val seasonType: Int? = null
 )
 
 /** Watch Recap: looking for the game's highlights on YouTube, playing them, or none found. */
@@ -102,7 +108,16 @@ class GameDetailViewModel @Inject constructor(
             }
             homeAliases = summary?.homeTeamAliases.orEmpty()
             awayAliases = summary?.awayTeamAliases.orEmpty()
-            _uiState.update { it.copy(isLoadingStats = false, stats = summary?.stats.orEmpty()) }
+            _uiState.update {
+                it.copy(
+                    isLoadingStats = false,
+                    stats = summary?.stats.orEmpty(),
+                    homeTeamFullName = SportsRecapPicker.fullNameOf(event.homeTeamName, homeAliases),
+                    awayTeamFullName = SportsRecapPicker.fullNameOf(event.awayTeamName, awayAliases),
+                    week = summary?.week,
+                    seasonType = summary?.seasonType
+                )
+            }
         }
     }
 
@@ -120,8 +135,9 @@ class GameDetailViewModel @Inject constructor(
             )
             val now = System.currentTimeMillis()
             val found = ArrayList<com.nuvio.tv.data.trailer.YouTubeSearchResult>()
+            val spanish = SportsRecapPicker.isSpanish(game)
             for (query in SportsRecapPicker.queriesFor(game)) {
-                val results = runCatching { youTubeSearch.search(query) }.getOrDefault(emptyList())
+                val results = runCatching { youTubeSearch.search(query, spanish = spanish) }.getOrDefault(emptyList())
                 ensureActive() // Closed meanwhile.
                 found += SportsRecapPicker.pick(results, game, now).filter { candidate -> found.none { it.videoId == candidate.videoId } }
                 if (found.isNotEmpty()) break
