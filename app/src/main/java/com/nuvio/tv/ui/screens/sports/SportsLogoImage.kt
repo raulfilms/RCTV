@@ -8,33 +8,27 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import coil3.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.transformations
 import coil3.size.Size
 import coil3.transform.Transformation
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** What's behind most logos in Sports: the cards and the page, near black. */
 internal val SportsLogoDarkBackground = Color(0xFF1C1C1E)
 
-/** ESPN dark logos that don't exist: those show their usual logo. */
-private val MissingDarkLogos = mutableSetOf<String>()
-
 /**
- * A team's or a league's logo that always shows on what's behind it ([background]):
- * - on a dark tile, ESPN's own version of the logo for dark backgrounds (the Yankees' and the
- *   Premier League's in white), when it has one;
- * - and any logo still too dark to see there (navy, black, dark purple...) turned white.
+ * A team's or a league's logo on what's behind it ([background]), in its own colors. Only a logo
+ * that can't be seen there (the Yankees' navy on navy, Juventus' black on black, the Premier
+ * League's purple on purple) is turned white (dark on a light tile).
  */
 @Composable
 internal fun SportsLogoImage(
@@ -45,13 +39,9 @@ internal fun SportsLogoImage(
 ) {
     if (url.isNullOrBlank()) return
     val context = LocalContext.current
-    val darkTile = lumaOf(background) < LIGHT_TILE_LUMA
-    val darkUrl = remember(url, darkTile) { if (darkTile) espnDarkLogoUrl(url) else null }
-    var useDark by remember(url, darkTile) { mutableStateOf(darkUrl != null && darkUrl !in MissingDarkLogos) }
-    val shownUrl = if (useDark && darkUrl != null) darkUrl else url
-    val request = remember(context, shownUrl, background) {
+    val request = remember(context, url, background) {
         ImageRequest.Builder(context)
-            .data(shownUrl)
+            .data(url)
             .transformations(LogoContrastTransformation(background))
             .build()
     }
@@ -59,38 +49,27 @@ internal fun SportsLogoImage(
         model = request,
         contentDescription = contentDescription,
         contentScale = ContentScale.Fit,
-        onError = {
-            // No dark version of this one: the usual logo (turned white if it's too dark).
-            if (darkUrl != null && shownUrl == darkUrl) {
-                MissingDarkLogos.add(darkUrl)
-                useDark = false
-            }
-        },
         modifier = modifier
     )
 }
 
-/**
- * ESPN's logo for dark backgrounds, from its usual one: `/i/teamlogos/mlb/500/nyy.png` →
- * `/i/teamlogos/mlb/500-dark/nyy.png`; same for league logos. Null for any other logo.
- */
-internal fun espnDarkLogoUrl(url: String): String? {
-    if (!url.contains("espncdn.com")) return null
-    if (!url.contains("/teamlogos/") && !url.contains("/leaguelogos/")) return null
-    if (url.contains("/500-dark/")) return url
-    return url.replaceFirst("/500/", "/500-dark/").takeIf { it != url }
-}
-
-/** A tile this light keeps the usual logos (the dark versions are made for dark backgrounds). */
+/** A tile this light gets a dark logo when its own can't be seen (a white logo on white). */
 private const val LIGHT_TILE_LUMA = 0.6f
 
-/** How light a color looks, 0 (black) to 1 (white). */
-private fun lumaOf(color: Color): Float = 0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue
+/** Less than this much of a logo seen on its tile: it's turned white (or dark). */
+private const val VISIBLE_SHARE_TO_KEEP = 0.25f
+
+/** A part of a logo is seen on its tile when it's this much lighter or darker... */
+private const val VISIBLE_LUMA_DIFFERENCE = 0.22f
+
+/** ...or this different a color (0 the same, 1 black against white). */
+private const val VISIBLE_COLOR_DISTANCE = 0.35f
 
 /**
- * Turns a logo white when most of it can't be seen on [background]: when it's dark (navy, black,
- * dark purple) on a dark tile, or nearly the tile's own color. A logo of one dark color becomes all
- * white; one with light parts too keeps them as cut-outs (dark becomes white, light becomes dark).
+ * Keeps a logo's own colors whenever a fair part of it can be seen on [background] (the Celtics'
+ * white ring on green, the Bulls' black outline on red). When almost none of it can (one color,
+ * the tile's own or as dark as it), it's turned white on a dark tile, dark on a light one: a
+ * one-color logo all white; one with light parts too keeps them as cut-outs.
  */
 private class LogoContrastTransformation(background: Color) : Transformation() {
     // Close colors share one cached result.
@@ -98,18 +77,19 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
     private val green = quantize(background.green)
     private val blue = quantize(background.blue)
 
-    override val cacheKey: String = "sports_logo_contrast_v1_${red}_${green}_$blue"
+    override val cacheKey: String = "sports_logo_contrast_v2_${red}_${green}_$blue"
 
     override suspend fun transform(input: Bitmap, size: Size): Bitmap {
         val backgroundRgb = Triple(red * 255 / QUANT_STEPS, green * 255 / QUANT_STEPS, blue * 255 / QUANT_STEPS)
         val backgroundLuma = (0.2126f * backgroundRgb.first + 0.7152f * backgroundRgb.second + 0.0722f * backgroundRgb.third) / 255f
-        if (backgroundLuma >= LIGHT_TILE_LUMA) return input
-        val look = runCatching { lookOf(input, backgroundRgb) }.getOrNull() ?: return input
-        if (look.hiddenShare < HIDDEN_SHARE_TO_WHITEN) return input
-        val filter: AndroidColorFilter = if (look.lightShare < 0.12f) {
-            PorterDuffColorFilter(android.graphics.Color.WHITE, PorterDuff.Mode.SRC_IN)
-        } else {
-            ColorMatrixColorFilter(DarkToWhite)
+        val look = runCatching { lookOf(input, backgroundRgb, backgroundLuma) }.getOrNull() ?: return input
+        // Enough of it shows: its own colors.
+        if (look.visibleShare >= VISIBLE_SHARE_TO_KEEP) return input
+        val lightTile = backgroundLuma >= LIGHT_TILE_LUMA
+        val filter: AndroidColorFilter = when {
+            lightTile -> PorterDuffColorFilter(LOGO_DARK, PorterDuff.Mode.SRC_IN)
+            look.lightShare < 0.12f -> PorterDuffColorFilter(android.graphics.Color.WHITE, PorterDuff.Mode.SRC_IN)
+            else -> ColorMatrixColorFilter(DarkToWhite)
         }
         return runCatching {
             val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
@@ -123,18 +103,10 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
 
     private companion object {
         const val QUANT_STEPS = 16
+        val LOGO_DARK: Int = 0xFF1C1C1E.toInt()
         fun quantize(channel: Float): Int = (channel.coerceIn(0f, 1f) * QUANT_STEPS).roundToInt()
     }
 }
-
-/** Half of a logo or more can't be seen: it's turned white. */
-private const val HIDDEN_SHARE_TO_WHITEN = 0.5f
-
-/** Darker than this, a part of a logo is lost on a dark tile. */
-private const val DARK_PIXEL_LUMA = 0.2f
-
-/** Closer than this to the tile's color (0 same, 1 black against white), a part of a logo is lost. */
-private const val CLOSE_TO_TILE = 0.2f
 
 /**
  * Dark becomes white and light becomes dark (by how light each color looks): R, G, B =
@@ -154,17 +126,17 @@ private val DarkToWhite: FloatArray = run {
     )
 }
 
-private class LogoLook(val hiddenShare: Float, val lightShare: Float)
+private class LogoLook(val visibleShare: Float, val lightShare: Float)
 
-/** How much of a logo is lost on the tile, and how much of it is light, from about 2,000 of its pixels. */
-private fun lookOf(bitmap: Bitmap, background: Triple<Int, Int, Int>): LogoLook? {
+/** How much of a logo can be seen on the tile, and how much of it is light, from about 2,000 of its pixels. */
+private fun lookOf(bitmap: Bitmap, background: Triple<Int, Int, Int>, backgroundLuma: Float): LogoLook? {
     val width = bitmap.width
     val height = bitmap.height
     if (width <= 0 || height <= 0) return null
     val step = maxOf(1, minOf(width, height) / 48)
     val row = IntArray(width)
     var opaque = 0
-    var hidden = 0
+    var visible = 0
     var light = 0
     var y = 0
     while (y < height) {
@@ -182,9 +154,7 @@ private fun lookOf(bitmap: Bitmap, background: Triple<Int, Int, Int>): LogoLook?
                 val dg = (g - background.second).toFloat()
                 val db = (b - background.third).toFloat()
                 val distance = sqrt(dr * dr + dg * dg + db * db) / 441.7f
-                // Dark: navy, black, dark purple; not a bright red or blue (dim by luma, still seen).
-                val dark = luma < DARK_PIXEL_LUMA && maxOf(r, g, b) < 115
-                if (dark || distance < CLOSE_TO_TILE) hidden++
+                if (abs(luma - backgroundLuma) >= VISIBLE_LUMA_DIFFERENCE || distance >= VISIBLE_COLOR_DISTANCE) visible++
                 if (luma > 0.7f) light++
             }
             x += step
@@ -192,5 +162,5 @@ private fun lookOf(bitmap: Bitmap, background: Triple<Int, Int, Int>): LogoLook?
         y += step
     }
     if (opaque < 12) return null
-    return LogoLook(hiddenShare = hidden.toFloat() / opaque, lightShare = light.toFloat() / opaque)
+    return LogoLook(visibleShare = visible.toFloat() / opaque, lightShare = light.toFloat() / opaque)
 }
