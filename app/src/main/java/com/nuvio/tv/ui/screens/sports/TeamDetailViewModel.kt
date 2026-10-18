@@ -74,6 +74,7 @@ class TeamDetailViewModel @Inject constructor(
     private val libraryPreferences: LibraryPreferences,
     private val sportsLibraryStore: SportsLibraryStore,
     private val playerPhotos: com.nuvio.tv.data.remote.sportsdb.PlayerPhotoFinder,
+    private val bananaBallLive: BananaBallLive,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -164,6 +165,8 @@ class TeamDetailViewModel @Inject constructor(
     suspend fun keepCurrent() {
         while (true) {
             kotlinx.coroutines.delay(SPORTS_CLOCK_TICK_MS)
+            // Banana Ball's games on now (on TV, or streaming on YouTube).
+            runCatching { bananaBallLive.refresh(_uiState.value.games.map { it.event }) }
             val now = System.currentTimeMillis()
             _uiState.update { state ->
                 val started = state.games.any { it.event.status == SportsEventStatus.UPCOMING && it.event.isLiveAt(now) }

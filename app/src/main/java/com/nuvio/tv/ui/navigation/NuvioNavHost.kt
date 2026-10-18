@@ -86,6 +86,18 @@ private fun rememberGameOpener(navController: NavHostController): (SportsEvent) 
                     logo = channel.logoUrl
                 )
             )
+        },
+        // A Banana Ball game streaming on YouTube (no channel showing it): played live, like a channel.
+        onPlayStream = { url, event ->
+            navController.navigate(
+                Screen.Player.createRoute(
+                    streamUrl = url,
+                    title = "${event.leagueName ?: event.sportName ?: ""} · YouTube".trimStart(' ', '·'),
+                    contentType = "live",
+                    contentName = event.name,
+                    logo = event.homeTeamBadgeUrl
+                )
+            )
         }
     )
 

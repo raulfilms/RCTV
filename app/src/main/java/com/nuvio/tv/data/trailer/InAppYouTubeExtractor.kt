@@ -278,6 +278,44 @@ class InAppYouTubeExtractor @Inject constructor() {
         source
     }
 
+    /**
+     * A live stream's HLS playlist (it plays like a TV channel); null when the video isn't live
+     * now or YouTube won't give it.
+     */
+    suspend fun extractLiveHlsUrl(youtubeUrl: String): String? = withContext(Dispatchers.IO) {
+        val videoId = extractVideoId(youtubeUrl) ?: return@withContext null
+        repeat(2) { attempt ->
+            val config = try {
+                ensureWatchConfig(forceRefresh = attempt > 0)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (error: Exception) {
+                return@repeat
+            }
+            for (client in CLIENTS) {
+                kotlinx.coroutines.yield()
+                try {
+                    val playerResponse = fetchPlayerResponse(
+                        apiKey = config.apiKey,
+                        videoId = videoId,
+                        client = client,
+                        visitorData = config.visitorData,
+                        cookieHeader = null
+                    )
+                    val status = playerResponse.mapValue("playabilityStatus")?.stringValue("status")
+                    if (status != null && status != "OK") continue
+                    val hlsManifestUrl = playerResponse.mapValue("streamingData")?.stringValue("hlsManifestUrl")
+                    if (!hlsManifestUrl.isNullOrBlank()) return@withContext hlsManifestUrl
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (error: Exception) {
+                    if (BuildConfig.DEBUG) Log.w(TAG, "Live client ${client.key} failed: ${error.message}")
+                }
+            }
+        }
+        null
+    }
+
     private suspend fun extractPlaybackSourceInternal(
         youtubeUrl: String,
         forceRefreshConfig: Boolean

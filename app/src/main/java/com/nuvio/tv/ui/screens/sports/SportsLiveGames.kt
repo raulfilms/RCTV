@@ -47,8 +47,10 @@ internal fun SportsEvent.isLiveAt(now: Long): Boolean = when (status) {
     SportsEventStatus.FINISHED -> false
     SportsEventStatus.UPCOMING -> {
         val start = startTimeMs
-        // A game whose time isn't set yet (TBA) doesn't go live by the clock.
-        !startTimeTba() && start != null && now >= start && now < start + LIVE_WINDOW_MS
+        // On now by the guide or YouTube (Banana Ball, whose schedule has no live scores); a game
+        // whose time isn't set yet (TBA) doesn't go live by the clock.
+        id in BananaBallLiveIds.ids ||
+            (!startTimeTba() && start != null && now >= start && now < start + LIVE_WINDOW_MS)
     }
 }
 
@@ -61,8 +63,12 @@ internal fun tbaStartLabel(startMs: Long): String =
     java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(java.util.Date(startMs)) + " • TBA"
 
 /** The game as the clock has it: an upcoming game whose time has come shows as live. */
-internal fun SportsEvent.withClock(now: Long): SportsEvent =
-    if (status == SportsEventStatus.UPCOMING && isLiveAt(now)) copy(status = SportsEventStatus.LIVE) else this
+internal fun SportsEvent.withClock(now: Long): SportsEvent = when {
+    status != SportsEventStatus.UPCOMING || !isLiveAt(now) -> this
+    // On now: "TBA" doesn't say where it's at.
+    startTimeTba() -> copy(status = SportsEventStatus.LIVE, statusDetail = null)
+    else -> copy(status = SportsEventStatus.LIVE)
+}
 
 // ---------------------------------------------------------------------------------------------
 // The game in the TV guide: the channel showing it now.
@@ -87,6 +93,8 @@ internal object SportsGameChannels {
     /** Shorter than this, a program with one team only isn't the game. */
     private const val GAME_LENGTH_MS = 80L * 60 * 1000
     private const val MIN_SCORE = 60
+    /** A Banana Ball game with no time yet ("TBA", put in the evening): a program that day can be it. */
+    private const val BANANA_BALL_DAY_MS = 14L * 60 * 60 * 1000
 
     /** Shows about a game, not the game. */
     private val NOT_THE_GAME = listOf(
@@ -163,7 +171,8 @@ internal object SportsGameChannels {
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
         if (home.isEmpty() && away.isEmpty()) return emptyList()
         val sportWords = sportWords(event)
-        val gameStart = event.startTimeMs
+        // Banana Ball's times are often "TBA" (or just its schedule's): any program of the game on now is it.
+        val gameStart = event.startTimeMs?.takeUnless { event.isBananaBall() }
         val found = ArrayList<GameAiring>()
         val seen = HashSet<String>()
         channels.forEach { channel ->
@@ -191,6 +200,12 @@ internal object SportsGameChannels {
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
         if (home.isEmpty() || away.isEmpty()) return 0
         val gameStart = event.startTimeMs ?: return 0
+        if (event.isBananaBall()) {
+            // Its schedule's time is often "TBA": the game's day is what counts.
+            if (abs(program.startMs - gameStart) > BANANA_BALL_DAY_MS) return 0
+            val score = scoreOf(program, home, away, sportWords(event), null)
+            return if (score >= MIN_SCORE) score else 0
+        }
         if (program.endMs <= gameStart || program.startMs >= gameStart + LIVE_WINDOW_MS) return 0
         val score = scoreOf(program, home, away, sportWords(event), gameStart)
         return if (score >= MIN_SCORE) score else 0
@@ -252,8 +267,12 @@ internal object SportsGameChannels {
 @HiltViewModel
 class SportsWatchViewModel @Inject constructor(
     private val guideLoader: LiveTvGuideLoader,
-    private val liveTvDataStore: LiveTvDataStore
+    private val liveTvDataStore: LiveTvDataStore,
+    private val bananaBallLive: BananaBallLive
 ) : ViewModel() {
+
+    /** A Banana Ball game no channel is showing: its live stream on YouTube, ready to play; else null. */
+    suspend fun youTubeStreamFor(event: SportsEvent): String? = bananaBallLive.youTubeStreamFor(event)
 
     /** The channel showing [event] now, ready to play; null when no channel is showing it. */
     suspend fun liveChannelFor(event: SportsEvent): LiveTvChannel? {
@@ -294,12 +313,15 @@ class SportsWatchViewModel @Inject constructor(
 fun rememberSportsGameOpener(
     onOpenGamePage: (SportsEvent) -> Unit,
     onPlayChannel: (LiveTvChannel) -> Unit,
+    /** A stream to play as live (a Banana Ball game streaming on YouTube): its URL and the game. */
+    onPlayStream: ((url: String, event: SportsEvent) -> Unit)? = null,
     viewModel: SportsWatchViewModel = hiltViewModel()
 ): (SportsEvent) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val openPage by rememberUpdatedState(onOpenGamePage)
     val play by rememberUpdatedState(onPlayChannel)
+    val playStream by rememberUpdatedState(onPlayStream)
     val busy = remember { booleanArrayOf(false) }
     return remember(viewModel, scope, context) {
         { event: SportsEvent ->
@@ -325,8 +347,28 @@ fun rememberSportsGameOpener(
                     }
                     // Left the page meanwhile: nothing to open.
                     if (!isActive) return@launch
+                    // Not on a channel: Banana Ball streams its games on YouTube.
+                    val streamPlayer = playStream
+                    val youTubeStream = if (channel == null && streamPlayer != null && event.isBananaBall()) {
+                        Toast.makeText(context, R.string.sports_finding_game_youtube, Toast.LENGTH_SHORT).show()
+                        busy[0] = true
+                        try {
+                            viewModel.youTubeStreamFor(event)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            null
+                        } finally {
+                            busy[0] = false
+                        }
+                    } else {
+                        null
+                    }
+                    if (!isActive) return@launch
                     if (channel != null) {
                         play(channel)
+                    } else if (youTubeStream != null && streamPlayer != null) {
+                        streamPlayer(youTubeStream, event)
                     } else {
                         Toast.makeText(context, R.string.sports_game_not_on_channels, Toast.LENGTH_LONG).show()
                         openPage(event)

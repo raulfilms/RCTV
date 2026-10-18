@@ -105,7 +105,8 @@ class SportsViewModel @Inject constructor(
     private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
     private val tmdbApi: com.nuvio.tv.data.remote.api.TmdbApi,
     private val tmdbSettingsDataStore: com.nuvio.tv.data.local.TmdbSettingsDataStore,
-    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
+    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
+    private val bananaBallLive: BananaBallLive
 ) : ViewModel() {
 
     /** Title art for the Sports Talk cards (the show's name on its backdrop). */
@@ -337,6 +338,8 @@ class SportsViewModel @Inject constructor(
      */
     suspend fun keepCurrent() {
         while (true) {
+            // Banana Ball's games on now (on TV, or streaming on YouTube): its schedule can't say.
+            runCatching { _uiState.value.let { bananaBallLive.refresh(it.upcomingGames + it.liveNow) } }
             val now = System.currentTimeMillis()
             applyClock(now)
             val state = _uiState.value

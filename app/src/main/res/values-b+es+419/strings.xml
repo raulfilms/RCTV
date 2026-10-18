@@ -3622,6 +3622,7 @@
     <string name="sports_team_all_teams">Todos los equipos de %1$s</string>
     <string name="sports_finding_game_channel">Buscando el juego en tus canales…</string>
     <string name="sports_game_not_on_channels">Este juego no está en ninguno de tus canales ahora</string>
+    <string name="sports_finding_game_youtube">No está en tus canales: buscándolo en vivo en YouTube…</string>
     <string name="game_detail_watch_recap">Ver resumen</string>
     <string name="game_detail_recap_not_found">No encontramos los highlights de este juego</string>
     <string name="game_detail_recap_back_hint">Highlights del juego • Presiona atrás para volver</string>

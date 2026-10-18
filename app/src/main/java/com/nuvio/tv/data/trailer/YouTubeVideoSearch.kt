@@ -48,21 +48,25 @@ class YouTubeVideoSearch @Inject constructor() {
             .build()
     }
 
-    /** [spanish]: results as YouTube shows them to Spanish speakers in the US (Spanish channels first). */
-    suspend fun search(query: String, spanish: Boolean = false): List<YouTubeSearchResult> = withContext(Dispatchers.IO) {
+    /**
+     * [spanish]: results as YouTube shows them to Spanish speakers in the US (Spanish channels
+     * first). [liveOnly]: only what's streaming live now (a live stream has no length).
+     */
+    suspend fun search(query: String, spanish: Boolean = false, liveOnly: Boolean = false): List<YouTubeSearchResult> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
         val language = if (spanish) "es" else "en"
-        val fromApi = runCatching { searchApi(query, language) }
+        val filter = if (liveOnly) LIVE_FILTER else VIDEOS_FILTER
+        val fromApi = runCatching { searchApi(query, language, filter) }
             .onFailure { Log.w(SEARCH_TAG, "Search API failed: ${it.message}") }
             .getOrDefault(emptyList())
         if (fromApi.isNotEmpty()) return@withContext fromApi
-        runCatching { searchPage(query, language) }
+        runCatching { searchPage(query, language, filter) }
             .onFailure { Log.w(SEARCH_TAG, "Search page failed: ${it.message}") }
             .getOrDefault(emptyList())
     }
 
     /** YouTube's search API (what its website calls), videos only. */
-    private fun searchApi(query: String, language: String): List<YouTubeSearchResult> {
+    private fun searchApi(query: String, language: String, filter: String): List<YouTubeSearchResult> {
         val body = JSONObject()
             .put(
                 "context",
@@ -76,8 +80,8 @@ class YouTubeVideoSearch @Inject constructor() {
                 )
             )
             .put("query", query)
-            // "Videos" filter: no channels, playlists or shorts shelves.
-            .put("params", "EgIQAQ==")
+            // "Videos" (or "Live") filter: no channels, playlists or shorts shelves.
+            .put("params", filter)
             .toString()
         val request = Request.Builder()
             .url("https://www.youtube.com/youtubei/v1/search?prettyPrint=false")
@@ -97,8 +101,8 @@ class YouTubeVideoSearch @Inject constructor() {
     }
 
     /** YouTube's results page: the same data, inside the page (`ytInitialData`). */
-    private fun searchPage(query: String, language: String): List<YouTubeSearchResult> {
-        val url = "https://www.youtube.com/results?search_query=${URLEncoder.encode(query, "UTF-8")}&sp=EgIQAQ%253D%253D&hl=$language&gl=US"
+    private fun searchPage(query: String, language: String, filter: String): List<YouTubeSearchResult> {
+        val url = "https://www.youtube.com/results?search_query=${URLEncoder.encode(query, "UTF-8")}&sp=${URLEncoder.encode(URLEncoder.encode(filter, "UTF-8"), "UTF-8")}&hl=$language&gl=US"
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", SEARCH_USER_AGENT)
@@ -166,6 +170,9 @@ class YouTubeVideoSearch @Inject constructor() {
 
     companion object {
         private const val MAX_RESULTS = 25
+        /** YouTube's search filters: videos; live now. */
+        private const val VIDEOS_FILTER = "EgIQAQ=="
+        private const val LIVE_FILTER = "EgJAAQ=="
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
         private const val CONSENT_COOKIE = "CONSENT=YES+1; SOCS=CAI"
         private val INITIAL_DATA_MARKERS = listOf("var ytInitialData = ", "window[\"ytInitialData\"] = ", "ytInitialData = ")
