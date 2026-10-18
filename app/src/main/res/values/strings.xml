@@ -4215,4 +4215,13 @@
     <string name="avatar_gallery_count">%1$d avatars · characters, pets, robots and more</string>
     <string name="licenses_attributions_avatars_title">Profile avatars (DiceBear)</string>
     <string name="licenses_attributions_avatars_body">RCTV\'s profile avatars are made with DiceBear (MIT). Styles in the public domain (CC0 1.0): Lorelei and Notionists (remixes of work by Lisa Wischofsky and Zoish), Open Peeps (Pablo Stanley), Cats, Dogs, Critters, Clay, Moods, Thumbs, Pixel Art, Voxel Art, Voxel Bot and Planets (DiceBear). Free for personal and commercial use: Avataaars and Bottts by Pablo Stanley. Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), remixed by DiceBear and drawn as avatars by RCTV: Adventurer by Lisa Wischofsky, Big Smile by Ashley Seo, Fun Emoji by Davis Uche, Micah by Micah Lanier, Miniavs by Webpixels, Personas by Draftbit and ToonHead by Johan Melin.</string>
+    <string name="crash_report_title">The app closed because of an error</string>
+    <string name="crash_report_message">Take a picture of this and send it so it can be fixed.</string>
+    <string name="crash_report_ok">OK</string>
+    <string name="imdb_mark_needs_sign_in">To mark it watched on IMDb too, sign in to IMDb: Settings › Integrations › IMDb › Sign in to IMDb. What you watch until then is marked when you do.</string>
+    <string name="imdb_mark_failed">IMDb didn\'t take %1$s now; it\'s tried again soon</string>
+    <plurals name="imdb_marked_pending_toast">
+        <item quantity="one">%1$d movie marked watched on IMDb</item>
+        <item quantity="other">%1$d movies marked watched on IMDb</item>
+    </plurals>
 </resources>

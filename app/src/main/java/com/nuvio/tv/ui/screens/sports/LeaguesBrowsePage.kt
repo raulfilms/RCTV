@@ -98,7 +98,7 @@ internal fun LeaguesBrowsePage(
             )
         }
 
-        itemsIndexed(leagues, key = { _, league -> league.id }) { index, league ->
+        itemsIndexed(leagues.distinctBy { it.id }, key = { _, league -> league.id }) { index, league ->
             val firstLine = index < LEAGUE_COLUMNS
             SportsLogoTile(
                 name = sportsLeagueShortName(league),

@@ -571,7 +571,7 @@ private fun ScheduleTab(
         if (rows.isEmpty()) {
             item(key = "empty") { TeamTabNoteInline(stringResource(R.string.sports_team_no_games)) }
         }
-        items(rows, key = { it.key }) { row ->
+        items(rows.distinctBy { it.key }, key = { it.key }) { row ->
             when (row) {
                 is ScheduleRow.Bye -> ScheduleLabel(
                     text = stringResource(R.string.sports_team_week, row.week) + " · " + stringResource(R.string.sports_team_bye)
@@ -622,7 +622,7 @@ private fun ScheduleTab(
                         horizontalArrangement = Arrangement.spacedBy(AppleTvSpacing.GridGap),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(others, key = { it.id }) { team ->
+                        items(others.distinctBy { it.id }, key = { it.id }) { team ->
                             SportsLogoTile(
                                 name = team.name,
                                 logoUrl = team.badgeUrl,

@@ -23,6 +23,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.coroutineScope
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -139,6 +140,19 @@ class EspnSportsClient @Inject constructor(
         )
 
         const val GOLF = "golf"
+
+        /** Leagues loading at the same time (each holds its whole answer while it's read). */
+        private const val MAX_FEEDS_AT_ONCE = 12
+
+        /**
+         * The leagues' own threads: as many as load at once (and a few for the waiting), apart
+         * from the threads the rest of the app shares.
+         */
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        private val feedDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(MAX_FEEDS_AT_ONCE + 4)
+
+        /** Tennis' days in the rows (its tournaments list every match; more is on a tour's page). */
+        private const val TENNIS_RANGE_DAYS = 3
 
         /** A league's page between seasons: this many of its next (or last) games. */
         private const val LEAGUE_HOME_EVENTS = 40
@@ -299,15 +313,18 @@ class EspnSportsClient @Inject constructor(
         /** League-table numbers that say nothing on a team's page. */
         private val SKIPPED_TABLE_STATS = setOf("advanced", "rankChange", "deductions", "overall", "streak", "clincher", "playoffSeed")
 
-        private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
+        // Every league loads at once, on many threads, and a SimpleDateFormat shared between
+        // threads reads wrong dates (or throws): each thread has its own.
+        private fun utcFormat(pattern: String): ThreadLocal<SimpleDateFormat> = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat =
+                SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         }
-        private val isoFormatWithSeconds = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
-        private val dayFormat = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
+        private val isoFormatLocal = utcFormat("yyyy-MM-dd'T'HH:mm'Z'")
+        private val isoFormatWithSecondsLocal = utcFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+        private val dayFormatLocal = utcFormat("yyyyMMdd")
+        private val isoFormat: SimpleDateFormat get() = isoFormatLocal.get()!!
+        private val isoFormatWithSeconds: SimpleDateFormat get() = isoFormatWithSecondsLocal.get()!!
+        private val dayFormat: SimpleDateFormat get() = dayFormatLocal.get()!!
     }
 
     /** Banana Ball: not on ESPN; its teams and schedule come from its own site. */
@@ -829,6 +846,16 @@ class EspnSportsClient @Inject constructor(
      * query format; omitted, ESPN defaults to "today" (or "this week/round" for some sports).
      */
     fun fetchFeed(feed: Feed, datesRange: String? = null): FeedResult {
+        // A game or a team a source lists twice (a postponed game on its old and new days) is one:
+        // the pages key their cards by id, and a repeated one would bring them down.
+        val result = fetchFeedRaw(feed, datesRange)
+        return result.copy(
+            events = result.events.distinctBy { it.id },
+            teams = result.teams.distinctBy { it.id }
+        )
+    }
+
+    private fun fetchFeedRaw(feed: Feed, datesRange: String?): FeedResult {
         if (feed.isBananaBall()) return bananaBall.fetchFeed(feed, datesRange)
         if (feed.isNascar()) return nascar.fetchFeed(feed, datesRange)
         if (feed.isPpv()) return ppv.fetchFeed(feed, datesRange)
@@ -983,19 +1010,39 @@ class EspnSportsClient @Inject constructor(
     }
 
     private fun fetchFixturesInRange(range: String, feeds: List<Feed>): List<FeedResult> {
-        // Every league at once (one after another took many seconds), in the feeds' order.
-        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+        // Tennis lists every match of every tournament it's asked about (megabytes a tour): its
+        // next few days are what the rows show.
+        val tennisRange = shortRange(range, TENNIS_RANGE_DAYS)
+        // Several leagues at once (one after another took many seconds), in the feeds' order; not
+        // all of them at once, which held every league's whole answer in memory together, and on
+        // threads of their own: seventy leagues waiting on the network took every thread the rest
+        // of the app reads and saves with (the Guide, the settings), and the app stalled.
+        val permits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
+        return kotlinx.coroutines.runBlocking(feedDispatcher) {
             feeds.map { feed ->
                 async {
                     // A league of another's events (a Grand Slam, a boxing body): only its tile, its
                     // games are its tour's.
-                    if (feed.isSubLeague()) return@async FeedResult(feed, subLeagueOf(feed), emptyList(), emptyList())
-                    runCatching { fetchFeed(feed, range) }
-                        .recoverCatching { fetchFeed(feed) }
-                        .getOrNull()
+                    if (feed.isSubLeague()) {
+                        return@async runCatching { FeedResult(feed, subLeagueOf(feed), emptyList(), emptyList()) }.getOrNull()
+                    }
+                    val feedRange = if (feed.sportPath == VirtualLeagues.TENNIS) tennisRange else range
+                    permits.withPermit {
+                        runCatching { fetchFeed(feed, feedRange) }
+                            .recoverCatching { fetchFeed(feed) }
+                            .getOrNull()
+                    }
                 }
             }.awaitAll().filterNotNull()
         }
+    }
+
+    /** "yyyyMMdd-yyyyMMdd" cut to its first [days] days. */
+    private fun shortRange(range: String, days: Int): String {
+        val start = range.substringBefore('-')
+        val startMs = runCatching { dayFormat.parse(start)?.time }.getOrNull() ?: return range
+        val end = dayFormat.format(java.util.Date(startMs + days * 24L * 60 * 60 * 1000))
+        return if (end < range.substringAfterLast('-')) "$start-$end" else range
     }
 
     /**
@@ -1213,7 +1260,7 @@ class EspnSportsClient @Inject constructor(
     fun fetchHomeTeamRowPicks(): List<SportsTeam> {
         // Each league's teams once, all at once.
         val feeds = HOME_TEAM_ROW_PICKS.map { it.feed }.distinct()
-        val rosters = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+        val rosters = kotlinx.coroutines.runBlocking(feedDispatcher) {
             feeds.map { feed -> async { feed to runCatching { fetchTeams(feed) }.getOrDefault(emptyList()) } }
                 .awaitAll()
                 .toMap()

@@ -80,6 +80,8 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         SentryInitializer.start(this, sentrySettingsDataStore)
+        // RCTV: a crash's error is kept and shown the next time the app opens.
+        com.nuvio.tv.core.diagnostics.CrashLog.install(this)
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()
         // Load locale synchronously so it's available before Activity.attachBaseContext.

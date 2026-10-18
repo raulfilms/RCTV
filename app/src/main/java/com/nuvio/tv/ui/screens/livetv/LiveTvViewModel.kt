@@ -101,6 +101,7 @@ data class LiveTvUiState(
         get() {
             val query = channelSearchInput.trim()
             return channels
+                .distinctBy { it.id }
                 .filter { selectedGroup == null || it.groupTitle == selectedGroup }
                 .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
         }

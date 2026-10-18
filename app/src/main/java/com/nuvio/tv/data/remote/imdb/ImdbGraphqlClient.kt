@@ -165,7 +165,12 @@ class ImdbGraphqlClient @Inject constructor() {
      * Throws [ImdbException] with [ImdbException.Reason.SIGNED_OUT] when the sign-in is no good.
      */
     suspend fun markWatched(titleId: String, cookies: String): Boolean {
-        val data = query(ADD_WATCHED_MUTATION, JSONObject().put("titleId", titleId), cookies)
+        val data = query(
+            ADD_WATCHED_MUTATION,
+            JSONObject().put("titleId", titleId),
+            cookies,
+            operationName = ADD_WATCHED_OPERATION
+        )
         val result = data.optJSONObject("addWatchedTitle") ?: return false
         return result.optBoolean("success")
     }
@@ -174,8 +179,17 @@ class ImdbGraphqlClient @Inject constructor() {
      * Asks IMDb's GraphQL API. [cookies]: the user's IMDb sign-in (as imdb.com's own pages send
      * it), for what only the account itself can see or change.
      */
-    private suspend fun query(document: String, variables: JSONObject, cookies: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("query", document).put("variables", variables).toString()
+    private suspend fun query(
+        document: String,
+        variables: JSONObject,
+        cookies: String? = null,
+        operationName: String? = null
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .apply { operationName?.let { put("operationName", it) } }
+            .put("query", document)
+            .put("variables", variables)
+            .toString()
         val builder = Request.Builder()
             .url(ENDPOINT)
             .post(body.toRequestBody(JSON))
@@ -187,12 +201,11 @@ class ImdbGraphqlClient @Inject constructor() {
         if (cookies.isNullOrBlank()) {
             builder.header("x-imdb-client-name", "imdb-web-next")
         } else {
+            // Sent the way imdb.com sends them: its sign-in cookies ("at-main=Atza|…") as they are.
             builder.header("x-imdb-client-name", "imdb-web-next-localized")
-                .header("Cookie", cookies)
+                .header("Cookie", cookieHeader(cookies))
                 .header("Origin", "https://www.imdb.com")
                 .header("Referer", "https://www.imdb.com/")
-            // IMDb wants the session id again in a header for what changes the account.
-            cookieValue(cookies, "session-id")?.let { builder.header("X-Amzn-Sessionid", it) }
         }
         val request = builder.build()
         val text = try {
@@ -216,6 +229,11 @@ class ImdbGraphqlClient @Inject constructor() {
         ensureActive()
         val json = runCatching { JSONObject(text) }.getOrElse {
             throw ImdbException(ImdbException.Reason.FAILED, "IMDb answered something else")
+        }
+        // IMDb answers 200 even to a sign-in it no longer takes, and says so here ("token.invalid").
+        val authToken = json.optJSONObject("extensions")?.optString("authToken").orEmpty()
+        if (!cookies.isNullOrBlank() && Regex("invalid|expired", RegexOption.IGNORE_CASE).containsMatchIn(authToken)) {
+            throw ImdbException(ImdbException.Reason.SIGNED_OUT, "IMDb sign-in $authToken")
         }
         val errors = json.optJSONArray("errors")
         val data = json.optJSONObject("data")
@@ -290,13 +308,15 @@ class ImdbGraphqlClient @Inject constructor() {
   }
 }"""
 
-        /** IMDb's "Mark as watched" (a rating marks a title watched too). */
-        private val ADD_WATCHED_MUTATION = """mutation AddWatchedTitle(${'$'}titleId: ID!) {
+        /** IMDb's "Mark as watched" (a rating marks a title watched too), as imdb.com asks it. */
+        private const val ADD_WATCHED_OPERATION = "UserAddSeenTitleMutation"
+        private val ADD_WATCHED_MUTATION = """mutation UserAddSeenTitleMutation(${'$'}titleId: ID!) {
   addWatchedTitle(titleId: ${'$'}titleId) {
-    message { language value }
     success
+    message { __typename ...LocalizedStringFragment }
   }
-}"""
+}
+fragment LocalizedStringFragment on LocalizedString { language value }"""
 
         /** One cookie's value in a Cookie header ("a=1; session-id=123-456; b=2"). */
         fun cookieValue(cookies: String, name: String): String? =
@@ -304,6 +324,24 @@ class ImdbGraphqlClient @Inject constructor() {
                 .firstOrNull { it.startsWith("$name=") }
                 ?.substringAfter('=')
                 ?.takeIf { it.isNotBlank() }
+
+        /**
+         * The Cookie header as imdb.com sends it: a sign-in token kept escaped ("Atza%7C…") is
+         * sent as IMDb set it ("Atza|…"), which is the only way IMDb takes it.
+         */
+        fun cookieHeader(cookies: String): String =
+            cookies.split(';').map { it.trim() }.filter { it.isNotEmpty() }.joinToString("; ") { part ->
+                val name = part.substringBefore('=')
+                val value = part.substringAfter('=', "")
+                if (value.startsWith("At") && value.contains("%7C", ignoreCase = true)) {
+                    "$name=" + value.replace("%7C", "|").replace("%7c", "|")
+                        .replace("%2F", "/").replace("%2f", "/")
+                        .replace("%2B", "+").replace("%2b", "+")
+                        .replace("%3D", "=").replace("%3d", "=")
+                } else {
+                    part
+                }
+            }
 
         /** The cookies say someone is signed in to IMDb. */
         fun isSignedIn(cookies: String?): Boolean =

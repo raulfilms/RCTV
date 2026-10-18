@@ -52,7 +52,7 @@ fun SportsFavoritesScreen(
             modifier = Modifier.fillMaxSize().weight(1f, fill = false)
         ) {
             // "My Sports" holds leagues (also the Library's Sports Leagues).
-            items(uiState.leagues, key = { "league_${it.id}" }) { league ->
+            items(uiState.leagues.distinctBy { it.id }, key = { "league_${it.id}" }) { league ->
                 LeagueCard(
                     league = league,
                     onClick = { viewModel.toggleFavoriteLeague(league) }
@@ -72,7 +72,7 @@ fun SportsFavoritesScreen(
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
             modifier = Modifier.fillMaxSize().weight(1f, fill = false)
         ) {
-            items(uiState.browsableTeams, key = { "team_${it.id}" }) { team ->
+            items(uiState.browsableTeams.distinctBy { it.id }, key = { "team_${it.id}" }) { team ->
                 TeamCard(
                     team = team,
                     isFavorite = team.id in favoriteTeamIds,

@@ -207,7 +207,7 @@ fun GameDetailScreen(
                         )
                     }
                 }
-                items(uiState.stats, key = { it.label }) { stat ->
+                items(uiState.stats.distinctBy { it.label }, key = { it.label }) { stat ->
                     GameStatRow(stat = stat, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
                 }
             }
@@ -537,7 +537,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.golfLeaderboardItems(
             item(key = "leaderboard_header") {
                 GolfLeaderboardHeader(columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
-            items(uiState.golfPlayers, key = { "golfer_${it.id}_${it.name}" }) { player ->
+            items(uiState.golfPlayers.distinctBy { "${it.id}_${it.name}" }, key = { "golfer_${it.id}_${it.name}" }) { player ->
                 GolfLeaderboardRow(player = player, columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
         }
@@ -577,7 +577,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.raceResultsItems(uiSt
             item(key = "results_header") {
                 RaceResultsHeader(columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
-            items(uiState.raceResults, key = { "driver_${it.position}_${it.carNumber}_${it.driver}" }) { result ->
+            items(uiState.raceResults.distinctBy { "${it.position}_${it.carNumber}_${it.driver}" }, key = { "driver_${it.position}_${it.carNumber}_${it.driver}" }) { result ->
                 RaceResultRow(result = result, columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
             }
         }

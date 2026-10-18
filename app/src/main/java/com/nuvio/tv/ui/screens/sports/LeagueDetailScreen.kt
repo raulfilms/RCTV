@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -236,7 +237,7 @@ private fun LeagueHomeContent(
                 if (uiState.liveEvents.isEmpty()) {
                     item(key = "live_empty") { LeagueEmptyRowNote(stringResource(R.string.league_no_live_games)) }
                 } else {
-                    items(uiState.liveEvents, key = { "live_${it.id}" }) { event ->
+                    items(uiState.liveEvents.distinctBy { it.id }, key = { "live_${it.id}" }) { event ->
                         ScoreboardCard(
                             event = event,
                             onClick = { onPlayEvent(event) },
@@ -251,7 +252,7 @@ private fun LeagueHomeContent(
                 if (uiState.upcomingEvents.isEmpty()) {
                     item(key = "schedule_empty") { LeagueEmptyRowNote(stringResource(R.string.league_no_games_scheduled)) }
                 } else {
-                    items(uiState.upcomingEvents, key = { "up_${it.id}" }) { event ->
+                    items(uiState.upcomingEvents.distinctBy { it.id }, key = { "up_${it.id}" }) { event ->
                         ScoreboardCard(
                             event = event,
                             onClick = { onPlayEvent(event) },
@@ -281,7 +282,7 @@ private fun LeagueGamesContent(
         contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
         modifier = Modifier.fillMaxSize()
     ) {
-        gridItems(uiState.allEvents, key = { it.id }) { event ->
+        gridItems(uiState.allEvents.distinctBy { it.id }, key = { it.id }) { event ->
             ScoreboardCard(
                 event = event,
                 onClick = { onPlayEvent(event) },
@@ -309,7 +310,7 @@ private fun LeagueTeamsContent(
                 contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
                 modifier = Modifier.fillMaxSize()
             ) {
-                gridItems(uiState.teams, key = { it.id }) { team ->
+                gridItems(uiState.teams.distinctBy { it.id }, key = { it.id }) { team ->
                     TeamGridCard(
                         team = team,
                         isFavorite = team.id in uiState.favoriteTeamIds,
@@ -334,7 +335,9 @@ private fun LeagueStandingsContent(uiState: LeagueDetailUiState) {
                 contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
             ) {
-                items(uiState.standings, key = { it.name }) { group ->
+                // Two groups can share a name (the North of two leagues): keyed by their place too.
+                val keys = uniqueKeys(uiState.standings.size) { uiState.standings[it].name }
+                itemsIndexed(uiState.standings, key = { index, _ -> keys[index] }) { _, group ->
                     StandingsGroupTable(group = group)
                 }
             }
@@ -461,7 +464,7 @@ private fun LeagueScheduleContent(
                     contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    gridItems(uiState.scheduleEvents, key = { it.id }) { event ->
+                    gridItems(uiState.scheduleEvents.distinctBy { it.id }, key = { it.id }) { event ->
                         ScoreboardCard(
                             event = event,
                             onClick = { onPlayEvent(event) },
@@ -505,7 +508,7 @@ private fun LeagueNewsContent(uiState: LeagueDetailUiState) {
                 contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
             ) {
-                items(uiState.news, key = { it.id }) { article ->
+                items(uiState.news.distinctBy { it.id }, key = { it.id }) { article ->
                     NewsArticleCard(article = article)
                 }
             }

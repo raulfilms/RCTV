@@ -774,7 +774,7 @@ private fun LiveChannelsRow(
                 contentPadding = PaddingValues(horizontal = AppleTvContentStart, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
             ) {
-                itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
+                itemsIndexed(channels.distinctBy { it.id }, key = { _, channel -> channel.id }) { index, channel ->
                     val program = channel.epgChannelId?.let { epg[it] }?.firstOrNull { it.isAiringAt(nowMs) }
                     LiveBroadcastCard(
                         channel = channel,

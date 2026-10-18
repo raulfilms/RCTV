@@ -620,6 +620,11 @@ open class MainActivity : ComponentActivity() {
                 amoledSurfacesMode = mainUiPrefs.amoledSurfacesMode,
                 settingsUiStyle = mainUiPrefs.settingsUiStyle
             ) {
+                // RCTV: the app closed on an error last time: what it was, once.
+                var lastCrash by remember { mutableStateOf(com.nuvio.tv.core.diagnostics.CrashLog.take(context)) }
+                lastCrash?.let { trace ->
+                    com.nuvio.tv.ui.components.CrashReportDialog(trace = trace, onDismiss = { lastCrash = null })
+                }
                 val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
                 val bringIntoViewSpec = if (mainUiPrefs.smoothBringIntoViewEnabled) {
                     NuvioScrollDefaults.smoothScrollSpec

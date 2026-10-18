@@ -143,7 +143,9 @@ class ImdbSyncService @Inject constructor(
         val cookies: String? = null,
         val signInExpired: Boolean = false,
         /** Movies the app marked watched on IMDb already. */
-        val markedWatched: Set<String> = emptySet()
+        val markedWatched: Set<String> = emptySet(),
+        /** Movies watched in the app that IMDb hasn't got yet. */
+        val pendingWatched: Set<String> = emptySet()
     )
 
     private val stored: StateFlow<Stored> = profileManager.activeProfileId
@@ -218,6 +220,8 @@ class ImdbSyncService @Inject constructor(
     fun syncIfStale() {
         scope.launch {
             runCatching { sync(force = false) }
+            // Movies watched here that IMDb hasn't got yet (before signing in, or IMDb was down).
+            runCatching { markPending(profileManager.activeProfileId.value) }
             // Titles kept from before (or named in another language) get their TMDB titles too.
             runCatching { linkStoredTitles() }
         }
@@ -255,6 +259,7 @@ class ImdbSyncService @Inject constructor(
                 prefs.remove(ratedSeriesKey)
                 prefs.remove(nicknameKey)
                 prefs.remove(markedKey)
+                prefs.remove(pendingKey)
                 // A sign-in belongs to the account it was made for.
                 prefs.remove(cookiesKey)
                 prefs.remove(signInExpiredKey)
@@ -297,7 +302,10 @@ class ImdbSyncService @Inject constructor(
             prefs[cookiesKey] = cookies
             prefs.remove(signInExpiredKey)
         }
+        signInHintShown.remove(profileId)
         val synced = sync(force = true)
+        // The movies watched here before signing in go to IMDb now.
+        scope.launch { runCatching { markPending(profileId) } }
         return synced.map { accountOf(readStored(store(profileId).data.first()), isSyncing = false) }
     }
 
@@ -320,35 +328,110 @@ class ImdbSyncService @Inject constructor(
         scope.launch {
             markMutex.withLock {
                 val data = readStored(store(profileId).data.first())
-                val cookies = data.cookies
-                if (data.userId == null || data.signInExpired || !ImdbGraphqlClient.isSignedIn(cookies)) return@withLock
-                val imdbId = imdbIdOf(progress) ?: return@withLock
+                // No IMDb account on this profile: nothing to mark.
+                if (data.userId == null) return@withLock
+                val imdbId = imdbIdOf(progress)
+                if (imdbId == null) {
+                    Log.w(TAG, "No IMDb id for ${progress.contentId}")
+                    return@withLock
+                }
                 if (imdbId in data.ratedMovieIds || imdbId in data.markedWatched) return@withLock
+                val cookies = data.cookies
+                if (data.signInExpired || !ImdbGraphqlClient.isSignedIn(cookies)) {
+                    // Not signed in (or the sign-in expired): kept for when it is, and said how.
+                    addPending(profileId, imdbId)
+                    if (signInHintShown.add(profileId)) {
+                        toast(
+                            appContext.getString(
+                                if (data.signInExpired) R.string.imdb_error_signed_out else R.string.imdb_mark_needs_sign_in
+                            )
+                        )
+                    }
+                    return@withLock
+                }
                 val attemptKey = "$profileId|$imdbId"
                 val now = System.currentTimeMillis()
                 if (now - (markAttempts[attemptKey] ?: 0L) < MARK_RETRY_MS) return@withLock
                 markAttempts[attemptKey] = now
-                val marked = try {
-                    client.markWatched(imdbId, cookies.orEmpty())
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: ImdbException) {
-                    if (e.reason == ImdbException.Reason.SIGNED_OUT || e.reason == ImdbException.Reason.PRIVATE) {
-                        store(profileId).edit { it[signInExpiredKey] = System.currentTimeMillis() }
+                when (markOnImdb(profileId, imdbId, cookies.orEmpty())) {
+                    MarkResult.MARKED ->
+                        toast(appContext.getString(R.string.imdb_marked_watched_toast, progress.name.ifBlank { imdbId }))
+                    MarkResult.SIGNED_OUT -> {
+                        addPending(profileId, imdbId)
                         toast(appContext.getString(R.string.imdb_error_signed_out))
                     }
-                    Log.w(TAG, "Couldn't mark $imdbId watched on IMDb: ${e.reason}")
-                    return@withLock
-                } catch (e: Exception) {
-                    Log.w(TAG, "Couldn't mark $imdbId watched on IMDb: ${e.message}")
-                    return@withLock
+                    MarkResult.FAILED -> {
+                        // IMDb or the network didn't answer: tried again on the next sync.
+                        addPending(profileId, imdbId)
+                        toast(appContext.getString(R.string.imdb_mark_failed, progress.name.ifBlank { imdbId }))
+                    }
                 }
-                if (!marked) return@withLock
-                store(profileId).edit { prefs ->
-                    prefs[markedKey] = JSONArray((readIds(prefs[markedKey]) + imdbId).toList()).toString()
-                }
-                toast(appContext.getString(R.string.imdb_marked_watched_toast, progress.name.ifBlank { imdbId }))
             }
+        }
+    }
+
+    private enum class MarkResult { MARKED, SIGNED_OUT, FAILED }
+
+    /** The profiles told this run that marking on IMDb needs signing in (said once). */
+    private val signInHintShown = java.util.Collections.synchronizedSet(HashSet<Int>())
+
+    /** Marks [imdbId] watched on IMDb; kept as marked (and off the pending ones) when IMDb takes it. */
+    private suspend fun markOnImdb(profileId: Int, imdbId: String, cookies: String): MarkResult {
+        val marked = try {
+            client.markWatched(imdbId, cookies)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ImdbException) {
+            Log.w(TAG, "Couldn't mark $imdbId watched on IMDb: ${e.reason} ${e.message}")
+            if (e.reason == ImdbException.Reason.SIGNED_OUT || e.reason == ImdbException.Reason.PRIVATE) {
+                store(profileId).edit { it[signInExpiredKey] = System.currentTimeMillis() }
+                return MarkResult.SIGNED_OUT
+            }
+            return MarkResult.FAILED
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't mark $imdbId watched on IMDb: ${e.message}")
+            return MarkResult.FAILED
+        }
+        if (!marked) {
+            Log.w(TAG, "IMDb didn't mark $imdbId watched")
+            return MarkResult.FAILED
+        }
+        store(profileId).edit { prefs ->
+            prefs[markedKey] = JSONArray((readIds(prefs[markedKey]) + imdbId).toList()).toString()
+            prefs[pendingKey] = JSONArray((readIds(prefs[pendingKey]) - imdbId).toList()).toString()
+        }
+        return MarkResult.MARKED
+    }
+
+    private suspend fun addPending(profileId: Int, imdbId: String) {
+        store(profileId).edit { prefs ->
+            val pending = readIds(prefs[pendingKey]) + imdbId
+            prefs[pendingKey] = JSONArray(pending.toList().takeLast(MAX_PENDING)).toString()
+        }
+    }
+
+    /**
+     * The movies watched in the app that IMDb hasn't got yet (marked before signing in, or while
+     * IMDb didn't answer): marked now, when the profile is signed in.
+     */
+    private suspend fun markPending(profileId: Int) = markMutex.withLock {
+        val data = readStored(store(profileId).data.first())
+        if (data.userId == null || data.signInExpired || !ImdbGraphqlClient.isSignedIn(data.cookies)) return@withLock
+        val pending = data.pendingWatched - data.markedWatched - data.ratedMovieIds
+        if (pending.isEmpty()) {
+            if (data.pendingWatched.isNotEmpty()) store(profileId).edit { it.remove(pendingKey) }
+            return@withLock
+        }
+        var marked = 0
+        for (imdbId in pending.take(MAX_PENDING_PER_RUN)) {
+            when (markOnImdb(profileId, imdbId, data.cookies.orEmpty())) {
+                MarkResult.MARKED -> marked++
+                MarkResult.SIGNED_OUT -> break
+                MarkResult.FAILED -> Unit
+            }
+        }
+        if (marked > 0) {
+            toast(appContext.resources.getQuantityString(R.plurals.imdb_marked_pending_toast, marked, marked))
         }
     }
 
@@ -577,7 +660,8 @@ class ImdbSyncService @Inject constructor(
             ratedSeries = readTitles(prefs[ratedSeriesKey]),
             cookies = prefs[cookiesKey]?.takeIf { it.isNotBlank() },
             signInExpired = (prefs[signInExpiredKey] ?: 0L) > 0L,
-            markedWatched = readIds(prefs[markedKey])
+            markedWatched = readIds(prefs[markedKey]),
+            pendingWatched = readIds(prefs[pendingKey])
         )
     }
 
@@ -645,6 +729,10 @@ class ImdbSyncService @Inject constructor(
         val cookiesKey = stringPreferencesKey("imdb_sign_in_cookies")
         val signInExpiredKey = longPreferencesKey("imdb_sign_in_expired_ms")
         val markedKey = stringPreferencesKey("imdb_marked_watched_json")
+        val pendingKey = stringPreferencesKey("imdb_pending_watched_json")
+        /** Movies kept for IMDb at most, and marked in one go. */
+        const val MAX_PENDING = 200
+        const val MAX_PENDING_PER_RUN = 25
         val IMDB_ID = Regex("tt\\d{5,10}")
     }
 }

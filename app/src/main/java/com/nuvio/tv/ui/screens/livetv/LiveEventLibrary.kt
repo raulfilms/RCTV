@@ -17,6 +17,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -56,14 +58,27 @@ class LiveEventLibrary @Inject constructor(
 
     private suspend fun fixturesAround(timeMs: Long): List<SportsEvent> {
         val day = timeMs / DAY_MS
-        val now = System.currentTimeMillis()
-        fixturesCache[day]?.let { (savedAt, events) -> if (now - savedAt < CACHE_MS) return events }
-        val events = withContext(Dispatchers.IO) {
-            espnClient.fetchFixturesAround(timeMs).flatMap { it.events }
+        fresh(day)?.let { return it }
+        // One load at a time: programs opened one after another wait for the first load (every
+        // league's games) instead of each loading them all again at once.
+        return fixturesLock.withLock {
+            fresh(day)?.let { return@withLock it }
+            val events = withContext(Dispatchers.IO) {
+                // Kept even when the program that asked was closed meanwhile (the next one needs it).
+                espnClient.fetchFixturesAround(timeMs).flatMap { it.events }.also { found ->
+                    if (found.isNotEmpty()) fixturesCache[day] = System.currentTimeMillis() to found
+                }
+            }
+            if (events.isEmpty()) error("No games from ESPN")
+            events
         }
-        if (events.isEmpty()) error("No games from ESPN")
-        fixturesCache[day] = now to events
-        return events
+    }
+
+    private val fixturesLock = Mutex()
+
+    private fun fresh(day: Long): List<SportsEvent>? {
+        val (savedAt, events) = fixturesCache[day] ?: return null
+        return events.takeIf { System.currentTimeMillis() - savedAt < CACHE_MS }
     }
 
     /** The game saved to the Library (its details kept for the Library's card). */

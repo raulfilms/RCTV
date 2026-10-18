@@ -90,9 +90,19 @@ object SourcePrivacy {
         SERVICES.forEach { name -> out = out.replace(name, " ") }
         return out
             .replace(Regex("""["'“”]\s*["'“”]"""), " ")
-            .replace(Regex("""\(\s*\)|\[\s*]"""), " ")
+            .replace(Regex("""\(\s*\)|\[\s*\]"""), " ")
             .replace(Regex("""\s{2,}"""), " ")
             .trim(' ', ':', '-', '·', ',', '|')
+    }
+
+    /**
+     * An error's text, line by line, without web addresses, servers' addresses or the services'
+     * and addons' names (the app's own class names stay: they say where it happened).
+     */
+    fun scrubCrash(text: String): String = text.lines().joinToString("\n") { line ->
+        var out = line.replace(URL, "…").replace(IP, "…")
+        SERVICES.forEach { name -> out = out.replace(name, "…") }
+        out
     }
 
     private val URL = Regex("""(https?|magnet|torrent):\S+""", RegexOption.IGNORE_CASE)
@@ -163,7 +173,7 @@ object SourcePrivacy {
 
     private val EXTENSION = Regex("""\.(mkv|mp4|avi|m4v|mov|ts|wmv|webm|iso)$""", RegexOption.IGNORE_CASE)
     private val WEBSITE_PREFIX = Regex("""^\s*(www\.)?[a-z0-9-]+\.(com|org|net|io|to|mx|se|cc|xyz|tv)\s*-\s*""", RegexOption.IGNORE_CASE)
-    private val BRACKETS = Regex("""\[[^\]]*]|\{[^}]*}""")
+    private val BRACKETS = Regex("""\[[^\]]*\]|\{[^\}]*\}""")
     private val EPISODE = Regex("""\bS(\d{1,2})\s?E(\d{1,3})\b""", RegexOption.IGNORE_CASE)
     private val YEAR = Regex("""\(?\b((?:19|20)\d{2})\b\)?""")
     private val RELEASE_TAG = Regex(

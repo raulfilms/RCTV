@@ -209,7 +209,10 @@ internal fun LiveTvTimelineGuide(
         uiState.guideCountry,
         uiState.customChannelIds
     ) {
-        val inCountry = uiState.channels.filter { uiState.guideCountry == null || it.country == uiState.guideCountry }
+        // A channel listed twice (a source with it in two groups) is shown once: two rows with
+        // one key would bring the guide down.
+        val inCountry = uiState.channels.distinctBy { it.id }
+            .filter { uiState.guideCountry == null || it.country == uiState.guideCountry }
         when (val browse = uiState.guideBrowse) {
             GuideBrowse.LIVE_NOW -> inCountry
             GuideBrowse.A_TO_Z -> {

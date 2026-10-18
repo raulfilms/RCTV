@@ -933,7 +933,7 @@ fun SportsAddonStreamPickerOverlay(
                     modifier = Modifier.height(320.dp),
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
                 ) {
-                    items(streams, key = { it.stableKey() }) { stream ->
+                    items(streams.distinctBy { it.stableKey() }, key = { it.stableKey() }) { stream ->
                         SportsAddonStreamRow(stream = stream, onClick = { onSelectStream(stream) })
                     }
                 }

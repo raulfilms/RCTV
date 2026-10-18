@@ -124,7 +124,7 @@ fun TeamsBrowseScreen(
             if (uiState.favoriteTeams.isEmpty()) {
                 item(key = "my_teams_hint") { FollowTeamsHintCard() }
             } else {
-                items(uiState.favoriteTeams, key = { "fav_${it.id}" }) { team ->
+                items(uiState.favoriteTeams.distinctBy { it.id }, key = { "fav_${it.id}" }) { team ->
                     TeamBrowseTile(
                         team = team,
                         isFavorite = true,
@@ -147,11 +147,12 @@ fun TeamsBrowseScreen(
             }
 
             // Every league's teams, in rows going down.
-            uiState.sections.forEach { section ->
+            // A league listed twice, or a team twice in one, would bring the page down: once each.
+            uiState.sections.distinctBy { it.key }.forEach { section ->
                 item(key = "title_${section.key}", span = { GridItemSpan(maxLineSpan) }) {
                     TeamsSectionTitle(text = listOf(section.emoji, section.label).filter { it.isNotBlank() }.joinToString(" "))
                 }
-                items(section.teams, key = { "${section.key}_${it.id}" }) { team ->
+                items(section.teams.distinctBy { it.id }, key = { "${section.key}_${it.id}" }) { team ->
                     TeamBrowseTile(
                         team = team,
                         isFavorite = team.id in uiState.favoriteTeamIds,
@@ -346,7 +347,7 @@ private fun TeamsFilterRow(
                 modifier = Modifier.focusRequester(firstRequester)
             )
         }
-        itemsIndexed(filters, key = { _, filter -> filter.id }) { _, filter ->
+        itemsIndexed(filters.distinctBy { it.id }, key = { _, filter -> filter.id }) { _, filter ->
             FilterChip(label = filter.label, selected = selectedId == filter.id, onClick = { onSelect(filter.id) })
         }
     }

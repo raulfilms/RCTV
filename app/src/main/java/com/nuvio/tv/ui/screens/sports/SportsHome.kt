@@ -890,10 +890,11 @@ internal fun SportsRow(
     tile: @Composable (index: Int, modifier: Modifier) -> Unit
 ) {
     val total = count + if (hasSeeAll) 1 else 0
+    val keys = uniqueKeys(count, keyOf)
     HomeTileRow(
         title = title,
         count = total,
-        keyOf = { index -> if (index < count) keyOf(index) else "see_all" },
+        keyOf = { index -> if (index < count) keys[index] else "see_all" },
         rowFocusRequester = rowFocusRequester,
         initialFocusIndex = -1,
         onItemFocused = {},
@@ -951,10 +952,25 @@ internal fun SportsGridPage(
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            itemsIndexed(List(count) { it }, key = { _, i -> keyOf(i) }) { i, _ ->
+            val keys = uniqueKeys(count, keyOf)
+            itemsIndexed(List(count) { it }, key = { _, i -> keys[i] }) { i, _ ->
                 tile(i, if (i == 0) Modifier.focusRequester(firstRequester) else Modifier)
             }
         }
+    }
+}
+
+/**
+ * The cards' keys, none twice: a game or a team a source lists twice would otherwise bring the
+ * whole page down (a row can't have two cards with one key); a repeat gets its place added.
+ */
+internal fun uniqueKeys(count: Int, keyOf: (Int) -> String): List<String> {
+    val seen = HashMap<String, Int>()
+    return List(count) { index ->
+        val key = keyOf(index)
+        val repeats = seen[key] ?: 0
+        seen[key] = repeats + 1
+        if (repeats == 0) key else "$key#$repeats"
     }
 }
 

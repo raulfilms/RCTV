@@ -434,13 +434,14 @@ class SportsViewModel @Inject constructor(
         val results = withContext(Dispatchers.IO) { client.fetchAllFixtures() }
         val homeTeamRowPicks = picks.await()
 
-        val leagues = results.map { it.league }.sortedBy { league -> leagueRank(league.id) }
+        val leagues = results.map { it.league }.distinctBy { it.id }.sortedBy { league -> leagueRank(league.id) }
         // As the clock has them: games whose start time has come are live.
         val now = System.currentTimeMillis()
-        val allEvents = results.flatMap { it.events }.map { it.withClock(now) }
+        val allEvents = results.flatMap { it.events }.map { it.withClock(now) }.distinctBy { it.id }
         val allTeams = results.flatMap { it.teams }.distinctBy { it.id }
 
         val liveNow = allEvents.filter { it.status == SportsEventStatus.LIVE }
+            .distinctBy { it.id }
             .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
             .fewPerTour()
         val upcomingGames = allEvents.filter { it.status == SportsEventStatus.UPCOMING }
