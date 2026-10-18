@@ -18,6 +18,10 @@ const val LIBRARY_TYPE_CUSTOM_CHANNEL = "live_channel"
  * Library's titles. Its titles are movies and shows like any others (posters, their pages).
  */
 const val LIBRARY_TYPE_IMDB_LIST = "imdb_list"
+/** The series rated on IMDb: their own type too (rated series aren't marked watched). */
+const val LIBRARY_TYPE_IMDB_TV_RATED = "imdb_tv_rated"
+/** The IMDb types: titles like the Library's own, but kept apart from them. */
+internal val LIBRARY_IMDB_TYPES = setOf(LIBRARY_TYPE_IMDB_LIST, LIBRARY_TYPE_IMDB_TV_RATED)
 
 internal val LIBRARY_EXTRA_TYPES = setOf(
     LIBRARY_TYPE_SPORTS_TEAM,

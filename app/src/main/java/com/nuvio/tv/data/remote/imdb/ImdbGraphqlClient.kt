@@ -43,6 +43,8 @@ class ImdbException(val reason: Reason, message: String) : Exception(message) {
         NOT_FOUND,
         /** The watchlist isn't public. */
         PRIVATE,
+        /** The IMDb sign-in (needed to mark titles watched) expired or was refused. */
+        SIGNED_OUT,
         /** IMDb couldn't be reached, or answered something else. */
         FAILED
     }
@@ -80,14 +82,14 @@ class ImdbGraphqlClient @Inject constructor() {
      * The watchlist, in its own order, with its owner's name. Throws [ImdbException] with
      * [ImdbException.Reason.PRIVATE] when it isn't public.
      */
-    suspend fun watchlist(userId: String): Pair<List<ImdbTitle>, String?> {
+    suspend fun watchlist(userId: String, cookies: String? = null): Pair<List<ImdbTitle>, String?> {
         val titles = ArrayList<ImdbTitle>()
         val seen = HashSet<String>()
         var owner: String? = null
         var after: String? = null
         repeat(MAX_PAGES) {
             val variables = JSONObject().put("userId", userId).put("first", PAGE_SIZE).put("after", after ?: JSONObject.NULL)
-            val list = query(WATCHLIST_QUERY, variables).optJSONObject("predefinedList")
+            val list = query(WATCHLIST_QUERY, variables, cookies).optJSONObject("predefinedList")
                 ?: throw ImdbException(ImdbException.Reason.PRIVATE, "No public watchlist for $userId")
             owner = owner ?: list.optJSONObject("author")?.optJSONObject("username")?.optString("text")?.takeIf { it.isNotBlank() }
             val connection = list.optJSONObject("titleListItemSearch") ?: return titles to owner
@@ -158,23 +160,51 @@ class ImdbGraphqlClient @Inject constructor() {
         return pageInfo.optString("endCursor").takeIf { it.isNotBlank() && it != "null" }
     }
 
-    private suspend fun query(document: String, variables: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+    /**
+     * Marks the title watched on the signed-in IMDb account (what IMDb's "Mark as watched" does).
+     * Throws [ImdbException] with [ImdbException.Reason.SIGNED_OUT] when the sign-in is no good.
+     */
+    suspend fun markWatched(titleId: String, cookies: String): Boolean {
+        val data = query(ADD_WATCHED_MUTATION, JSONObject().put("titleId", titleId), cookies)
+        val result = data.optJSONObject("addWatchedTitle") ?: return false
+        return result.optBoolean("success")
+    }
+
+    /**
+     * Asks IMDb's GraphQL API. [cookies]: the user's IMDb sign-in (as imdb.com's own pages send
+     * it), for what only the account itself can see or change.
+     */
+    private suspend fun query(document: String, variables: JSONObject, cookies: String? = null): JSONObject = withContext(Dispatchers.IO) {
         val body = JSONObject().put("query", document).put("variables", variables).toString()
-        val request = Request.Builder()
+        val builder = Request.Builder()
             .url(ENDPOINT)
             .post(body.toRequestBody(JSON))
             .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .header("x-imdb-client-name", "imdb-web-next")
+            .header("Accept", "application/graphql+json, application/json")
             .header("x-imdb-user-country", "US")
             .header("x-imdb-user-language", "en-US")
             .header("User-Agent", USER_AGENT)
-            .build()
+        if (cookies.isNullOrBlank()) {
+            builder.header("x-imdb-client-name", "imdb-web-next")
+        } else {
+            builder.header("x-imdb-client-name", "imdb-web-next-localized")
+                .header("Cookie", cookies)
+                .header("Origin", "https://www.imdb.com")
+                .header("Referer", "https://www.imdb.com/")
+            // IMDb wants the session id again in a header for what changes the account.
+            cookieValue(cookies, "session-id")?.let { builder.header("X-Amzn-Sessionid", it) }
+        }
+        val request = builder.build()
         val text = try {
             httpClient.newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful && !text.trimStart().startsWith("{")) {
-                    throw ImdbException(ImdbException.Reason.FAILED, "IMDb answered ${response.code}")
+                    val reason = if (!cookies.isNullOrBlank() && (response.code == 401 || response.code == 403)) {
+                        ImdbException.Reason.SIGNED_OUT
+                    } else {
+                        ImdbException.Reason.FAILED
+                    }
+                    throw ImdbException(reason, "IMDb answered ${response.code}")
                 }
                 text
             }
@@ -199,6 +229,8 @@ class ImdbGraphqlClient @Inject constructor() {
             throw when {
                 // A field or argument IMDb doesn't have: the query, not the account.
                 QUERY_SHAPE_ERROR.containsMatchIn(message) -> ImdbException(ImdbException.Reason.FAILED, message)
+                !cookies.isNullOrBlank() && Regex("Authentication required|UNAUTHENTICATED|not authenticated|sign.?in", RegexOption.IGNORE_CASE).containsMatchIn(message) ->
+                    ImdbException(ImdbException.Reason.SIGNED_OUT, message)
                 Regex("FORBIDDEN|Permission denied|private", RegexOption.IGNORE_CASE).containsMatchIn(message) ->
                     ImdbException(ImdbException.Reason.PRIVATE, message)
                 Regex("RESOURCE_NOT_FOUND|Not found|Internal server error", RegexOption.IGNORE_CASE).containsMatchIn(message) ->
@@ -257,6 +289,25 @@ class ImdbGraphqlClient @Inject constructor() {
     edges { node { userRating { date } title { $TITLE_FIELDS } } }
   }
 }"""
+
+        /** IMDb's "Mark as watched" (a rating marks a title watched too). */
+        private val ADD_WATCHED_MUTATION = """mutation AddWatchedTitle(${'$'}titleId: ID!) {
+  addWatchedTitle(titleId: ${'$'}titleId) {
+    message { language value }
+    success
+  }
+}"""
+
+        /** One cookie's value in a Cookie header ("a=1; session-id=123-456; b=2"). */
+        fun cookieValue(cookies: String, name: String): String? =
+            cookies.split(';').map { it.trim() }
+                .firstOrNull { it.startsWith("$name=") }
+                ?.substringAfter('=')
+                ?.takeIf { it.isNotBlank() }
+
+        /** The cookies say someone is signed in to IMDb. */
+        fun isSignedIn(cookies: String?): Boolean =
+            !cookies.isNullOrBlank() && (cookieValue(cookies, "at-main") != null || cookieValue(cookies, "sess-at-main") != null)
 
         private val RATINGS_WINDOW_QUERY = """query RctvImdbRatingsWindow(${'$'}userId: ID!, ${'$'}first: Int!) {
   userRatings(userId: ${'$'}userId, first: ${'$'}first) {

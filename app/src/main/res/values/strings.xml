@@ -694,7 +694,7 @@
     <string name="settings_mdblist_subtitle">External ratings providers</string>
     <string name="settings_imdb_subtitle">Your watchlist and ratings</string>
     <string name="imdb_title">IMDb</string>
-    <string name="imdb_subtitle">Only for this profile: each profile links its own IMDb account. Movies you rated on IMDb show as watched, and your IMDb watchlist shows in the Library under IMDb List, apart from your library. Nothing is changed on IMDb.</string>
+    <string name="imdb_subtitle">Only for this profile: each profile links its own IMDb account. Movies you rated on IMDb show as watched; series you rated show in the Library under IMDb TV Rated, and your watchlist under IMDb List, apart from your library. Signed in, movies you finish here are marked watched on IMDb.</string>
     <string name="imdb_account_title">IMDb account</string>
     <string name="imdb_account_subtitle">Your IMDb profile id or link</string>
     <string name="imdb_account_subtitle_profile">Your IMDb profile id or link, for %1$s only</string>
@@ -717,6 +717,16 @@
     <string name="imdb_error_not_found">IMDb has no profile with that id.</string>
     <string name="imdb_error_private">Your IMDb watchlist is private: make it public on IMDb to see it here (your ratings still sync).</string>
     <string name="imdb_error_failed">Couldn\'t reach IMDb. Try again in a moment.</string>
+    <string name="imdb_sign_in_title">Sign in to IMDb</string>
+    <string name="imdb_sign_in_subtitle">So movies you finish here are marked watched on IMDb (this profile only)</string>
+    <string name="imdb_sign_out_title">Sign out of IMDb</string>
+    <string name="imdb_sign_out_subtitle">Movies you finish here stop being marked on IMDb; your lists still sync</string>
+    <string name="imdb_signed_in_value">Signed in</string>
+    <string name="imdb_signed_in_toast">Signed in to IMDb: movies you finish here are marked watched on IMDb</string>
+    <string name="imdb_signed_out_toast">Signed out of IMDb</string>
+    <string name="imdb_error_signed_out">Your IMDb sign-in expired. Sign in again in Settings › Integrations › IMDb.</string>
+    <string name="imdb_marked_watched_toast">%1$s marked watched on IMDb</string>
+    <string name="imdb_sign_in_unavailable">This TV can\'t open IMDb\'s sign-in page (Android System WebView is missing or turned off).</string>
     <string name="settings_animeskip_subtitle">Anime intro/outro skip timestamps</string>
     <string name="settings_debrid_subtitle">Experimental cloud account sources</string>
 
@@ -2138,6 +2148,9 @@
     <string name="library_empty_imdb_title">Nothing in your IMDb List</string>
     <string name="library_empty_imdb_not_linked">Link your IMDb account in Settings › Integrations › IMDb to see your watchlist here</string>
     <string name="library_empty_imdb">Your IMDb watchlist is empty, or it\'s private on IMDb</string>
+    <string name="library_type_imdb_tv_rated">IMDb TV Rated</string>
+    <string name="library_empty_imdb_tv_rated_title">No series rated on IMDb</string>
+    <string name="library_empty_imdb_tv_rated">Series you rate on IMDb show here</string>
     <string name="library_empty_custom_channels">Add channels to Custom in the Live TV guide to see them here</string>
     <string name="library_empty_local_title">No %1$s yet</string>
     <string name="library_empty_trakt_title">No %1$s in this list</string>

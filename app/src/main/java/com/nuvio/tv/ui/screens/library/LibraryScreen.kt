@@ -125,6 +125,7 @@ private fun localizedTypeLabel(key: String): String = when (key.lowercase()) {
     LIBRARY_TYPE_EVENT -> stringResource(R.string.library_type_events)
     LIBRARY_TYPE_CUSTOM_CHANNEL -> stringResource(R.string.library_type_custom_channels)
     LIBRARY_TYPE_IMDB_LIST -> stringResource(R.string.library_type_imdb_list)
+    LIBRARY_TYPE_IMDB_TV_RATED -> stringResource(R.string.library_type_imdb_tv_rated)
     else -> localizedContentType(key)
 }
 
@@ -442,15 +443,19 @@ fun LibraryScreen(
             }
 
             val selectedExtraType = uiState.selectedTypeTab?.key?.takeIf { it in LIBRARY_EXTRA_TYPES }
-            val imdbListSelected = uiState.selectedTypeTab?.key == LIBRARY_TYPE_IMDB_LIST
-            if (uiState.visibleItems.isEmpty() && imdbListSelected) {
-                // The IMDb watchlist: not linked yet, private, or empty.
+            val selectedImdbType = uiState.selectedTypeTab?.key?.takeIf { it in LIBRARY_IMDB_TYPES }
+            if (uiState.visibleItems.isEmpty() && selectedImdbType != null) {
+                // The IMDb watchlist or rated series: not linked yet, private, or empty.
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     EmptyScreenState(
-                        title = stringResource(R.string.library_empty_imdb_title),
+                        title = stringResource(
+                            if (selectedImdbType == LIBRARY_TYPE_IMDB_TV_RATED) R.string.library_empty_imdb_tv_rated_title
+                            else R.string.library_empty_imdb_title
+                        ),
                         subtitle = stringResource(
                             when {
                                 !uiState.imdbConnected -> R.string.library_empty_imdb_not_linked
+                                selectedImdbType == LIBRARY_TYPE_IMDB_TV_RATED -> R.string.library_empty_imdb_tv_rated
                                 uiState.imdbError == com.nuvio.tv.data.remote.imdb.ImdbException.Reason.PRIVATE -> R.string.imdb_error_private
                                 else -> R.string.library_empty_imdb
                             }

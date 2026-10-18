@@ -24,6 +24,8 @@ sealed interface ImdbSettingsMessage {
     data class Failed(val reason: ImdbException.Reason) : ImdbSettingsMessage
     data object Synced : ImdbSettingsMessage
     data object Disconnected : ImdbSettingsMessage
+    data object SignedIn : ImdbSettingsMessage
+    data object SignedOut : ImdbSettingsMessage
 }
 
 @HiltViewModel
@@ -70,6 +72,28 @@ class ImdbSettingsViewModel @Inject constructor(
                     // Linked, but its lists couldn't be read yet: the dialog still closes.
                     if (imdbSync.account.value.isConnected) onDone()
                 }
+        }
+    }
+
+    /** Signed in on IMDb's page: keeps the sign-in for this profile (and links its account). */
+    fun signedIn(cookies: String, profileKey: String?) {
+        if (_connecting.value) return
+        _connecting.value = true
+        viewModelScope.launch {
+            val result = imdbSync.connectSignedIn(cookies, profileKey)
+            _connecting.value = false
+            result
+                .onSuccess { _messages.tryEmit(ImdbSettingsMessage.SignedIn) }
+                .onFailure { error ->
+                    _messages.tryEmit(ImdbSettingsMessage.Failed((error as? ImdbException)?.reason ?: ImdbException.Reason.FAILED))
+                }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            imdbSync.signOut()
+            _messages.tryEmit(ImdbSettingsMessage.SignedOut)
         }
     }
 

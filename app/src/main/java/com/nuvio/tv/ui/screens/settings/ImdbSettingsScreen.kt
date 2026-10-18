@@ -67,6 +67,7 @@ fun ImdbSettingsContent(
     val account by viewModel.account.collectAsStateWithLifecycle()
     val profileName by viewModel.profileName.collectAsStateWithLifecycle()
     var showAccountDialog by remember { mutableStateOf(false) }
+    var showSignIn by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     LaunchedEffect(viewModel) {
@@ -80,6 +81,8 @@ fun ImdbSettingsContent(
                 is ImdbSettingsMessage.Failed -> context.getString(imdbErrorText(message.reason))
                 ImdbSettingsMessage.Synced -> context.getString(R.string.imdb_synced_toast)
                 ImdbSettingsMessage.Disconnected -> context.getString(R.string.imdb_unlinked_toast)
+                ImdbSettingsMessage.SignedIn -> context.getString(R.string.imdb_signed_in_toast)
+                ImdbSettingsMessage.SignedOut -> context.getString(R.string.imdb_signed_out_toast)
             }
             Toast.makeText(context, text, Toast.LENGTH_LONG).show()
         }
@@ -118,6 +121,26 @@ fun ImdbSettingsContent(
                         )
                     }
 
+                    // Signed in, what's watched here is marked watched on IMDb (this profile only).
+                    item(key = "imdb_sign_in") {
+                        if (account.isSignedIn && !account.signInExpired) {
+                            SettingsActionRow(
+                                title = stringResource(R.string.imdb_sign_out_title),
+                                subtitle = stringResource(R.string.imdb_sign_out_subtitle),
+                                value = stringResource(R.string.imdb_signed_in_value),
+                                onClick = viewModel::signOut
+                            )
+                        } else {
+                            SettingsActionRow(
+                                title = stringResource(R.string.imdb_sign_in_title),
+                                subtitle = stringResource(
+                                    if (account.signInExpired) R.string.imdb_error_signed_out else R.string.imdb_sign_in_subtitle
+                                ),
+                                onClick = { showSignIn = true }
+                            )
+                        }
+                    }
+
                     if (account.isConnected) {
                         item(key = "imdb_sync") {
                             val lastSync = account.lastSyncMs.takeIf { it > 0 }?.let { syncedAt ->
@@ -150,6 +173,16 @@ fun ImdbSettingsContent(
         }
     }
 
+    if (showSignIn) {
+        ImdbSignInDialog(
+            onSignedIn = { cookies, profileKey ->
+                showSignIn = false
+                viewModel.signedIn(cookies, profileKey)
+            },
+            onDismiss = { showSignIn = false }
+        )
+    }
+
     if (showAccountDialog) {
         ImdbAccountDialog(
             currentValue = account.input.ifBlank { account.userId.orEmpty() },
@@ -163,6 +196,7 @@ internal fun imdbErrorText(reason: ImdbException.Reason): Int = when (reason) {
     ImdbException.Reason.BAD_ID -> R.string.imdb_error_bad_id
     ImdbException.Reason.NOT_FOUND -> R.string.imdb_error_not_found
     ImdbException.Reason.PRIVATE -> R.string.imdb_error_private
+    ImdbException.Reason.SIGNED_OUT -> R.string.imdb_error_signed_out
     ImdbException.Reason.FAILED -> R.string.imdb_error_failed
 }
 

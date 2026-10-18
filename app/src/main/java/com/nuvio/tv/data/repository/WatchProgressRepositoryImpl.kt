@@ -795,6 +795,8 @@ class WatchProgressRepositoryImpl @Inject constructor(
             watchedItemsPreferences.markAsWatched(watchedItem, profileId = profileId)
             if (syncRemote) {
                 mutationStore.queueWatchedUpserts(listOf(watchedItem), profileId)
+                // Watched in the app: watched on the profile's IMDb too (when it's signed in).
+                imdbSync.onWatchedInApp(profileId, progress)
             }
             if (syncRemote && authManager.isAuthenticated) {
                 triggerWatchedItemsSync(listOf(watchedItem), profileId = profileId)
@@ -984,6 +986,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         mutationStore.queueWatchedUpserts(listOf(watchedItem), profileId)
         if (broadcastTrackingHistory) {
             broadcastHistoryAdd(profileId, listOf(completed.toTrackingHistoryItem(now)))
+            imdbSync.onWatchedInApp(profileId, completed)
         }
         triggerRemoteSync(profileId = profileId)
         triggerWatchedItemsSync(listOf(watchedItem), profileId = profileId)
@@ -1026,6 +1029,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         watchedItemsPreferences.markAsWatchedBatch(watchedItems, profileId = profileId)
         mutationStore.queueWatchedUpserts(watchedItems, profileId)
         broadcastHistoryAdd(profileId, completedList.map { it.toTrackingHistoryItem(now) })
+        completedList.forEach { imdbSync.onWatchedInApp(profileId, it) }
         triggerRemoteSync(profileId = profileId)
         triggerWatchedItemsSync(watchedItems, profileId = profileId)
     }

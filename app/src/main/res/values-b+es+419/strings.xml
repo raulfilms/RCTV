@@ -692,7 +692,7 @@
     <string name="settings_mdblist_subtitle">Proveedores externos de calificaciones</string>
     <string name="settings_imdb_subtitle">Tu watchlist y tus calificaciones</string>
     <string name="imdb_title">IMDb</string>
-    <string name="imdb_subtitle">Solo para este perfil: cada perfil vincula su propia cuenta de IMDb. Las películas que calificaste en IMDb salen como vistas, y tu watchlist de IMDb sale en la Biblioteca como IMDb List, aparte de tu biblioteca. No se cambia nada en IMDb.</string>
+    <string name="imdb_subtitle">Solo para este perfil: cada perfil vincula su propia cuenta de IMDb. Las películas que calificaste en IMDb salen como vistas; las series que calificaste salen en la Biblioteca como IMDb TV Rated, y tu watchlist como IMDb List, aparte de tu biblioteca. Con la sesión iniciada, las películas que termines aquí se marcan como vistas en IMDb.</string>
     <string name="imdb_account_title">Cuenta de IMDb</string>
     <string name="imdb_account_subtitle">El id o el enlace de tu perfil de IMDb</string>
     <string name="imdb_account_subtitle_profile">El id o el enlace de tu perfil de IMDb, solo para %1$s</string>
@@ -715,6 +715,16 @@
     <string name="imdb_error_not_found">IMDb no tiene un perfil con ese id.</string>
     <string name="imdb_error_private">Tu watchlist de IMDb es privada: ponla pública en IMDb para verla aquí (tus calificaciones se sincronizan igual).</string>
     <string name="imdb_error_failed">No se pudo conectar con IMDb. Inténtalo de nuevo en un momento.</string>
+    <string name="imdb_sign_in_title">Iniciar sesión en IMDb</string>
+    <string name="imdb_sign_in_subtitle">Para que las películas que termines aquí se marquen como vistas en IMDb (solo este perfil)</string>
+    <string name="imdb_sign_out_title">Cerrar sesión de IMDb</string>
+    <string name="imdb_sign_out_subtitle">Las películas que termines aquí dejan de marcarse en IMDb; tus listas se siguen sincronizando</string>
+    <string name="imdb_signed_in_value">Sesión iniciada</string>
+    <string name="imdb_signed_in_toast">Sesión iniciada en IMDb: las películas que termines aquí se marcan como vistas en IMDb</string>
+    <string name="imdb_signed_out_toast">Sesión de IMDb cerrada</string>
+    <string name="imdb_error_signed_out">Tu sesión de IMDb venció. Vuelve a iniciar sesión en Ajustes › Integraciones › IMDb.</string>
+    <string name="imdb_marked_watched_toast">%1$s marcada como vista en IMDb</string>
+    <string name="imdb_sign_in_unavailable">Este TV no puede abrir la página de inicio de sesión de IMDb (falta Android System WebView o está desactivado).</string>
     <string name="settings_animeskip_subtitle">Marcas de tiempo para omitir intros/outros de anime</string>
     <string name="settings_debrid_subtitle">Fuentes experimentales de cuentas en la nube</string>
 
@@ -2132,6 +2142,9 @@
     <string name="library_empty_imdb_title">No hay nada en tu IMDb List</string>
     <string name="library_empty_imdb_not_linked">Vincula tu cuenta de IMDb en Ajustes › Integraciones › IMDb para ver tu watchlist aquí</string>
     <string name="library_empty_imdb">Tu watchlist de IMDb está vacía, o es privada en IMDb</string>
+    <string name="library_type_imdb_tv_rated">IMDb TV Rated</string>
+    <string name="library_empty_imdb_tv_rated_title">No hay series calificadas en IMDb</string>
+    <string name="library_empty_imdb_tv_rated">Las series que califiques en IMDb salen aquí</string>
     <string name="library_empty_custom_channels">Agrega canales a Custom en la guía de TV en vivo para verlos aquí</string>
     <string name="library_empty_local_title">Aún no hay %1$s</string>
     <string name="library_empty_trakt_title">No hay %1$s en esta lista</string>

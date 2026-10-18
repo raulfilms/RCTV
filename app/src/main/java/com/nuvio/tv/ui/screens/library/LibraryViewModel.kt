@@ -169,6 +169,8 @@ data class LibraryUiState(
     val extraEvents: Map<String, SportsEvent> = emptyMap(),
     /** The IMDb watchlist, as titles (the "IMDb List" type). */
     val imdbItems: List<LibraryEntry> = emptyList(),
+    /** The series rated on IMDb (the "IMDb TV Rated" type). */
+    val imdbRatedSeries: List<LibraryEntry> = emptyList(),
     /** An IMDb account is linked (the "IMDb List" type shows). */
     val imdbConnected: Boolean = false,
     /** Why the IMDb watchlist couldn't be read last time (private...). */
@@ -934,11 +936,12 @@ class LibraryViewModel @Inject constructor(
         // have no genres, years or watched state to filter by.
         val selectedTypeKey = selectedTypeTab?.key
         val extraSelected = selectedTypeKey != null && selectedTypeKey in LIBRARY_EXTRA_TYPES
-        // The IMDb watchlist: titles of its own, not the Library's.
-        val imdbSelected = selectedTypeKey == LIBRARY_TYPE_IMDB_LIST
+        // The IMDb watchlist and rated series: titles of their own, not the Library's.
+        val imdbSelected = selectedTypeKey in LIBRARY_IMDB_TYPES
         val typeFiltered = when {
             extraSelected -> extraItems.filter { it.type == selectedTypeKey }
-            imdbSelected -> imdbItems
+            selectedTypeKey == LIBRARY_TYPE_IMDB_LIST -> imdbItems
+            selectedTypeKey == LIBRARY_TYPE_IMDB_TV_RATED -> imdbRatedSeries
             else -> listFiltered.filter { entry ->
                 selectedTypeKey == null ||
                     selectedTypeKey == LibraryTypeTab.ALL_KEY ||
@@ -1059,15 +1062,19 @@ class LibraryViewModel @Inject constructor(
         }
 
         // Rebuild type tabs with counts
-        val imdbCount = if (imdbConnected) {
-            imdbItems.count { entry ->
-                (selectedGenre == null || entry.genres.any { it.equals(selectedGenre, ignoreCase = true) }) &&
-                    (selectedYear == null || entry.extractYear() == selectedYear)
-            }
-        } else {
-            null
+        fun List<LibraryEntry>.countMatching() = count { entry ->
+            (selectedGenre == null || entry.genres.any { it.equals(selectedGenre, ignoreCase = true) }) &&
+                (selectedYear == null || entry.extractYear() == selectedYear)
         }
-        val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts, extraItems, imdbCount)
+        val imdbCounts = if (imdbConnected) {
+            mapOf(
+                LIBRARY_TYPE_IMDB_LIST to imdbItems.countMatching(),
+                LIBRARY_TYPE_IMDB_TV_RATED to imdbRatedSeries.countMatching()
+            )
+        } else {
+            emptyMap()
+        }
+        val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts, extraItems, imdbCounts)
 
         // Validate selections — clear if no longer valid (kept while an extra type is shown, for
         // when the titles come back)
@@ -1141,8 +1148,8 @@ class LibraryViewModel @Inject constructor(
         allTypeItems: List<LibraryEntry>,
         filteredItems: List<LibraryEntry>,
         extraItems: List<LibraryEntry>,
-        /** How many titles the IMDb List has (null: no IMDb account, no IMDb List). */
-        imdbCount: Int?
+        /** How many titles each IMDb type has (empty: no IMDb account, no IMDb types). */
+        imdbCounts: Map<String, Int>
     ): List<LibraryTypeTab> {
         val countByType = mutableMapOf<String, Int>()
         filteredItems.forEach { entry ->
@@ -1157,8 +1164,8 @@ class LibraryViewModel @Inject constructor(
             .distinct()
             .filter { it != LIBRARY_TYPE_MOVIE && it != LIBRARY_TYPE_SHOW && it !in LIBRARY_EXTRA_TYPES }
             .sorted()
-        if (imdbCount != null) countByType[LIBRARY_TYPE_IMDB_LIST] = imdbCount
-        val imdbKeys = if (imdbCount != null) listOf(LIBRARY_TYPE_IMDB_LIST) else emptyList()
+        countByType.putAll(imdbCounts)
+        val imdbKeys = listOf(LIBRARY_TYPE_IMDB_LIST, LIBRARY_TYPE_IMDB_TV_RATED).filter { it in imdbCounts }
         val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + imdbKeys + LIBRARY_EXTRA_TYPE_ORDER
         val allTab = LibraryTypeTab(key = LibraryTypeTab.ALL_KEY, label = "${context.getString(R.string.library_type_all)} (${filteredItems.size})")
         return listOf(allTab) + keys.map { key ->
@@ -1171,18 +1178,34 @@ class LibraryViewModel @Inject constructor(
     private fun observeImdbList() {
         imdbSync.syncIfStale()
         viewModelScope.launch {
-            combine(imdbSync.account, imdbSync.watchlist) { account, watchlist ->
-                Triple(account.isConnected, account.error, watchlist.mapNotNull(::imdbEntryOf))
-            }.collectLatest { (connected, error, items) ->
+            combine(imdbSync.account, imdbSync.watchlist, imdbSync.ratedSeries) { account, watchlist, ratedSeries ->
+                ImdbLibraryLists(
+                    connected = account.isConnected,
+                    error = account.error,
+                    watchlist = watchlist.mapNotNull(::imdbEntryOf),
+                    ratedSeries = ratedSeries.mapNotNull(::imdbEntryOf)
+                )
+            }.collectLatest { lists ->
                 _uiState.update { current ->
-                    current.copy(imdbConnected = connected, imdbError = error, imdbItems = if (connected) items else emptyList())
-                        .withVisibleItems()
+                    current.copy(
+                        imdbConnected = lists.connected,
+                        imdbError = lists.error,
+                        imdbItems = if (lists.connected) lists.watchlist else emptyList(),
+                        imdbRatedSeries = if (lists.connected) lists.ratedSeries else emptyList()
+                    ).withVisibleItems()
                 }
             }
         }
     }
 
-    /** A watchlist title as a Library title: a movie or a show, with its IMDb poster. */
+    private class ImdbLibraryLists(
+        val connected: Boolean,
+        val error: com.nuvio.tv.data.remote.imdb.ImdbException.Reason?,
+        val watchlist: List<LibraryEntry>,
+        val ratedSeries: List<LibraryEntry>
+    )
+
+    /** A watchlist (or rated) title as a Library title: a movie or a show, with its IMDb poster. */
     private fun imdbEntryOf(title: com.nuvio.tv.data.remote.imdb.ImdbTitle): LibraryEntry? {
         if (title.isEpisode || title.titleType == "videoGame") return null
         val poster = com.nuvio.tv.data.remote.imdb.ImdbGraphqlClient.resizedImage(title.posterUrl)

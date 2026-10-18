@@ -2,6 +2,9 @@ package com.nuvio.tv.data.imdb
 
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
+import com.nuvio.tv.R
+import com.nuvio.tv.domain.model.WatchProgress
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -39,6 +42,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
@@ -58,7 +62,13 @@ data class ImdbAccount(
     val error: ImdbException.Reason? = null,
     val watchlistCount: Int = 0,
     val ratedCount: Int = 0,
-    val isSyncing: Boolean = false
+    /** Series rated on IMDb (the Library's "IMDb TV Rated"). */
+    val ratedSeriesCount: Int = 0,
+    val isSyncing: Boolean = false,
+    /** Signed in to IMDb on this profile: what's watched in the app is marked watched on IMDb. */
+    val isSignedIn: Boolean = false,
+    /** The IMDb sign-in stopped working (signed out on IMDb, or it expired): sign in again. */
+    val signInExpired: Boolean = false
 ) {
     val isConnected: Boolean get() = userId != null
 }
@@ -66,16 +76,17 @@ data class ImdbAccount(
 /**
  * The user's IMDb watchlist and ratings, kept on the device for each profile and asked again
  * every half hour or so. Each profile links its own IMDb account (or none): another profile never
- * sees this one's watchlist or ratings.
+ * sees this one's watchlist, ratings or sign-in.
  * - every movie they rated on IMDb shows as watched (by its IMDb id and its TMDB id, as titles
- *   come from either);
- * - the watchlist is the Library's "IMDb List", apart from the app's own library.
- * Nothing is ever written to IMDb.
+ *   come from either); rated series aren't watched, they're the Library's "IMDb TV Rated";
+ * - the watchlist is the Library's "IMDb List", apart from the app's own library;
+ * - signed in to IMDb (in the app, on the profile), a movie watched to the end in the app is
+ *   marked watched on IMDb. Nothing else is ever written to IMDb.
  */
 @Singleton
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImdbSyncService @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val appContext: Context,
     private val client: ImdbGraphqlClient,
     private val tmdbApi: TmdbApi,
     private val factory: ProfileDataStoreFactory,
@@ -84,10 +95,13 @@ class ImdbSyncService @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
     private val mappingMutex = Mutex()
+    private val markMutex = Mutex()
+    /** When each movie was last tried on IMDb ("profile|tt…"): a movie playing to its end saves often. */
+    private val markAttempts = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val syncing = MutableStateFlow(false)
 
     /** IMDb id → TMDB id of rated movies (shared by every profile; a title's ids don't change). */
-    private val tmdbIdPrefs = context.getSharedPreferences("imdb_tmdb_ids", Context.MODE_PRIVATE)
+    private val tmdbIdPrefs = appContext.getSharedPreferences("imdb_tmdb_ids", Context.MODE_PRIVATE)
     private val tmdbIds = MutableStateFlow(readTmdbIds())
 
     private fun store(profileId: Int) = factory.get(profileId, FEATURE)
@@ -100,7 +114,13 @@ class ImdbSyncService @Inject constructor(
         val error: ImdbException.Reason? = null,
         val watchlist: List<ImdbTitle> = emptyList(),
         val ratedMovieIds: Set<String> = emptySet(),
-        val ratedCount: Int = 0
+        val ratedCount: Int = 0,
+        val ratedSeries: List<ImdbTitle> = emptyList(),
+        /** The IMDb sign-in's cookies (only this profile's). */
+        val cookies: String? = null,
+        val signInExpired: Boolean = false,
+        /** Movies the app marked watched on IMDb already. */
+        val markedWatched: Set<String> = emptySet()
     )
 
     private val stored: StateFlow<Stored> = profileManager.activeProfileId
@@ -119,11 +139,19 @@ class ImdbSyncService @Inject constructor(
         error = data.error,
         watchlistCount = data.watchlist.size,
         ratedCount = data.ratedCount,
-        isSyncing = isSyncing
+        ratedSeriesCount = data.ratedSeries.size,
+        isSyncing = isSyncing,
+        isSignedIn = data.userId != null && ImdbGraphqlClient.isSignedIn(data.cookies),
+        signInExpired = data.signInExpired
     )
 
     /** The IMDb watchlist, in its own order (empty with no account linked). */
     val watchlist: StateFlow<List<ImdbTitle>> = stored.map { it.watchlist }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** The series rated on IMDb, newest rating first (empty with no account linked). */
+    val ratedSeries: StateFlow<List<ImdbTitle>> = stored.map { it.ratedSeries }
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
@@ -174,7 +202,12 @@ class ImdbSyncService @Inject constructor(
                 prefs.remove(watchlistKey)
                 prefs.remove(ratedKey)
                 prefs.remove(ratedCountKey)
+                prefs.remove(ratedSeriesKey)
                 prefs.remove(nicknameKey)
+                prefs.remove(markedKey)
+                // A sign-in belongs to the account it was made for.
+                prefs.remove(cookiesKey)
+                prefs.remove(signInExpiredKey)
             }
             prefs[inputKey] = input.trim()
             prefs[userIdKey] = profile.userId
@@ -184,6 +217,111 @@ class ImdbSyncService @Inject constructor(
         }
         val synced = sync(force = true)
         return synced.map { accountOf(readStored(store(profileId).data.first()), isSyncing = false) }
+    }
+
+    /**
+     * Signed in to IMDb (in the app's IMDb page): keeps the sign-in for this profile only, and
+     * links its account ([profileKey]: the "ur…" or "p.…" id its profile page showed; null: the
+     * account already linked).
+     */
+    suspend fun connectSignedIn(cookies: String, profileKey: String?): Result<ImdbAccount> {
+        val profileId = profileManager.activeProfileId.value
+        val linkedId = readStored(store(profileId).data.first()).userId
+        val userId = if (profileKey != null) {
+            val profile = try {
+                client.profileFor(profileKey)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+            if (profile.userId != linkedId) {
+                connect(profile.userId).onFailure { return Result.failure(it) }
+            }
+            profile.userId
+        } else {
+            linkedId ?: return Result.failure(ImdbException(ImdbException.Reason.NOT_FOUND, "No IMDb account found for the sign-in"))
+        }
+        store(profileId).edit { prefs ->
+            if (prefs[userIdKey] != userId) return@edit
+            prefs[cookiesKey] = cookies
+            prefs.remove(signInExpiredKey)
+        }
+        val synced = sync(force = true)
+        return synced.map { accountOf(readStored(store(profileId).data.first()), isSyncing = false) }
+    }
+
+    /** Forgets the IMDb sign-in (the account stays linked: its lists still come in). */
+    suspend fun signOut() {
+        store(profileManager.activeProfileId.value).edit { prefs ->
+            prefs.remove(cookiesKey)
+            prefs.remove(signInExpiredKey)
+        }
+    }
+
+    /**
+     * A movie was watched to the end in the app (or marked watched there): on [profileId]'s IMDb
+     * account, if it's signed in, it's marked watched too (unless IMDb has it rated, or the app
+     * marked it already). Episodes aren't (IMDb marks titles, not episodes).
+     */
+    fun onWatchedInApp(profileId: Int, progress: WatchProgress) {
+        if (progress.season != null || progress.episode != null) return
+        if (!progress.contentType.equals("movie", ignoreCase = true)) return
+        scope.launch {
+            markMutex.withLock {
+                val data = readStored(store(profileId).data.first())
+                val cookies = data.cookies
+                if (data.userId == null || data.signInExpired || !ImdbGraphqlClient.isSignedIn(cookies)) return@withLock
+                val imdbId = imdbIdOf(progress) ?: return@withLock
+                if (imdbId in data.ratedMovieIds || imdbId in data.markedWatched) return@withLock
+                val attemptKey = "$profileId|$imdbId"
+                val now = System.currentTimeMillis()
+                if (now - (markAttempts[attemptKey] ?: 0L) < MARK_RETRY_MS) return@withLock
+                markAttempts[attemptKey] = now
+                val marked = try {
+                    client.markWatched(imdbId, cookies.orEmpty())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ImdbException) {
+                    if (e.reason == ImdbException.Reason.SIGNED_OUT || e.reason == ImdbException.Reason.PRIVATE) {
+                        store(profileId).edit { it[signInExpiredKey] = System.currentTimeMillis() }
+                        toast(appContext.getString(R.string.imdb_error_signed_out))
+                    }
+                    Log.w(TAG, "Couldn't mark $imdbId watched on IMDb: ${e.reason}")
+                    return@withLock
+                } catch (e: Exception) {
+                    Log.w(TAG, "Couldn't mark $imdbId watched on IMDb: ${e.message}")
+                    return@withLock
+                }
+                if (!marked) return@withLock
+                store(profileId).edit { prefs ->
+                    prefs[markedKey] = JSONArray((readIds(prefs[markedKey]) + imdbId).toList()).toString()
+                }
+                toast(appContext.getString(R.string.imdb_marked_watched_toast, progress.name.ifBlank { imdbId }))
+            }
+        }
+    }
+
+    /** The movie's IMDb id: its own id, or the IMDb id of its TMDB id. */
+    private suspend fun imdbIdOf(progress: WatchProgress): String? {
+        listOf(progress.contentId, progress.videoId).forEach { id ->
+            IMDB_ID.find(id)?.takeIf { it.range.first == 0 }?.let { return it.value }
+        }
+        val tmdbId = progress.contentId.takeIf { it.startsWith("tmdb:") }
+            ?.removePrefix("tmdb:")?.substringBefore(':')?.toIntOrNull()
+            ?: return null
+        tmdbIds.value.entries.firstOrNull { it.value == tmdbId }?.let { return it.key }
+        return try {
+            tmdbApi.getMovieExternalIds(tmdbId, BuildConfig.TMDB_API_KEY).body()?.imdbId?.takeIf { IMDB_ID.matches(it) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun toast(text: String) = withContext(Dispatchers.Main) {
+        Toast.makeText(appContext, text, Toast.LENGTH_LONG).show()
     }
 
     /** Unlinks the account: its watchlist and ratings leave the app. */
@@ -201,7 +339,15 @@ class ImdbSyncService @Inject constructor(
         syncing.value = true
         try {
             val ratings = attempt { client.ratedTitles(userId) }
-            val watchlist = attempt { client.watchlist(userId) }
+            // Signed in, the watchlist comes in even when it's private on IMDb.
+            val signedInCookies = current.cookies?.takeIf { !current.signInExpired && ImdbGraphqlClient.isSignedIn(it) }
+            var signInFailed = false
+            var watchlist = attempt { client.watchlist(userId, signedInCookies) }
+            if (signedInCookies != null && (watchlist.exceptionOrNull() as? ImdbException)?.reason == ImdbException.Reason.SIGNED_OUT) {
+                signInFailed = true
+                watchlist = attempt { client.watchlist(userId) }
+            }
+            val ratedSeries = ratings.getOrNull()?.filter { it.isSeries && !it.isEpisode }?.sortedByDescending { it.addedAtMs }
             val ratedMovies = ratings.getOrNull()?.filter(::countsAsWatchedMovie)?.map { it.id }?.toSet()
             val error = listOf(watchlist.exceptionOrNull(), ratings.exceptionOrNull())
                 .firstNotNullOfOrNull { (it as? ImdbException)?.reason ?: it?.let { ImdbException.Reason.FAILED } }
@@ -212,7 +358,9 @@ class ImdbSyncService @Inject constructor(
                 ratings.getOrNull()?.let { rated ->
                     prefs[ratedKey] = JSONArray(ratedMovies.orEmpty().toList()).toString()
                     prefs[ratedCountKey] = rated.size.toLong()
+                    prefs[ratedSeriesKey] = JSONArray().apply { ratedSeries.orEmpty().forEach { put(titleJson(it)) } }.toString()
                 }
+                if (signInFailed) prefs[signInExpiredKey] = now
                 watchlist.getOrNull()?.let { (titles, owner) ->
                     prefs[watchlistKey] = JSONArray().apply { titles.forEach { put(titleJson(it)) } }.toString()
                     if (prefs[nicknameKey].isNullOrBlank() && owner != null) prefs[nicknameKey] = owner
@@ -312,7 +460,11 @@ class ImdbSyncService @Inject constructor(
             error = prefs[errorKey]?.let { name -> ImdbException.Reason.entries.firstOrNull { it.name == name } },
             watchlist = readTitles(prefs[watchlistKey]),
             ratedMovieIds = readIds(prefs[ratedKey]),
-            ratedCount = (prefs[ratedCountKey] ?: 0L).toInt()
+            ratedCount = (prefs[ratedCountKey] ?: 0L).toInt(),
+            ratedSeries = readTitles(prefs[ratedSeriesKey]),
+            cookies = prefs[cookiesKey]?.takeIf { it.isNotBlank() },
+            signInExpired = (prefs[signInExpiredKey] ?: 0L) > 0L,
+            markedWatched = readIds(prefs[markedKey])
         )
     }
 
@@ -364,6 +516,8 @@ class ImdbSyncService @Inject constructor(
         const val NONE_RETRY_MS = 14L * 24 * 60 * 60 * 1000
         const val TMDB_LOOKUPS_AT_ONCE = 6
         const val TMDB_BATCH = 40
+        /** A movie IMDb didn't take is tried again after this long. */
+        const val MARK_RETRY_MS = 2L * 60 * 1000
         val NOT_MOVIES = setOf("videoGame", "podcastSeries", "podcastEpisode", "tvSeries", "tvMiniSeries", "tvEpisode")
 
         val inputKey = stringPreferencesKey("imdb_input")
@@ -374,5 +528,10 @@ class ImdbSyncService @Inject constructor(
         val watchlistKey = stringPreferencesKey("imdb_watchlist_json")
         val ratedKey = stringPreferencesKey("imdb_rated_movies_json")
         val ratedCountKey = longPreferencesKey("imdb_rated_count")
+        val ratedSeriesKey = stringPreferencesKey("imdb_rated_series_json")
+        val cookiesKey = stringPreferencesKey("imdb_sign_in_cookies")
+        val signInExpiredKey = longPreferencesKey("imdb_sign_in_expired_ms")
+        val markedKey = stringPreferencesKey("imdb_marked_watched_json")
+        val IMDB_ID = Regex("tt\\d{5,10}")
     }
 }
