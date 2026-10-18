@@ -181,6 +181,7 @@ private fun shortTeamName(event: SportsEvent, home: Boolean): String {
 /** Where a game is at: "4th Quarter", "Final", or when it starts ("Today, 7:00 PM"). */
 @Composable
 internal fun sportsGameStatus(event: SportsEvent): String {
+    if (event.isGolf()) return golfStatusText(event)
     return when (event.status) {
         SportsEventStatus.LIVE -> event.statusDetail?.takeIf { it.isNotBlank() } ?: stringResource(R.string.sports_live)
         SportsEventStatus.FINISHED -> event.statusDetail?.takeIf { it.isNotBlank() } ?: stringResource(R.string.sports_final)
@@ -548,6 +549,11 @@ internal fun SportsGameCard(
             containerColor = AppleTvColors.Surface2,
             modifier = modifier.longPressable(onLongPress)
         ) {
+            // A golf tournament: its name and leader on golf's green.
+            if (event.isGolf()) {
+                GolfGameCardBody(event = event, status = status)
+                return@HomeCard
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -635,6 +641,43 @@ internal fun SportsGameCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/** A golf tournament's card: the tour's logo, the tournament, its leader; LIVE or its days in the corner. */
+@Composable
+private fun GolfGameCardBody(event: SportsEvent, status: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(GolfGreen, lerp(GolfGreen, Color.Black, 0.55f))))
+    ) {
+        GolfCardContent(
+            event = event,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 12.dp, end = 12.dp, top = 26.dp, bottom = 10.dp)
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp)
+        ) {
+            when (event.status) {
+                SportsEventStatus.LIVE -> SportsLiveBadge()
+                else -> Text(
+                    text = status,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
+        }
     }
 }
 

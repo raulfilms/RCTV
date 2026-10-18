@@ -43,6 +43,7 @@ import com.nuvio.tv.ui.components.AppleTvFocusGlow
 import com.nuvio.tv.ui.components.AppleTvFocusScale
 import com.nuvio.tv.ui.screens.sports.isLiveAt
 import com.nuvio.tv.ui.screens.sports.startTimeTba
+import com.nuvio.tv.ui.screens.sports.isGolf
 import com.nuvio.tv.ui.screens.sports.sportsStartTimeLabel
 
 /**
@@ -158,7 +159,12 @@ internal fun LibraryExtraCard(
                         Text(text = "  •  ", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1)
                     }
                     Text(
-                        text = if (event.startTimeTba()) com.nuvio.tv.ui.screens.sports.tbaStartLabel(start) else sportsStartTimeLabel(start),
+                        text = when {
+                            // A golf tournament: its days.
+                            event.isGolf() -> com.nuvio.tv.ui.screens.sports.golfDatesLabel(event)
+                            event.startTimeTba() -> com.nuvio.tv.ui.screens.sports.tbaStartLabel(start)
+                            else -> sportsStartTimeLabel(start)
+                        },
                         color = Color.White.copy(alpha = 0.72f),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,

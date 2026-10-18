@@ -48,9 +48,10 @@ internal fun SportsEvent.isLiveAt(now: Long): Boolean = when (status) {
     SportsEventStatus.UPCOMING -> {
         val start = startTimeMs
         // On now by the guide or YouTube (Banana Ball, whose schedule has no live scores); a game
-        // whose time isn't set yet (TBA) doesn't go live by the clock.
+        // whose time isn't set yet (TBA), or a golf tournament (days long: ESPN says when it's on),
+        // doesn't go live by the clock.
         id in BananaBallLiveIds.ids ||
-            (!startTimeTba() && start != null && now >= start && now < start + LIVE_WINDOW_MS)
+            (!startTimeTba() && !isGolf() && start != null && now >= start && now < start + LIVE_WINDOW_MS)
     }
 }
 
@@ -172,7 +173,7 @@ internal object SportsGameChannels {
         if (home.isEmpty() && away.isEmpty()) return emptyList()
         val sportWords = sportWords(event)
         // Banana Ball's times are often "TBA" (or just its schedule's): any program of the game on now is it.
-        val gameStart = event.startTimeMs?.takeUnless { event.isBananaBall() }
+        val gameStart = event.startTimeMs?.takeUnless { event.isBananaBall() || event.isGolf() }
         val found = ArrayList<GameAiring>()
         val seen = HashSet<String>()
         channels.forEach { channel ->
@@ -200,6 +201,13 @@ internal object SportsGameChannels {
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
         if (home.isEmpty() || away.isEmpty()) return 0
         val gameStart = event.startTimeMs ?: return 0
+        if (event.isGolf()) {
+            // A tournament: any of its days.
+            val lastDay = (event.endTimeMs ?: (gameStart + 3 * 24 * 60 * 60 * 1000L)) + 24 * 60 * 60 * 1000L
+            if (program.endMs <= gameStart || program.startMs >= lastDay) return 0
+            val score = scoreOf(program, home, away, sportWords(event), null)
+            return if (score >= MIN_SCORE) score else 0
+        }
         if (event.isBananaBall()) {
             // Its schedule's time is often "TBA": the game's day is what counts.
             if (abs(program.startMs - gameStart) > BANANA_BALL_DAY_MS) return 0

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -166,7 +167,16 @@ fun ScoreboardCard(
                 }
             }
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            if (event.isGolf()) {
+                // A golf tournament: its name and leader.
+                GolfCardContent(
+                    event = event,
+                    nameSize = 14.sp,
+                    textColor = NuvioTheme.colors.TextPrimary,
+                    secondaryColor = NuvioTheme.colors.TextSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 TeamColumn(
                     name = event.homeTeamName,
                     badgeUrl = event.homeTeamBadgeUrl,
@@ -252,6 +262,7 @@ private fun ScoreOrTimeColumn(event: SportsEvent) {
 }
 
 private fun statusLine(event: SportsEvent): String {
+    if (event.isGolf()) return golfStatusText(event)
     if (event.status == SportsEventStatus.LIVE) {
         return event.statusDetail?.takeIf { it.isNotBlank() } ?: "Live"
     }
@@ -538,7 +549,24 @@ fun SportsHeroBanner(
             )
         }
 
-        Row(
+        if (event.isGolf()) {
+            // A golf tournament: its name and leader, and where it's at.
+            Column(modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.7f)) {
+                GolfCardContent(
+                    event = event,
+                    nameSize = 26.sp,
+                    textColor = NuvioTheme.colors.TextPrimary,
+                    secondaryColor = NuvioTheme.colors.TextSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
+                Text(
+                    text = statusLine(event),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (event.status == SportsEventStatus.LIVE) NuvioTheme.colors.Error else NuvioTheme.colors.TextSecondary
+                )
+            }
+        } else Row(
             modifier = Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)

@@ -34,7 +34,9 @@ data class GameDetailUiState(
     val awayTeamFullName: String? = null,
     /** The game's week (NFL) and season type (1 preseason, 2 regular season, 3 postseason). */
     val week: Int? = null,
-    val seasonType: Int? = null
+    val seasonType: Int? = null,
+    /** A golf tournament's leaderboard (instead of team stats). */
+    val golfPlayers: List<EspnSportsClient.GolfPlayer> = emptyList()
 )
 
 /** Watch Recap: looking for the game's highlights on YouTube, playing them, or none found. */
@@ -100,6 +102,16 @@ class GameDetailViewModel @Inject constructor(
         val parsed = EspnSportsClient.parseEventId(event.id)
         if (parsed == null) {
             _uiState.update { it.copy(isLoadingStats = false, stats = emptyList()) }
+            return
+        }
+        if (event.isGolf()) {
+            viewModelScope.launch {
+                val players = withContext(Dispatchers.IO) {
+                    runCatching { client.fetchGolfLeaderboard(parsed.leaguePath, parsed.rawEventId, event.startTimeMs) }
+                        .getOrDefault(emptyList())
+                }
+                _uiState.update { it.copy(isLoadingStats = false, golfPlayers = players) }
+            }
             return
         }
         viewModelScope.launch {

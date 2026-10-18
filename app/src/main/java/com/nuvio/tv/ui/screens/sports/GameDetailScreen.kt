@@ -90,7 +90,8 @@ fun GameDetailScreen(
             GameDetailHeader(
                 event = event,
                 modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg),
-                recapButton = if (isOver) {
+                // Golf has no recap to find (its highlights aren't one game's).
+                recapButton = if (isOver && !event.isGolf()) {
                     {
                         WatchRecapButton(
                             onClick = viewModel::watchRecap,
@@ -140,6 +141,11 @@ fun GameDetailScreen(
                     )
                 }
             }
+        }
+
+        if (event.isGolf()) {
+            golfLeaderboardItems(uiState)
+            return@LazyColumn
         }
 
         item(key = "stats_title") {
@@ -220,7 +226,16 @@ private fun GameDetailHeader(
             color = NuvioTheme.colors.TextSecondary
         )
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-        Row(
+        if (event.isGolf()) {
+            // A golf tournament: the tour's logo, its name, its leader.
+            GolfCardContent(
+                event = event,
+                nameSize = 28.sp,
+                textColor = NuvioTheme.colors.TextPrimary,
+                secondaryColor = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -409,6 +424,7 @@ private fun GameDetailTeam(name: String, badgeUrl: String?, score: Int?, modifie
 }
 
 private fun statusLine(event: com.nuvio.tv.domain.model.SportsEvent): String {
+    if (event.isGolf()) return golfStatusText(event)
     if (event.status == SportsEventStatus.LIVE) {
         return event.statusDetail?.takeIf { it.isNotBlank() } ?: "Live"
     }
@@ -477,5 +493,44 @@ private fun GameStatRow(stat: SportsGameStat, modifier: Modifier = Modifier) {
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+/** A golf tournament's page: its leaderboard (position, player, to par, thru, rounds). */
+private fun androidx.compose.foundation.lazy.LazyListScope.golfLeaderboardItems(uiState: GameDetailUiState) {
+    item(key = "leaderboard_title") {
+        Text(
+            text = stringResource(R.string.game_detail_leaderboard),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = NuvioTheme.colors.TextPrimary,
+            modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+        )
+    }
+    when {
+        uiState.isLoadingStats -> item(key = "leaderboard_loading") {
+            Text(
+                text = stringResource(R.string.game_detail_loading_leaderboard),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+        uiState.golfPlayers.isEmpty() -> item(key = "leaderboard_empty") {
+            Text(
+                text = stringResource(R.string.game_detail_no_leaderboard),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+            )
+        }
+        else -> {
+            val columns = GolfColumns.of(uiState.golfPlayers)
+            item(key = "leaderboard_header") {
+                GolfLeaderboardHeader(columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+            }
+            items(uiState.golfPlayers, key = { "golfer_${it.id}_${it.name}" }) { player ->
+                GolfLeaderboardRow(player = player, columns = columns, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+            }
+        }
     }
 }

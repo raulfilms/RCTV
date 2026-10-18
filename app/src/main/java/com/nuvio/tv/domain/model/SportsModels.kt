@@ -63,7 +63,12 @@ data class SportsEvent(
     val awayTeamColor: String? = null,
     /** The teams' other names ("Chicago Bulls", "Bulls"), to find the game in the TV guide. */
     val homeTeamAliases: List<String> = emptyList(),
-    val awayTeamAliases: List<String> = emptyList()
+    val awayTeamAliases: List<String> = emptyList(),
+    /** A golf tournament's leader ("Scottie Scheffler") and score to par ("-12"), once it's begun. */
+    val leaderName: String? = null,
+    val leaderScore: String? = null,
+    /** When a tournament (golf: four days) ends. */
+    val endTimeMs: Long? = null
 )
 
 /** A lightweight "sports talk" article/discussion item. No live API for this yet; curated/mock. */

@@ -367,7 +367,8 @@ class SportsViewModel @Inject constructor(
                 upcomingGames = upcoming,
                 pickedForYou = state.pickedForYou.map { it.withClock(now) },
                 featuredEvent = liveNow.firstOrNull() ?: upcoming.firstOrNull(),
-                heroEvents = liveNow.take(5).ifEmpty { upcoming.take(5) }
+                // The banner shows games (two teams' logos): not golf tournaments.
+                heroEvents = liveNow.filterNot { it.isGolf() }.take(5).ifEmpty { upcoming.filterNot { it.isGolf() }.take(5) }
             )
         }
     }
@@ -400,7 +401,8 @@ class SportsViewModel @Inject constructor(
                 isLoading = false,
                 error = null,
                 featuredEvent = loaded.liveNow.firstOrNull() ?: loaded.upcomingGames.firstOrNull(),
-                heroEvents = loaded.liveNow.take(5).ifEmpty { loaded.upcomingGames.take(5) },
+                heroEvents = loaded.liveNow.filterNot { it.isGolf() }.take(5)
+                    .ifEmpty { loaded.upcomingGames.filterNot { it.isGolf() }.take(5) },
                 liveNow = loaded.liveNow,
                 upcomingGames = loaded.upcomingGames,
                 pickedForYou = loaded.pickedForYou,
@@ -485,7 +487,8 @@ class SportsViewModel @Inject constructor(
         /** The order of the leagues (ESPN's league path, the part after ":" in the id): the US leagues first, then soccer, then the rest. */
         val LEAGUE_ORDER = listOf(
             "nfl", "nba", "mlb", "nhl", "college-football", "mens-college-basketball", "college-baseball", "banana-ball",
-            "usa.1", "eng.1", "esp.1", "uefa.champions", "ita.1", "ger.1", "fra.1", "mex.1", "ufc", "f1", "atp"
+            "usa.1", "eng.1", "esp.1", "uefa.champions", "ita.1", "ger.1", "fra.1", "mex.1", "ufc", "f1", "atp",
+            "pga", "champions-tour", "lpga", "eur", "ntw", "liv"
         )
 
         /** Where a league goes in [LEAGUE_ORDER]; leagues not in it go last, in the order they came. */

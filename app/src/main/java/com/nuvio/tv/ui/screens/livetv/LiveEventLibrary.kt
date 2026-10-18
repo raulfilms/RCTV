@@ -143,7 +143,7 @@ class LiveEventLibrary @Inject constructor(
             "baloncesto", "basquetbol", "baseball", "beisbol", "hockey", "nfl", "nba", "wnba", "mlb",
             "nhl", "ncaa", "mls", "college football", "college basketball", "college baseball", "liga",
             "laliga", "premier league", "champions league", "europa league", "serie a", "bundesliga",
-            "ligue 1", "copa", "cup", "partido"
+            "ligue 1", "copa", "cup", "partido", "golf", "pga", "lpga", "banana ball"
         )
 
         /** "Bulls vs. Knicks", "Real Madrid v Barcelona", "Bears @ Packers", "América contra Chivas". */

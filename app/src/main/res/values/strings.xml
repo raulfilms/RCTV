@@ -4157,6 +4157,9 @@
     <string name="sports_game_not_on_channels">This game isn\'t on any of your channels right now</string>
     <string name="sports_finding_game_youtube">Not on your channels: looking for it live on YouTube…</string>
     <string name="game_detail_watch_recap">Watch Recap</string>
+    <string name="game_detail_leaderboard">Leaderboard</string>
+    <string name="game_detail_loading_leaderboard">Loading the leaderboard…</string>
+    <string name="game_detail_no_leaderboard">No leaderboard yet: it shows once the tournament starts</string>
     <string name="game_detail_recap_not_found">Couldn\'t find this game\'s highlights</string>
     <string name="game_detail_recap_back_hint">Game highlights • Press Back to return</string>
     <string name="sports_recap_week">Week %1$d</string>

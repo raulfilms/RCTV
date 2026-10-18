@@ -82,12 +82,21 @@ class EspnSportsClient @Inject constructor(
             Feed("mma", "ufc", "MMA", "🥊"),
             Feed("racing", "f1", "Motorsport", "🏎️"),
             Feed("tennis", "atp", "Tennis", "🎾"),
+            // Golf: tournaments (a leaderboard of players), not games between teams.
+            Feed("golf", "pga", "Golf", "⛳"),
+            Feed("golf", "champions-tour", "Golf", "⛳"),
+            Feed("golf", "lpga", "Golf", "⛳"),
+            Feed("golf", "eur", "Golf", "⛳"),
+            Feed("golf", "ntw", "Golf", "⛳"),
+            Feed("golf", "liv", "Golf", "⛳"),
             // The NCAA: college football (American football), men's basketball and baseball, every
             // division's teams.
             Feed("football", "college-football", "Football", "🏈"),
             Feed("basketball", "mens-college-basketball", "Basketball", "🏀"),
             Feed("baseball", "college-baseball", "Baseball", "⚾")
         )
+
+        const val GOLF = "golf"
 
         /** The NCAA's leagues: hundreds of teams each, by division and conference. */
         val COLLEGE_LEAGUE_PATHS = setOf("college-football", "mens-college-basketball", "college-baseball")
@@ -113,13 +122,20 @@ class EspnSportsClient @Inject constructor(
             "ufc" to "UFC",
             "f1" to "Formula 1",
             "atp" to "Tennis",
+            "pga" to "PGA Tour",
+            "champions-tour" to "PGA Tour Champions",
+            "lpga" to "LPGA Tour",
+            "eur" to "DP World Tour",
+            "ntw" to "Korn Ferry Tour",
+            "liv" to "LIV Golf",
             "college-football" to "NCAA Football",
             "mens-college-basketball" to "NCAA Basketball",
             "college-baseball" to "NCAA Baseball"
         )
 
         /** One filter chip per curated feed, for the Teams browse screen. */
-        val TEAMS_FILTERS: List<TeamsFilterChip> = FEEDS.map { feed ->
+        // Golf's tours have players, not teams.
+        val TEAMS_FILTERS: List<TeamsFilterChip> = FEEDS.filter { it.sportPath != GOLF }.map { feed ->
             TeamsFilterChip(
                 id = "${feed.sportPath}:${feed.leaguePath}",
                 label = FEED_LABELS[feed.leaguePath] ?: feed.leaguePath,
@@ -215,6 +231,166 @@ class EspnSportsClient @Inject constructor(
 
     private fun Feed.isBananaBall(): Boolean = leaguePath == BananaBallSource.LEAGUE_PATH
 
+    // ------------------------------------------------------------------ golf
+
+    /** One player on a golf tournament's leaderboard. */
+    data class GolfPlayer(
+        val id: String,
+        /** "1", "T3", "CUT". */
+        val position: String,
+        val name: String,
+        val flagUrl: String?,
+        val headshotUrl: String?,
+        /** To par: "-12", "E", "+3". */
+        val toPar: String,
+        /** Holes played today ("12", "F"), when the round is on. */
+        val thru: String?,
+        /** Each round's strokes ("68"). */
+        val rounds: List<String>
+    )
+
+    /**
+     * A tournament as an event: its name (and the tour's, to find it in the TV guide), its days,
+     * where it's at (the round, or Final) and its leader. Tournaments with no status from ESPN are
+     * placed by their days: on during them, over after.
+     */
+    private fun golfEventOf(feed: Feed, raw: JSONObject, leagueId: String, leagueName: String, leagueBadge: String?): SportsEvent? {
+        val id = raw.optString("id").takeIf { it.isNotBlank() } ?: return null
+        val name = raw.optString("name").takeIf { it.isNotBlank() }
+            ?: raw.optString("shortName").takeIf { it.isNotBlank() }
+            ?: return null
+        val competition = raw.optJSONArray("competitions")?.optJSONObject(0)
+        val start = parseStartTimeMs(raw.optString("date"))
+        val end = parseStartTimeMs(raw.optString("endDate"))
+        val players = golfPlayersOf(competition)
+        val statusType = raw.optJSONObject("status")?.optJSONObject("type")
+            ?: competition?.optJSONObject("status")?.optJSONObject("type")
+        val (status, detail) = if (statusType != null && statusType.optString("state").isNotBlank()) {
+            statusFrom(statusType)
+        } else {
+            golfStatusByDays(start, end, players)
+        }
+        val leader = players.firstOrNull()?.takeIf { status != SportsEventStatus.UPCOMING }
+        val venue = competition?.optJSONObject("venue")?.optString("fullName")?.takeIf { it.isNotBlank() }
+            ?: raw.optJSONArray("courses")?.optJSONObject(0)?.optString("name")?.takeIf { it.isNotBlank() }
+        val tourNames = listOfNotNull(FEED_LABELS[feed.leaguePath], leagueName).distinct()
+        return SportsEvent(
+            id = "espn:${feed.sportPath}:${feed.leaguePath}:$id",
+            name = name,
+            sportName = feed.sportLabel,
+            leagueId = leagueId,
+            leagueName = leagueName,
+            homeTeamId = null,
+            // The tournament and the tour stand for the two "teams": what the TV guide names.
+            homeTeamName = name,
+            homeTeamBadgeUrl = leagueBadge,
+            awayTeamId = null,
+            awayTeamName = tourNames.first(),
+            awayTeamBadgeUrl = null,
+            homeScore = null,
+            awayScore = null,
+            startTimeMs = start,
+            venue = venue,
+            status = status,
+            statusDetail = detail,
+            homeTeamAliases = listOfNotNull(raw.optString("shortName").takeIf { it.isNotBlank() && it != name }),
+            awayTeamAliases = tourNames.drop(1),
+            leaderName = leader?.name,
+            leaderScore = leader?.toPar,
+            endTimeMs = end
+        )
+    }
+
+    /** No status from ESPN: before its first day upcoming, after its last day over, on in between. */
+    private fun golfStatusByDays(start: Long?, end: Long?, players: List<GolfPlayer>): Pair<SportsEventStatus, String?> {
+        val now = System.currentTimeMillis()
+        val dayMs = 24L * 60 * 60 * 1000
+        if (start == null || now < start) return SportsEventStatus.UPCOMING to null
+        val over = (end ?: (start + 3 * dayMs)) + dayMs
+        if (now > over) return SportsEventStatus.FINISHED to "Final"
+        val round = players.maxOfOrNull { it.rounds.size }?.takeIf { it > 0 }
+        return SportsEventStatus.LIVE to round?.let { "Round $it" }
+    }
+
+    /** The leaderboard in an ESPN golf competition, in order (ties as "T3"). */
+    private fun golfPlayersOf(competition: JSONObject?): List<GolfPlayer> {
+        val competitors = competition?.optJSONArray("competitors") ?: return emptyList()
+        data class Row(val order: Int, val player: GolfPlayer, val explicitPosition: Boolean)
+        val rows = ArrayList<Row>(competitors.length())
+        for (i in 0 until competitors.length()) {
+            val competitor = competitors.optJSONObject(i) ?: continue
+            val athlete = competitor.optJSONObject("athlete")
+            val name = athlete?.optString("displayName")?.takeIf { it.isNotBlank() }
+                ?: athlete?.optString("fullName")?.takeIf { it.isNotBlank() }
+                ?: continue
+            val score = competitor.opt("score")
+            val toPar = when (score) {
+                is JSONObject -> score.optString("displayValue")
+                null, JSONObject.NULL -> ""
+                else -> score.toString()
+            }.ifBlank { "-" }
+            val status = competitor.optJSONObject("status")
+            val position = status?.optJSONObject("position")?.optString("displayName")?.takeIf { it.isNotBlank() }
+            val thru = status?.let { s ->
+                s.optString("displayThru").takeIf { it.isNotBlank() }
+                    ?: s.opt("thru")?.toString()?.takeIf { it.isNotBlank() && it != "0" && it != "null" }
+            }
+            val linescores = competitor.optJSONArray("linescores")
+            val rounds = if (linescores == null) emptyList() else (0 until linescores.length()).mapNotNull { index ->
+                val round = linescores.optJSONObject(index) ?: return@mapNotNull null
+                round.optDouble("value").takeIf { !it.isNaN() && it > 0 }?.toInt()?.toString()
+            }
+            rows += Row(
+                order = competitor.optInt("order", i + 1),
+                player = GolfPlayer(
+                    id = competitor.optString("id"),
+                    position = position.orEmpty(),
+                    name = name,
+                    flagUrl = athlete?.optJSONObject("flag")?.optString("href")?.takeIf { it.isNotBlank() },
+                    headshotUrl = athlete?.optJSONObject("headshot")?.optString("href")?.takeIf { it.isNotBlank() },
+                    toPar = toPar,
+                    thru = thru,
+                    rounds = rounds
+                ),
+                explicitPosition = position != null
+            )
+        }
+        val sorted = rows.sortedBy { it.order }
+        // ESPN gives the order; the position (ties) from the scores when it doesn't say.
+        return sorted.mapIndexed { index, row ->
+            if (row.explicitPosition) return@mapIndexed row.player
+            val firstWithScore = sorted.indexOfFirst { it.player.toPar == row.player.toPar }
+            val tied = sorted.count { it.player.toPar == row.player.toPar } > 1
+            val place = (if (firstWithScore >= 0) firstWithScore else index) + 1
+            row.player.copy(position = if (tied && row.player.toPar != "-") "T$place" else "$place")
+        }
+    }
+
+    /**
+     * A golf tournament's leaderboard: its event in the tour's scoreboard of its days
+     * ([startTimeMs] places them; null: the current week's).
+     */
+    fun fetchGolfLeaderboard(leaguePath: String, rawEventId: String, startTimeMs: Long?): List<GolfPlayer> {
+        val base = "$BASE_URL/$GOLF/$leaguePath/scoreboard"
+        val urls = buildList {
+            if (startTimeMs != null) {
+                val format = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+                val dayMs = 24L * 60 * 60 * 1000
+                add("$base?dates=${format.format(java.util.Date(startTimeMs))}-${format.format(java.util.Date(startTimeMs + 4 * dayMs))}")
+            }
+            add(base)
+        }
+        urls.forEach { url ->
+            val events = runCatching { JSONObject(get(url)).optJSONArray("events") }.getOrNull() ?: return@forEach
+            for (i in 0 until events.length()) {
+                val event = events.optJSONObject(i) ?: continue
+                if (event.optString("id") != rawEventId) continue
+                return golfPlayersOf(event.optJSONArray("competitions")?.optJSONObject(0))
+            }
+        }
+        return emptyList()
+    }
+
     private fun get(url: String): String {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
         okHttpClient.newCall(request).execute().use { response ->
@@ -296,6 +472,10 @@ class EspnSportsClient @Inject constructor(
 
         for (i in 0 until eventsArray.length()) {
             val raw = eventsArray.optJSONObject(i) ?: continue
+            if (feed.sportPath == GOLF) {
+                golfEventOf(feed, raw, leagueId, leagueName, leagueBadge)?.let { events += it }
+                continue
+            }
             val competition = raw.optJSONArray("competitions")?.optJSONObject(0) ?: continue
             val competitors = competition.optJSONArray("competitors") ?: JSONArray()
 
@@ -519,6 +699,7 @@ class EspnSportsClient @Inject constructor(
      * whichever teams happen to be playing within the requested date window).
      */
     fun fetchTeams(feed: Feed): List<SportsTeam> {
+        if (feed.sportPath == GOLF) return emptyList()
         if (feed.isBananaBall()) return bananaBall.teams()
         // Every team (the NCAA's leagues have hundreds).
         val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=1000"
@@ -561,6 +742,7 @@ class EspnSportsClient @Inject constructor(
      * ("FBS (I-A) · SEC", "NCAA Division II", "NCAA Division III"), the rest (A to Z) first.
      */
     fun fetchTeamGroups(feed: Feed): List<TeamGroup> {
+        if (feed.sportPath == GOLF) return emptyList()
         if (feed.isBananaBall()) return listOf(TeamGroup(null, bananaBall.teams()))
         val all = runCatching { fetchTeams(feed) }.getOrDefault(emptyList())
         val colors = all.associate { it.id to it.color }
@@ -651,6 +833,8 @@ class EspnSportsClient @Inject constructor(
     )
 
     fun fetchGameSummary(sportPath: String, leaguePath: String, eventId: String): GameSummary {
+        // A golf tournament has a leaderboard ([fetchGolfLeaderboard]), not team stats.
+        if (sportPath == GOLF) return GameSummary(emptyList(), emptyList(), emptyList())
         if (leaguePath == BananaBallSource.LEAGUE_PATH) return GameSummary(emptyList(), emptyList(), emptyList())
         val url = "$BASE_URL/$sportPath/$leaguePath/summary?event=$eventId"
         val json = JSONObject(get(url))

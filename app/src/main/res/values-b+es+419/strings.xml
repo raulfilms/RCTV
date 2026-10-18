@@ -3624,6 +3624,9 @@
     <string name="sports_game_not_on_channels">Este juego no está en ninguno de tus canales ahora</string>
     <string name="sports_finding_game_youtube">No está en tus canales: buscándolo en vivo en YouTube…</string>
     <string name="game_detail_watch_recap">Ver resumen</string>
+    <string name="game_detail_leaderboard">Clasificación</string>
+    <string name="game_detail_loading_leaderboard">Cargando la clasificación…</string>
+    <string name="game_detail_no_leaderboard">Aún no hay clasificación: sale cuando empiece el torneo</string>
     <string name="game_detail_recap_not_found">No encontramos los highlights de este juego</string>
     <string name="game_detail_recap_back_hint">Highlights del juego • Presiona atrás para volver</string>
     <string name="sports_recap_week">Semana %1$d</string>
