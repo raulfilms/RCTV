@@ -124,6 +124,7 @@ private fun localizedTypeLabel(key: String): String = when (key.lowercase()) {
     LIBRARY_TYPE_SPORTS_LEAGUE -> stringResource(R.string.library_type_sports_leagues)
     LIBRARY_TYPE_EVENT -> stringResource(R.string.library_type_events)
     LIBRARY_TYPE_CUSTOM_CHANNEL -> stringResource(R.string.library_type_custom_channels)
+    LIBRARY_TYPE_IMDB_LIST -> stringResource(R.string.library_type_imdb_list)
     else -> localizedContentType(key)
 }
 
@@ -441,7 +442,23 @@ fun LibraryScreen(
             }
 
             val selectedExtraType = uiState.selectedTypeTab?.key?.takeIf { it in LIBRARY_EXTRA_TYPES }
-            if (uiState.visibleItems.isEmpty() && selectedExtraType != null) {
+            val imdbListSelected = uiState.selectedTypeTab?.key == LIBRARY_TYPE_IMDB_LIST
+            if (uiState.visibleItems.isEmpty() && imdbListSelected) {
+                // The IMDb watchlist: not linked yet, private, or empty.
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    EmptyScreenState(
+                        title = stringResource(R.string.library_empty_imdb_title),
+                        subtitle = stringResource(
+                            when {
+                                !uiState.imdbConnected -> R.string.library_empty_imdb_not_linked
+                                uiState.imdbError == com.nuvio.tv.data.remote.imdb.ImdbException.Reason.PRIVATE -> R.string.imdb_error_private
+                                else -> R.string.library_empty_imdb
+                            }
+                        ),
+                        icon = Icons.Default.BookmarkBorder
+                    )
+                }
+            } else if (uiState.visibleItems.isEmpty() && selectedExtraType != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     EmptyScreenState(
                         title = stringResource(R.string.library_empty_local_title, localizedTypeLabel(selectedExtraType).lowercase()),

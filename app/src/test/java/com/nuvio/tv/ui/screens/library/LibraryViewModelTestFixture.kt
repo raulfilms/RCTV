@@ -87,6 +87,10 @@ internal class LibraryViewModelTestFixture(sorter: TrackingLibrarySorter? = null
             every { customChannelIds } returns MutableStateFlow(emptySet())
         },
         liveProgramLibrary = mockk(relaxed = true),
+        imdbSync = mockk<com.nuvio.tv.data.imdb.ImdbSyncService>(relaxed = true) {
+            every { account } returns MutableStateFlow(com.nuvio.tv.data.imdb.ImdbAccount())
+            every { watchlist } returns MutableStateFlow(emptyList())
+        },
         context = mockk(relaxed = true)
     )
 }

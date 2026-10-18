@@ -13,6 +13,11 @@ const val LIBRARY_TYPE_SPORTS_LEAGUE = "sports_league"
 const val LIBRARY_TYPE_EVENT = SPORTS_EVENT_LIBRARY_TYPE
 /** A channel from the Guide's "Custom" list. */
 const val LIBRARY_TYPE_CUSTOM_CHANNEL = "live_channel"
+/**
+ * The user's IMDb watchlist (Settings › Integrations › IMDb): its own type, never mixed with the
+ * Library's titles. Its titles are movies and shows like any others (posters, their pages).
+ */
+const val LIBRARY_TYPE_IMDB_LIST = "imdb_list"
 
 internal val LIBRARY_EXTRA_TYPES = setOf(
     LIBRARY_TYPE_SPORTS_TEAM,

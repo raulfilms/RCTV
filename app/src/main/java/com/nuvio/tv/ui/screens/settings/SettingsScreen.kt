@@ -118,6 +118,7 @@ private enum class IntegrationSettingsSection {
     Debrid,
     Tmdb,
     MdbList,
+    Imdb,
     AnimeSkip
 }
 
@@ -1166,6 +1167,7 @@ private fun IntegrationSettingsContent(
         onSelectSection(IntegrationSettingsSection.Hub)
     }
     val hubEntryFocusRequester = initialFocusRequester ?: hubFocusRequester
+    val imdbFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(selectedSection, autoFocusEnabled) {
         if (!autoFocusEnabled) return@LaunchedEffect
@@ -1174,6 +1176,7 @@ private fun IntegrationSettingsContent(
             IntegrationSettingsSection.Debrid -> debridFocusRequester
             IntegrationSettingsSection.Tmdb -> tmdbFocusRequester
             IntegrationSettingsSection.MdbList -> mdbListFocusRequester
+            IntegrationSettingsSection.Imdb -> imdbFocusRequester
             IntegrationSettingsSection.AnimeSkip -> animeSkipFocusRequester
         }
         runCatching { requester.requestFocus() }
@@ -1223,6 +1226,13 @@ private fun IntegrationSettingsContent(
                                     onClick = { onSelectSection(IntegrationSettingsSection.MdbList) }
                                 )
                             }
+                            item(key = "integration_hub_imdb") {
+                                SettingsActionRow(
+                                    title = stringResource(R.string.imdb_title),
+                                    subtitle = stringResource(R.string.settings_imdb_subtitle),
+                                    onClick = { onSelectSection(IntegrationSettingsSection.Imdb) }
+                                )
+                            }
                             item(key = "integration_hub_animeskip") {
                                 SettingsActionRow(
                                     title = "Anime-Skip",
@@ -1252,6 +1262,12 @@ private fun IntegrationSettingsContent(
         IntegrationSettingsSection.MdbList -> {
             MDBListSettingsContent(
                 initialFocusRequester = mdbListFocusRequester
+            )
+        }
+
+        IntegrationSettingsSection.Imdb -> {
+            ImdbSettingsContent(
+                initialFocusRequester = imdbFocusRequester
             )
         }
 

@@ -138,6 +138,8 @@ class WatchProgressRepositoryImpl @Inject constructor(
     private val trackingProgressProviders: TrackingProgressProviderRegistry,
     private val trackingHistoryWriters: TrackingHistoryWriterRegistry,
     private val mutationStore: WatchStateMutationStore,
+    /** Movies rated on IMDb show as watched, whatever the tracking provider. */
+    private val imdbSync: com.nuvio.tv.data.imdb.ImdbSyncService,
 ) : WatchProgressRepository {
     companion object {
         private const val TAG = "WatchProgressRepo"
@@ -652,9 +654,10 @@ class WatchProgressRepositoryImpl @Inject constructor(
         return combine(
             baseFlow,
             optimisticWatchedMovieAdditions,
-            optimisticWatchedMovieRemovals
-        ) { base, additions, removals ->
-            (base + additions) - removals
+            optimisticWatchedMovieRemovals,
+            imdbSync.observeWatchedMovieKeys()
+        ) { base, additions, removals, ratedOnImdb ->
+            (base + additions + ratedOnImdb) - removals
         }.distinctUntilChanged()
     }
 
@@ -706,6 +709,15 @@ class WatchProgressRepositoryImpl @Inject constructor(
     }
 
     override fun isWatched(contentId: String, videoId: String?, season: Int?, episode: Int?): Flow<Boolean> {
+        val watched = trackedIsWatched(contentId, videoId, season, episode)
+        if (season != null || episode != null) return watched
+        // A movie rated on IMDb is watched.
+        return combine(watched, imdbSync.watchedMovieKeys) { tracked, ratedOnImdb ->
+            tracked || contentId in ratedOnImdb
+        }.distinctUntilChanged()
+    }
+
+    private fun trackedIsWatched(contentId: String, videoId: String?, season: Int?, episode: Int?): Flow<Boolean> {
         return activeProgressProviderFlow()
             .flatMapLatest { provider ->
                 if (provider == null) {

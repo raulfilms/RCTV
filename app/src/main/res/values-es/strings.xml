@@ -204,6 +204,30 @@
     <string name="settings_integrations_section_subtitle">Gestionar integraciones disponibles</string>
     <string name="settings_tmdb_subtitle">Controles de enriquecimiento de metadatos</string>
     <string name="settings_mdblist_subtitle">Proveedores de calificaciones externas</string>
+    <string name="settings_imdb_subtitle">Tu watchlist y tus calificaciones</string>
+    <string name="imdb_title">IMDb</string>
+    <string name="imdb_subtitle">Las películas que calificaste en IMDb salen como vistas. Tu watchlist de IMDb sale en la Biblioteca como IMDb List, aparte de tu biblioteca. No se cambia nada en IMDb.</string>
+    <string name="imdb_account_title">Cuenta de IMDb</string>
+    <string name="imdb_account_subtitle">El id o el enlace de tu perfil de IMDb</string>
+    <string name="imdb_not_linked">Sin vincular</string>
+    <string name="imdb_sync_title">Sincronizar ahora</string>
+    <string name="imdb_sync_counts">Watchlist: %1$d · Calificadas: %2$d</string>
+    <string name="imdb_syncing">Sincronizando…</string>
+    <string name="imdb_last_sync">Sincronizado %1$s</string>
+    <string name="imdb_never_synced">Aún no se ha sincronizado</string>
+    <string name="imdb_unlink_title">Desvincular IMDb</string>
+    <string name="imdb_unlink_subtitle">Tu watchlist y tus calificaciones de IMDb salen de la app (no cambia nada en IMDb)</string>
+    <string name="imdb_dialog_title">Vincula tu cuenta de IMDb</string>
+    <string name="imdb_dialog_subtitle">En IMDb, abre tu perfil: su enlace tiene tu id (imdb.com/user/ur12345678). Escribe el id o pega el enlace. Para que tu watchlist salga aquí, ponla pública en IMDb (Watchlist › Editar › Pública).</string>
+    <string name="imdb_dialog_placeholder">ur12345678 o el enlace de tu perfil</string>
+    <string name="imdb_linking">Vinculando…</string>
+    <string name="imdb_connected_toast">IMDb vinculado: %1$d calificadas, %2$d en tu watchlist</string>
+    <string name="imdb_synced_toast">IMDb sincronizado</string>
+    <string name="imdb_unlinked_toast">IMDb desvinculado</string>
+    <string name="imdb_error_bad_id">Eso no es un id ni un enlace de perfil de IMDb.</string>
+    <string name="imdb_error_not_found">IMDb no tiene un perfil con ese id.</string>
+    <string name="imdb_error_private">Tu watchlist de IMDb es privada: ponla pública en IMDb para verla aquí (tus calificaciones se sincronizan igual).</string>
+    <string name="imdb_error_failed">No se pudo conectar con IMDb. Inténtalo de nuevo en un momento.</string>
 
     <!-- PlaybackSettingsScreen -->
     <string name="playback_title">Configuración de reproducción</string>
@@ -750,6 +774,10 @@
     <string name="library_empty_sports_teams">Añade equipos a My Teams en la página de Deportes para verlos aquí</string>
     <string name="library_empty_sports_leagues">Añade ligas a My Sports en la página de Deportes para verlas aquí</string>
     <string name="library_empty_events">En la página de Deportes, mantén OK en un partido y elige Añadir a biblioteca</string>
+    <string name="library_type_imdb_list">IMDb List</string>
+    <string name="library_empty_imdb_title">No hay nada en tu IMDb List</string>
+    <string name="library_empty_imdb_not_linked">Vincula tu cuenta de IMDb en Ajustes › Integraciones › IMDb para ver tu watchlist aquí</string>
+    <string name="library_empty_imdb">Tu watchlist de IMDb está vacía, o es privada en IMDb</string>
     <string name="library_empty_custom_channels">Agrega canales a Custom en la guía de TV en vivo para verlos aquí</string>
     <string name="library_empty_local_title">Sin %1$s aún</string>
     <string name="library_empty_trakt_title">Sin %1$s en esta lista</string>

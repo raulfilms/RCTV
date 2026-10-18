@@ -166,7 +166,13 @@ data class LibraryUiState(
     /** The logos each extra item shows (a game: both teams'), by "type:id". */
     val extraLogos: Map<String, List<String>> = emptyMap(),
     /** The saved games (when they start, whether they're on), by "type:id". */
-    val extraEvents: Map<String, SportsEvent> = emptyMap()
+    val extraEvents: Map<String, SportsEvent> = emptyMap(),
+    /** The IMDb watchlist, as titles (the "IMDb List" type). */
+    val imdbItems: List<LibraryEntry> = emptyList(),
+    /** An IMDb account is linked (the "IMDb List" type shows). */
+    val imdbConnected: Boolean = false,
+    /** Why the IMDb watchlist couldn't be read last time (private...). */
+    val imdbError: com.nuvio.tv.data.remote.imdb.ImdbException.Reason? = null
 )
 
 @HiltViewModel
@@ -190,6 +196,7 @@ class LibraryViewModel @Inject constructor(
     private val sportsPreferences: com.nuvio.tv.data.local.SportsPreferencesDataStore,
     private val liveTvDataStore: LiveTvDataStore,
     private val liveProgramLibrary: LiveProgramLibrary,
+    private val imdbSync: com.nuvio.tv.data.imdb.ImdbSyncService,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -211,6 +218,7 @@ class LibraryViewModel @Inject constructor(
         observeLayoutPreferences()
         observeLibraryData()
         observeLibraryExtras()
+        observeImdbList()
         observeProviderSortOrder()
         viewModelScope.launch {
             profileManager.activeProfileId.collect { profileId ->
@@ -926,10 +934,12 @@ class LibraryViewModel @Inject constructor(
         // have no genres, years or watched state to filter by.
         val selectedTypeKey = selectedTypeTab?.key
         val extraSelected = selectedTypeKey != null && selectedTypeKey in LIBRARY_EXTRA_TYPES
-        val typeFiltered = if (extraSelected) {
-            extraItems.filter { it.type == selectedTypeKey }
-        } else {
-            listFiltered.filter { entry ->
+        // The IMDb watchlist: titles of its own, not the Library's.
+        val imdbSelected = selectedTypeKey == LIBRARY_TYPE_IMDB_LIST
+        val typeFiltered = when {
+            extraSelected -> extraItems.filter { it.type == selectedTypeKey }
+            imdbSelected -> imdbItems
+            else -> listFiltered.filter { entry ->
                 selectedTypeKey == null ||
                     selectedTypeKey == LibraryTypeTab.ALL_KEY ||
                     entry.libraryTypeKey() == selectedTypeKey
@@ -1014,10 +1024,11 @@ class LibraryViewModel @Inject constructor(
 
         // Step 6: Sort
         val addedOrder = providerAddedOrder?.takeIf {
-            it.source == sourceMode && it.listKey == selectedListKey && it.sortOption == selectedSortOption
+            !imdbSelected && it.source == sourceMode && it.listKey == selectedListKey && it.sortOption == selectedSortOption
         }?.comparator()
         val sorted = when (selectedSortOption) {
-            LibrarySortOption.DEFAULT -> if (sourceMode.providerId != null) {
+            // The IMDb List's own order is the watchlist's.
+            LibrarySortOption.DEFAULT -> if (sourceMode.providerId != null && !imdbSelected) {
                 watchedFiltered.sortedWith(
                     compareBy<LibraryEntry> { it.listRanks[selectedListKey] ?: it.traktRank ?: Int.MAX_VALUE }
                         .thenByDescending { it.listedAt }
@@ -1048,7 +1059,15 @@ class LibraryViewModel @Inject constructor(
         }
 
         // Rebuild type tabs with counts
-        val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts, extraItems)
+        val imdbCount = if (imdbConnected) {
+            imdbItems.count { entry ->
+                (selectedGenre == null || entry.genres.any { it.equals(selectedGenre, ignoreCase = true) }) &&
+                    (selectedYear == null || entry.extractYear() == selectedYear)
+            }
+        } else {
+            null
+        }
+        val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts, extraItems, imdbCount)
 
         // Validate selections — clear if no longer valid (kept while an extra type is shown, for
         // when the titles come back)
@@ -1121,7 +1140,9 @@ class LibraryViewModel @Inject constructor(
     private fun buildTypeTabsWithCounts(
         allTypeItems: List<LibraryEntry>,
         filteredItems: List<LibraryEntry>,
-        extraItems: List<LibraryEntry>
+        extraItems: List<LibraryEntry>,
+        /** How many titles the IMDb List has (null: no IMDb account, no IMDb List). */
+        imdbCount: Int?
     ): List<LibraryTypeTab> {
         val countByType = mutableMapOf<String, Int>()
         filteredItems.forEach { entry ->
@@ -1136,11 +1157,52 @@ class LibraryViewModel @Inject constructor(
             .distinct()
             .filter { it != LIBRARY_TYPE_MOVIE && it != LIBRARY_TYPE_SHOW && it !in LIBRARY_EXTRA_TYPES }
             .sorted()
-        val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + LIBRARY_EXTRA_TYPE_ORDER
+        if (imdbCount != null) countByType[LIBRARY_TYPE_IMDB_LIST] = imdbCount
+        val imdbKeys = if (imdbCount != null) listOf(LIBRARY_TYPE_IMDB_LIST) else emptyList()
+        val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + imdbKeys + LIBRARY_EXTRA_TYPE_ORDER
         val allTab = LibraryTypeTab(key = LibraryTypeTab.ALL_KEY, label = "${context.getString(R.string.library_type_all)} (${filteredItems.size})")
         return listOf(allTab) + keys.map { key ->
             LibraryTypeTab(key = key, label = "${prettifyTypeLabel(key)} (${countByType[key] ?: 0})")
         }
+    }
+
+    // ── The IMDb watchlist ──
+
+    private fun observeImdbList() {
+        imdbSync.syncIfStale()
+        viewModelScope.launch {
+            combine(imdbSync.account, imdbSync.watchlist) { account, watchlist ->
+                Triple(account.isConnected, account.error, watchlist.mapNotNull(::imdbEntryOf))
+            }.collectLatest { (connected, error, items) ->
+                _uiState.update { current ->
+                    current.copy(imdbConnected = connected, imdbError = error, imdbItems = if (connected) items else emptyList())
+                        .withVisibleItems()
+                }
+            }
+        }
+    }
+
+    /** A watchlist title as a Library title: a movie or a show, with its IMDb poster. */
+    private fun imdbEntryOf(title: com.nuvio.tv.data.remote.imdb.ImdbTitle): LibraryEntry? {
+        if (title.isEpisode || title.titleType == "videoGame") return null
+        val poster = com.nuvio.tv.data.remote.imdb.ImdbGraphqlClient.resizedImage(title.posterUrl)
+        return LibraryEntry(
+            id = title.id,
+            type = if (title.isSeries) LIBRARY_TYPE_SHOW else LIBRARY_TYPE_MOVIE,
+            name = title.name,
+            poster = poster,
+            posterShape = PosterShape.POSTER,
+            background = null,
+            logo = null,
+            description = null,
+            releaseInfo = title.year?.toString(),
+            imdbRating = title.imdbRating,
+            genres = title.genres,
+            addonBaseUrl = null,
+            listedAt = title.addedAtMs,
+            imdbId = title.id,
+            rawPosterUrl = poster
+        )
     }
 
     // ── Sports teams, leagues, events and custom channels ──

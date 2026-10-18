@@ -126,7 +126,11 @@ class WatchProgressRepositoryProfileIsolationTest {
             profileManager = profileManager,
             trackingProgressProviders = TrackingProgressProviderRegistry(emptySet()),
             trackingHistoryWriters = TrackingHistoryWriterRegistry(emptySet()),
-            mutationStore = mutationStore
+            mutationStore = mutationStore,
+            imdbSync = mockk<com.nuvio.tv.data.imdb.ImdbSyncService>(relaxed = true) {
+                every { watchedMovieKeys } returns kotlinx.coroutines.flow.MutableStateFlow(emptySet())
+                every { observeWatchedMovieKeys() } returns kotlinx.coroutines.flow.MutableStateFlow(emptySet())
+            }
         )
         return Harness(
             repository = repository,
