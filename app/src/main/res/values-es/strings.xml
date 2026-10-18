@@ -206,9 +206,10 @@
     <string name="settings_mdblist_subtitle">Proveedores de calificaciones externas</string>
     <string name="settings_imdb_subtitle">Tu watchlist y tus calificaciones</string>
     <string name="imdb_title">IMDb</string>
-    <string name="imdb_subtitle">Las películas que calificaste en IMDb salen como vistas. Tu watchlist de IMDb sale en la Biblioteca como IMDb List, aparte de tu biblioteca. No se cambia nada en IMDb.</string>
+    <string name="imdb_subtitle">Solo para este perfil: cada perfil vincula su propia cuenta de IMDb. Las películas que calificaste en IMDb salen como vistas, y tu watchlist de IMDb sale en la Biblioteca como IMDb List, aparte de tu biblioteca. No se cambia nada en IMDb.</string>
     <string name="imdb_account_title">Cuenta de IMDb</string>
     <string name="imdb_account_subtitle">El id o el enlace de tu perfil de IMDb</string>
+    <string name="imdb_account_subtitle_profile">El id o el enlace de tu perfil de IMDb, solo para %1$s</string>
     <string name="imdb_not_linked">Sin vincular</string>
     <string name="imdb_sync_title">Sincronizar ahora</string>
     <string name="imdb_sync_counts">Watchlist: %1$d · Calificadas: %2$d</string>

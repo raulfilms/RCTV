@@ -65,6 +65,7 @@ fun ImdbSettingsContent(
     initialFocusRequester: FocusRequester? = null
 ) {
     val account by viewModel.account.collectAsStateWithLifecycle()
+    val profileName by viewModel.profileName.collectAsStateWithLifecycle()
     var showAccountDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -106,7 +107,9 @@ fun ImdbSettingsContent(
                     item(key = "imdb_account") {
                         SettingsActionRow(
                             title = stringResource(R.string.imdb_account_title),
-                            subtitle = stringResource(R.string.imdb_account_subtitle),
+                            // Linked for this profile only: every profile links its own.
+                            subtitle = profileName?.let { stringResource(R.string.imdb_account_subtitle_profile, it) }
+                                ?: stringResource(R.string.imdb_account_subtitle),
                             value = account.nickname ?: account.userId ?: stringResource(R.string.imdb_not_linked),
                             onClick = { showAccountDialog = true },
                             modifier = Modifier

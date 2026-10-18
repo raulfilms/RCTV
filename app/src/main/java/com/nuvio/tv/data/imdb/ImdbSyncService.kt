@@ -65,7 +65,8 @@ data class ImdbAccount(
 
 /**
  * The user's IMDb watchlist and ratings, kept on the device for each profile and asked again
- * every half hour or so:
+ * every half hour or so. Each profile links its own IMDb account (or none): another profile never
+ * sees this one's watchlist or ratings.
  * - every movie they rated on IMDb shows as watched (by its IMDb id and its TMDB id, as titles
  *   come from either);
  * - the watchlist is the Library's "IMDb List", apart from the app's own library.
@@ -103,7 +104,8 @@ class ImdbSyncService @Inject constructor(
     )
 
     private val stored: StateFlow<Stored> = profileManager.activeProfileId
-        .flatMapLatest { profileId -> store(profileId).data.map { readStored(it) } }
+        // Switching profiles starts from nothing, so the last profile's lists never show for this one.
+        .flatMapLatest { profileId -> store(profileId).data.map { readStored(it) }.onStart { emit(Stored()) } }
         .stateIn(scope, SharingStarted.Eagerly, Stored())
 
     val account: StateFlow<ImdbAccount> = combine(stored, syncing) { data, isSyncing -> accountOf(data, isSyncing) }
@@ -138,6 +140,13 @@ class ImdbSyncService @Inject constructor(
             }
         }
     }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    init {
+        // Each profile has its own IMDb account (or none): switching profiles brings its own lists up to date.
+        scope.launch {
+            profileManager.activeProfileId.collect { syncIfStale() }
+        }
+    }
 
     /** [watchedMovieKeys], asking IMDb again first when the last sync is old. */
     fun observeWatchedMovieKeys(): Flow<Set<String>> = watchedMovieKeys.onStart { syncIfStale() }
@@ -196,20 +205,20 @@ class ImdbSyncService @Inject constructor(
             val ratedMovies = ratings.getOrNull()?.filter(::countsAsWatchedMovie)?.map { it.id }?.toSet()
             val error = listOf(watchlist.exceptionOrNull(), ratings.exceptionOrNull())
                 .firstNotNullOfOrNull { (it as? ImdbException)?.reason ?: it?.let { ImdbException.Reason.FAILED } }
-            if (profileManager.activeProfileId.value == profileId) {
-                store(profileId).edit { prefs ->
-                    if (prefs[userIdKey] != userId) return@edit
-                    ratings.getOrNull()?.let { rated ->
-                        prefs[ratedKey] = JSONArray(ratedMovies.orEmpty().toList()).toString()
-                        prefs[ratedCountKey] = rated.size.toLong()
-                    }
-                    watchlist.getOrNull()?.let { (titles, owner) ->
-                        prefs[watchlistKey] = JSONArray().apply { titles.forEach { put(titleJson(it)) } }.toString()
-                        if (prefs[nicknameKey].isNullOrBlank() && owner != null) prefs[nicknameKey] = owner
-                    }
-                    prefs[lastSyncKey] = now
-                    if (error != null) prefs[errorKey] = error.name else prefs.remove(errorKey)
+            // Saved to the profile it was read for (even if another profile is on by now), and only
+            // while that profile still has this account.
+            store(profileId).edit { prefs ->
+                if (prefs[userIdKey] != userId) return@edit
+                ratings.getOrNull()?.let { rated ->
+                    prefs[ratedKey] = JSONArray(ratedMovies.orEmpty().toList()).toString()
+                    prefs[ratedCountKey] = rated.size.toLong()
                 }
+                watchlist.getOrNull()?.let { (titles, owner) ->
+                    prefs[watchlistKey] = JSONArray().apply { titles.forEach { put(titleJson(it)) } }.toString()
+                    if (prefs[nicknameKey].isNullOrBlank() && owner != null) prefs[nicknameKey] = owner
+                }
+                prefs[lastSyncKey] = now
+                if (error != null) prefs[errorKey] = error.name else prefs.remove(errorKey)
             }
             // Their TMDB ids meanwhile (a first sync can have hundreds to look up).
             if (ratedMovies != null) scope.launch { mappingMutex.withLock { mapToTmdb(ratedMovies) } }

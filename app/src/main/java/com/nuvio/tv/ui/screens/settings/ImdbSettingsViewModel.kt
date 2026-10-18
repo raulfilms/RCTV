@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,10 +28,17 @@ sealed interface ImdbSettingsMessage {
 
 @HiltViewModel
 class ImdbSettingsViewModel @Inject constructor(
-    private val imdbSync: ImdbSyncService
+    private val imdbSync: ImdbSyncService,
+    profileManager: com.nuvio.tv.core.profile.ProfileManager
 ) : ViewModel() {
 
+    /** The account linked to the profile that's on (each profile links its own). */
     val account: StateFlow<ImdbAccount> = imdbSync.account
+
+    /** The name of the profile that's on: the account is linked for it only. */
+    val profileName: StateFlow<String?> = combine(profileManager.profiles, profileManager.activeProfileId) { profiles, activeId ->
+        profiles.firstOrNull { it.id == activeId }?.name?.takeIf { it.isNotBlank() }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, profileManager.activeProfile?.name)
 
     private val _connecting = MutableStateFlow(false)
     /** The account the user typed is being checked. */

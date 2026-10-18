@@ -694,9 +694,10 @@
     <string name="settings_mdblist_subtitle">External ratings providers</string>
     <string name="settings_imdb_subtitle">Your watchlist and ratings</string>
     <string name="imdb_title">IMDb</string>
-    <string name="imdb_subtitle">Movies you rated on IMDb show as watched. Your IMDb watchlist shows in the Library under IMDb List, apart from your library. Nothing is changed on IMDb.</string>
+    <string name="imdb_subtitle">Only for this profile: each profile links its own IMDb account. Movies you rated on IMDb show as watched, and your IMDb watchlist shows in the Library under IMDb List, apart from your library. Nothing is changed on IMDb.</string>
     <string name="imdb_account_title">IMDb account</string>
     <string name="imdb_account_subtitle">Your IMDb profile id or link</string>
+    <string name="imdb_account_subtitle_profile">Your IMDb profile id or link, for %1$s only</string>
     <string name="imdb_not_linked">Not linked</string>
     <string name="imdb_sync_title">Sync now</string>
     <string name="imdb_sync_counts">Watchlist: %1$d · Rated: %2$d</string>
