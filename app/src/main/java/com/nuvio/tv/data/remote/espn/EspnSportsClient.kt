@@ -79,8 +79,16 @@ class EspnSportsClient @Inject constructor(
             Feed("hockey", "nhl", "Hockey", "🏒"),
             Feed("mma", "ufc", "MMA", "🥊"),
             Feed("racing", "f1", "Motorsport", "🏎️"),
-            Feed("tennis", "atp", "Tennis", "🎾")
+            Feed("tennis", "atp", "Tennis", "🎾"),
+            // The NCAA: college football (American football), men's basketball and baseball, every
+            // division's teams.
+            Feed("football", "college-football", "Football", "🏈"),
+            Feed("basketball", "mens-college-basketball", "Basketball", "🏀"),
+            Feed("baseball", "college-baseball", "Baseball", "⚾")
         )
+
+        /** The NCAA's leagues: hundreds of teams each, by division and conference. */
+        val COLLEGE_LEAGUE_PATHS = setOf("college-football", "mens-college-basketball", "college-baseball")
 
         /** Feeds pulled first / most often - decides which league badges load eagerly and which sports back "Live Now". */
         val HEADLINE_LEAGUE_PATHS = setOf("eng.1", "nba", "nfl", "mlb", "nhl", "uefa.champions", "ufc")
@@ -101,7 +109,10 @@ class EspnSportsClient @Inject constructor(
             "nhl" to "NHL",
             "ufc" to "UFC",
             "f1" to "Formula 1",
-            "atp" to "Tennis"
+            "atp" to "Tennis",
+            "college-football" to "NCAA Football",
+            "mens-college-basketball" to "NCAA Basketball",
+            "college-baseball" to "NCAA Baseball"
         )
 
         /** One filter chip per curated feed, for the Teams browse screen. */
@@ -477,7 +488,8 @@ class EspnSportsClient @Inject constructor(
      * whichever teams happen to be playing within the requested date window).
      */
     fun fetchTeams(feed: Feed): List<SportsTeam> {
-        val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=200"
+        // Every team (the NCAA's leagues have hundreds).
+        val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=1000"
         val json = JSONObject(get(url))
         val leagueId = "${feed.sportPath}:${feed.leaguePath}"
 
@@ -507,6 +519,63 @@ class EspnSportsClient @Inject constructor(
             )
         }
         return teams
+    }
+
+    /** Some of a league's teams under one name: a division or a conference ("NCAA Division II"); null for the rest. */
+    data class TeamGroup(val label: String?, val teams: List<SportsTeam>)
+
+    /**
+     * A college league's teams, every one once: by division or conference where ESPN groups them
+     * ("FBS (I-A) · SEC", "NCAA Division II", "NCAA Division III"), the rest (A to Z) first.
+     */
+    fun fetchTeamGroups(feed: Feed): List<TeamGroup> {
+        val all = runCatching { fetchTeams(feed) }.getOrDefault(emptyList())
+        val colors = all.associate { it.id to it.color }
+        val leagueId = "${feed.sportPath}:${feed.leaguePath}"
+        val groups = ArrayList<TeamGroup>()
+        val grouped = HashSet<String>()
+        runCatching {
+            val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/groups"))
+            fun walk(node: JSONObject, path: List<String>) {
+                val here = node.str("name")?.let { path + it } ?: path
+                val teamsJson = node.optJSONArray("teams")
+                if (teamsJson != null && teamsJson.length() > 0) {
+                    val teams = ArrayList<SportsTeam>()
+                    for (i in 0 until teamsJson.length()) {
+                        val teamJson = teamsJson.optJSONObject(i) ?: continue
+                        val id = teamJson.str("id") ?: continue
+                        if (!grouped.add(id)) continue
+                        teams += SportsTeam(
+                            id = id,
+                            name = teamJson.str("displayName") ?: teamJson.str("name") ?: continue,
+                            shortName = teamJson.str("abbreviation"),
+                            sportName = feed.sportLabel,
+                            leagueId = leagueId,
+                            leagueName = feed.sportLabel,
+                            badgeUrl = logoOf(teamJson),
+                            color = teamJson.str("color")?.removePrefix("#")?.takeIf { it.length == 6 } ?: colors[id]
+                        )
+                    }
+                    if (teams.isNotEmpty()) groups += TeamGroup(groupLabelOf(here), teams.sortedBy { it.name })
+                }
+                val children = node.optJSONArray("children") ?: return
+                for (i in 0 until children.length()) walk(children.optJSONObject(i) ?: continue, here)
+            }
+            val roots = json.optJSONArray("groups") ?: JSONArray()
+            for (i in 0 until roots.length()) walk(roots.optJSONObject(i) ?: continue, emptyList())
+        }
+        val rest = all.filter { it.id !in grouped }.sortedBy { it.name }
+        return listOfNotNull(TeamGroup(null, rest).takeIf { rest.isNotEmpty() }) + groups
+    }
+
+    /** "NCAA Division I > FBS (I-A) > SEC" → "FBS (I-A) · SEC"; "Division II/III > NCAA Division II" → "NCAA Division II". */
+    private fun groupLabelOf(path: List<String>): String? {
+        val names = path.filterNot { '/' in it }
+        return when {
+            names.isEmpty() -> path.lastOrNull()
+            names.size == 1 -> names[0]
+            else -> "${names[names.size - 2]} · ${names.last()}"
+        }
     }
 
     /**
@@ -630,7 +699,8 @@ class EspnSportsClient @Inject constructor(
 
     /** Where ESPN keeps a player's photo when the data has none ("nfl", "nba", "mlb", "nhl"). */
     private fun headshotFallback(feed: Feed, athleteId: String): String? = when (feed.leaguePath) {
-        "nfl", "nba", "mlb", "nhl" -> "https://a.espncdn.com/i/headshots/${feed.leaguePath}/players/full/$athleteId.png"
+        "nfl", "nba", "mlb", "nhl", "college-football", "mens-college-basketball" ->
+            "https://a.espncdn.com/i/headshots/${feed.leaguePath}/players/full/$athleteId.png"
         else -> null
     }
 

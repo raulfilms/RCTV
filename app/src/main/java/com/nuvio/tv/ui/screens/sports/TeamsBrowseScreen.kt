@@ -148,10 +148,10 @@ fun TeamsBrowseScreen(
 
             // Every league's teams, in rows going down.
             uiState.sections.forEach { section ->
-                item(key = "title_${section.league.id}", span = { GridItemSpan(maxLineSpan) }) {
+                item(key = "title_${section.key}", span = { GridItemSpan(maxLineSpan) }) {
                     TeamsSectionTitle(text = listOf(section.emoji, section.label).filter { it.isNotBlank() }.joinToString(" "))
                 }
-                items(section.teams, key = { "${section.league.id}_${it.id}" }) { team ->
+                items(section.teams, key = { "${section.key}_${it.id}" }) { team ->
                     TeamBrowseTile(
                         team = team,
                         isFavorite = team.id in uiState.favoriteTeamIds,

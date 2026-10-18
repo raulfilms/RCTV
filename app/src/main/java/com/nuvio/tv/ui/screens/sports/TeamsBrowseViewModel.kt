@@ -24,7 +24,9 @@ data class TeamsLeagueSection(
     val league: SportsLeague,
     val teams: List<SportsTeam>,
     val label: String = league.name,
-    val emoji: String = ""
+    val emoji: String = "",
+    /** Unique on the page (a college league has a section per division or conference). */
+    val key: String = league.id
 )
 
 data class TeamsBrowseUiState(
@@ -53,7 +55,7 @@ class TeamsBrowseViewModel @Inject constructor(
 
     val filters = EspnSportsClient.TEAMS_FILTERS
 
-    private val sectionCache = mutableMapOf<String, TeamsLeagueSection>()
+    private val sectionCache = mutableMapOf<String, List<TeamsLeagueSection>>()
 
     init {
         viewModelScope.launch {
@@ -97,17 +99,36 @@ class TeamsBrowseViewModel @Inject constructor(
                     // team list itself comes from the dedicated teams endpoint so every team in the
                     // league shows up, not just whoever's playing within the scoreboard's date window.
                     val feedResult = runCatching { client.fetchFeed(feed) }.getOrNull()
-                    val fullRoster = runCatching { client.fetchTeams(feed) }.getOrNull()?.takeIf { it.isNotEmpty() }
                     val league = feedResult?.league ?: SportsLeague(id = cacheKey, name = feed.leaguePath, sportName = feed.sportLabel)
-                    TeamsLeagueSection(
-                        league = league,
-                        teams = fullRoster ?: feedResult?.teams.orEmpty(),
-                        label = filters.firstOrNull { it.id == cacheKey }?.label ?: league.name,
-                        emoji = feed.emoji
-                    )
+                    val leagueLabel = filters.firstOrNull { it.id == cacheKey }?.label ?: league.name
+                    if (feed.leaguePath in EspnSportsClient.COLLEGE_LEAGUE_PATHS) {
+                        // The NCAA: every division's teams, a section per division or conference.
+                        val groups = runCatching { client.fetchTeamGroups(feed) }.getOrDefault(emptyList())
+                        groups.mapIndexed { index, group ->
+                            TeamsLeagueSection(
+                                league = league,
+                                teams = group.teams,
+                                label = listOfNotNull(leagueLabel, group.label).joinToString(" · "),
+                                emoji = feed.emoji,
+                                key = "$cacheKey#$index"
+                            )
+                        }.ifEmpty {
+                            listOf(TeamsLeagueSection(league, feedResult?.teams.orEmpty(), leagueLabel, feed.emoji))
+                        }
+                    } else {
+                        val fullRoster = runCatching { client.fetchTeams(feed) }.getOrNull()?.takeIf { it.isNotEmpty() }
+                        listOf(
+                            TeamsLeagueSection(
+                                league = league,
+                                teams = fullRoster ?: feedResult?.teams.orEmpty(),
+                                label = leagueLabel,
+                                emoji = feed.emoji
+                            )
+                        )
+                    }
                 }
             }
-        }.awaitAll().filter { it.teams.isNotEmpty() }
+        }.awaitAll().flatten().filter { it.teams.isNotEmpty() }
     }
 
     private suspend fun hydrateFavoriteTeams(ids: Set<String>) {
@@ -115,7 +136,7 @@ class TeamsBrowseViewModel @Inject constructor(
             _uiState.update { it.copy(favoriteTeams = emptyList()) }
             return
         }
-        val cached = sectionCache.values.flatMap { it.teams }.associateBy { it.id }
+        val cached = sectionCache.values.flatten().flatMap { it.teams }.associateBy { it.id }
         val missing = ids - cached.keys
         val fetched = if (missing.isNotEmpty()) {
             withContext(Dispatchers.IO) {
