@@ -13,7 +13,8 @@ interface TmdbApi {
     suspend fun findByExternalId(
         @Path("external_id") externalId: String,
         @Query("api_key") apiKey: String,
-        @Query("external_source") externalSource: String = "imdb_id"
+        @Query("external_source") externalSource: String = "imdb_id",
+        @Query("language") language: String? = null
     ): Response<TmdbFindResponse>
     
     @GET("movie/{movie_id}/external_ids")
@@ -371,7 +372,11 @@ data class TmdbFindResult(
     @Json(name = "id") val id: Int,
     @Json(name = "title") val title: String? = null,
     @Json(name = "name") val name: String? = null,
-    @Json(name = "media_type") val mediaType: String? = null
+    @Json(name = "media_type") val mediaType: String? = null,
+    @Json(name = "poster_path") val posterPath: String? = null,
+    @Json(name = "backdrop_path") val backdropPath: String? = null,
+    @Json(name = "release_date") val releaseDate: String? = null,
+    @Json(name = "first_air_date") val firstAirDate: String? = null
 )
 
 @JsonClass(generateAdapter = true)

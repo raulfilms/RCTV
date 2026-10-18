@@ -1178,7 +1178,7 @@ class LibraryViewModel @Inject constructor(
     private fun observeImdbList() {
         imdbSync.syncIfStale()
         viewModelScope.launch {
-            combine(imdbSync.account, imdbSync.watchlist, imdbSync.ratedSeries) { account, watchlist, ratedSeries ->
+            combine(imdbSync.account, imdbSync.watchlistLinked, imdbSync.ratedSeriesLinked) { account, watchlist, ratedSeries ->
                 ImdbLibraryLists(
                     connected = account.isConnected,
                     error = account.error,
@@ -1205,25 +1205,31 @@ class LibraryViewModel @Inject constructor(
         val ratedSeries: List<LibraryEntry>
     )
 
-    /** A watchlist (or rated) title as a Library title: a movie or a show, with its IMDb poster. */
-    private fun imdbEntryOf(title: com.nuvio.tv.data.remote.imdb.ImdbTitle): LibraryEntry? {
+    /**
+     * An IMDb list's title as a Library title: its TMDB movie or show (the app's one catalog), so
+     * its poster, backdrop, page and cast are TMDB's. IMDb only says it's on the list.
+     */
+    private fun imdbEntryOf(linked: com.nuvio.tv.data.imdb.ImdbLinkedTitle): LibraryEntry? {
+        val title = linked.imdb
+        val tmdb = linked.tmdb
         if (title.isEpisode || title.titleType == "videoGame") return null
-        val poster = com.nuvio.tv.data.remote.imdb.ImdbGraphqlClient.resizedImage(title.posterUrl)
+        val poster = tmdb.posterPath?.let { "https://image.tmdb.org/t/p/w342$it" }
         return LibraryEntry(
-            id = title.id,
-            type = if (title.isSeries) LIBRARY_TYPE_SHOW else LIBRARY_TYPE_MOVIE,
-            name = title.name,
+            id = tmdb.contentId,
+            type = if (tmdb.isSeries) LIBRARY_TYPE_SHOW else LIBRARY_TYPE_MOVIE,
+            name = tmdb.name ?: title.name,
             poster = poster,
             posterShape = PosterShape.POSTER,
-            background = null,
+            background = tmdb.backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" },
             logo = null,
             description = null,
-            releaseInfo = title.year?.toString(),
+            releaseInfo = (tmdb.year ?: title.year)?.toString(),
             imdbRating = title.imdbRating,
             genres = title.genres,
             addonBaseUrl = null,
             listedAt = title.addedAtMs,
             imdbId = title.id,
+            tmdbId = tmdb.tmdbId,
             rawPosterUrl = poster
         )
     }

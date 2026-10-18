@@ -74,11 +74,33 @@ data class ImdbAccount(
 }
 
 /**
+ * An IMDb title as the app shows it: its movie or series on TMDB (the app's one catalog), with
+ * TMDB's name and artwork. Its page, cast and everything else come from TMDB too.
+ */
+data class TmdbLink(
+    val isSeries: Boolean,
+    val tmdbId: Int,
+    val name: String?,
+    val posterPath: String?,
+    val backdropPath: String?,
+    val year: Int?,
+    /** The TMDB language the name was asked in. */
+    val language: String
+) {
+    /** The app's id for it ("tmdb:603"). */
+    val contentId: String get() = "tmdb:$tmdbId"
+}
+
+/** A title of an IMDb list, and its TMDB title. */
+data class ImdbLinkedTitle(val imdb: ImdbTitle, val tmdb: TmdbLink)
+
+/**
  * The user's IMDb watchlist and ratings, kept on the device for each profile and asked again
  * every half hour or so. Each profile links its own IMDb account (or none): another profile never
  * sees this one's watchlist, ratings or sign-in.
- * - every movie they rated on IMDb shows as watched (by its IMDb id and its TMDB id, as titles
- *   come from either); rated series aren't watched, they're the Library's "IMDb TV Rated";
+ * - every IMDb title is linked to its TMDB title, which is what the app shows (one catalog);
+ * - every movie they rated on IMDb shows as watched (by its TMDB id, and its IMDb id for titles
+ *   still under it); rated series aren't watched, they're the Library's "IMDb TV Rated";
  * - the watchlist is the Library's "IMDb List", apart from the app's own library;
  * - signed in to IMDb (in the app, on the profile), a movie watched to the end in the app is
  *   marked watched on IMDb. Nothing else is ever written to IMDb.
@@ -90,7 +112,8 @@ class ImdbSyncService @Inject constructor(
     private val client: ImdbGraphqlClient,
     private val tmdbApi: TmdbApi,
     private val factory: ProfileDataStoreFactory,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    private val tmdbSettingsDataStore: com.nuvio.tv.data.local.TmdbSettingsDataStore
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
@@ -100,9 +123,9 @@ class ImdbSyncService @Inject constructor(
     private val markAttempts = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val syncing = MutableStateFlow(false)
 
-    /** IMDb id → TMDB id of rated movies (shared by every profile; a title's ids don't change). */
-    private val tmdbIdPrefs = appContext.getSharedPreferences("imdb_tmdb_ids", Context.MODE_PRIVATE)
-    private val tmdbIds = MutableStateFlow(readTmdbIds())
+    /** IMDb id → its TMDB title (shared by every profile: a title's ids don't change). */
+    private val tmdbLinkPrefs = appContext.getSharedPreferences("imdb_tmdb_links", Context.MODE_PRIVATE)
+    private val tmdbLinks = MutableStateFlow(readTmdbLinks())
 
     private fun store(profileId: Int) = factory.get(profileId, FEATURE)
 
@@ -156,18 +179,30 @@ class ImdbSyncService @Inject constructor(
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     /** The movies rated on IMDb: their IMDb ids ("tt…") and TMDB ids ("tmdb:…"). */
-    val watchedMovieKeys: StateFlow<Set<String>> = combine(stored, tmdbIds) { data, mapped ->
+    val watchedMovieKeys: StateFlow<Set<String>> = combine(stored, tmdbLinks) { data, links ->
         if (data.ratedMovieIds.isEmpty()) {
             emptySet()
         } else {
             buildSet {
                 data.ratedMovieIds.forEach { imdbId ->
                     add(imdbId)
-                    mapped[imdbId]?.let { add("tmdb:$it") }
+                    links[imdbId]?.takeIf { !it.isSeries }?.let { add(it.contentId) }
                 }
             }
         }
     }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    /** The IMDb watchlist as TMDB titles (one that TMDB doesn't have isn't shown). */
+    val watchlistLinked: StateFlow<List<ImdbLinkedTitle>> = combine(watchlist, tmdbLinks) { titles, links -> linked(titles, links) }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** The series rated on IMDb as TMDB series. */
+    val ratedSeriesLinked: StateFlow<List<ImdbLinkedTitle>> = combine(ratedSeries, tmdbLinks) { titles, links -> linked(titles, links) }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    private fun linked(titles: List<ImdbTitle>, links: Map<String, TmdbLink>): List<ImdbLinkedTitle> =
+        titles.mapNotNull { title -> links[title.id]?.let { ImdbLinkedTitle(title, it) } }
+            .distinctBy { it.tmdb.isSeries to it.tmdb.tmdbId }
 
     init {
         // Each profile has its own IMDb account (or none): switching profiles brings its own lists up to date.
@@ -181,7 +216,22 @@ class ImdbSyncService @Inject constructor(
 
     /** Asks IMDb again (in the background) when it was last asked a while ago. */
     fun syncIfStale() {
-        scope.launch { runCatching { sync(force = false) } }
+        scope.launch {
+            runCatching { sync(force = false) }
+            // Titles kept from before (or named in another language) get their TMDB titles too.
+            runCatching { linkStoredTitles() }
+        }
+    }
+
+    private suspend fun linkStoredTitles() {
+        val data = readStored(store(profileManager.activeProfileId.value).data.first())
+        if (data.userId == null) return
+        val titles = buildList {
+            data.ratedMovieIds.forEach { add(it to false) }
+            data.ratedSeries.forEach { add(it.id to true) }
+            data.watchlist.forEach { add(it.id to it.isSeries) }
+        }
+        if (titles.isNotEmpty()) mappingMutex.withLock { linkToTmdb(titles) }
     }
 
     /**
@@ -310,7 +360,7 @@ class ImdbSyncService @Inject constructor(
         val tmdbId = progress.contentId.takeIf { it.startsWith("tmdb:") }
             ?.removePrefix("tmdb:")?.substringBefore(':')?.toIntOrNull()
             ?: return null
-        tmdbIds.value.entries.firstOrNull { it.value == tmdbId }?.let { return it.key }
+        tmdbLinks.value.entries.firstOrNull { !it.value.isSeries && it.value.tmdbId == tmdbId }?.let { return it.key }
         return try {
             tmdbApi.getMovieExternalIds(tmdbId, BuildConfig.TMDB_API_KEY).body()?.imdbId?.takeIf { IMDB_ID.matches(it) }
         } catch (e: CancellationException) {
@@ -368,8 +418,13 @@ class ImdbSyncService @Inject constructor(
                 prefs[lastSyncKey] = now
                 if (error != null) prefs[errorKey] = error.name else prefs.remove(errorKey)
             }
-            // Their TMDB ids meanwhile (a first sync can have hundreds to look up).
-            if (ratedMovies != null) scope.launch { mappingMutex.withLock { mapToTmdb(ratedMovies) } }
+            // Their TMDB titles meanwhile (a first sync can have hundreds to look up).
+            val toLink = buildList {
+                ratedMovies?.forEach { add(it to false) }
+                ratedSeries?.forEach { add(it.id to true) }
+                watchlist.getOrNull()?.first?.forEach { add(it.id to it.isSeries) }
+            }
+            if (toLink.isNotEmpty()) scope.launch { mappingMutex.withLock { linkToTmdb(toLink) } }
             if (ratings.isFailure && watchlist.isFailure) {
                 Result.failure(watchlist.exceptionOrNull() ?: ImdbException(ImdbException.Reason.FAILED, "IMDb sync failed"))
             } else {
@@ -393,51 +448,89 @@ class ImdbSyncService @Inject constructor(
     private fun countsAsWatchedMovie(title: ImdbTitle): Boolean =
         !title.isSeries && !title.isEpisode && title.titleType !in NOT_MOVIES
 
-    /** Finds the TMDB id of each rated movie not looked up yet (kept for good; "none" for two weeks). */
-    private suspend fun mapToTmdb(imdbIds: Set<String>) {
+    /**
+     * Finds the TMDB title of each IMDb title ([imdbId] to whether IMDb calls it a series) not
+     * linked yet, or linked in another language: kept for good; "TMDB has none" for two weeks.
+     */
+    private suspend fun linkToTmdb(titles: List<Pair<String, Boolean>>) {
         val now = System.currentTimeMillis()
-        val pending = imdbIds.filter { imdbId ->
-            val saved = tmdbIdPrefs.getString(imdbId, null) ?: return@filter true
-            saved.startsWith(NONE_PREFIX) &&
-                now - (saved.removePrefix(NONE_PREFIX).toLongOrNull() ?: 0L) > NONE_RETRY_MS
+        val language = runCatching { tmdbSettingsDataStore.settings.value.language }.getOrNull()?.ifBlank { null } ?: "en"
+        val links = tmdbLinks.value
+        val pending = titles.distinctBy { it.first }.filter { (imdbId, _) ->
+            val link = links[imdbId]
+            if (link != null) return@filter link.language != language
+            val none = tmdbLinkPrefs.getString(imdbId, null)?.takeIf { it.startsWith(NONE_PREFIX) } ?: return@filter true
+            now - (none.removePrefix(NONE_PREFIX).toLongOrNull() ?: 0L) > NONE_RETRY_MS
         }
         if (pending.isEmpty()) return
         val limiter = Semaphore(TMDB_LOOKUPS_AT_ONCE)
         pending.chunked(TMDB_BATCH).forEach { batch ->
             val found = coroutineScope {
-                batch.map { imdbId ->
-                    async { limiter.withPermit { imdbId to tmdbMovieIdOf(imdbId) } }
+                batch.map { (imdbId, isSeries) ->
+                    async { limiter.withPermit { imdbId to tmdbLinkOf(imdbId, isSeries, language) } }
                 }.awaitAll()
             }
-            val editor = tmdbIdPrefs.edit()
+            val editor = tmdbLinkPrefs.edit()
             found.forEach { (imdbId, lookup) ->
                 when (lookup) {
-                    is TmdbLookup.Found -> editor.putString(imdbId, lookup.id.toString())
+                    is TmdbLookup.Found -> editor.putString(imdbId, linkJson(lookup.link).toString())
                     TmdbLookup.None -> editor.putString(imdbId, "$NONE_PREFIX$now")
                     // TMDB couldn't be asked: asked again next sync.
                     TmdbLookup.Failed -> Unit
                 }
             }
             editor.apply()
-            tmdbIds.update { current ->
-                current + found.mapNotNull { (imdbId, lookup) -> (lookup as? TmdbLookup.Found)?.let { imdbId to it.id } }
+            tmdbLinks.update { current ->
+                current + found.mapNotNull { (imdbId, lookup) -> (lookup as? TmdbLookup.Found)?.let { imdbId to it.link } }
             }
         }
     }
 
     private sealed interface TmdbLookup {
-        data class Found(val id: Int) : TmdbLookup
+        data class Found(val link: TmdbLink) : TmdbLookup
         data object None : TmdbLookup
         data object Failed : TmdbLookup
     }
 
-    /** The movie's TMDB id ([TmdbLookup.None]: TMDB has none; [TmdbLookup.Failed]: TMDB couldn't be asked). */
-    private suspend fun tmdbMovieIdOf(imdbId: String): TmdbLookup = try {
-        val response = tmdbApi.findByExternalId(externalId = imdbId, apiKey = BuildConfig.TMDB_API_KEY, externalSource = "imdb_id")
+    /**
+     * The TMDB title of an IMDb title: its movie, or its series ([isSeries]), else whichever TMDB
+     * has. [TmdbLookup.None]: TMDB has none; [TmdbLookup.Failed]: TMDB couldn't be asked.
+     */
+    private suspend fun tmdbLinkOf(imdbId: String, isSeries: Boolean, language: String): TmdbLookup = try {
+        val response = tmdbApi.findByExternalId(
+            externalId = imdbId,
+            apiKey = BuildConfig.TMDB_API_KEY,
+            externalSource = "imdb_id",
+            language = language
+        )
         val body = response.body()
-        when {
-            !response.isSuccessful || body == null -> TmdbLookup.Failed
-            else -> body.movieResults?.firstOrNull()?.id?.let { TmdbLookup.Found(it) } ?: TmdbLookup.None
+        if (!response.isSuccessful || body == null) {
+            TmdbLookup.Failed
+        } else {
+            val movie = body.movieResults?.firstOrNull()
+            val series = body.tvResults?.firstOrNull()
+            val (result, asSeries) = when {
+                isSeries && series != null -> series to true
+                !isSeries && movie != null -> movie to false
+                movie != null -> movie to false
+                series != null -> series to true
+                else -> null to false
+            }
+            if (result == null) {
+                TmdbLookup.None
+            } else {
+                TmdbLookup.Found(
+                    TmdbLink(
+                        isSeries = asSeries,
+                        tmdbId = result.id,
+                        name = (if (asSeries) result.name else result.title)?.takeIf { it.isNotBlank() } ?: result.title ?: result.name,
+                        posterPath = result.posterPath?.takeIf { it.isNotBlank() },
+                        backdropPath = result.backdropPath?.takeIf { it.isNotBlank() },
+                        year = (if (asSeries) result.firstAirDate else result.releaseDate)?.take(4)?.toIntOrNull(),
+                        language = language
+                    )
+                )
+            }
         }
     } catch (e: CancellationException) {
         throw e
@@ -445,10 +538,30 @@ class ImdbSyncService @Inject constructor(
         TmdbLookup.Failed
     }
 
-    private fun readTmdbIds(): Map<String, Int> =
-        tmdbIdPrefs.all.mapNotNull { (imdbId, value) ->
-            (value as? String)?.toIntOrNull()?.let { imdbId to it }
+    private fun readTmdbLinks(): Map<String, TmdbLink> =
+        tmdbLinkPrefs.all.mapNotNull { (imdbId, value) ->
+            val json = (value as? String)?.takeIf { it.startsWith("{") } ?: return@mapNotNull null
+            val obj = runCatching { JSONObject(json) }.getOrNull() ?: return@mapNotNull null
+            val tmdbId = obj.optInt("id").takeIf { it > 0 } ?: return@mapNotNull null
+            imdbId to TmdbLink(
+                isSeries = obj.optBoolean("s"),
+                tmdbId = tmdbId,
+                name = obj.optString("n").takeIf { it.isNotBlank() },
+                posterPath = obj.optString("p").takeIf { it.startsWith("/") },
+                backdropPath = obj.optString("b").takeIf { it.startsWith("/") },
+                year = obj.optInt("y").takeIf { it > 0 },
+                language = obj.optString("l").ifBlank { "en" }
+            )
         }.toMap()
+
+    private fun linkJson(link: TmdbLink): JSONObject = JSONObject()
+        .put("s", link.isSeries)
+        .put("id", link.tmdbId)
+        .putOpt("n", link.name)
+        .putOpt("p", link.posterPath)
+        .putOpt("b", link.backdropPath)
+        .putOpt("y", link.year)
+        .put("l", link.language)
 
     private fun readStored(prefs: Preferences): Stored {
         val userId = prefs[userIdKey]?.takeIf { it.isNotBlank() } ?: return Stored(input = prefs[inputKey].orEmpty())
