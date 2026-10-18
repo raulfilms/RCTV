@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -168,6 +169,8 @@ fun HomeFranchiseRow(
     title: String,
     rowIds: List<String>,
     art: Map<String, Pair<String, String?>>,
+    /** Each collection's name as artwork (its film's logo), shown instead of the written name. */
+    logos: Map<String, String> = emptyMap(),
     onClick: (String) -> Unit,
     rowFocusRequester: FocusRequester,
     initialFocusIndex: Int,
@@ -185,6 +188,8 @@ fun HomeFranchiseRow(
     ) { index, itemModifier ->
         val rowId = rowIds[index]
         val (name, image) = art[rowId] ?: (rowId.removePrefix("franchise_").replace('_', ' ') to null)
+        val logo = logos[rowId]
+        var logoFailed by remember(logo) { mutableStateOf(false) }
         HomeCard(
             onClick = { onClick(rowId) },
             width = AppleLandscapeCardWidth,
@@ -217,15 +222,29 @@ fun HomeFranchiseRow(
                         .align(Alignment.BottomStart)
                         .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
                 ) {
-                    Text(
-                        text = name,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        lineHeight = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (!logo.isNullOrBlank() && !logoFailed) {
+                        AsyncImage(
+                            model = logo,
+                            contentDescription = name,
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.BottomStart,
+                            onError = { logoFailed = true },
+                            modifier = Modifier
+                                .fillMaxWidth(0.62f)
+                                .height(44.dp)
+                                .padding(bottom = 3.dp)
+                        )
+                    } else {
+                        Text(
+                            text = name,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            lineHeight = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Text(
                         text = "COLLECTION",
                         color = Color.White.copy(alpha = 0.75f),

@@ -96,13 +96,22 @@ internal fun HubCardsRow(
         boldTitle = true
     ) { index, itemModifier ->
         val card = cards[index]
-        HubCardView(card = card, image = art[card.rowId], onClick = { onClick(card) }, modifier = itemModifier)
+        HubCardView(
+            card = card,
+            image = art[card.rowId],
+            logo = art[hubCardLogoKey(card.rowId)],
+            onClick = { onClick(card) },
+            modifier = itemModifier
+        )
     }
 }
 
+/** Where a card's title artwork (a collection's film logo) is kept in its row's or page's art map. */
+internal fun hubCardLogoKey(rowId: String): String = "$rowId#logo"
+
 /** One card of a cards row or of a page of cards: its picture, thumbnail or color, with its name. */
 @Composable
-private fun HubCardView(card: HubCard, image: String?, onClick: () -> Unit, modifier: Modifier) {
+private fun HubCardView(card: HubCard, image: String?, logo: String?, onClick: () -> Unit, modifier: Modifier) {
     val label = card.label ?: stringResource(card.labelRes)
     when (card.art) {
         HubCardArt.Tile -> {
@@ -118,6 +127,7 @@ private fun HubCardView(card: HubCard, image: String?, onClick: () -> Unit, modi
             label = label,
             caption = stringResource(R.string.disney_collection_label),
             image = image,
+            logo = logo,
             onClick = onClick,
             modifier = modifier
         )
@@ -195,6 +205,7 @@ internal fun HubCardsPage(
                 HubCardView(
                     card = card,
                     image = art[card.rowId],
+                    logo = art[hubCardLogoKey(card.rowId)],
                     onClick = { onClick(card) },
                     modifier = if (index == focusIndex) Modifier.focusRequester(focusRequester) else Modifier
                 )
@@ -253,9 +264,14 @@ private fun TileCard(label: String, key: String, onClick: () -> Unit, modifier: 
     }
 }
 
-/** A backdrop with the name at the bottom (a TMDB collection). */
+/**
+ * A TMDB collection: its backdrop with its name at the bottom: the title as artwork (its film's
+ * logo, like the posters' own lettering) when TMDB has it, else written.
+ */
 @Composable
-private fun PictureCard(label: String, caption: String, image: String?, onClick: () -> Unit, modifier: Modifier) {
+private fun PictureCard(label: String, caption: String, image: String?, logo: String?, onClick: () -> Unit, modifier: Modifier) {
+    var logoFailed by remember(logo) { mutableStateOf(false) }
+    val showLogo = !logo.isNullOrBlank() && !logoFailed
     HomeCard(
         onClick = onClick,
         width = AppleLandscapeCardWidth,
@@ -288,15 +304,29 @@ private fun PictureCard(label: String, caption: String, image: String?, onClick:
                     .align(Alignment.BottomStart)
                     .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
             ) {
-                Text(
-                    text = label,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    lineHeight = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (showLogo) {
+                    AsyncImage(
+                        model = logo,
+                        contentDescription = label,
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.BottomStart,
+                        onError = { logoFailed = true },
+                        modifier = Modifier
+                            .fillMaxWidth(0.62f)
+                            .height(44.dp)
+                            .padding(bottom = 3.dp)
+                    )
+                } else {
+                    Text(
+                        text = label,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Text(
                     text = caption,
                     color = Color.White.copy(alpha = 0.75f),

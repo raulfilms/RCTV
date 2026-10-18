@@ -9,6 +9,7 @@ import com.nuvio.tv.data.discover.TmdbSeeAllFilter
 import com.nuvio.tv.data.discover.matches
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
+import com.nuvio.tv.data.remote.api.TmdbCollectionSearchResult
 import com.nuvio.tv.data.remote.api.TmdbDetailsResponse
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResponse
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
@@ -93,6 +94,8 @@ class DisneyPlusRepository @Inject constructor(
     private val earliestYearCache = ConcurrentHashMap<String, Int>()
     /** A person's photo (null: none), by TMDB person id. */
     private val personPhotoCache = ConcurrentHashMap<Int, Optional<String>>()
+    /** A franchise collection's name as artwork (its film's logo; null: none), by its name. */
+    private val franchiseLogoCache = ConcurrentHashMap<String, Optional<String>>()
     /** Every US watch provider's logo, by provider id (loaded once). */
     @Volatile private var providerLogoCache: Map<Int, String>? = null
     private val providerLogoMutex = Mutex()
@@ -374,14 +377,47 @@ class DisneyPlusRepository @Inject constructor(
         return TrendingPage(items, body?.totalPages ?: page)
     }
 
+    /** The TMDB collection named [query] among search [results] ("Toy Story" → "Toy Story Collection"). */
+    private fun matchCollection(results: List<TmdbCollectionSearchResult>, query: String): TmdbCollectionSearchResult? {
+        val wanted = normalizeTitle(query).removeSuffix("collection")
+        return results.firstOrNull { normalizeTitle(it.name.orEmpty()).removeSuffix("collection") == wanted }
+            ?: results.firstOrNull { normalizeTitle(it.name.orEmpty()).startsWith(wanted) }
+    }
+
+    /**
+     * A franchise collection's name as artwork, for its card: the logo of its film named like it
+     * ("The Matrix" for "The Matrix Collection"), else of its first film; English first. Null when
+     * TMDB has none.
+     */
+    suspend fun franchiseLogo(query: String): String? = withContext(Dispatchers.IO) {
+        franchiseLogoCache[query]?.let { return@withContext it.value }
+        val result = runCatching {
+            lookupLimiter.withPermit {
+                val results = tmdbApi.searchCollections(apiKey, query).body()?.results.orEmpty()
+                val collection = matchCollection(results, query) ?: return@withPermit null
+                val parts = tmdbApi.getCollectionDetails(collection.id, apiKey).body()?.parts.orEmpty()
+                val name = normalizeTitle(collection.name.orEmpty().removeSuffix(" Collection"))
+                val film = parts.firstOrNull { normalizeTitle(it.title.orEmpty()) == name }
+                    ?: parts.filter { !it.releaseDate.isNullOrBlank() }.minByOrNull { it.releaseDate.orEmpty() }
+                    ?: parts.firstOrNull()
+                    ?: return@withPermit null
+                val logos = tmdbApi.getMovieImages(film.id, apiKey).body()?.logos.orEmpty()
+                    .filter { !it.filePath.isNullOrBlank() }
+                val best = (logos.filter { it.iso6391 == "en" }.sortedByDescending { it.voteAverage ?: 0.0 } +
+                    logos.sortedByDescending { it.voteAverage ?: 0.0 }).firstOrNull()
+                best?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
+            }
+        }.onFailure { if (it is CancellationException) throw it }
+        if (result.isSuccess) franchiseLogoCache[query] = Optional(result.getOrNull())
+        result.getOrNull()
+    }
+
     /** A TMDB franchise collection's name and backdrop, for its card on Home (found by name). */
     suspend fun franchiseArt(query: String): Pair<String, String?>? = withContext(Dispatchers.IO) {
         runCatching {
             lookupLimiter.withPermit {
                 val results = tmdbApi.searchCollections(apiKey, query).body()?.results.orEmpty()
-                val wanted = normalizeTitle(query).removeSuffix("collection")
-                val match = results.firstOrNull { normalizeTitle(it.name.orEmpty()).removeSuffix("collection") == wanted }
-                    ?: results.firstOrNull { normalizeTitle(it.name.orEmpty()).startsWith(wanted) }
+                val match = matchCollection(results, query)
                 match?.let { found ->
                     val name = found.name?.removeSuffix(" Collection")?.trim().orEmpty().ifBlank { query }
                     name to (found.backdropPath ?: found.posterPath)?.let { "https://image.tmdb.org/t/p/w780$it" }

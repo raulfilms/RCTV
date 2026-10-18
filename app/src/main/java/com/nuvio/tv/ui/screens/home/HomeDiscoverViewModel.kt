@@ -38,6 +38,8 @@ data class HomeDiscoverRowState(
     val row: CatalogRow? = null,
     val isLoading: Boolean = true,
     val franchiseArt: Map<String, Pair<String, String?>> = emptyMap(),
+    /** Each collection's name as artwork (its film's logo), by row id. */
+    val franchiseLogos: Map<String, String> = emptyMap(),
     val liveChannels: List<CustomLiveChannel> = emptyList()
 )
 
@@ -103,6 +105,9 @@ class HomeDiscoverViewModel @Inject constructor(
                             val query = names[rowId] ?: return@launch
                             val art = limiter.withPermit { repository.franchiseArt(query) } ?: (query to null)
                             update(spec.id) { it.copy(franchiseArt = it.franchiseArt + (rowId to art)) }
+                            // Its name as artwork (its film's logo) on its picture.
+                            val logo = limiter.withPermit { repository.franchiseLogo(query) } ?: return@launch
+                            update(spec.id) { it.copy(franchiseLogos = it.franchiseLogos + (rowId to logo)) }
                         }
                     }
                 }

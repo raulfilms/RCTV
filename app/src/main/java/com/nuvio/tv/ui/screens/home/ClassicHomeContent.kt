@@ -851,6 +851,7 @@ fun ClassicHomeContent(
                         title = rowState.title,
                         rowIds = spec.franchiseRows,
                         art = rowState.franchiseArt,
+                        logos = rowState.franchiseLogos,
                         onClick = { rowId -> onOpenHomeLink(HomeLink.SeeAll(rowId)) },
                         rowFocusRequester = rowFocusRequester,
                         initialFocusIndex = restoreIndex,

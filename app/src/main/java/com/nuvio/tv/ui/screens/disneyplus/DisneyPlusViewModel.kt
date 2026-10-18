@@ -256,6 +256,28 @@ class DisneyPlusViewModel @Inject constructor(
             val limiter = Semaphore(4)
             coroutineScope {
                 card.subCards.forEach { sub ->
+                    // A collection's name as artwork (its film's logo), on its picture.
+                    val collection = sub.art as? HubCardArt.Collection
+                    if (collection != null && !subCardArt.containsKey(hubCardLogoKey(sub.rowId))) {
+                        launch {
+                            val logo = limiter.withPermit {
+                                try {
+                                    repository.franchiseLogo(collection.query)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            } ?: return@launch
+                            val key = hubCardLogoKey(sub.rowId)
+                            subCardArt[key] = logo
+                            _uiState.update { state ->
+                                val page = state.cardsPage
+                                if (page == null || page.cardId != card.rowId) state
+                                else state.copy(cardsPage = page.copy(art = page.art + (key to logo)))
+                            }
+                        }
+                    }
                     if (sub.art == HubCardArt.Tile || subCardArt.containsKey(sub.rowId)) return@forEach
                     launch {
                         val image = limiter.withPermit {
@@ -599,6 +621,27 @@ class DisneyPlusViewModel @Inject constructor(
         coroutineScope {
             cards.forEach { (rowId, card) ->
                 if (card.art == HubCardArt.Tile) return@forEach
+                // A collection's name as artwork (its film's logo), on its picture.
+                (card.art as? HubCardArt.Collection)?.let { collection ->
+                    launch {
+                        val logo = limiter.withPermit {
+                            try {
+                                repository.franchiseLogo(collection.query)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } ?: return@launch
+                        val key = hubCardLogoKey(card.rowId)
+                        _uiState.update { state ->
+                            state.copy(rows = state.rows.map { rowState ->
+                                if (rowState.spec.id != rowId) rowState
+                                else rowState.copy(cardArt = rowState.cardArt + (key to logo))
+                            })
+                        }
+                    }
+                }
                 launch {
                     val image = limiter.withPermit {
                         try {
