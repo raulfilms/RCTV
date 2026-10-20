@@ -978,8 +978,8 @@ private fun ChannelHero(
     onToggleLibrary: (MetaPreview) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var activeIndex by remember(items) { mutableIntStateOf(0) }
-    var focused by remember { mutableStateOf(false) }
+    // The same slide stays when the titles are only updated.
+    var activeIndex by remember(items.map { it.id }) { mutableIntStateOf(0) }
     val safeIndex = activeIndex.coerceIn(0, items.size - 1)
     val active = items[safeIndex]
 
@@ -987,12 +987,14 @@ private fun ChannelHero(
         if (items.size > 1) activeIndex = (safeIndex + 1) % items.size
     }
 
-    LaunchedEffect(focused, items.size) {
-        if (items.size <= 1 || focused) return@LaunchedEffect
-        while (true) {
-            delay(HERO_AUTO_ADVANCE_MS)
-            activeIndex = (activeIndex + 1) % items.size
-        }
+    // RCTV: a slideshow. It moves on to the next title on its own every few seconds, also while
+    // focus is on its buttons; each press of the remote on it (or a change of slide) starts the
+    // wait over, so it never changes under the viewer while they're choosing.
+    var lastInteraction by remember { mutableIntStateOf(0) }
+    LaunchedEffect(safeIndex, lastInteraction, items.size) {
+        if (items.size <= 1) return@LaunchedEffect
+        delay(HERO_AUTO_ADVANCE_MS)
+        activeIndex = (safeIndex + 1) % items.size
     }
 
     Box(
@@ -1002,7 +1004,10 @@ private fun ChannelHero(
             .height(HeroHeight)
             .clip(HeroShape)
             .background(AppleTvColors.ContrastDim)
-            .onFocusChanged { focused = it.hasFocus }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) lastInteraction++
+                false
+            }
     ) {
         Crossfade(targetState = safeIndex, animationSpec = tween(durationMillis = 450), label = "channelHeroArt") { index ->
             AsyncImage(

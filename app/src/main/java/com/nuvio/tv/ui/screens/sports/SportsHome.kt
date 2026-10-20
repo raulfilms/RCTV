@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -246,23 +247,38 @@ internal fun SportsHeroCarousel(
     modifier: Modifier = Modifier
 ) {
     if (events.isEmpty()) return
-    var index by remember(events) { mutableIntStateOf(0) }
-    val event = events[index.coerceIn(0, events.lastIndex)]
-    // On to the next game every few seconds (the wait starts over after each change).
-    LaunchedEffect(events, index) {
+    // RCTV: the game shown is kept by its id, so the scores and games updating (every few seconds
+    // while the page loads, then every few minutes) don't send the banner back to the first game
+    // and start its wait over: it kept showing the first one.
+    var shownId by remember { mutableStateOf<String?>(null) }
+    val index = events.indexOfFirst { it.id == shownId }.takeIf { it >= 0 } ?: 0
+    val event = events[index]
+    val latestEvents by rememberUpdatedState(events)
+    // A slideshow: on to the next game every few seconds, also while focus is on its buttons; each
+    // press of the remote on it (or a change of game) starts the wait over.
+    var lastInteraction by remember { mutableIntStateOf(0) }
+    LaunchedEffect(event.id, lastInteraction, events.size) {
         if (events.size < 2) return@LaunchedEffect
         delay(HERO_ROTATE_MS)
-        index = (index + 1) % events.size
+        val current = latestEvents
+        val at = current.indexOfFirst { it.id == event.id }.coerceAtLeast(0)
+        shownId = current[(at + 1) % current.size].id
     }
-    val step: (Int) -> Unit = { delta -> index = Math.floorMod(index + delta, events.size) }
+    val step: (Int) -> Unit = { delta -> shownId = events[Math.floorMod(index + delta, events.size)].id }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(330.dp)
+            .onPreviewKeyEvent { key ->
+                if (key.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) lastInteraction++
+                false
+            }
     ) {
         AnimatedContent(
             targetState = event,
+            // A new game fades in; the same game with a new score doesn't.
+            contentKey = { it.id },
             transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(400)) },
             label = "sportsHeroBackdrop",
             modifier = Modifier.fillMaxSize()

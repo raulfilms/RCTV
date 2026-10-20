@@ -102,18 +102,20 @@ fun HubHeroBanner(
     onFocusChange: (Boolean) -> Unit = {}
 ) {
     val currentOnItemClick by rememberUpdatedState(onItemClick)
-    var activeIndex by remember(items) { mutableIntStateOf(0) }
+    // The same slide stays when the titles are only updated (their logos found, say).
+    var activeIndex by remember(items.map { it.id }) { mutableIntStateOf(0) }
     var isFocused by remember { mutableStateOf(false) }
     val screenHeight = LocalConfiguration.current.screenHeightDp
     val bannerHeight = (screenHeight * 0.68f).dp.coerceIn(260.dp, 640.dp)
     val shape = RoundedCornerShape(NuvioTheme.radii.lg)
 
-    LaunchedEffect(isFocused, items.size) {
-        if (items.size <= 1 || isFocused) return@LaunchedEffect
-        while (true) {
-            delay(HUB_HERO_AUTO_ADVANCE_MS)
-            activeIndex = (activeIndex + 1) % items.size
-        }
+    // RCTV: a slideshow. It moves on to the next title on its own every few seconds, also while it
+    // has focus; each press of the remote on it (or a change of slide) starts the wait over.
+    var lastInteraction by remember { mutableIntStateOf(0) }
+    LaunchedEffect(activeIndex, lastInteraction, items.size) {
+        if (items.size <= 1) return@LaunchedEffect
+        delay(HUB_HERO_AUTO_ADVANCE_MS)
+        activeIndex = (activeIndex + 1) % items.size
     }
 
     Column(
@@ -136,6 +138,7 @@ fun HubHeroBanner(
                 }
                 .focusable()
                 .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown) lastInteraction++
                     when {
                         event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft ->
                             if (activeIndex > 0) { activeIndex--; true } else false

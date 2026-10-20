@@ -268,13 +268,18 @@ fun AppleHeroCarousel(
     LaunchedEffect(safeIndex, items) {
         items.getOrNull(safeIndex)?.let { currentOnActiveItemChanged(it) }
     }
-    // Rotate on its own while the viewer is not on the buttons and the hero is on screen.
-    LaunchedEffect(isFocused, items.size) {
-        if (items.size <= 1 || isFocused) return@LaunchedEffect
+    // RCTV: a slideshow. It moves on to the next title on its own every few seconds, also while
+    // focus is on its buttons; each press of the remote on the hero (or a change of slide) starts
+    // the wait over, so it never changes under the viewer while they're choosing. Only while the
+    // hero is on screen.
+    var lastInteraction by remember { mutableIntStateOf(0) }
+    LaunchedEffect(safeIndex, lastInteraction, items.size) {
+        if (items.size <= 1) return@LaunchedEffect
         while (true) {
             delay(HERO_AUTO_ADVANCE_MS)
             if (currentScrollFraction() < 0.5f) {
-                activeIndex = (activeIndex + 1) % items.size
+                activeIndex = (safeIndex + 1) % items.size
+                return@LaunchedEffect
             }
         }
     }
@@ -284,6 +289,10 @@ fun AppleHeroCarousel(
             .fillMaxWidth()
             .height(heroHeight)
             .onFocusChanged { isFocused = it.hasFocus }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) lastInteraction++
+                false
+            }
     ) {
         AppleHeroArtwork(
             items = items,
