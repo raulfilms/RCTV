@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -356,8 +357,9 @@ private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier)
         scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f)
     ) {
         Box(
+            // As wide as its words (not the whole width of the page): it filled the width before.
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxHeight()
                 .padding(horizontal = 22.dp),
             contentAlignment = Alignment.Center
         ) {
