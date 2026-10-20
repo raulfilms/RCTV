@@ -22,10 +22,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLDecoder
 import java.util.Locale
 import javax.inject.Inject
@@ -61,6 +62,9 @@ data class TeamDetailUiState(
     val favoriteSportNames: Set<String> = emptySet(),
     val libraryEventIds: Set<String> = emptySet()
 )
+
+/** How long the roster's photos wait for the team's name from its profile (it's asked for at the same time). */
+private const val PROFILE_WAIT_MS = 8_000L
 
 /**
  * Backs a team's page: its header (city, name, record, standing), its schedule (the whole season,
@@ -207,24 +211,26 @@ class TeamDetailViewModel @Inject constructor(
     }
 
     /**
-     * The players ESPN has no photo of (soccer players, mostly): their photos from TheSportsDB, a
-     * few at a time, shown as they come.
+     * The players ESPN has no photo of (soccer players, mostly): their photos from TheSportsDB, in
+     * the roster's order, shown as they come. College players aren't on TheSportsDB: not looked for.
      */
     private suspend fun fillRosterPhotos(roster: List<SportsAthlete>) {
-        val missing = roster.filter { it.headshotUrl == null }
+        val feed = feed ?: return
+        if (feed.leaguePath.contains("college")) return
+        val missing = roster.filter { it.headshotUrl.isNullOrBlank() }
         if (missing.isEmpty()) return
-        val team = _uiState.value.profile?.displayName ?: initialName
-        val sportPath = feed?.sportPath
-        val gate = kotlinx.coroutines.sync.Semaphore(3)
-        kotlinx.coroutines.coroutineScope {
-            missing.forEach { athlete ->
-                launch {
-                    val photo = gate.withPermit { playerPhotos.photoFor(athlete.name, team, sportPath) } ?: return@launch
-                    _uiState.update { state ->
-                        val items = state.roster.items.map { if (it.id == athlete.id) it.copy(headshotUrl = photo) else it }
-                        state.copy(roster = state.roster.copy(items = items))
-                    }
-                }
+        // The team's name as ESPN has it ("Real Madrid"), once its profile is in (it's asked for at the same time).
+        val team = withTimeoutOrNull(PROFILE_WAIT_MS) {
+            _uiState.first { !it.isLoadingProfile }.profile?.displayName
+        } ?: _uiState.value.profile?.displayName ?: initialName
+        playerPhotos.findPhotos(
+            players = missing.map { com.nuvio.tv.data.remote.sportsdb.PlayerPhotoFinder.PlayerQuery(it.id, it.name) },
+            team = team,
+            sportPath = feed.sportPath
+        ) { playerId, photo ->
+            _uiState.update { state ->
+                val items = state.roster.items.map { if (it.id == playerId) it.copy(headshotUrl = photo) else it }
+                state.copy(roster = state.roster.copy(items = items))
             }
         }
     }
