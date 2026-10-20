@@ -621,7 +621,14 @@ open class MainActivity : ComponentActivity() {
                 settingsUiStyle = mainUiPrefs.settingsUiStyle
             ) {
                 // RCTV: the app closed on an error last time: what it was, once.
-                var lastCrash by remember { mutableStateOf(com.nuvio.tv.core.diagnostics.CrashLog.take(context)) }
+                var lastCrash by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(Unit) {
+                    // Read off the main thread (a frozen app's trace is a file).
+                    lastCrash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.nuvio.tv.core.diagnostics.CrashLog.take(context)
+                            ?: com.nuvio.tv.core.diagnostics.CrashLog.takeLastExit(context)
+                    }
+                }
                 lastCrash?.let { trace ->
                     com.nuvio.tv.ui.components.CrashReportDialog(trace = trace, onDismiss = { lastCrash = null })
                 }

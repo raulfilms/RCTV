@@ -38,7 +38,10 @@ import com.nuvio.tv.ui.util.SourcePrivacy
 @Composable
 fun CrashReportDialog(trace: String, onDismiss: () -> Unit) {
     val okRequester = remember { FocusRequester() }
-    val summary = remember(trace) { SourcePrivacy.scrubCrash(CrashLog.summary(trace)) }
+    val summary = remember(trace) {
+        val text = if (CrashLog.isSystemExit(trace)) trace.lines().take(40).joinToString("\n") else CrashLog.summary(trace)
+        SourcePrivacy.scrubCrash(text)
+    }
     LaunchedEffect(Unit) { runCatching { okRequester.requestFocus() } }
     NuvioDialog(
         onDismiss = onDismiss,

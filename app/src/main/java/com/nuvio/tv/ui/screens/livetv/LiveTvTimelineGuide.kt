@@ -72,7 +72,7 @@ import androidx.tv.material3.Text
 import coil3.BitmapImage
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.request.allowHardware
+import coil3.request.transformations
 import coil3.request.crossfade
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.EpgProgram
@@ -216,13 +216,19 @@ internal fun LiveTvTimelineGuide(
         when (val browse = uiState.guideBrowse) {
             GuideBrowse.LIVE_NOW -> inCountry
             GuideBrowse.A_TO_Z -> {
+                // Each name's sort key worked out once (not twice per comparison): thousands of channels.
                 val collator = java.text.Collator.getInstance(Locale.getDefault())
-                inCountry.sortedWith { a, b -> collator.compare(a.name, b.name) }
+                inCountry.map { it to collator.getCollationKey(it.name) }
+                    .sortedBy { it.second }
+                    .map { it.first }
             }
             GuideBrowse.CUSTOM -> inCountry.filter { it.id in uiState.customChannelIds }
             else -> inCountry.filter { browse in uiState.channelCategories[it.id].orEmpty() }
         }
     }
+    // Read by the rows' long press: only this, so a new state (the clock, details opening) doesn't
+    // hand every row new actions and redraw it.
+    val customChannelIds = uiState.customChannelIds
     val countryCounts = remember(uiState.channels) {
         uiState.channels.mapNotNull { it.country }.groupingBy { it }.eachCount()
     }
@@ -240,45 +246,49 @@ internal fun LiveTvTimelineGuide(
     val minViewStartMs = floorToSlot(nowMs) - SLOT_MS
 
     // Focus: which block has it, the time up/down aims at, and focus moves we asked for.
+    // None of it is read while the guide is drawn (only by the remote's keys and the panels that
+    // show it), so moving through the guide redraws the blocks focus leaves and lands on and the
+    // panel on the right, not the whole guide on every press.
     val listState = rememberLazyListState()
     val requesters = remember { mutableMapOf<String, FocusRequester>() }
-    fun requesterFor(key: String): FocusRequester = requesters.getOrPut(key) { FocusRequester() }
+    val requesterFor: (String) -> FocusRequester = remember { { key -> requesters.getOrPut(key) { FocusRequester() } } }
     var focusedRow by remember { mutableIntStateOf(-1) }
     var focusedStart by remember { mutableLongStateOf(Long.MIN_VALUE) }
     // True while a channel logo (left column) has focus rather than a program.
     var focusedOnLogo by remember { mutableStateOf(false) }
     var anchorMs by remember { mutableLongStateOf(nowMs) }
     var pendingKey by remember { mutableStateOf<String?>(null) }
-    var pendingRow by remember { mutableIntStateOf(0) }
-    var pendingSerial by remember { mutableIntStateOf(0) }
-    var previewChannel by remember { mutableStateOf<LiveTvChannel?>(null) }
-    var previewProgram by remember { mutableStateOf<EpgProgram?>(null) }
+    val previewChannelState = remember { mutableStateOf<LiveTvChannel?>(null) }
+    val previewProgramState = remember { mutableStateOf<EpgProgram?>(null) }
+    var previewChannel by previewChannelState
+    var previewProgram by previewProgramState
+    // The focus moves asked for (the latest wins), carried out after the next frames.
+    val focusMoves = remember { kotlinx.coroutines.channels.Channel<Pair<String, Int>>(kotlinx.coroutines.channels.Channel.CONFLATED) }
 
     fun focusBlock(row: Int, program: EpgProgram?) {
         val channel = channels.getOrNull(row) ?: return
-        pendingKey = blockKey(channel, program)
-        pendingRow = row
-        pendingSerial++
+        val key = blockKey(channel, program)
+        pendingKey = key
+        focusMoves.trySend(key to row)
     }
 
     fun focusLogo(row: Int) {
         val channel = channels.getOrNull(row) ?: return
-        pendingKey = logoKey(channel)
-        pendingRow = row
-        pendingSerial++
+        val key = logoKey(channel)
+        pendingKey = key
+        focusMoves.trySend(key to row)
     }
 
-    LaunchedEffect(pendingSerial) {
-        val target = pendingKey ?: return@LaunchedEffect
-        repeat(12) { attempt ->
-            withFrameNanos { }
-            val requester = requesters[target]
-            if (requester != null && runCatching { requester.requestFocus() }.getOrDefault(false)) {
-                return@LaunchedEffect
-            }
-            // The row isn't laid out yet: bring it on screen first.
-            if (attempt == 2 && listState.layoutInfo.visibleItemsInfo.none { it.index == pendingRow }) {
-                runCatching { listState.scrollToItem((pendingRow - 2).coerceAtLeast(0)) }
+    LaunchedEffect(focusMoves) {
+        for ((target, row) in focusMoves) {
+            for (attempt in 0 until 12) {
+                withFrameNanos { }
+                val requester = requesters[target]
+                if (requester != null && runCatching { requester.requestFocus() }.getOrDefault(false)) break
+                // The row isn't laid out yet: bring it on screen first.
+                if (attempt == 2 && listState.layoutInfo.visibleItemsInfo.none { it.index == row }) {
+                    runCatching { listState.scrollToItem((row - 2).coerceAtLeast(0)) }
+                }
             }
         }
     }
@@ -326,10 +336,14 @@ internal fun LiveTvTimelineGuide(
     // Back down the guide (or later in time): first back to the top, on the first channel's show
     // on now; from there Back is the app's (the menu, then Home). Only while the grid has focus.
     val backScope = androidx.compose.runtime.rememberCoroutineScope()
-    BackHandler(
-        enabled = channels.isNotEmpty() && !detailsOpen &&
-            (focusedRow > 0 || (focusedRow == 0 && (focusedOnLogo.not() && viewStartMs > floorToSlot(nowMs))))
-    ) {
+    // Only when it turns on or off: not on every focus move.
+    val backEnabled by remember(channels, detailsOpen, nowMinute) {
+        androidx.compose.runtime.derivedStateOf {
+            channels.isNotEmpty() && !detailsOpen &&
+                (focusedRow > 0 || (focusedRow == 0 && (focusedOnLogo.not() && viewStartMs > floorToSlot(nowMs))))
+        }
+    }
+    BackHandler(enabled = backEnabled) {
         viewStartMs = floorToSlot(System.currentTimeMillis())
         anchorMs = nowMs
         backScope.launch { runCatching { listState.scrollToItem(0) } }
@@ -419,12 +433,14 @@ internal fun LiveTvTimelineGuide(
     }
 
     val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
-    fun timeRange(program: EpgProgram): String = formatTimeRange(timeFormat, program.startMs, program.endMs)
+    // Kept from one redraw to the next, so the rows see the same function and aren't redrawn for it.
+    val timeRange: (EpgProgram) -> String = remember(timeFormat) {
+        { program -> formatTimeRange(timeFormat, program.startMs, program.endMs) }
+    }
 
     val liveLabel = stringResource(R.string.livetv_guide_live_badge)
     val nowLabel = stringResource(R.string.livetv_guide_now)
     val noInfoLabel = stringResource(R.string.livetv_guide_no_info)
-    val logoLooks = remember { mutableStateMapOf<String, Boolean>() }
 
     Box(
         modifier = modifier
@@ -488,16 +504,15 @@ internal fun LiveTvTimelineGuide(
                                 itemsIndexed(channels, key = { _, channel -> channel.id }) { rowIndex, channel ->
                                     GuideRow(
                                         channel = channel,
-                                        isCustom = channel.id in uiState.customChannelIds,
+                                        isCustom = channel.id in customChannelIds,
                                         programs = programsOf(channel),
                                         viewStartMs = viewStartMs,
                                         viewEndMs = viewEndMs,
                                         nowMs = nowMs,
-                                        logoLooks = logoLooks,
                                         liveLabel = liveLabel,
                                         noInfoLabel = noInfoLabel,
-                                        timeRange = ::timeRange,
-                                        requesterFor = ::requesterFor,
+                                        timeRange = timeRange,
+                                        requesterFor = requesterFor,
                                         onBlockFocused = { program ->
                                             val key = blockKey(channel, program)
                                             // Our own moves keep the time up/down aims at; others reset it.
@@ -531,7 +546,7 @@ internal fun LiveTvTimelineGuide(
                                             }
                                         },
                                         onBlockLongClick = {
-                                            val added = channel.id !in uiState.customChannelIds
+                                            val added = channel.id !in customChannelIds
                                             onToggleCustom(channel)
                                             android.widget.Toast.makeText(
                                                 context,
@@ -565,14 +580,15 @@ internal fun LiveTvTimelineGuide(
                 Spacer(modifier = Modifier.width(16.dp))
 
                 GuidePreviewPanel(
-                    channel = previewChannel,
-                    program = previewProgram,
+                    // Read in the panel only: a focus move redraws the panel, not the guide.
+                    channelState = previewChannelState,
+                    programState = previewProgramState,
                     cachedProgramArt = cachedProgramArt,
                     programArt = programArt,
                     nowMs = nowMs,
                     liveLabel = liveLabel,
                     nowLabel = nowLabel,
-                    timeRange = ::timeRange,
+                    timeRange = timeRange,
                     modifier = Modifier
                         .width(PreviewWidth)
                         .fillMaxHeight()
@@ -819,7 +835,6 @@ private fun GuideRow(
     viewStartMs: Long,
     viewEndMs: Long,
     nowMs: Long,
-    logoLooks: MutableMap<String, Boolean>,
     liveLabel: String,
     noInfoLabel: String,
     timeRange: (EpgProgram) -> String,
@@ -840,7 +855,6 @@ private fun GuideRow(
         ChannelLogoTile(
             channel = channel,
             isCustom = isCustom,
-            logoLooks = logoLooks,
             focusRequester = requesterFor(logoKey(channel)),
             onFocused = onLogoFocused,
             onClick = onLogoClick,
@@ -875,13 +889,16 @@ private fun GuideRow(
             } else {
                 visible.forEach { program ->
                     androidx.compose.runtime.key(program.startMs) {
+                        // Worked out once per program, not each time the guide slides.
+                        val title = remember(program.title) { cleanProgramTitle(program.title) }
+                        val timeText = remember(program.startMs, program.endMs, timeRange) { timeRange(program) }
                         val left = maxOf(program.startMs, viewStartMs)
                         val right = minOf(program.endMs, viewEndMs)
                         val x = MinuteWidth * ((left - viewStartMs) / MINUTE_MS.toFloat())
                         val width = (MinuteWidth * ((right - left) / MINUTE_MS.toFloat()) - BlockGap).coerceAtLeast(2.dp)
                         GuideBlock(
-                            title = cleanProgramTitle(program.title),
-                            timeText = timeRange(program),
+                            title = title,
+                            timeText = timeText,
                             isAiring = program.isAiringAt(nowMs),
                             isLive = program.isLive,
                             liveLabel = liveLabel,
@@ -998,7 +1015,6 @@ private fun LiveBadge(text: String, modifier: Modifier = Modifier) {
 private fun ChannelLogoTile(
     channel: LiveTvChannel,
     isCustom: Boolean,
-    logoLooks: MutableMap<String, Boolean>,
     focusRequester: FocusRequester,
     onFocused: () -> Unit,
     onClick: () -> Unit,
@@ -1038,26 +1054,20 @@ private fun ChannelLogoTile(
                 )
             } else {
                 val context = LocalContext.current
+                // A dark one-color logo is made white as it loads (off the main thread, kept in
+                // the image cache): nothing to work out or redraw while the guide scrolls.
                 val request = remember(url) {
                     ImageRequest.Builder(context)
                         .data(url)
                         .size(240, 120)
-                        .allowHardware(false) // to read its pixels once
+                        .transformations(GuideLogoWhitening)
                         .crossfade(true)
                         .build()
                 }
-                val tintWhite = logoLooks[url] == true
                 AsyncImage(
                     model = request,
                     contentDescription = channel.name,
                     contentScale = ContentScale.Fit,
-                    colorFilter = if (tintWhite) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null,
-                    onSuccess = { state ->
-                        if (url !in logoLooks) {
-                            val bitmap = (state.result.image as? BitmapImage)?.bitmap
-                            logoLooks[url] = bitmap != null && isDarkOneColorLogo(bitmap)
-                        }
-                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -1078,6 +1088,30 @@ private fun ChannelLogoTile(
     }
 }
 
+/** A dark one-color logo (meant for light backgrounds) turned white for the dark tiles; others as they are. */
+private object GuideLogoWhitening : coil3.transform.Transformation() {
+    override val cacheKey: String = "guide_logo_white_v1"
+
+    override suspend fun transform(input: Bitmap, size: coil3.size.Size): Bitmap {
+        if (!runCatching { isDarkOneColorLogo(input) }.getOrDefault(false)) return input
+        return runCatching {
+            val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
+            android.graphics.Canvas(output).drawBitmap(
+                input,
+                0f,
+                0f,
+                android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+                    colorFilter = android.graphics.PorterDuffColorFilter(
+                        android.graphics.Color.WHITE,
+                        android.graphics.PorterDuff.Mode.SRC_IN
+                    )
+                }
+            )
+            output
+        }.getOrDefault(input)
+    }
+}
+
 /**
  * True for a logo that is mostly see-through with dark, even-toned marks (navy, black or gray
  * lettering): white keeps it readable on a dark tile. Two-tone or bright logos stay as they are.
@@ -1095,7 +1129,7 @@ private fun isDarkOneColorLogo(bitmap: Bitmap): Boolean {
     while (y < height) {
         var x = 0
         while (x < width) {
-            val pixel = runCatching { bitmap.getPixel(x, y) }.getOrDefault(0)
+            val pixel = bitmap.getPixel(x, y)
             total++
             val alpha = (pixel ushr 24) and 0xFF
             if (alpha < 40) {
@@ -1191,8 +1225,8 @@ private const val PREVIEW_ART_DELAY_MS = 250L
  */
 @Composable
 private fun GuidePreviewPanel(
-    channel: LiveTvChannel?,
-    program: EpgProgram?,
+    channelState: androidx.compose.runtime.State<LiveTvChannel?>,
+    programState: androidx.compose.runtime.State<EpgProgram?>,
     cachedProgramArt: (EpgProgram) -> GuideProgramArt?,
     programArt: suspend (EpgProgram) -> GuideProgramArt,
     nowMs: Long,
@@ -1201,6 +1235,8 @@ private fun GuidePreviewPanel(
     timeRange: (EpgProgram) -> String,
     modifier: Modifier = Modifier
 ) {
+    val channel = channelState.value
+    val program = programState.value
     Column(modifier = modifier.padding(top = RulerHeight + 6.dp)) {
         Box(
             modifier = Modifier

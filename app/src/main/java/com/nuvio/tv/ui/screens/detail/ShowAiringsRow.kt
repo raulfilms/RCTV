@@ -160,14 +160,20 @@ class ShowAiringsViewModel @Inject constructor(
     companion object {
         private const val MAX_AIRINGS = 20
 
+        // Built once (they run for every program of the guide that might be the show).
+        private val MARKS = Regex("\\p{Mn}+")
+        private val NOT_ALPHANUMERIC = Regex("[^a-z0-9]+")
+        private val SPACES = Regex("\\s+")
+        private val CHANNEL_TAGS = Regex("\\b(us|usa|hd|fhd|uhd|sd|4k|hevc|h265|backup|east|west)\\b")
+
         /** "The Pat McAfee Show" → "pat mcafee show": no accents, punctuation, case or leading "the". */
         internal fun normalize(title: String): String {
-            val plain = Normalizer.normalize(title, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+            val plain = Normalizer.normalize(title, Normalizer.Form.NFD).replace(MARKS, "")
             return plain.lowercase(Locale.ROOT)
-                .replace(Regex("[^a-z0-9]+"), " ")
+                .replace(NOT_ALPHANUMERIC, " ")
                 .trim()
                 .removePrefix("the ")
-                .replace(Regex("\\s+"), " ")
+                .replace(SPACES, " ")
         }
 
         /** The guide's title is the show ("First Take", "LIVE: First Take", "First Take: Hour 2"). */
@@ -181,8 +187,8 @@ class ShowAiringsViewModel @Inject constructor(
         /** A channel's name without its quality or country tags ("US: ESPN FHD" → "espn"). */
         private fun baseChannelName(name: String): String =
             normalize(name)
-                .replace(Regex("\\b(us|usa|hd|fhd|uhd|sd|4k|hevc|h265|backup|east|west)\\b"), " ")
-                .replace(Regex("\\s+"), " ")
+                .replace(CHANNEL_TAGS, " ")
+                .replace(SPACES, " ")
                 .trim()
 
         internal fun findAirings(

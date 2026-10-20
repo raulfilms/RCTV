@@ -107,7 +107,7 @@ object XmltvParser {
         val parser: XmlPullParser = Xml.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(StringReader(xmltvText))
-        return read(parser, Long.MIN_VALUE, Long.MAX_VALUE, includeChannels = false) { true }.programs
+        return read(parser, Long.MIN_VALUE, Long.MAX_VALUE, includeChannels = false, shouldContinue = { true }, keepChannel = null).programs
     }
 
     /**
@@ -122,7 +122,12 @@ object XmltvParser {
         fromMs: Long = Long.MIN_VALUE,
         toMs: Long = Long.MAX_VALUE,
         includeChannels: Boolean = true,
-        shouldContinue: () -> Boolean = { true }
+        shouldContinue: () -> Boolean = { true },
+        /**
+         * Only these channels' programs are kept (a provider's guide often covers thousands of
+         * channels its playlist doesn't have); null: every channel's.
+         */
+        keepChannel: ((String) -> Boolean)? = null
     ): XmltvGuide {
         val buffered = BufferedInputStream(input, 64 * 1024)
         buffered.mark(4)
@@ -137,7 +142,7 @@ object XmltvParser {
         val parser: XmlPullParser = Xml.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(source, null)
-        return read(parser, fromMs, toMs, includeChannels, shouldContinue)
+        return read(parser, fromMs, toMs, includeChannels, shouldContinue, keepChannel)
     }
 
     /** Skips the element the parser is on (its whole subtree), ending on its end tag. */
@@ -157,7 +162,8 @@ object XmltvParser {
         fromMs: Long,
         toMs: Long,
         includeChannels: Boolean,
-        shouldContinue: () -> Boolean
+        shouldContinue: () -> Boolean,
+        keepChannel: ((String) -> Boolean)?
     ): XmltvGuide {
         val channels = mutableListOf<XmltvChannel>()
         val programs = mutableListOf<EpgProgram>()
@@ -182,8 +188,11 @@ object XmltvParser {
         var markedLive = false
         var markedNew = false
         val categories = ArrayList<String>(4)
-        // The same few category names repeat thousands of times: keep one copy of each.
+        // The same few category names repeat thousands of times: keep one copy of each. The same
+        // goes for the channel ids and the shows' titles (a show airs many times in two days).
         val categoryNames = HashMap<String, String>()
+        val sharedStrings = HashMap<String, String>()
+        fun shared(text: String): String = sharedStrings.getOrPut(text) { text }
 
         var currentTag: String? = null
         var seen = 0
@@ -207,14 +216,16 @@ object XmltvParser {
                         }
                         tag == "programme" -> {
                             if (++seen % 2_000 == 0 && !shouldContinue()) break
-                            val start = parseXmltvDate(parser.getAttributeValue(null, "start"))
-                            val end = parseXmltvDate(parser.getAttributeValue(null, "stop"))
-                            if (start == null || end == null || end <= fromMs || start >= toMs) {
+                            val programmeChannel = parser.getAttributeValue(null, "channel")
+                            val wanted = keepChannel == null || (programmeChannel != null && keepChannel(programmeChannel))
+                            val start = if (wanted) parseXmltvDate(parser.getAttributeValue(null, "start")) else null
+                            val end = if (wanted) parseXmltvDate(parser.getAttributeValue(null, "stop")) else null
+                            if (!wanted || start == null || end == null || end <= fromMs || start >= toMs) {
                                 // Outside the window (or unusable): don't read its text at all.
                                 try { skipElement(parser) } catch (_: Exception) { break }
                             } else {
                                 inProgramme = true
-                                channelId = parser.getAttributeValue(null, "channel")
+                                channelId = programmeChannel?.let(::shared)
                                 startMs = start
                                 endMs = end
                                 title = null
@@ -291,13 +302,14 @@ object XmltvParser {
                                 val isSportsGame = categories.any { it.lowercase(Locale.ROOT) in LIVE_SPORT_CATEGORIES }
                                 programs += EpgProgram(
                                     channelId = id,
-                                    title = programTitle,
-                                    description = description,
+                                    title = shared(programTitle),
+                                    // Reruns repeat the same description, episode and art.
+                                    description = description?.let(::shared),
                                     category = category,
                                     startMs = start,
                                     endMs = end,
-                                    subtitle = subtitle,
-                                    imageUrl = imageUrl,
+                                    subtitle = subtitle?.let(::shared),
+                                    imageUrl = imageUrl?.let(::shared),
                                     isLive = markedLive || LIVE_TAG.containsMatchIn(programTitle) || (isNew && isSportsGame),
                                     isNew = isNew,
                                     categories = categories.toList()

@@ -8,6 +8,8 @@ import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.poster.withCustomPosterUrls
+import com.nuvio.tv.core.tmdb.TmdbEnrichment
+import com.nuvio.tv.core.tmdb.TmdbEpisodeEnrichment
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbMovieCollection
 import com.nuvio.tv.core.tmdb.TmdbService
@@ -47,6 +49,7 @@ import com.nuvio.tv.core.util.selectEpisodeReleaseValue
 import java.time.LocalDate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -73,6 +76,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 private const val TAG = "MetaDetailsViewModel"
+
+/**
+ * How long a title's page waits for TMDB's main details (title, artwork, cast) before showing what
+ * the addon has; they fill the page in when they come.
+ */
+private const val MAIN_ENRICHMENT_WAIT_MS = 2_500L
 
 @HiltViewModel
 class MetaDetailsViewModel @Inject constructor(
@@ -944,7 +953,7 @@ class MetaDetailsViewModel @Inject constructor(
     private suspend fun applyMetaWithEnrichment(meta: Meta) {
         // Fire all independent async jobs immediately — they run in parallel.
         loadMoreLikeThisAsync(meta)
-        val enriched = enrichMeta(meta)
+        val (enriched, pendingEnrichment) = enrichMeta(meta)
 
         syncEffectiveContentId(enriched)
         val cachedNextToWatch = metaDetailsSessionState.getNextToWatch(
@@ -958,6 +967,8 @@ class MetaDetailsViewModel @Inject constructor(
             meta = enriched,
             initialNextToWatch = cachedNextToWatch
         )
+        // The page is up: what TMDB still has to send fills it in when it comes.
+        pendingEnrichment?.let { fillInLater(enriched.id, it) }
 
         val contentId = _effectiveContentId.value
 
@@ -1455,51 +1466,96 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun enrichMeta(meta: Meta): Meta {
+    /**
+     * TMDB's data still on its way when the page was shown: its main details (only when they took
+     * longer than [MAIN_ENRICHMENT_WAIT_MS]) and the episodes' titles and pictures. Each fills the
+     * page in place when it comes (see [fillInLater]).
+     */
+    private class PendingEnrichment(
+        val main: Deferred<TmdbEnrichment?>?,
+        val episodes: Deferred<Map<Pair<Int, Int>, TmdbEpisodeEnrichment>?>?,
+        val settings: TmdbSettings
+    )
+
+    /**
+     * [meta] with TMDB's main details (title, artwork, cast, trailers...). RCTV: the page no longer
+     * waits for every season's episodes (a long series asked TMDB for each season before showing
+     * anything), nor for TMDB's main details past [MAIN_ENRICHMENT_WAIT_MS] on a slow network: what
+     * is still coming is returned as [PendingEnrichment].
+     */
+    private suspend fun enrichMeta(meta: Meta): Pair<Meta, PendingEnrichment?> {
         val settings = tmdbSettingsDataStore.settings.first()
-        if (!settings.enabled) return meta
+        if (!settings.enabled) return meta to null
 
         val tmdbContentType = resolveTmdbContentType(meta)
         val tmdbLookupType = tmdbContentType.toApiString()
         val tmdbId = tmdbService.ensureTmdbId(meta.id, tmdbLookupType, fallbackImdbId = meta.imdbId)
             ?: tmdbService.ensureTmdbId(itemId, itemType, fallbackImdbId = meta.imdbId)
-            ?: return meta
+            ?: return meta to null
 
         val isSeries = meta.apiType in listOf("series", "tv")
         val needsEpisodes = settings.useEpisodes && isSeries
 
-        // Fetch main enrichment and episode enrichment in parallel.
-        val (enrichment, episodeMap) = coroutineScope {
-            val main = async(Dispatchers.IO) {
+        // Both asked at once, in the page's scope (they outlive this wait).
+        val main = viewModelScope.async(Dispatchers.IO) {
+            try {
                 tmdbMetadataService.fetchEnrichment(
                     tmdbId = tmdbId,
                     contentType = tmdbContentType,
                     language = settings.language
                 )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "TMDB enrichment failed for $tmdbId: ${e.message}")
+                null
             }
-            val episodes = if (needsEpisodes) {
-                async(Dispatchers.IO) {
+        }
+        val episodes = if (needsEpisodes) {
+            viewModelScope.async(Dispatchers.IO) {
+                try {
                     val seasonNumbers = meta.videos.mapNotNull { it.season }.distinct()
                     tmdbMetadataService.fetchEpisodeEnrichment(
                         tmdbId = tmdbId,
                         seasonNumbers = seasonNumbers,
                         language = settings.language
                     )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "TMDB episodes failed for $tmdbId: ${e.message}")
+                    null
                 }
-            } else null
-            main.await() to episodes?.await()
-        }
+            }
+        } else null
 
+        val enrichment = withTimeoutOrNull(MAIN_ENRICHMENT_WAIT_MS) { main.await() }
+        val updated = if (enrichment != null) {
+            afterMainEnrichment(enrichment, settings)
+            mergeMainEnrichment(meta, enrichment, settings)
+        } else {
+            meta
+        }
+        val pending = PendingEnrichment(
+            main = main.takeIf { enrichment == null },
+            episodes = episodes,
+            settings = settings
+        )
+        return updated to pending.takeIf { it.main != null || it.episodes != null }
+    }
+
+    /** [meta] with TMDB's main details, as the TMDB settings ask (nothing else changes). */
+    private fun mergeMainEnrichment(meta: Meta, enrichment: TmdbEnrichment, settings: TmdbSettings): Meta {
         var updated = meta
 
-        if (enrichment != null && settings.useArtwork) {
+        if (settings.useArtwork) {
             updated = updated.copy(
                 background = enrichment.backdrop ?: updated.background,
                 logo = enrichment.logo ?: updated.logo
             )
         }
 
-        if (enrichment != null && settings.useBasicInfo) {
+        if (settings.useBasicInfo) {
             updated = updated.copy(
                 name = enrichment.localizedTitle ?: updated.name,
                 description = enrichment.description ?: updated.description
@@ -1509,12 +1565,7 @@ class MetaDetailsViewModel @Inject constructor(
             }
         }
 
-        // Store TMDB rating separately so it can be shown with its own icon on the details screen.
-        if (enrichment?.rating != null && settings.useBasicInfo) {
-            _uiState.update { it.copy(tmdbRating = enrichment.rating.toFloat()) }
-        }
-
-        if (enrichment != null && settings.useDetails) {
+        if (settings.useDetails) {
             updated = updated.copy(
                 runtime = enrichment.runtimeMinutes?.toString() ?: updated.runtime,
                 status = enrichment.status ?: updated.status,
@@ -1524,7 +1575,7 @@ class MetaDetailsViewModel @Inject constructor(
             )
         }
 
-        if (enrichment != null && settings.useCredits) {
+        if (settings.useCredits) {
             val peopleCredits = buildList {
                 addAll(enrichment.directorMembers)
                 addAll(enrichment.writerMembers)
@@ -1545,15 +1596,15 @@ class MetaDetailsViewModel @Inject constructor(
             )
         }
 
-        if (enrichment != null && settings.useProductions && enrichment.productionCompanies.isNotEmpty()) {
+        if (settings.useProductions && enrichment.productionCompanies.isNotEmpty()) {
             updated = updated.copy(productionCompanies = enrichment.productionCompanies)
         }
 
-        if (enrichment != null && settings.useNetworks && enrichment.networks.isNotEmpty()) {
+        if (settings.useNetworks && enrichment.networks.isNotEmpty()) {
             updated = updated.copy(networks = enrichment.networks)
         }
 
-        if (enrichment != null && settings.useTrailers && enrichment.trailers.isNotEmpty()) {
+        if (settings.useTrailers && enrichment.trailers.isNotEmpty()) {
             val mergedTrailers = mergeTrailers(
                 existing = updated.trailers,
                 incoming = enrichment.trailers
@@ -1566,7 +1617,28 @@ class MetaDetailsViewModel @Inject constructor(
             }
         }
 
-        if (!episodeMap.isNullOrEmpty()) {
+        return updated
+    }
+
+    /** What TMDB's main details bring beside the title itself: its rating and its collection. */
+    private fun afterMainEnrichment(enrichment: TmdbEnrichment, settings: TmdbSettings) {
+        // Store TMDB rating separately so it can be shown with its own icon on the details screen.
+        if (enrichment.rating != null && settings.useBasicInfo) {
+            _uiState.update { it.copy(tmdbRating = enrichment.rating.toFloat()) }
+        }
+        if (enrichment.collectionId != null) {
+            loadCollectionAsync(enrichment.collectionId, enrichment.collectionName, settings)
+        }
+    }
+
+    /** [meta] with TMDB's episode titles, overviews, pictures and runtimes. */
+    private fun mergeEpisodes(
+        meta: Meta,
+        episodeMap: Map<Pair<Int, Int>, TmdbEpisodeEnrichment>,
+        settings: TmdbSettings
+    ): Meta {
+        var updated = meta
+        if (episodeMap.isNotEmpty()) {
             updated = updated.copy(
                 videos = meta.videos.map { video ->
                     val key = if (video.season != null && video.episode != null) video.season to video.episode else null
@@ -1586,11 +1658,46 @@ class MetaDetailsViewModel @Inject constructor(
             )
         }
 
-        if (enrichment?.collectionId != null) {
-            loadCollectionAsync(enrichment.collectionId, enrichment.collectionName, settings)
-        }
-
         return updated
+    }
+
+    /**
+     * Fills the page in with what TMDB sends after it was shown, in place: the season, the episode
+     * focused and where the page is scrolled stay as they are.
+     */
+    private fun fillInLater(metaId: String, pending: PendingEnrichment) {
+        pending.main?.let { main ->
+            viewModelScope.launch {
+                val enrichment = main.await() ?: return@launch
+                if (_uiState.value.meta?.id != metaId) return@launch
+                afterMainEnrichment(enrichment, pending.settings)
+                val hadTrailers = _uiState.value.meta?.trailers?.isNotEmpty() == true
+                updateShownMeta(metaId) { current -> mergeMainEnrichment(current, enrichment, pending.settings) }
+                // Its trailer, when TMDB brought the only ones.
+                if (!hadTrailers && _uiState.value.meta?.trailers?.isNotEmpty() == true) fetchTrailerUrl()
+            }
+        }
+        pending.episodes?.let { episodes ->
+            viewModelScope.launch {
+                val episodeMap = episodes.await()
+                if (episodeMap.isNullOrEmpty()) return@launch
+                updateShownMeta(metaId) { current -> mergeEpisodes(current, episodeMap, pending.settings) }
+            }
+        }
+    }
+
+    /** Replaces the page's title (the same one, [metaId]) with [transform]'s, keeping the season chosen. */
+    private fun updateShownMeta(metaId: String, transform: (Meta) -> Meta) {
+        _uiState.update { state ->
+            val current = state.meta ?: return@update state
+            if (current.id != metaId) return@update state
+            val updated = transform(current)
+            if (updated == current) return@update state
+            state.copy(
+                meta = updated,
+                episodesForSeason = getEpisodesForSeason(updated.videos, state.selectedSeason)
+            )
+        }
     }
 
     private fun resolveTmdbContentType(meta: Meta): ContentType {

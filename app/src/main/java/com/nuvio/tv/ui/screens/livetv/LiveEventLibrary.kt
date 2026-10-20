@@ -39,16 +39,22 @@ class LiveEventLibrary @Inject constructor(
     private val libraryPreferences: LibraryPreferences,
     private val sportsLibraryStore: SportsLibraryStore
 ) {
-    /** The leagues' games around a day (by the day searched), for a few minutes. */
-    private val fixturesCache = ConcurrentHashMap<Long, Pair<Long, List<SportsEvent>>>()
+    /** A league's games around a day ("league|day"), for a few minutes. */
+    private val fixturesCache = ConcurrentHashMap<String, Pair<Long, List<SportsEvent>>>()
 
     /**
-     * The game [program] is, on ESPN; null when it doesn't look like a game or ESPN doesn't have it.
-     * Throws when ESPN can't be reached.
+     * The game [program] (on [channelName]) is, on ESPN; null when it doesn't look like a game or
+     * ESPN doesn't have it. Only the leagues the program can be are asked (its title, categories and
+     * channel say which: "NBA", "Liga MX", "NASCAR", "ESPN Deportes"), not every league: asking all
+     * of them for one program took the memory and the time the Guide needed.
      */
-    suspend fun findGame(program: EpgProgram): SportsEvent? {
+    suspend fun findGame(program: EpgProgram, channelName: String? = null): SportsEvent? {
         if (!looksLikeGame(program)) return null
-        val events = fixturesAround(program.startMs)
+        val text = SportsGameChannels.normalize(
+            (listOfNotNull(program.title, program.subtitle, program.category, channelName) + program.categories).joinToString(" ")
+        )
+        val feeds = EspnSportsClient.feedsForProgram(text)
+        val events = fixturesAround(program.startMs, feeds)
         return events
             .map { event -> event to SportsGameChannels.scoreFor(program, event) }
             .filter { it.second > 0 }
@@ -56,28 +62,36 @@ class LiveEventLibrary @Inject constructor(
             ?.first
     }
 
-    private suspend fun fixturesAround(timeMs: Long): List<SportsEvent> {
+    private suspend fun fixturesAround(timeMs: Long, feeds: List<EspnSportsClient.Feed>): List<SportsEvent> {
         val day = timeMs / DAY_MS
-        fresh(day)?.let { return it }
-        // One load at a time: programs opened one after another wait for the first load (every
-        // league's games) instead of each loading them all again at once.
+        fun keyOf(feed: EspnSportsClient.Feed) = "${feed.sportPath}:${feed.leaguePath}|$day"
+        // One load at a time: programs opened one after another wait for the one loading (and use
+        // what it found) instead of each asking the same leagues again at once.
         return fixturesLock.withLock {
-            fresh(day)?.let { return@withLock it }
-            val events = withContext(Dispatchers.IO) {
-                // Kept even when the program that asked was closed meanwhile (the next one needs it).
-                espnClient.fetchFixturesAround(timeMs).flatMap { it.events }.also { found ->
-                    if (found.isNotEmpty()) fixturesCache[day] = System.currentTimeMillis() to found
+            val missing = feeds.filter { fresh(keyOf(it)) == null }
+            if (missing.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    // Kept even when the program that asked was closed meanwhile (the next one needs it).
+                    val now = System.currentTimeMillis()
+                    val loaded = espnClient.fetchFixturesAround(timeMs, missing)
+                    loaded.forEach { result ->
+                        fixturesCache[keyOf(result.feed)] = now to result.events
+                    }
+                    // A league that didn't answer isn't asked again for every program: in a minute.
+                    val answered = loaded.map { keyOf(it.feed) }.toSet()
+                    missing.map(::keyOf).filterNot { it in answered }.forEach { key ->
+                        fixturesCache[key] = (now - CACHE_MS + FAILED_RETRY_MS) to emptyList()
+                    }
                 }
             }
-            if (events.isEmpty()) error("No games from ESPN")
-            events
+            feeds.flatMap { fresh(keyOf(it)).orEmpty() }
         }
     }
 
     private val fixturesLock = Mutex()
 
-    private fun fresh(day: Long): List<SportsEvent>? {
-        val (savedAt, events) = fixturesCache[day] ?: return null
+    private fun fresh(key: String): List<SportsEvent>? {
+        val (savedAt, events) = fixturesCache[key] ?: return null
         return events.takeIf { System.currentTimeMillis() - savedAt < CACHE_MS }
     }
 
@@ -152,6 +166,7 @@ class LiveEventLibrary @Inject constructor(
         private const val PROGRAM_ID_PREFIX = "guide:"
         private const val DAY_MS = 24L * 60 * 60 * 1000
         private const val CACHE_MS = 10L * 60 * 1000
+        private const val FAILED_RETRY_MS = 60L * 1000
 
         private val SPORT_WORDS = listOf(
             "sport", "sports", "deporte", "deportes", "football", "futbol", "soccer", "basketball",

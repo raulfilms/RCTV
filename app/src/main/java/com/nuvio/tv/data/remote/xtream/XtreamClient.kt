@@ -274,15 +274,30 @@ class XtreamClient @Inject constructor(
     }
 
     /** Fetches the account's full XMLTV EPG export (`xmltv.php`), raw, for [XmltvParser] to parse. */
-    fun fetchXmltv(connection: LiveTvConnection.Xtream): String {
+    fun fetchXmltv(connection: LiveTvConnection.Xtream): String = get(xmltvUrl(connection))
+
+    /**
+     * The account's guide (XMLTV) as it downloads, to be read as it comes: a provider's guide is
+     * often a hundred megabytes or more, far too much to hold as one piece of text. The caller
+     * closes [read]'s stream by returning from it.
+     */
+    fun <T> streamXmltv(connection: LiveTvConnection.Xtream, read: (java.io.InputStream) -> T): T {
+        val request = Request.Builder().url(xmltvUrl(connection)).build()
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw XtreamException("HTTP ${response.code}")
+            val body = response.body ?: throw XtreamException("Empty guide")
+            return read(body.byteStream())
+        }
+    }
+
+    private fun xmltvUrl(connection: LiveTvConnection.Xtream): okhttp3.HttpUrl {
         val server = normalizedServerUrl(connection.serverUrl)
         val user = connection.username.trim()
         val pass = connection.password.trim()
         val base = "$server/xmltv.php".toHttpUrlOrNull() ?: throw XtreamException("Invalid server URL")
-        val url = base.newBuilder()
+        return base.newBuilder()
             .addQueryParameter("username", user)
             .addQueryParameter("password", pass)
             .build()
-        return get(url)
     }
 }

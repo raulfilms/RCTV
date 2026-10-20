@@ -180,18 +180,30 @@ fun ChannelProfileScreen(
     val selected = remember(liveState.channels, channelId) { liveState.channels.firstOrNull { it.id == channelId } }
     val brand = remember(selected?.id, selected?.name) { selected?.let(ChannelBrands::brandOf) }
     val epg = liveState.epgByChannel
-    val members = remember(brand, liveState.channels, epg) {
-        brand?.let { found ->
-            ChannelBrands.members(found, liveState.channels, selected) { channel ->
+    // The family's channels (every channel of the playlist is looked at) and what it airs: worked
+    // out off the main thread, so opening a channel's page (or the guide refreshing) never holds up
+    // the remote. The page shows its loading state for that moment the first time.
+    val family by androidx.compose.runtime.produceState<ChannelFamily?>(null, brand, liveState.channels, epg, selected?.id) {
+        val found = brand ?: run {
+            value = null
+            return@produceState
+        }
+        val channels = liveState.channels
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val members = ChannelBrands.members(found, channels, selected) { channel ->
                 channel.epgChannelId?.let { epg[it] }?.isNotEmpty() == true
             }
+            ChannelFamily(
+                members = members,
+                // What the family airs: helps find its shows and movies on TMDB.
+                epgSeries = ChannelGuideTitles.series(members.live, epg),
+                epgMovies = ChannelGuideTitles.movies(members.all, epg, System.currentTimeMillis())
+            )
         }
     }
-    // What the family airs: helps find its shows and movies on TMDB.
-    val epgSeries = remember(members, epg) { members?.let { ChannelGuideTitles.series(it.live, epg) }.orEmpty() }
-    val epgMovies = remember(members, epg) {
-        members?.let { ChannelGuideTitles.movies(it.all, epg, System.currentTimeMillis()) }.orEmpty()
-    }
+    val members: ChannelBrandMembers? = family?.members
+    val epgSeries: List<String> = family?.epgSeries ?: emptyList()
+    val epgMovies: List<com.nuvio.tv.data.channelprofile.EpgMovieTitle> = family?.epgMovies ?: emptyList()
     LaunchedEffect(brand, epgSeries, epgMovies) {
         val found = brand ?: return@LaunchedEffect
         val channels = members?.all.orEmpty()
@@ -1226,3 +1238,10 @@ private fun ChannelSeeAllPage(
         onFilterMenuOpen = onFilterMenuOpen
     )
 }
+
+/** A channel family on the page: its channels, and the shows and movies its guide lists. */
+private class ChannelFamily(
+    val members: ChannelBrandMembers,
+    val epgSeries: List<String>,
+    val epgMovies: List<com.nuvio.tv.data.channelprofile.EpgMovieTitle>
+)

@@ -375,8 +375,28 @@ class SportsViewModel @Inject constructor(
 
     private suspend fun refresh(favoriteTeamIds: Set<String>, quiet: Boolean = false) {
         if (!quiet) _uiState.update { it.copy(isLoading = true, error = null) }
-        val result = withContext(Dispatchers.IO) {
-            runCatching { loadAll(favoriteTeamIds) }
+        // The leagues come in a few at a time (the person's first): the page fills in as they do,
+        // instead of "Loading Sports" until the last one is in.
+        val arrived = java.util.concurrent.ConcurrentLinkedQueue<EspnSportsClient.FeedResult>()
+        val progress = if (quiet) null else viewModelScope.launch {
+            var shown = 0
+            while (true) {
+                kotlinx.coroutines.delay(PROGRESS_TICK_MS)
+                val results = arrived.toList()
+                if (results.size == shown || results.none { it.events.isNotEmpty() }) continue
+                shown = results.size
+                val partial = withContext(Dispatchers.Default) {
+                    runCatching { aggregate(results, favoriteTeamIds, homeTeamRowPicks = emptyList()) }.getOrNull()
+                } ?: continue
+                applyLoaded(partial, final = false)
+            }
+        }
+        val result = try {
+            withContext(Dispatchers.IO) {
+                runCatching { loadAll(favoriteTeamIds) { arrived += it } }
+            }
+        } finally {
+            progress?.cancel()
         }
         // A quiet reload that fails keeps what the page shows.
         if (quiet && result.isFailure) return
@@ -394,11 +414,11 @@ class SportsViewModel @Inject constructor(
         }
     }
 
-    /** Shows loaded games and leagues on the page. */
-    private fun applyLoaded(loaded: LoadedData) {
+    /** Shows loaded games and leagues on the page ([final]: every league is in). */
+    private fun applyLoaded(loaded: LoadedData, final: Boolean = true) {
         _uiState.update {
             it.copy(
-                isLoading = false,
+                isLoading = if (final) false else it.isLoading,
                 error = null,
                 featuredEvent = loaded.liveNow.firstOrNull() ?: loaded.upcomingGames.firstOrNull(),
                 heroEvents = loaded.liveNow.filterNot { it.isGolf() }.take(5)
@@ -428,12 +448,27 @@ class SportsViewModel @Inject constructor(
     )
 
     /** Fetches every curated ESPN feed and aggregates events/teams/leagues across all of them (each feed already carries its own league + team metadata, so no separate lookups are needed). */
-    private suspend fun loadAll(favoriteTeamIds: Set<String>): LoadedData = kotlinx.coroutines.coroutineScope {
-        // The marquee teams and every league's games, all at once.
+    private suspend fun loadAll(
+        favoriteTeamIds: Set<String>,
+        onResult: (EspnSportsClient.FeedResult) -> Unit = {}
+    ): LoadedData = kotlinx.coroutines.coroutineScope {
+        // The person's leagues load first (theirs and their teams').
+        val state = _uiState.value
+        val firstLeagues = (state.favoriteLeagues.map { it.id } + state.favoriteTeams.mapNotNull { it.leagueId }).toSet()
+        // The marquee teams and the leagues' games, meanwhile.
         val picks = async(Dispatchers.IO) { runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList()) }
-        val results = withContext(Dispatchers.IO) { client.fetchAllFixtures() }
-        val homeTeamRowPicks = picks.await()
+        val results = withContext(Dispatchers.IO) {
+            client.fetchAllFixtures(rangeDays = ROWS_DAYS, firstLeagueIds = firstLeagues, onResult = onResult)
+        }
+        aggregate(results, favoriteTeamIds, picks.await())
+    }
 
+    /** The rows from the leagues' games: Live Now, Up Next, Picked for You, the leagues and the teams. */
+    private fun aggregate(
+        results: List<EspnSportsClient.FeedResult>,
+        favoriteTeamIds: Set<String>,
+        homeTeamRowPicks: List<SportsTeam>
+    ): LoadedData {
         val leagues = results.map { it.league }.distinctBy { it.id }.sortedBy { league -> leagueRank(league.id) }
         // As the clock has them: games whose start time has come are live.
         val now = System.currentTimeMillis()
@@ -459,7 +494,7 @@ class SportsViewModel @Inject constructor(
             upcomingGames.take(10)
         }
 
-        LoadedData(
+        return LoadedData(
             liveNow = liveNow,
             upcomingGames = upcomingGames,
             pickedForYou = pickedForYou.ifEmpty { upcomingGames.take(10) },
@@ -476,6 +511,10 @@ class SportsViewModel @Inject constructor(
 
         /** How often the games load again while some are on (scores, ends, new games live). */
         const val QUIET_REFRESH_MS = 2L * 60 * 1000
+        /** The days of games the rows look at (Live Now, Up Next, a team's next game). */
+        const val ROWS_DAYS = 6
+        /** While the leagues come in, how often the page shows the ones in so far. */
+        const val PROGRESS_TICK_MS = 600L
         val TMDB_API_KEY: String get() = com.nuvio.tv.BuildConfig.TMDB_API_KEY
         /** TMDB's Talk genre (TV). */
         const val TMDB_TALK_GENRE = "10767"

@@ -309,7 +309,7 @@ internal class NascarSource(private val okHttpClient: OkHttpClient) {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw EspnSportsClient.EspnException("HTTP ${response.code}")
-            return response.body?.string().orEmpty()
+            return boundedBody(response)
         }
     }
 

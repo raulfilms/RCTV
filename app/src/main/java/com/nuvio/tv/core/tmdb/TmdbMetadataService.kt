@@ -75,12 +75,20 @@ class TmdbMetadataService(
             val normalizedLanguage = normalizeTmdbLanguage(language)
             val cacheKey = "$tmdbId:${contentType.name}:$normalizedLanguage"
             enrichmentCache[cacheKey]?.let { return@withContext it }
-            enrichmentInFlight[cacheKey]?.let { return@withContext it.await() }
+            enrichmentInFlight[cacheKey]?.let { existing ->
+                return@withContext awaitShared(existing) {
+                    enrichmentInFlight.remove(cacheKey, existing)
+                    fetchEnrichment(tmdbId, contentType, language)
+                }
+            }
 
             val numericId = tmdbId.toIntOrNull() ?: return@withContext null
             val requestDeferred = CompletableDeferred<TmdbEnrichment?>()
             enrichmentInFlight.putIfAbsent(cacheKey, requestDeferred)?.let { existing ->
-                return@withContext existing.await()
+                return@withContext awaitShared(existing) {
+                    enrichmentInFlight.remove(cacheKey, existing)
+                    fetchEnrichment(tmdbId, contentType, language)
+                }
             }
             val tmdbType = when (contentType) {
                 ContentType.SERIES, ContentType.TV -> "tv"
@@ -607,12 +615,20 @@ class TmdbMetadataService(
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val cacheKey = "$tmdbId:${seasonNumbers.sorted().joinToString(",")}:$normalizedLanguage"
         episodeCache[cacheKey]?.let { return@withContext it }
-        episodeInFlight[cacheKey]?.let { return@withContext it.await() }
+        episodeInFlight[cacheKey]?.let { existing ->
+            return@withContext awaitShared(existing) {
+                episodeInFlight.remove(cacheKey, existing)
+                fetchEpisodeEnrichment(tmdbId, seasonNumbers, language)
+            }
+        }
 
         val numericId = tmdbId.toIntOrNull() ?: return@withContext emptyMap()
         val requestDeferred = CompletableDeferred<Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>()
         episodeInFlight.putIfAbsent(cacheKey, requestDeferred)?.let { existing ->
-            return@withContext existing.await()
+            return@withContext awaitShared(existing) {
+                episodeInFlight.remove(cacheKey, existing)
+                fetchEpisodeEnrichment(tmdbId, seasonNumbers, language)
+            }
         }
         try {
             val semaphore = Semaphore(TMDB_SEASON_REQUEST_CONCURRENCY)

@@ -97,22 +97,21 @@ data class LiveTvUiState(
     /** Guide categories of each channel id. */
     val channelCategories: Map<String, Set<GuideBrowse>> = emptyMap()
 ) {
-    val visibleChannels: List<LiveTvChannel>
-        get() {
-            val query = channelSearchInput.trim()
-            return channels
-                .distinctBy { it.id }
-                .filter { selectedGroup == null || it.groupTitle == selectedGroup }
-                .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
-        }
+    // Worked out once per state (not on every redraw that reads them): thousands of channels.
+    val visibleChannels: List<LiveTvChannel> by lazy {
+        val query = channelSearchInput.trim()
+        channels
+            .distinctBy { it.id }
+            .filter { selectedGroup == null || it.groupTitle == selectedGroup }
+            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+    }
 
     /** How many channels each group has, for the category sidebar - independent of [selectedGroup] so counts don't collapse to the selected group's own size. */
-    val groupCounts: Map<String, Int>
-        get() {
-            val query = channelSearchInput.trim()
-            val searched = if (query.isBlank()) channels else channels.filter { it.name.contains(query, ignoreCase = true) }
-            return searched.mapNotNull { it.groupTitle }.groupingBy { it }.eachCount()
-        }
+    val groupCounts: Map<String, Int> by lazy {
+        val query = channelSearchInput.trim()
+        val searched = if (query.isBlank()) channels else channels.filter { it.name.contains(query, ignoreCase = true) }
+        searched.mapNotNull { it.groupTitle }.groupingBy { it }.eachCount()
+    }
 
     val hasEpg: Boolean get() = epgByChannel.isNotEmpty()
 
@@ -267,7 +266,7 @@ class LiveTvViewModel @Inject constructor(
             .any { val word = it.lowercase(java.util.Locale.ROOT); "movie" in word || "film" in word }
         val looksLikeGame = !looksLikeMovie && LiveEventLibrary.looksLikeGame(program)
         val lookup = viewModelScope.async { liveProgramLibrary.match(program) }
-        val gameLookup = if (looksLikeGame) viewModelScope.async { liveEventLibrary.findGame(program) } else null
+        val gameLookup = if (looksLikeGame) viewModelScope.async { liveEventLibrary.findGame(program, channel.name) } else null
         libraryMatch = lookup
         gameMatch = gameLookup
         _libraryPrompt.value = if (looksLikeMovie) null else LiveLibraryPrompt(channel, program, looksLikeMovie = false, looksLikeGame = looksLikeGame)
@@ -714,11 +713,11 @@ class LiveTvViewModel @Inject constructor(
         programDetailsJob?.cancel()
         _programDetailsTmdb.value = ProgramDetailsTmdb(art = cachedProgramArt(program))
         programDetailsJob = viewModelScope.launch {
-            // A game: ESPN is asked meanwhile.
+            // A game: ESPN is asked meanwhile (only the leagues it can be).
             val gameLookup = if (LiveEventLibrary.looksLikeGame(program)) {
                 async {
                     try {
-                        liveEventLibrary.findGame(program)
+                        liveEventLibrary.findGame(program, channel.name)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -728,6 +727,8 @@ class LiveTvViewModel @Inject constructor(
             } else {
                 null
             }
+            // TMDB's answer shows (and its actions work) as soon as it's in: it never waits for ESPN.
+            // Not on TMDB, the program itself can be added to the Library from what the guide says.
             val art = programArt(program)
             val found = try {
                 liveProgramLibrary.findTitle(program)
@@ -736,19 +737,31 @@ class LiveTvViewModel @Inject constructor(
             } catch (e: Exception) {
                 null
             }
-            val game = gameLookup?.await()
-            // The game it is comes first; not on TMDB either, the program goes to the Events as is.
-            val match = if (game != null) null else found
-            _programDetailsTmdb.value = ProgramDetailsTmdb(isLoading = false, match = match, game = game, art = art)
-            val inLibrary = when {
-                game != null -> liveEventLibrary.isGameInLibrary(game)
-                match != null -> liveProgramLibrary.isInLibrary(match)
-                else -> liveEventLibrary.isProgramInLibrary(channel, program)
-            }
-            inLibrary.collect { saved ->
-                _programDetailsTmdb.update { it.copy(inLibrary = saved) }
-            }
+            _programDetailsTmdb.value = ProgramDetailsTmdb(isLoading = false, match = found, art = art)
+            val titleInLibrary = launch { watchInLibrary(channel, program, game = null, match = found) }
+            // Then the game, when it's one ESPN has: it's what the program is (and what's added).
+            val game = gameLookup?.await() ?: return@launch
+            titleInLibrary.cancel()
+            _programDetailsTmdb.update { it.copy(match = null, game = game, inLibrary = false) }
+            launch { watchInLibrary(channel, program, game = game, match = null) }
         }
+    }
+
+    /** Whether what the details would add (the game, the title, or the program) is in the Library. */
+    private suspend fun watchInLibrary(
+        channel: LiveTvChannel,
+        program: EpgProgram,
+        game: com.nuvio.tv.domain.model.SportsEvent?,
+        match: LiveProgramMatch?
+    ) {
+        val inLibrary = when {
+            game != null -> liveEventLibrary.isGameInLibrary(game)
+            match != null -> liveProgramLibrary.isInLibrary(match)
+            else -> liveEventLibrary.isProgramInLibrary(channel, program)
+        }
+        runCatching {
+            inLibrary.collect { saved -> _programDetailsTmdb.update { it.copy(inLibrary = saved) } }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     fun dismissProgramDetails() {

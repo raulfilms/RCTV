@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -296,7 +297,7 @@ class LiveTvGuideLoader @Inject constructor(
             else -> null
         }
         // The programs already loaded stay while the new ones come.
-        val keptEpg = previous?.epgByChannel.orEmpty()
+        val keptEpg: Map<String, List<EpgProgram>> = previous?.epgByChannel.orEmpty()
         val withChannels = LiveGuideSnapshot(
             key = key,
             isPreview = false,
@@ -314,12 +315,23 @@ class LiveTvGuideLoader @Inject constructor(
 
         // The programs are a nice-to-have on top of the channels: none (or a failed load) never
         // blocks watching.
-        val merged = sources.fold(emptyMap<String, List<EpgProgram>>()) { acc, source -> acc + loadSourceEpg(source) }
-            .ifEmpty { keptEpg }
+        // Each source's guide only for its own channels (their guide id, or their id when the
+        // playlist gives none: both are looked up).
+        val merged = HashMap<String, List<EpgProgram>>()
+        for ((source, result) in results) {
+            val prefix = "${source.id}:"
+            val wanted = HashSet<String>()
+            result.getOrNull()?.forEach { channel ->
+                channel.epgChannelId?.removePrefix(prefix)?.let(wanted::add)
+                wanted += channel.id.removePrefix(prefix)
+            }
+            merged += loadSourceEpg(source, wanted)
+        }
+        val epg: Map<String, List<EpgProgram>> = merged.ifEmpty { keptEpg }
         val loaded = withChannels.copy(
             isEpgLoading = false,
-            epgByChannel = merged,
-            channelCategories = categorize(channels, merged),
+            epgByChannel = epg,
+            channelCategories = categorize(channels, epg),
             loadedAtMs = System.currentTimeMillis()
         )
         publish(key, loaded)
@@ -354,41 +366,45 @@ class LiveTvGuideLoader @Inject constructor(
         }
     }.onFailure { if (it is CancellationException) throw it }
 
-    /** One source's programs, by prefixed channel id (a Stalker portal's guide isn't read yet). */
-    private suspend fun loadSourceEpg(source: LiveTvSource): Map<String, List<EpgProgram>> {
+    /**
+     * One source's programs, by prefixed channel id (a Stalker portal's guide isn't read yet).
+     * Only for [wantedIds] (the guide ids of the source's own channels, unprefixed) and the guide's
+     * window: a provider's guide often lists thousands of channels and a week of programs, and
+     * keeping all of it is what made the Guide slow and the app close for lack of memory. Read as
+     * it downloads (never held whole as text).
+     */
+    private suspend fun loadSourceEpg(source: LiveTvSource, wantedIds: Set<String>): Map<String, List<EpgProgram>> {
         val connection = source.connection
-        val epgUrl = when (connection) {
-            is LiveTvConnection.Xtream -> null // fetched with xtreamClient.fetchXmltv below
-            is LiveTvConnection.M3u -> connection.epgUrl
-            is LiveTvConnection.Stalker -> return emptyMap()
+        if (wantedIds.isEmpty()) return emptyMap()
+        val job = coroutineContext[Job]
+        val nowMs = System.currentTimeMillis()
+        val read: (java.io.InputStream) -> List<EpgProgram> = { input ->
+            XmltvParser.parseStream(
+                input = input,
+                fromMs = nowMs - EPG_WINDOW_PAST_MS,
+                toMs = nowMs + EPG_WINDOW_AHEAD_MS,
+                includeChannels = false,
+                shouldContinue = { job?.isActive != false },
+                keepChannel = { it in wantedIds }
+            ).programs
         }
-        if (connection is LiveTvConnection.M3u && epgUrl == null) return emptyMap()
-
         return runCatching {
-            val xmltvText = when (connection) {
-                is LiveTvConnection.Xtream -> xtreamClient.fetchXmltv(connection)
+            val programs: List<EpgProgram> = when (connection) {
+                is LiveTvConnection.Xtream -> xtreamClient.streamXmltv(connection, read)
                 is LiveTvConnection.M3u -> {
-                    // Streamed, gzip-aware and limited to the guide's window, so a big national guide
-                    // (or an .xml.gz one) doesn't have to fit in memory as one string.
-                    val nowMs = System.currentTimeMillis()
-                    val request = Request.Builder().url(requireNotNull(epgUrl)).build()
-                    val programs = okHttpClient.newCall(request).execute().use { response ->
+                    val epgUrl = connection.epgUrl ?: return emptyMap()
+                    // Gzip-aware too (an .xml.gz guide).
+                    val request = Request.Builder().url(epgUrl).build()
+                    okHttpClient.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) error("HTTP ${response.code}")
-                        val body = response.body ?: error("Empty response")
-                        XmltvParser.parseStream(
-                            input = body.byteStream(),
-                            fromMs = nowMs - EPG_WINDOW_PAST_MS,
-                            toMs = nowMs + EPG_WINDOW_AHEAD_MS,
-                            includeChannels = false
-                        ).programs
+                        read(response.body?.byteStream() ?: error("Empty response"))
                     }
-                    return@runCatching programs
-                        .groupBy { "${source.id}:${it.channelId}" }
-                        .mapValues { (_, list) -> list.sortedBy { it.startMs } }
                 }
                 is LiveTvConnection.Stalker -> return emptyMap()
             }
-            XmltvParser.parse(xmltvText)
+            // Stopped part way (another load took over): what was read is incomplete.
+            coroutineContext.ensureActive()
+            programs
                 .groupBy { "${source.id}:${it.channelId}" }
                 .mapValues { (_, list) -> list.sortedBy { it.startMs } }
         }.onFailure { if (it is CancellationException) throw it }.getOrDefault(emptyMap())
@@ -465,7 +481,11 @@ class LiveTvGuideLoader @Inject constructor(
         if (!file.exists()) return null
         return try {
             DataInputStream(BufferedInputStream(file.inputStream(), 64 * 1024)).use { input ->
-                if (input.readInt() != SAVED_VERSION) return null
+                if (input.readInt() != SAVED_VERSION) {
+                    // An older kind (it may hold a provider's whole guide): not read, not kept.
+                    file.delete()
+                    return null
+                }
                 if (input.readText() != key) return null
                 val isPreview = input.readBoolean()
                 val loadedAtMs = input.readLong()
@@ -485,21 +505,24 @@ class LiveTvGuideLoader @Inject constructor(
                 }
                 val groups = List(input.readInt()) { input.readText() }
                 val epg = HashMap<String, List<EpgProgram>>()
+                // A show airs many times, and categories repeat: one copy of each text.
+                val sharedTexts = HashMap<String, String>()
+                fun shared(text: String): String = sharedTexts.getOrPut(text) { text }
                 repeat(input.readInt()) {
                     val channelId = input.readText()
                     epg[channelId] = List(input.readInt()) {
                         EpgProgram(
-                            channelId = input.readText(),
-                            title = input.readText(),
+                            channelId = shared(input.readText()),
+                            title = shared(input.readText()),
                             description = input.readOptional(),
-                            category = input.readOptional(),
+                            category = input.readOptional()?.let(::shared),
                             startMs = input.readLong(),
                             endMs = input.readLong(),
                             subtitle = input.readOptional(),
                             imageUrl = input.readOptional(),
                             isLive = input.readBoolean(),
                             isNew = input.readBoolean(),
-                            categories = List(input.readInt()) { input.readText() }
+                            categories = List(input.readInt()) { shared(input.readText()) }
                         )
                     }
                 }
@@ -563,7 +586,8 @@ class LiveTvGuideLoader @Inject constructor(
         private const val PREWARM_DELAY_MS = 1_500L
         /** The guide kept on the device (in the app's cache, so the system can clear it). */
         private const val SAVED_FILE = "live_tv_guide.bin"
-        private const val SAVED_VERSION = 1
+        /** 2: only the playlist's own channels' programs are kept (1 kept the provider's whole guide). */
+        private const val SAVED_VERSION = 2
         private const val MAX_SAVED_TEXT_BYTES = 1_000_000
     }
 }

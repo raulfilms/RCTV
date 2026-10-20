@@ -540,10 +540,12 @@ private fun NetworksRow(
     onChoose: (LiveTvChannel) -> Unit
 ) {
     val channels = remember(guide, current?.id) {
-        val custom = guide.channels.filter { it.id in guide.customChannelIds }
-        (listOfNotNull(current) + custom + guide.channels)
+        // Stops as soon as the row is full (a playlist can have thousands of channels).
+        val custom = guide.channels.asSequence().filter { it.id in guide.customChannelIds }
+        (listOfNotNull(current).asSequence() + custom + guide.channels.asSequence())
             .distinctBy { it.id }
             .take(NETWORKS_ROW_LIMIT)
+            .toList()
     }
     LazyRow(
         modifier = Modifier.bleedHorizontally(RowBleed),

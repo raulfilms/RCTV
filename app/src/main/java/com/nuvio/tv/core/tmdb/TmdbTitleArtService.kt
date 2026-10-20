@@ -63,9 +63,22 @@ class TmdbTitleArtService @Inject constructor(
     override fun cached(item: MetaPreview): MetaPreview? {
         if (item.landscapeHasTitle) return item
         val isTv = item.isTv()
-        val tmdbId = directTmdbId(item) ?: tmdbIdCache[idKey(item, isTv)] ?: return null
+        val tmdbId = directTmdbId(item) ?: tmdbIdCache[idKey(item, isTv)]
+            // Nothing TMDB can have (or it said it hasn't it): the card shows at once as it is,
+            // instead of holding its picture back for a lookup that can't find anything.
+            ?: return if (cannotMatch(item, isTv)) item else null
         val art = artCache[artKey(tmdbId, isTv)] ?: return null
         return apply(item, art)
+    }
+
+    private fun imdbIdOf(item: MetaPreview): String? =
+        item.id.takeIf { it.startsWith("tt") } ?: item.imdbId?.takeIf { it.startsWith("tt") }
+
+    /** True when [item] can't be matched on TMDB: not a movie or series, no IMDb id, or not on TMDB. */
+    private fun cannotMatch(item: MetaPreview, isTv: Boolean): Boolean {
+        if (item.type != ContentType.MOVIE && item.type != ContentType.SERIES) return true
+        val imdbId = imdbIdOf(item) ?: return true
+        return tmdbService.isKnownMissingOnTmdb(imdbId, if (isTv) "tv" else "movie")
     }
 
     override suspend fun resolve(item: MetaPreview): MetaPreview {
@@ -174,7 +187,7 @@ class TmdbTitleArtService @Inject constructor(
         directTmdbId(item)?.let { return it }
         // Only movies and series with an IMDb id can be matched (not live channels or placeholders).
         if (item.type != ContentType.MOVIE && item.type != ContentType.SERIES) return null
-        val imdbId = item.id.takeIf { it.startsWith("tt") } ?: item.imdbId?.takeIf { it.startsWith("tt") } ?: return null
+        val imdbId = imdbIdOf(item) ?: return null
         val key = idKey(item, isTv)
         tmdbIdCache[key]?.let { return it }
         val found = try {

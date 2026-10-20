@@ -157,6 +157,12 @@ class DisneyPlusViewModel @Inject constructor(
     val isDirectSeeAll: Boolean get() = directSeeAllRow != null
 
     /**
+     * RCTV: what had focus on the page (a row's title, or the banner): coming back from a title's page
+     * puts focus back on it, where the page was scrolled, instead of nowhere.
+     */
+    var returnFocus: HubReturnFocus? = null
+
+    /**
      * Title art for cards that find it as they appear: the See All grid (every hub) and any row title
      * whose art wasn't found up front.
      */
@@ -757,5 +763,12 @@ class DisneyPlusViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { watchProgressRepository.removeProgress(contentId = contentId, season = null, episode = null) }
         }
+    }
+}
+
+/** Where focus was on a service's page: a row's title ([rowId], [index]) or the banner ([HERO]). */
+data class HubReturnFocus(val rowId: String, val index: Int) {
+    companion object {
+        const val HERO = "@hero"
     }
 }

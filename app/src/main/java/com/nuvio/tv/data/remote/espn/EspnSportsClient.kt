@@ -142,7 +142,13 @@ class EspnSportsClient @Inject constructor(
         const val GOLF = "golf"
 
         /** Leagues loading at the same time (each holds its whole answer while it's read). */
-        private const val MAX_FEEDS_AT_ONCE = 12
+        private const val MAX_FEEDS_AT_ONCE = 6
+
+        /** A league's games in the rows: the next ones (a college weekend alone is over a hundred). */
+        private const val ROWS_EVENT_LIMIT = 120
+
+        /** The most an answer is read: bigger means something's wrong, and reading it would take all the memory. */
+        internal const val MAX_RESPONSE_BYTES = 12L * 1024 * 1024
 
         /**
          * The leagues' own threads: as many as load at once (and a few for the waiting), apart
@@ -152,7 +158,7 @@ class EspnSportsClient @Inject constructor(
         private val feedDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(MAX_FEEDS_AT_ONCE + 4)
 
         /** Tennis' days in the rows (its tournaments list every match; more is on a tour's page). */
-        private const val TENNIS_RANGE_DAYS = 3
+        private const val TENNIS_RANGE_DAYS = 2
 
         /** A league's page between seasons: this many of its next (or last) games. */
         private const val LEAGUE_HOME_EVENTS = 40
@@ -271,6 +277,71 @@ class EspnSportsClient @Inject constructor(
                 FEEDS.firstOrNull { "${it.sportPath}:${it.leaguePath}" == decoded }?.let { return it }
             }
             return null
+        }
+
+        /**
+         * The leagues a TV program can be a game of, by what its title, categories and channel say
+         * ("NBA", "Premier League", "béisbol", "NASCAR", "ESPN Deportes"...): a handful, not every
+         * league. Nothing said about the sport: the big leagues. [text] is plain lowercase words
+         * (accents and symbols taken out).
+         */
+        fun feedsForProgram(text: String): List<Feed> {
+            val words = " ${text.trim()} "
+            fun has(vararg terms: String) = terms.any { words.contains(" $it ") }
+            val paths = LinkedHashSet<String>()
+            // Leagues by name.
+            if (has("nfl", "nfl network", "sunday night football", "monday night football", "thursday night football", "redzone")) paths += "nfl"
+            if (has("college football", "ncaa football", "ncaaf", "cfb", "sec network", "big ten", "acc network")) paths += "college-football"
+            if (has("ufl")) paths += "ufl"
+            if (has("cfl", "canadian football")) paths += CflSource.LEAGUE_PATH
+            if (has("nba", "nba tv")) paths += "nba"
+            if (has("wnba")) paths += "wnba"
+            if (has("college basketball", "ncaa basketball", "ncaab", "march madness")) paths += "mens-college-basketball"
+            if (has("mlb", "mlb network", "baseball tonight")) paths += "mlb"
+            if (has("lidom", "beisbol invernal", "pelota invernal", "liga dominicana")) paths += "lidom"
+            if (has("serie del caribe", "caribbean series")) paths += "caribbean-series"
+            if (has("milb", "minor league", "triple a", "double a")) paths += listOf("milb-aaa", "milb-aa")
+            if (has("college baseball")) paths += "college-baseball"
+            if (has("world baseball classic", "clasico mundial")) paths += "world-baseball-classic"
+            if (has("banana ball", "savannah bananas")) paths += BananaBallSource.LEAGUE_PATH
+            if (has("nhl", "nhl network", "hockey")) paths += "nhl"
+            if (has("premier league", "epl")) paths += "eng.1"
+            if (has("laliga", "la liga")) paths += "esp.1"
+            if (has("serie a")) paths += "ita.1"
+            if (has("bundesliga")) paths += "ger.1"
+            if (has("ligue 1")) paths += "fra.1"
+            if (has("champions league", "liga de campeones", "uefa champions")) paths += "uefa.champions"
+            if (has("europa league")) paths += "uefa.europa"
+            if (has("mls", "major league soccer")) paths += "usa.1"
+            if (has("liga mx", "ligamx")) paths += "mex.1"
+            if (has("libertadores")) paths += "conmebol.libertadores"
+            if (has("sudamericana")) paths += "conmebol.sudamericana"
+            if (has("concacaf")) paths += "concacaf.champions"
+            if (has("club world cup", "mundial de clubes")) paths += "fifa.cwc"
+            if (has("world cup", "copa mundial", "mundial")) paths += "fifa.world"
+            if (has("nations league")) paths += "uefa.nations"
+            if (has("copa america")) paths += "conmebol.america"
+            if (has("ufc", "mma")) paths += "ufc"
+            if (has("boxing", "boxeo", "ppv", "pay per view", "wwe", "aew", "wrestling", "lucha libre", "top rank", "dazn")) paths += PpvEventsSource.LEAGUE_PATH
+            if (has("nascar")) paths += NascarSource.LEAGUE_PATHS
+            if (has("indycar")) paths += "irl"
+            if (has("formula 1", "formula one", "f1")) paths += "f1"
+            if (has("motogp")) paths += MotoGpSource.LEAGUE_PATH
+            if (has("tennis", "tenis", "atp", "wta", "tennis channel")) paths += listOf("atp", "wta")
+            if (has("golf", "pga", "lpga", "liv golf", "golf channel")) paths += listOf("pga", "lpga", "liv", "eur")
+            // Only the sport said: its main leagues.
+            if (paths.isEmpty()) {
+                if (has("soccer", "futbol", "beinsports", "bein", "tudn", "fox deportes")) {
+                    paths += listOf("eng.1", "esp.1", "usa.1", "mex.1", "uefa.champions", "ita.1", "ger.1", "fra.1")
+                }
+                if (has("basketball", "baloncesto", "basquetbol")) paths += listOf("nba", "wnba", "mens-college-basketball")
+                if (has("baseball", "beisbol")) paths += listOf("mlb", "lidom")
+                if (has("football", "futbol americano")) paths += listOf("nfl", "college-football")
+                if (has("racing", "motorsports", "auto racing", "carreras")) paths += listOf("nascar-premier", "f1", "irl", MotoGpSource.LEAGUE_PATH)
+            }
+            // Nothing said at all: the big leagues.
+            if (paths.isEmpty()) paths += HEADLINE_LEAGUE_PATHS + listOf("college-football", "usa.1", "mex.1")
+            return FEEDS.filter { it.leaguePath in paths }
         }
 
         /** A [SportsEvent.id]'s parts, e.g. `"espn:football:nfl:401671808"` -> ("football", "nfl", "401671808"). */
@@ -787,7 +858,7 @@ class EspnSportsClient @Inject constructor(
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw EspnException("HTTP ${response.code}")
-            return response.body?.string().orEmpty()
+            return boundedBody(response)
         }
     }
 
@@ -845,17 +916,20 @@ class EspnSportsClient @Inject constructor(
      * Fetches one feed's scoreboard. [datesRange] is ESPN's own `yyyyMMdd` or `yyyyMMdd-yyyyMMdd`
      * query format; omitted, ESPN defaults to "today" (or "this week/round" for some sports).
      */
-    fun fetchFeed(feed: Feed, datesRange: String? = null): FeedResult {
-        // A game or a team a source lists twice (a postponed game on its old and new days) is one:
-        // the pages key their cards by id, and a repeated one would bring them down.
-        val result = fetchFeedRaw(feed, datesRange)
-        return result.copy(
-            events = result.events.distinctBy { it.id },
-            teams = result.teams.distinctBy { it.id }
-        )
-    }
+    fun fetchFeed(feed: Feed, datesRange: String? = null): FeedResult =
+        fetchFeedRaw(feed, datesRange).deduplicated()
 
-    private fun fetchFeedRaw(feed: Feed, datesRange: String?): FeedResult {
+    /**
+     * A game or a team a source lists twice (a postponed game on its old and new days) is one:
+     * the pages key their cards by id, and a repeated one would bring them down.
+     */
+    private fun FeedResult.deduplicated(): FeedResult = copy(
+        events = events.distinctBy { it.id },
+        teams = teams.distinctBy { it.id }
+    )
+
+    /** [limit]: at most this many of ESPN's games (the rows need the next ones, not hundreds). */
+    private fun fetchFeedRaw(feed: Feed, datesRange: String?, limit: Int? = null): FeedResult {
         if (feed.isBananaBall()) return bananaBall.fetchFeed(feed, datesRange)
         if (feed.isNascar()) return nascar.fetchFeed(feed, datesRange)
         if (feed.isPpv()) return ppv.fetchFeed(feed, datesRange)
@@ -868,6 +942,7 @@ class EspnSportsClient @Inject constructor(
         val url = when {
             datesRange == null -> base
             rangeDays(datesRange) > 31 -> "$base?dates=$datesRange&limit=500"
+            limit != null -> "$base?dates=$datesRange&limit=$limit"
             else -> "$base?dates=$datesRange"
         }
         val body = get(url)
@@ -989,13 +1064,37 @@ class EspnSportsClient @Inject constructor(
      * upcoming (not just live/today's) fixtures show up too. Each feed is fetched independently, so
      * one league being down/unreachable never blocks the rest.
      */
-    fun fetchAllFixtures(rangeDays: Int = 10, feeds: List<Feed> = FEEDS): List<FeedResult> {
+    fun fetchAllFixtures(
+        rangeDays: Int = 10,
+        feeds: List<Feed> = FEEDS,
+        /** Leagues ("sport:league") loaded first: the person's own. */
+        firstLeagueIds: Set<String> = emptySet(),
+        /** Each league's games as soon as they're in (on the loading threads). */
+        onResult: ((FeedResult) -> Unit)? = null
+    ): List<FeedResult> {
         val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         val start = dayFormat.format(calendar.time)
         calendar.add(Calendar.DAY_OF_YEAR, rangeDays)
         val end = dayFormat.format(calendar.time)
-        return fetchFixturesInRange("$start-$end", feeds)
+        return fetchFixturesInRange("$start-$end", byPriority(feeds, firstLeagueIds), onResult)
     }
+
+    /**
+     * The person's leagues first, then the big ones, then the rest in their order; the heavy ones
+     * (every match of a tennis tour, hundreds of college games) last.
+     */
+    private fun byPriority(feeds: List<Feed>, firstLeagueIds: Set<String>): List<Feed> =
+        feeds.withIndex().sortedWith(compareBy({ (_, feed) ->
+            when {
+                "${feed.sportPath}:${feed.leaguePath}" in firstLeagueIds -> 0
+                feed.leaguePath in HEADLINE_LEAGUE_PATHS -> 1
+                feed.isHeavy() -> 3
+                else -> 2
+            }
+        }, { it.index })).map { it.value }
+
+    /** A league whose scoreboard is megabytes (every match of a tennis tour, a college season's weekend). */
+    private fun Feed.isHeavy(): Boolean = sportPath == VirtualLeagues.TENNIS || leaguePath in COLLEGE_LEAGUE_PATHS
 
     /**
      * Every curated league's games the day before, the day of and the day after [timeMs]: to find
@@ -1009,29 +1108,41 @@ class EspnSportsClient @Inject constructor(
         return fetchFixturesInRange("$start-$end", feeds)
     }
 
-    private fun fetchFixturesInRange(range: String, feeds: List<Feed>): List<FeedResult> {
+    private fun fetchFixturesInRange(
+        range: String,
+        feeds: List<Feed>,
+        onResult: ((FeedResult) -> Unit)? = null
+    ): List<FeedResult> {
         // Tennis lists every match of every tournament it's asked about (megabytes a tour): its
-        // next few days are what the rows show.
+        // next couple of days are what the rows show.
         val tennisRange = shortRange(range, TENNIS_RANGE_DAYS)
-        // Several leagues at once (one after another took many seconds), in the feeds' order; not
-        // all of them at once, which held every league's whole answer in memory together, and on
-        // threads of their own: seventy leagues waiting on the network took every thread the rest
-        // of the app reads and saves with (the Guide, the settings), and the app stalled.
+        // A few leagues at once (one after another took many seconds), in the order given; never
+        // all of them at once: every league's whole answer read at the same time took more memory
+        // than a TV has, and the system closed the app. On threads of their own, too: seventy
+        // leagues waiting on the network took every thread the rest of the app reads and saves
+        // with (the Guide, the settings), and the app stalled. The heavy leagues one at a time.
         val permits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
+        val heavyPermit = kotlinx.coroutines.sync.Semaphore(1)
         return kotlinx.coroutines.runBlocking(feedDispatcher) {
             feeds.map { feed ->
                 async {
                     // A league of another's events (a Grand Slam, a boxing body): only its tile, its
                     // games are its tour's.
-                    if (feed.isSubLeague()) {
-                        return@async runCatching { FeedResult(feed, subLeagueOf(feed), emptyList(), emptyList()) }.getOrNull()
+                    val result = if (feed.isSubLeague()) {
+                        runCatching { FeedResult(feed, subLeagueOf(feed), emptyList(), emptyList()) }.getOrNull()
+                    } else {
+                        val feedRange = if (feed.sportPath == VirtualLeagues.TENNIS) tennisRange else range
+                        val load: suspend () -> FeedResult? = {
+                            permits.withPermit {
+                                runCatching { fetchFeedRaw(feed, feedRange, limit = ROWS_EVENT_LIMIT).deduplicated() }
+                                    .recoverCatching { fetchFeed(feed) }
+                                    .getOrNull()
+                            }
+                        }
+                        if (feed.isHeavy()) heavyPermit.withPermit { load() } else load()
                     }
-                    val feedRange = if (feed.sportPath == VirtualLeagues.TENNIS) tennisRange else range
-                    permits.withPermit {
-                        runCatching { fetchFeed(feed, feedRange) }
-                            .recoverCatching { fetchFeed(feed) }
-                            .getOrNull()
-                    }
+                    if (result != null && onResult != null) runCatching { onResult(result) }
+                    result
                 }
             }.awaitAll().filterNotNull()
         }

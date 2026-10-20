@@ -14,6 +14,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "TmdbService"
+
+/** How long "TMDB has no title for this IMDb id" is believed before asking again. */
+private const val IMDB_MISS_TTL_MS = 6L * 60 * 60 * 1000
+
+/** How long after a lookup got no answer it's tried again. */
+private const val IMDB_FAILURE_RETRY_MS = 60_000L
 private val TMDB_API_KEY = BuildConfig.TMDB_API_KEY
 
 /**
@@ -31,6 +37,21 @@ class TmdbService @Inject constructor(
     private val tmdbToImdbCache = ConcurrentHashMap<String, String>()
 
     private val imdbToTmdbInFlight = ConcurrentHashMap<String, CompletableDeferred<Int?>>()
+
+    /**
+     * RCTV: IMDb ids TMDB answered it has nothing for (by "$imdbId:$type"), with when. Not asked
+     * again for a while: every focus, card and row that showed such a title used to ask TMDB again.
+     */
+    private val imdbToTmdbMisses = ConcurrentHashMap<String, Long>()
+
+    /** Lookups that got no answer (offline, TMDB busy or down), with when: retried after a minute. */
+    private val imdbToTmdbFailures = ConcurrentHashMap<String, Long>()
+
+    /** True when TMDB recently said it has no title for [imdbId] (so there's nothing to wait for). */
+    fun isKnownMissingOnTmdb(imdbId: String, mediaType: String): Boolean {
+        val at = imdbToTmdbMisses["$imdbId:${normalizeMediaType(mediaType)}"] ?: return false
+        return System.currentTimeMillis() - at < IMDB_MISS_TTL_MS
+    }
     private val tmdbToImdbInFlight = ConcurrentHashMap<String, CompletableDeferred<String?>>()
     
     // Mutex for thread-safe cache operations
@@ -59,10 +80,24 @@ class TmdbService @Inject constructor(
             return@withContext cached
         }
         
+        // Not on TMDB a moment ago, or TMDB didn't answer a moment ago: not asked again yet.
+        val nowMs = System.currentTimeMillis()
+        imdbToTmdbMisses[cacheKey]?.let { at ->
+            if (nowMs - at < IMDB_MISS_TTL_MS) return@withContext null
+            imdbToTmdbMisses.remove(cacheKey, at)
+        }
+        imdbToTmdbFailures[cacheKey]?.let { at ->
+            if (nowMs - at < IMDB_FAILURE_RETRY_MS) return@withContext null
+            imdbToTmdbFailures.remove(cacheKey, at)
+        }
+
         val requestKey = cacheKey
         val requestDeferred = CompletableDeferred<Int?>()
         imdbToTmdbInFlight.putIfAbsent(requestKey, requestDeferred)?.let { existing ->
-            return@withContext existing.await()
+            return@withContext awaitShared(existing) {
+                imdbToTmdbInFlight.remove(requestKey, existing)
+                imdbToTmdb(imdbId, mediaType)
+            }
         }
 
         try {
@@ -76,12 +111,14 @@ class TmdbService @Inject constructor(
             
             if (!response.isSuccessful) {
                 Log.e(TAG, "TMDB API error: ${response.code()} - ${response.message()}")
+                imdbToTmdbFailures[cacheKey] = System.currentTimeMillis()
                 requestDeferred.complete(null)
                 return@withContext null
             }
             
             val body = response.body()
             if (body == null) {
+                imdbToTmdbFailures[cacheKey] = System.currentTimeMillis()
                 requestDeferred.complete(null)
                 return@withContext null
             }
@@ -108,6 +145,7 @@ class TmdbService @Inject constructor(
             }
             
             Log.w(TAG, "No TMDB result found for IMDB: $imdbId")
+            imdbToTmdbMisses[cacheKey] = System.currentTimeMillis()
             requestDeferred.complete(null)
             null
             
@@ -116,6 +154,7 @@ class TmdbService @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error looking up TMDB ID for $imdbId: ${e.message}", e)
+            imdbToTmdbFailures[cacheKey] = System.currentTimeMillis()
             requestDeferred.complete(null)
             null
         } finally {
@@ -143,7 +182,10 @@ class TmdbService @Inject constructor(
         val requestKey = cacheKey
         val requestDeferred = CompletableDeferred<String?>()
         tmdbToImdbInFlight.putIfAbsent(requestKey, requestDeferred)?.let { existing ->
-            return@withContext existing.await()
+            return@withContext awaitShared(existing) {
+                tmdbToImdbInFlight.remove(requestKey, existing)
+                tmdbToImdb(tmdbId, mediaType)
+            }
         }
 
         try {

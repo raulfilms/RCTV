@@ -139,6 +139,17 @@ fun DisneyPlusScreen(
     // the page shows once the hero is ready (see isInitialLoading), and until focus is on the hero
     // nothing scrolls the page (see pageSpec), so it never opens lower down and slides back up.
     // Coming back to the page keeps focus where the person left it.
+    // Back from a title's page (the page is drawn anew, already past its first focus): focus goes
+    // back to the title (or the banner) it was opened from; the page keeps where it was scrolled.
+    // Cleared once anything has focus again (so a row scrolled back into view later doesn't take it).
+    var returnFocus by remember { mutableStateOf<HubReturnFocus?>(if (initialFocusDone) viewModel.returnFocus else null) }
+    LaunchedEffect(returnFocus) {
+        if (returnFocus?.rowId != HubReturnFocus.HERO) return@LaunchedEffect
+        for (attempt in 0 until 12) {
+            withFrameNanos { }
+            if (runCatching { heroFocusRequester.requestFocus() }.getOrDefault(false)) break
+        }
+    }
     LaunchedEffect(uiState.isHeroLoading, uiState.heroItems.isNotEmpty()) {
         if (initialFocusDone || uiState.isHeroLoading) return@LaunchedEffect
         runCatching { listState.scrollToItem(0) }
@@ -381,7 +392,13 @@ fun DisneyPlusScreen(
                                 items = uiState.heroItems,
                                 focusRequester = heroFocusRequester,
                                 onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, "") },
-                                onFocusChange = { heroFocused = it }
+                                onFocusChange = { focused ->
+                                    heroFocused = focused
+                                    if (focused) {
+                                        viewModel.returnFocus = HubReturnFocus(HubReturnFocus.HERO, 0)
+                                        returnFocus = null
+                                    }
+                                }
                             )
                         }
                     }
@@ -472,6 +489,12 @@ fun DisneyPlusScreen(
                                 modifier = Modifier.padding(top = HubRowExtraSpacing),
                                 onSeeAll = { viewModel.openSeeAll(rowId) },
                                 rowFocusRequester = rowFocusRequesters.getOrPut(rowId) { FocusRequester() },
+                                // Back from a title's page: focus on that title again.
+                                focusedItemIndex = returnFocus?.takeIf { it.rowId == rowId }?.index ?: -1,
+                                onItemFocused = { index ->
+                                    viewModel.returnFocus = HubReturnFocus(rowId, index)
+                                    returnFocus = null
+                                },
                                 showAddonName = false,
                                 showCatalogTypeSuffix = false,
                                 onItemLongPress = { item, addonBaseUrl -> posterOptionsController.show(item, addonBaseUrl) }

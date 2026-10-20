@@ -142,17 +142,32 @@ class LiveProgramLibrary @Inject constructor(
         val looksLikeMovie = program.categoryWords().any { "movie" in it || "film" in it }
         val key = "${normalize(title)}|$year|$looksLikeMovie"
         titleCache[key]?.let { return@withContext it.value }
-        val language = language()
-        val found = if (looksLikeMovie) {
-            search(title, year, isTv = false, language) ?: search(title, year, isTv = true, language)
-        } else {
-            search(title, year, isTv = true, language) ?: search(title, year, isTv = false, language)
+        // TMDB didn't answer for this title a moment ago: not asked again for every focus or open
+        // (it's asked again in a minute; nothing is remembered as "not on TMDB").
+        failedTitles[key]?.let { failedAt ->
+            if (System.currentTimeMillis() - failedAt < FAILED_RETRY_MS) throw java.io.IOException("TMDB unavailable for now")
         }
+        val language = language()
+        val found = try {
+            if (looksLikeMovie) {
+                search(title, year, isTv = false, language) ?: search(title, year, isTv = true, language)
+            } else {
+                search(title, year, isTv = true, language) ?: search(title, year, isTv = false, language)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failedTitles[key] = System.currentTimeMillis()
+            throw e
+        }
+        failedTitles.remove(key)
+        // Not on TMDB is remembered too: the same program isn't searched again.
         titleCache[key] = Optional(found)
         found
     }
 
     private val titleCache = ConcurrentHashMap<String, Optional<LiveProgramMatch>>()
+    private val failedTitles = ConcurrentHashMap<String, Long>()
     private val seasonsCache = ConcurrentHashMap<String, List<LiveSeason>>()
 
     /**
@@ -541,6 +556,8 @@ class LiveProgramLibrary @Inject constructor(
         /** The library type of an episode saved from the guide. */
         const val EPISODE_TYPE = "episode"
         private const val DAY_MS = 24L * 60 * 60 * 1000
+        /** After TMDB failed for a title, it isn't asked about it again for this long. */
+        private const val FAILED_RETRY_MS = 60L * 1000
         private const val IMDB_LOOKUP_TIMEOUT_MS = 6_000L
         private const val CATALOG_LOOKUP_TIMEOUT_MS = 8_000L
         /** A movie or series the guide saved before it used the titles' own ids. */
