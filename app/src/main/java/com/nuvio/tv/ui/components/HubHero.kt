@@ -150,7 +150,7 @@ fun HubHeroBanner(
                 }
                 .clip(shape)
                 .then(
-                    if (isFocused) Modifier.border(NuvioTheme.focusRing.border(3.dp), shape)
+                    if (isFocused) Modifier.border(TileFocusStroke, shape)
                     else Modifier.border(BorderStroke(1.dp, NuvioTheme.colors.Border), shape)
                 )
                 .background(NuvioTheme.colors.BackgroundCard)

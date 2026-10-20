@@ -779,7 +779,8 @@ internal fun AppleStreamingServiceTile(
             containerColor = AppleTvColors.Contrast,
             focusedContainerColor = AppleTvColors.ContrastHigh
         ),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
@@ -836,7 +837,8 @@ fun AppleSeeAllCard(
             containerColor = AppleTvColors.Contrast,
             focusedContainerColor = AppleTvColors.FocusFill
         ),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
@@ -1236,7 +1238,8 @@ fun AppleLandscapeCard(
             containerColor = AppleTvColors.Surface2,
             focusedContainerColor = AppleTvColors.Surface2
         ),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {

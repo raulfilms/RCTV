@@ -821,13 +821,6 @@ internal object ServiceHubs {
                 card("tv", R.string.svc_card_all_a24_tv, sources = listOfNotNull(a24Catalog.series()))
                 // Movies and series together: its See All page has the Genre menu.
                 card("genres", R.string.svc_card_browse_genre, sources = a24Catalog.both())
-                card("romance", R.string.svc_card_romance, sources = listOf(a24Catalog.movies { copy(genres = "10749") }))
-                card(
-                    "mystery_thriller", R.string.svc_card_mystery_thriller,
-                    sources = listOfNotNull(a24Catalog.movies { copy(genres = "9648|53") }, a24Catalog.series { copy(genres = "9648") })
-                )
-                card("crime", R.string.svc_card_crime, sources = a24Catalog.both { copy(genres = "80") })
-                card("action", R.string.svc_card_action, sources = listOfNotNull(a24Catalog.movies { copy(genres = "28") }, a24Catalog.series { copy(genres = "10759") }))
                 card("international", R.string.svc_card_international_films, sources = listOf(a24Catalog.movies { copy(originalLanguage = INTERNATIONAL) }))
                 card("soon", R.string.svc_card_coming_soon, sources = listOf(upcomingMovies(ServiceHubIds.CO_A24, untilDays = 730, sort = SOONEST)))
             })
@@ -901,10 +894,7 @@ internal object ServiceHubs {
                 card("series", R.string.svc_card_all_series, sources = listOfNotNull(angelCatalog.series(), angelStudio.series()))
                 card("originals", R.string.svc_card_originals, sources = angelStudio.both())
                 card("top_rated", R.string.svc_card_top_rated, sources = angelCatalog.topRated(100, 30))
-                card("comedy", R.string.svc_card_comedy, sources = angelCatalog.both { copy(genres = "35") })
-                card("docs", R.string.svc_card_documentaries, sources = angelCatalog.both { copy(genres = "99") })
                 card("international", R.string.svc_card_international, sources = angelCatalog.both { copy(originalLanguage = INTERNATIONAL) })
-                card("soon", R.string.svc_card_coming_soon, sources = listOf(upcomingMovies(ServiceHubIds.CO_ANGEL, untilDays = 730, sort = SOONEST)))
                 cardsPage("collections", R.string.svc_card_all_collections) {
                     ANGEL_FRANCHISES.forEach { (name, query) -> franchise(name, query) }
                 }
@@ -978,7 +968,6 @@ internal object ServiceHubs {
                 card("new", R.string.svc_card_new_releases, sources = shudderCatalog.newest())
                 card("classics", R.string.svc_card_classics, sources = listOf(shudderCatalog.movies(MOST_VOTED) { copy(releaseDateLte = "1989-12-31") }))
                 card("acclaimed", R.string.svc_card_critically_acclaimed, sources = shudderCatalog.topRated(300, 100))
-                card("horror_comedy", R.string.svc_card_horror_comedy, sources = listOf(shudderCatalog.movies { copy(genres = "27,35") }))
                 card("originals", R.string.svc_card_originals, sources = listOf(shudderOriginalSeries, shudderOriginalFilms))
                 card("catalog", R.string.svc_card_full_catalog, sources = shudderCatalog.both())
                 cardsPage("collections", R.string.svc_card_all_collections) {

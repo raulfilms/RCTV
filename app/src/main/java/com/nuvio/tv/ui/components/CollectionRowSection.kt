@@ -279,12 +279,8 @@ private fun FolderCard(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
-        border = CardDefaults.border(
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                shape = shape
-            )
-        ),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale),
         glow = cardGlow
     ) {

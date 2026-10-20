@@ -167,12 +167,8 @@ fun GridContentCard(
                 containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent
             ),
-            border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                    shape = cardShape
-                )
-            ),
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            border = tileCardBorder(cardShape),
             scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
         ) {
             Box(

@@ -622,16 +622,8 @@ internal fun ClassicSeeAllCard(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
-        border = CardDefaults.border(
-            focusedBorder = if (posterCardStyle.focusedBorderWidth > 0.dp) {
-                Border(
-                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                    shape = seeAllCardShape
-                )
-            } else {
-                Border.None
-            }
-        ),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(seeAllCardShape),
         scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
     ) {
         Box(

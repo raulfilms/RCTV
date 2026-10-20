@@ -96,6 +96,7 @@ import com.nuvio.tv.ui.components.PosterCardStyle
 import com.nuvio.tv.ui.components.collectionFolderCardImageUrl
 import com.nuvio.tv.ui.components.nuvioCardDepth
 import com.nuvio.tv.ui.components.rememberArtworkBackedCardGlow
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -973,10 +974,8 @@ private fun SeeAllGridCard(
                 focusedContainerColor = NuvioTheme.colors.BackgroundCard
             ),
             border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                    shape = seeAllCardShape
-                )
+                // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+                focusedBorder = tileFocusBorder(seeAllCardShape)
             ),
             scale = CardDefaults.scale(
                 focusedScale = posterCardStyle.focusedScale
@@ -1064,10 +1063,8 @@ private fun GridCollectionFolderCard(
             focusedContainerColor = NuvioTheme.colors.BackgroundCard
         ),
         border = CardDefaults.border(
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                shape = cardShape
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(cardShape)
         ),
         scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale),
         glow = cardGlow

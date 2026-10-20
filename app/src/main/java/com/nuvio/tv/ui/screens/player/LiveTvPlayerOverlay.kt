@@ -95,6 +95,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileCardBorder
 
 /** The live player's tabs: icons on the left, "Networks" after the divider (as on YouTube TV). */
 private enum class LiveTab { MORE, QUALITY, CAPTIONS, LIBRARY, NETWORKS, EPISODES }
@@ -567,10 +568,7 @@ private fun NetworksRow(
                         containerColor = Color.White.copy(alpha = 0.14f),
                         focusedContainerColor = Color.White.copy(alpha = 0.22f)
                     ),
-                    border = CardDefaults.border(
-                        border = Border.None,
-                        focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(10.dp))
-                    ),
+                    border = tileCardBorder(RoundedCornerShape(10.dp)),
                     scale = CardDefaults.scale(focusedScale = 1.04f)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -858,10 +856,7 @@ private fun OptionsRow(
                         containerColor = Color.White.copy(alpha = 0.14f),
                         focusedContainerColor = Color.White.copy(alpha = 0.26f)
                     ),
-                    border = CardDefaults.border(
-                        border = Border.None,
-                        focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(10.dp))
-                    ),
+                    border = tileCardBorder(RoundedCornerShape(10.dp)),
                     scale = CardDefaults.scale(focusedScale = 1.05f)
                 ) {
                     Column(
@@ -1022,10 +1017,7 @@ private fun EpisodesContent(
                             containerColor = Color.White.copy(alpha = 0.14f),
                             focusedContainerColor = Color.White.copy(alpha = 0.22f)
                         ),
-                        border = CardDefaults.border(
-                            border = Border.None,
-                            focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = RoundedCornerShape(10.dp))
-                        ),
+                        border = tileCardBorder(RoundedCornerShape(10.dp)),
                         scale = CardDefaults.scale(focusedScale = 1.04f)
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {

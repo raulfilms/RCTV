@@ -98,6 +98,7 @@ import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
 import kotlinx.coroutines.launch
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -373,10 +374,8 @@ private fun HeroSection(
                     border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                     shape = RoundedCornerShape(NuvioTheme.radii.xl)
                 ),
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                    shape = RoundedCornerShape(NuvioTheme.radii.xl)
-                )
+                // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+                focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.xl))
             )
         ) {
             val bgCardColor = NuvioTheme.colors.SurfaceVariant

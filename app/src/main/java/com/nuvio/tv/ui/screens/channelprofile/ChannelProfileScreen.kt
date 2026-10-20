@@ -135,6 +135,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileCardBorder
 
 // Sizes in dp (the 960 x 540 TV layout): the design's 1408 px page scaled to fit.
 private val HeaderHeight = 84.dp
@@ -851,7 +852,8 @@ private fun LiveBroadcastCard(
             containerColor = AppleTvColors.Contrast,
             focusedContainerColor = AppleTvColors.ContrastHigh
         ),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(LiveCardShape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {

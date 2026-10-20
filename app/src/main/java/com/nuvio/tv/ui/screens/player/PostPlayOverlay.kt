@@ -70,6 +70,7 @@ import coil3.request.crossfade
 import coil3.request.transformations
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.util.BlurTransformation
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 @Composable
 fun PostPlayOverlay(
@@ -116,10 +117,8 @@ fun PostPlayOverlay(
                     border = BorderStroke(NuvioTheme.spacing.hairline, Color.White.copy(alpha = 0.16f)),
                     shape = RoundedCornerShape(14.dp),
                 ),
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                    shape = RoundedCornerShape(14.dp),
-                ),
+                // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+                focusedBorder = tileFocusBorder(RoundedCornerShape(14.dp)),
             ),
             scale = CardDefaults.scale(focusedScale = 1f),
             modifier = Modifier

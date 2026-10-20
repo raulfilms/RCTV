@@ -708,15 +708,11 @@ fun ContinueWatchingCard(
             focusedContainerColor = Color.Transparent
         ),
         // With text under the artwork the card border would ring the text too, so the artwork draws its own.
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
         border = if (textBelowArtwork) {
             CardDefaults.border(focusedBorder = Border.None)
         } else {
-            CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                    shape = cwCardShape
-                )
-            )
+            tileCardBorder(cwCardShape)
         },
         scale = CardDefaults.scale(focusedScale = 1f)
     ) {
@@ -781,10 +777,7 @@ fun ContinueWatchingCard(
                     .clip(cwClipShape)
                     .then(
                         if (textBelowArtwork && isFocused) {
-                            Modifier.border(
-                                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                                shape = cwClipShape
-                            )
+                            Modifier.border(border = TileFocusStroke, shape = cwClipShape)
                         } else {
                             Modifier
                         }
@@ -1395,7 +1388,8 @@ private fun AppleContinueWatchingCard(
             containerColor = bgCardColor,
             focusedContainerColor = bgCardColor
         ),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {

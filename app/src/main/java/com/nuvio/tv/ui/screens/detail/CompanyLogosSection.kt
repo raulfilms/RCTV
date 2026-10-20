@@ -53,6 +53,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.MetaCompany
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.components.tileCardBorder
 
 @Composable
 fun CompanyLogosSection(
@@ -193,12 +194,8 @@ private fun CompanyLogoCard(
             containerColor = Color.White,
             focusedContainerColor = Color.White
         ),
-        border = CardDefaults.border(
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.sm)
-            )
-        ),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(RoundedCornerShape(NuvioTheme.radii.sm)),
         scale = CardDefaults.scale(focusedScale = 1.03f)
     ) {
         Box(

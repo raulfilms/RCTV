@@ -107,6 +107,7 @@ import com.nuvio.tv.ui.util.localizedGenreLabel
 import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 private const val KEY_REPEAT_THROTTLE_MS = 80L
 
@@ -1057,7 +1058,8 @@ private fun CloudLibraryCard(
         ),
         border = CardDefaults.border(
             border = Border(border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border), shape = RoundedCornerShape(10.dp)),
-            focusedBorder = Border(border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs), shape = RoundedCornerShape(10.dp))
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(10.dp))
         ),
         scale = CardDefaults.scale(focusedScale = 1.02f)
     ) {

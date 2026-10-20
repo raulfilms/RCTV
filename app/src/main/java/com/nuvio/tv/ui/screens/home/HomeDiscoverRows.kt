@@ -69,6 +69,7 @@ import com.nuvio.tv.ui.components.AppleTvFocusGlow
 import com.nuvio.tv.ui.components.AppleTvFocusScale
 import com.nuvio.tv.ui.components.AppleTvRadius
 import com.nuvio.tv.ui.components.AppleTvSpacing
+import com.nuvio.tv.ui.components.tileCardBorder
 
 /** Where one of Home's TMDB rows leads. */
 sealed interface HomeLink {
@@ -344,7 +345,8 @@ internal fun HomeCard(
         modifier = modifier.size(width = width, height = height),
         shape = CardDefaults.shape(shape = shape),
         colors = CardDefaults.colors(containerColor = containerColor, focusedContainerColor = containerColor),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {

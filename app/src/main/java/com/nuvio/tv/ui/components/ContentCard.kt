@@ -371,16 +371,8 @@ fun ContentCard(
                 containerColor = Color.Transparent,
                 focusedContainerColor = Color.Transparent
             ),
-            border = CardDefaults.border(
-                focusedBorder = if (posterCardStyle.focusedBorderWidth > 0.dp) {
-                    Border(
-                        border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                        shape = cardShape
-                    )
-                } else {
-                    Border.None
-                }
-            ),
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            border = tileCardBorder(cardShape),
             scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale),
             glow = if (appleStyle) CardDefaults.glow(focusedGlow = AppleTvFocusGlow) else CardDefaults.glow()
         ) {

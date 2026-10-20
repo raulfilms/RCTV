@@ -70,6 +70,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 @Composable
 fun LiveTvScreen(
@@ -813,10 +814,8 @@ private fun LiveTvChannelCard(
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),

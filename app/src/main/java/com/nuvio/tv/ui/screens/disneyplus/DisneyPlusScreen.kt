@@ -105,6 +105,7 @@ import com.nuvio.tv.ui.components.posteroptions.PosterOptionsHost
 import com.nuvio.tv.ui.components.posteroptions.PosterOptionsViewModel
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 /** Extra room above each row of a hub page (on top of the list's spacing), like Disney+. */
 private val HubRowExtraSpacing = 16.dp
@@ -869,7 +870,9 @@ private fun DisneyCollectionCard(
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), shape = shape),
-            focusedBorder = Border(border = BorderStroke(4.dp, Color.White), shape = shape)
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(shape),
+            pressedBorder = tileFocusBorder(shape)
         ),
         shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),

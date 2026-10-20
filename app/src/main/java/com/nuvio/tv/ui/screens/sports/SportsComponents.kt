@@ -69,6 +69,7 @@ import com.nuvio.tv.ui.util.longPressable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 /** Title + optional "See All" affordance + a LazyRow of cards. The generic row shape reused by every Sports row. */
 @Composable
@@ -143,10 +144,8 @@ fun ScoreboardCard(
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
@@ -317,10 +316,8 @@ fun LeagueCard(
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
@@ -378,10 +375,8 @@ fun TeamCard(
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
@@ -443,10 +438,8 @@ fun SportsTalkCard(item: SportsTalkItem, onClick: () -> Unit, modifier: Modifier
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
@@ -486,10 +479,8 @@ fun AddFavoritesCard(label: String, onClick: () -> Unit, modifier: Modifier = Mo
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
@@ -715,10 +706,8 @@ fun TeamGridCard(
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
@@ -824,10 +813,8 @@ fun SportsAddonEventCard(event: SportsAddonEvent, onClick: () -> Unit, modifier:
                 border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                 shape = RoundedCornerShape(NuvioTheme.radii.md)
             ),
-            focusedBorder = Border(
-                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(RoundedCornerShape(NuvioTheme.radii.md))
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),

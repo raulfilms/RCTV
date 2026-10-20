@@ -51,6 +51,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileSurfaceBorder
 
 /** A league's own page (tapped from the Leagues row): hero + a tab bar of Home/Games/Teams/Standings/Schedule/News/Highlights/Videos. */
 @Composable
@@ -528,6 +529,8 @@ private fun NewsArticleCard(article: SportsNewsArticle) {
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.FocusBackground
         ),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileSurfaceBorder(RoundedCornerShape(NuvioTheme.radii.md)),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
         modifier = Modifier.fillMaxWidth()
     ) {

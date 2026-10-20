@@ -45,6 +45,7 @@ import com.nuvio.tv.ui.screens.sports.isLiveAt
 import com.nuvio.tv.ui.screens.sports.startTimeTba
 import com.nuvio.tv.ui.screens.sports.isGolf
 import com.nuvio.tv.ui.screens.sports.sportsStartTimeLabel
+import com.nuvio.tv.ui.components.tileCardBorder
 
 /**
  * A team, league, game or custom channel in the Library: its logo (a game: both teams' badges)
@@ -79,7 +80,8 @@ internal fun LibraryExtraCard(
             containerColor = AppleTvColors.Contrast,
             focusedContainerColor = AppleTvColors.ContrastHigh
         ),
-        border = CardDefaults.border(border = Border.None, focusedBorder = Border.None),
+        // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+        border = tileCardBorder(shape),
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {

@@ -89,6 +89,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 /*
  * Timeline guide (EPG grid): the times across the top with a red "Now" marker and line,
@@ -120,7 +121,6 @@ private val BlockFocused = AppleTvColors.ContrastFocus
 private val LogoTileFill = AppleTvColors.Contrast
 // A focused logo grows a little (it fits in the gaps around it).
 private const val LogoFocusScale = 1.05f
-private val FocusEdge = Color.White.copy(alpha = 0.55f)
 // Bright red for the "Now" line; a deeper red behind white badge text so it reads (5:1).
 private val NowLine = AppleTvColors.Destructive
 private val BadgeRed = Color(0xFFD42A20)
@@ -954,7 +954,8 @@ private fun GuideBlock(
             focusedContentColor = AppleTvColors.Label
         ),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(border = BorderStroke(1.5.dp, FocusEdge), shape = BlockShape)
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(BlockShape)
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
     ) {
@@ -1036,7 +1037,8 @@ private fun ChannelLogoTile(
             focusedContentColor = AppleTvColors.Label
         ),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(border = BorderStroke(1.5.dp, FocusEdge), shape = BlockShape)
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            focusedBorder = tileFocusBorder(BlockShape)
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = LogoFocusScale)
     ) {

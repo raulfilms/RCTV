@@ -96,6 +96,7 @@ import com.nuvio.tv.ui.util.longPressable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.nuvio.tv.ui.components.tileSurfaceBorder
 
 private val PageMargin: Dp = AppleTvSpacing.SafeX
 private val GameCardHeight = 208.dp
@@ -695,9 +696,7 @@ private fun TeamGameCard(
             containerColor = Color.Transparent,
             focusedContainerColor = Color.Transparent
         ),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = shape)
-        ),
+        border = tileSurfaceBorder(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f)
     ) {
         Box(
@@ -982,7 +981,7 @@ private fun PlayerCard(athlete: SportsAthlete, color: Color) {
             containerColor = AppleTvColors.Surface2,
             focusedContainerColor = AppleTvColors.Surface2
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = shape)),
+        border = tileSurfaceBorder(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1072,6 +1071,7 @@ private fun StatsTab(uiState: TeamDetailUiState) {
                             containerColor = AppleTvColors.Surface2,
                             focusedContainerColor = Color.White.copy(alpha = 0.18f)
                         ),
+                        border = tileSurfaceBorder(shape),
                         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f)
                     ) {
                         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
@@ -1124,7 +1124,7 @@ private fun TeamNewsCard(article: SportsNewsArticle) {
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
             shape = ClickableSurfaceDefaults.shape(shape),
             colors = ClickableSurfaceDefaults.colors(containerColor = AppleTvColors.Surface2, focusedContainerColor = AppleTvColors.Surface2),
-            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = shape)),
+            border = tileSurfaceBorder(shape),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f)
         ) {
             if (!article.imageUrl.isNullOrBlank()) {
@@ -1188,7 +1188,7 @@ private fun HistoryTab(uiState: TeamDetailUiState, leagueLabel: String) {
                     containerColor = AppleTvColors.Surface2,
                     focusedContainerColor = AppleTvColors.Surface2
                 ),
-                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Color.White.copy(alpha = 0.7f)), shape = shape)),
+                border = tileSurfaceBorder(shape),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
             ) {
                 Row(modifier = Modifier.fillMaxWidth().padding(20.dp)) {

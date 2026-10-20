@@ -66,6 +66,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.MetaCastMember
+import com.nuvio.tv.ui.components.tileCardBorder
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -419,12 +420,8 @@ private fun CastMemberItem(
                 containerColor = androidx.compose.ui.graphics.Color.Transparent,
                 focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent
             ),
-            border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                    shape = CircleShape
-                )
-            )
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            border = tileCardBorder(CircleShape)
         ) {
             Box(
                 modifier = Modifier

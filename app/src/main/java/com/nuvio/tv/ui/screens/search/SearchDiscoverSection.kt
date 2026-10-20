@@ -87,6 +87,7 @@ import com.nuvio.tv.ui.util.dpadVerticalFastScroll
 import com.nuvio.tv.ui.util.formatAddonTypeLabel
 import com.nuvio.tv.ui.util.localizedContentType
 import com.nuvio.tv.ui.util.localizedGenreLabel
+import com.nuvio.tv.ui.components.tileFocusBorder
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -581,10 +582,8 @@ private fun DiscoverDropdownPicker(
                     border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
                     shape = RoundedCornerShape(14.dp)
                 ),
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
-                    shape = RoundedCornerShape(14.dp)
-                )
+                // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+                focusedBorder = tileFocusBorder(RoundedCornerShape(14.dp))
             ),
             scale = CardDefaults.scale(
                 focusedScale = 1.0f,
@@ -1049,10 +1048,8 @@ private fun DiscoverActionCard(
                 focusedContainerColor = NuvioTheme.colors.FocusBackground
             ),
             border = CardDefaults.border(
-                focusedBorder = Border(
-                    border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
-                    shape = cardShape
-                )
+                // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+                focusedBorder = tileFocusBorder(cardShape)
             ),
             scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale)
         ) {

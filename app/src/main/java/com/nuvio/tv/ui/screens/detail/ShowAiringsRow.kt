@@ -79,6 +79,7 @@ import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
+import com.nuvio.tv.ui.components.tileSurfaceBorder
 
 /**
  * What a title's page does with its showings in the Live TV guide (a sports talk show's page): play
@@ -321,9 +322,8 @@ private fun AiringCard(
                 containerColor = NuvioTheme.colors.BackgroundCard,
                 focusedContainerColor = NuvioTheme.colors.BackgroundCard
             ),
-            border = ClickableSurfaceDefaults.border(
-                focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = shape)
-            ),
+            // RCTV: the white outline every tile has while focused (see TileFocus.kt).
+            border = tileSurfaceBorder(shape),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
