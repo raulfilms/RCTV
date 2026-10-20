@@ -181,7 +181,8 @@ class GameDetailViewModel @Inject constructor(
             for (query in SportsRecapPicker.queriesFor(game)) {
                 val results = runCatching { youTubeSearch.search(query, spanish = spanish) }.getOrDefault(emptyList())
                 ensureActive() // Closed meanwhile.
-                found += SportsRecapPicker.pick(results, game, now).filter { candidate -> found.none { it.videoId == candidate.videoId } }
+                found += SportsRecapPicker.pick(results, game, now, week = _uiState.value.week)
+                    .filter { candidate -> found.none { it.videoId == candidate.videoId } }
                 if (found.isNotEmpty()) break
             }
             // The likeliest first; the next one if a video can't play.

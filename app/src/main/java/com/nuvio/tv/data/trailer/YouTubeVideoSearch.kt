@@ -27,7 +27,12 @@ data class YouTubeSearchResult(
     /** Its length in seconds; null for a live stream or an upcoming premiere. */
     val durationSeconds: Int?,
     /** How long ago it was published, in days ("3 days ago" → 3.0); null when YouTube doesn't say. */
-    val ageDays: Double?
+    val ageDays: Double?,
+    /**
+     * RCTV: the unit of [ageDays] in days (1 for "3 days ago", 7 for "2 weeks ago", 30 for
+     * "1 month ago"): it was published between [ageDays] and [ageDays] + this many days ago.
+     */
+    val ageUnitDays: Double? = null
 ) {
     val watchUrl: String get() = "https://www.youtube.com/watch?v=$videoId"
 }
@@ -156,7 +161,8 @@ class YouTubeVideoSearch @Inject constructor() {
             title = title,
             channel = channel,
             durationSeconds = length?.let(::secondsOf),
-            ageDays = published?.let(::ageDaysOf)
+            ageDays = published?.let(::ageDaysOf),
+            ageUnitDays = published?.let(::ageUnitDaysOf)
         )
     }
 
@@ -183,8 +189,14 @@ class YouTubeVideoSearch @Inject constructor() {
             return parts.fold(0) { total, part -> total * 60 + part }
         }
 
+        /** "3 days ago" → 1.0, "2 weeks ago" → 7.0, "hace 1 mes" → 30.0: the unit the age is given in, in days. */
+        internal fun ageUnitDaysOf(published: String): Double? = ageOf(published)?.second
+
         /** "3 days ago", "Streamed 2 weeks ago", "hace 3 días", "Transmitido hace 2 semanas" → days. */
-        internal fun ageDaysOf(published: String): Double? {
+        internal fun ageDaysOf(published: String): Double? = ageOf(published)?.first
+
+        /** The age in days and its unit in days. */
+        private fun ageOf(published: String): Pair<Double, Double>? {
             val english = Regex("""(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago""", RegexOption.IGNORE_CASE)
                 .find(published)
             val spanish = if (english == null) {
@@ -203,7 +215,7 @@ class YouTubeVideoSearch @Inject constructor() {
                 "month", "mes" -> 30.0
                 else -> 365.0
             }
-            return count * unitDays
+            return count * unitDays to unitDays
         }
     }
 }

@@ -326,17 +326,19 @@ private fun recapTitle(event: com.nuvio.tv.domain.model.SportsEvent, uiState: Ga
 private val RecapRed = Color(0xFFFF0033)
 
 /**
- * "Watch Recap": big and red like YouTube's; the game's highlights. The play icon and the words
- * sit together in the very middle of the red (the text without its font's extra top and bottom).
+ * "Watch Recap": red like YouTube's, a compact pill centered under the score; the game's
+ * highlights. The play icon and the words sit together in the very middle of the red (the text
+ * without its font's extra top and bottom).
  */
 @Composable
 private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(14.dp)
+    // RCTV: a compact pill in the middle, a little bigger (still in the middle) when focused.
+    val shape = RoundedCornerShape(12.dp)
     androidx.tv.material3.Surface(
         onClick = onClick,
         modifier = modifier
-            .height(56.dp)
-            .widthIn(min = 300.dp),
+            .height(44.dp)
+            .widthIn(min = 210.dp),
         shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape),
         colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
             containerColor = RecapRed,
@@ -350,12 +352,13 @@ private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier)
                 shape = shape
             )
         ),
-        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f)
+        // Grows from its middle, so it stays centered.
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp),
+                .padding(horizontal = 22.dp),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -363,18 +366,18 @@ private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier)
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(22.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = stringResource(R.string.game_detail_watch_recap).uppercase(),
                     color = Color.White,
                     maxLines = 1,
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp,
-                        lineHeight = 18.sp,
+                        lineHeight = 15.sp,
                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
                         lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
                             alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
