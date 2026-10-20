@@ -168,6 +168,9 @@ class DisneyPlusViewModel @Inject constructor(
      */
     val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = repository.titleArtResolver
 
+    /** A row's title art, for its See All page (International Spotlight and Spanish-Language Hits have their own). */
+    fun titleArtFor(rowId: String): com.nuvio.tv.domain.repository.TitleArtResolver = repository.titleArtResolverFor(rowId)
+
     private val _uiState = MutableStateFlow(
         DisneyPlusUiState(
             hub = hub,

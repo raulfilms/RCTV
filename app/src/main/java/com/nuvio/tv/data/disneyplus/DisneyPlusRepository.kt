@@ -68,7 +68,8 @@ class DisneyPlusRepository @Inject constructor(
     private val tmdbApi: TmdbApi,
     private val tmdbService: TmdbService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
-    private val titleArt: TmdbTitleArtService
+    private val titleArt: TmdbTitleArtService,
+    private val titleSpotlight: com.nuvio.tv.core.tmdb.TmdbTitleSpotlightService
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
 
@@ -749,6 +750,15 @@ class DisneyPlusRepository @Inject constructor(
 
     /** For cards that find their title art as they appear (See All pages). */
     val titleArtResolver: TitleArtResolver get() = titleArt
+
+    /**
+     * The title art for a row's cards (and its See All page): International Spotlight and Latin
+     * America & Spanish-Language Hits show each title's logo (or name) their own way, the first
+     * with its country's flag (see [com.nuvio.tv.core.tmdb.TitleSpotlightStyle]); every other row
+     * as [titleArtResolver].
+     */
+    fun titleArtResolverFor(rowId: String?): TitleArtResolver =
+        com.nuvio.tv.core.tmdb.TitleSpotlightStyle.forRow(rowId)?.let(titleSpotlight::resolver) ?: titleArt
 
     // ------------------------------------------------------------------ ownership (continue watching)
 

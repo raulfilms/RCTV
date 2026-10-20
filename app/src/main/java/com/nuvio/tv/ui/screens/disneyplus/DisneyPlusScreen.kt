@@ -273,7 +273,11 @@ fun DisneyPlusScreen(
     ) {
     Box(modifier = Modifier.fillMaxSize().background(NuvioTheme.colors.Background)) {
         when {
-            seeAll != null -> {
+            seeAll != null -> CompositionLocalProvider(
+                // International Spotlight and Spanish-Language Hits show their titles their own way
+                // here too (logo or name, and the country's flag).
+                LocalTitleArtResolver provides remember(seeAll.rowId) { viewModel.titleArtFor(seeAll.rowId) }
+            ) {
                 TitlesSeeAllPage(
                     title = seeAll.title,
                     stateKey = "hub_${uiState.hub.key}_${seeAll.rowId}",

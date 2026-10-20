@@ -61,6 +61,29 @@ interface TmdbApi {
         @Query("language") language: String? = null
     ): Response<TmdbDetailsResponse>
 
+    /**
+     * RCTV: a movie's titles, original language, countries and logos in one request (the title
+     * cards of International Spotlight and Latin America & Spanish-Language Hits).
+     */
+    @GET("movie/{movie_id}")
+    suspend fun getMovieTitleSpotlight(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "en-US",
+        @Query("append_to_response") appendToResponse: String = "images",
+        @Query("include_image_language") includeImageLanguage: String = "en,es"
+    ): Response<TmdbTitleSpotlightResponse>
+
+    /** The same for a series ([getMovieTitleSpotlight]). */
+    @GET("tv/{tv_id}")
+    suspend fun getTvTitleSpotlight(
+        @Path("tv_id") tvId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "en-US",
+        @Query("append_to_response") appendToResponse: String = "images",
+        @Query("include_image_language") includeImageLanguage: String = "en,es"
+    ): Response<TmdbTitleSpotlightResponse>
+
     @GET("movie/{movie_id}/credits")
     suspend fun getMovieCredits(
         @Path("movie_id") movieId: Int,
@@ -535,6 +558,20 @@ data class TmdbCrewMember(
     @Json(name = "job") val job: String? = null,
     @Json(name = "department") val department: String? = null,
     @Json(name = "profile_path") val profilePath: String? = null
+)
+
+/** A title's names, original language, countries and logos ([TmdbApi.getMovieTitleSpotlight]). */
+@JsonClass(generateAdapter = true)
+data class TmdbTitleSpotlightResponse(
+    @Json(name = "id") val id: Int,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "original_title") val originalTitle: String? = null,
+    @Json(name = "original_name") val originalName: String? = null,
+    @Json(name = "original_language") val originalLanguage: String? = null,
+    @Json(name = "origin_country") val originCountry: List<String>? = null,
+    @Json(name = "production_countries") val productionCountries: List<TmdbCountry>? = null,
+    @Json(name = "images") val images: TmdbImagesResponse? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -143,6 +143,8 @@ fun ClassicHomeContent(
     /** Home's TMDB rows (Trending Now, New Releases...), shown under the streaming services. */
     discoverRows: List<HomeDiscoverRowState> = emptyList(),
     discoverTitleArt: TitleArtResolver? = null,
+    /** A TMDB row's own title art, when it has one (International Spotlight, Spanish-Language Hits). */
+    discoverTitleArtFor: (rowId: String) -> TitleArtResolver? = { null },
     onOpenHomeLink: (HomeLink) -> Unit = {}
 ) {
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
@@ -877,7 +879,10 @@ fun ClassicHomeContent(
                             }
                         }
                         val listState = discoverRowStates.getOrPut(rowKey) { LazyListState() }
-                        CompositionLocalProvider(LocalTitleArtResolver provides discoverTitleArt) {
+                        val rowTitleArt = remember(spec.id, discoverTitleArt) {
+                            discoverTitleArtFor(spec.id) ?: discoverTitleArt
+                        }
+                        CompositionLocalProvider(LocalTitleArtResolver provides rowTitleArt) {
                             CatalogRowSection(
                                 catalogRow = catalogRow,
                                 posterCardStyle = classicCatalogPosterCardStyle,

@@ -42,7 +42,12 @@ data class MetaPreview(
     /** The [badge] is for a title still to come (styled apart). */
     val badgeUpcoming: Boolean = false,
     /** TMDB's popularity score, when known (a Top 10 row ranks its titles by it). */
-    val popularity: Double? = null
+    val popularity: Double? = null,
+    /**
+     * RCTV: the country whose flag the title's card shows (ISO 3166-1 alpha-2), set only on rows
+     * that show it (International Spotlight) and only when the title's country of origin is known.
+     */
+    val flagCountry: String? = null
 ) {
     val apiType: String
         get() = type.toApiString(rawType)

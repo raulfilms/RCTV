@@ -579,6 +579,7 @@ private fun ClassicHomeRoute(
         streamingServices = streamingServices,
         discoverRows = discoverRows,
         discoverTitleArt = homeDiscoverViewModel.titleArt,
+        discoverTitleArtFor = homeDiscoverViewModel::titleArtFor,
         onOpenHomeLink = onOpenHomeLink,
         onStreamingServiceClick = { service ->
             if (service.appHub != null || service.group != null || service.target != null) {

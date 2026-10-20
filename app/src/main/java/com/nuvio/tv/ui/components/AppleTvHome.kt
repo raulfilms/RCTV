@@ -1109,6 +1109,9 @@ val AppleLandscapeCardHeight: Dp = AppleTvSpacing.Col4 * (9f / 16f)
  */
 private const val TITLE_ART_WAIT_MS = 300L
 
+/** Room kept at a card's bottom-right for its flag, so the title never runs under it. */
+private val FlagCornerReserve = 10.dp + CountryFlagHeight * 2.4f + 8.dp
+
 /**
  * Horizontal 16:9 card for landscape rows (e.g. Popular Series): wide artwork,
  * title logo (or the name) at the bottom left, optional rank number; grows with a
@@ -1190,6 +1193,7 @@ fun AppleLandscapeCard(
         }
     }
     var logoFailed by remember(shown.logo) { mutableStateOf(false) }
+    val flagCountry = shown.flagCountry?.takeIf { it.isNotBlank() }
     var longPressTriggered by remember { mutableStateOf(false) }
     val longPressKeyTracker = rememberLongPressKeyTracker()
 
@@ -1270,7 +1274,8 @@ fun AppleLandscapeCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 10.dp, end = 10.dp, bottom = 9.dp)
+                        // The flag's corner stays clear (International Spotlight).
+                        .padding(start = 10.dp, end = if (flagCountry != null) FlagCornerReserve else 10.dp, bottom = 9.dp)
                 ) {
                     if (logoModel != null && !logoFailed) {
                         AsyncImage(
@@ -1285,7 +1290,9 @@ fun AppleLandscapeCard(
                         )
                     } else {
                         Text(
-                            text = item.name,
+                            // The name the title art gives it (a row may show its English or
+                            // Spanish title), else its own.
+                            text = shown.name,
                             color = AppleTvColors.Label,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1293,6 +1300,15 @@ fun AppleLandscapeCard(
                         )
                     }
                 }
+            }
+            // Its country's flag, bottom-right (International Spotlight).
+            if (!isPlaceholder && flagCountry != null) {
+                CountryFlag(
+                    countryCode = flagCountry,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 10.dp, bottom = 9.dp)
+                )
             }
             if (rankNumber != null) {
                 Text(

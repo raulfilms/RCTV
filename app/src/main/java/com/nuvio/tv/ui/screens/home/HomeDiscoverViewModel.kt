@@ -60,6 +60,9 @@ class HomeDiscoverViewModel @Inject constructor(
     /** Title art for the rows' horizontal cards, found as they appear. */
     val titleArt: TitleArtResolver get() = repository.titleArtResolver
 
+    /** A row's title art (International Spotlight and Spanish-Language Hits have their own). */
+    fun titleArtFor(rowId: String): TitleArtResolver = repository.titleArtResolverFor(rowId)
+
     private val _rows = MutableStateFlow(
         hubSpec.rows
             .filter { it.kind != DisneyRowKind.HIDDEN }
