@@ -230,6 +230,16 @@ fun ChannelProfileScreen(
     }
     // Set once the page has put focus somewhere, so coming back from "See All" doesn't redo it.
     val initialFocusDone = rememberSaveable { mutableStateOf(false) }
+    // Back from a title's page (the page is drawn anew, past its first focus): focus goes back to
+    // that title. Forgotten once anything has focus again, or after a moment if it can't be found.
+    var titleReturnFocus by remember {
+        mutableStateOf<ChannelTitleFocus?>(if (initialFocusDone.value) viewModel.titleFocus else null)
+    }
+    LaunchedEffect(titleReturnFocus) {
+        if (titleReturnFocus == null) return@LaunchedEffect
+        delay(RETURN_FOCUS_WINDOW_MS)
+        titleReturnFocus = null
+    }
     LaunchedEffect(seeAll == null, returnFocusTo) {
         val kind = returnFocusTo ?: return@LaunchedEffect
         if (seeAll != null) return@LaunchedEffect
@@ -334,7 +344,12 @@ fun ChannelProfileScreen(
                 tvShowsEntry = tvShowsEntry,
                 moviesEntry = moviesEntry,
                 isFavorite = isFavorite,
-                onToggleFavorite = ::toggleFavorite
+                onToggleFavorite = ::toggleFavorite,
+                titleReturnFocus = titleReturnFocus,
+                onTitleFocused = { kind, index ->
+                    viewModel.titleFocus = ChannelTitleFocus(kind, index)
+                    titleReturnFocus = null
+                }
             )
         }
 
@@ -396,7 +411,9 @@ private fun ChannelProfileContent(
     tvShowsEntry: FocusRequester,
     moviesEntry: FocusRequester,
     isFavorite: Boolean,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    titleReturnFocus: ChannelTitleFocus?,
+    onTitleFocused: (ChannelTitlesKind, Int) -> Unit
 ) {
     val context = LocalContext.current
     val timeFormat = remember(context) { android.text.format.DateFormat.getTimeFormat(context) }
@@ -605,7 +622,9 @@ private fun ChannelProfileContent(
                         appleLandscape = true,
                         layoutRowId = "tv_shows",
                         onSeeAll = { onSeeAll(ChannelTitlesKind.TV_SHOWS) },
-                        entryFocusRequester = tvShowsEntry
+                        entryFocusRequester = tvShowsEntry,
+                        focusedItemIndex = titleReturnFocus?.takeIf { it.kind == ChannelTitlesKind.TV_SHOWS }?.index ?: -1,
+                        onItemFocused = { index -> onTitleFocused(ChannelTitlesKind.TV_SHOWS, index) }
                     )
                 }
             }
@@ -627,7 +646,9 @@ private fun ChannelProfileContent(
                         appleLandscape = true,
                         layoutRowId = "movies",
                         onSeeAll = { onSeeAll(ChannelTitlesKind.MOVIES) },
-                        entryFocusRequester = moviesEntry
+                        entryFocusRequester = moviesEntry,
+                        focusedItemIndex = titleReturnFocus?.takeIf { it.kind == ChannelTitlesKind.MOVIES }?.index ?: -1,
+                        onItemFocused = { index -> onTitleFocused(ChannelTitlesKind.MOVIES, index) }
                     )
                 }
             }
@@ -1245,3 +1266,6 @@ private class ChannelFamily(
     val epgSeries: List<String>,
     val epgMovies: List<com.nuvio.tv.data.channelprofile.EpgMovieTitle>
 )
+
+/** How long, after coming back to a page, focus may still be put back on the title it was on. */
+internal const val RETURN_FOCUS_WINDOW_MS = 3_000L

@@ -314,7 +314,15 @@ object NetworkModule {
         Retrofit.Builder()
             .baseUrl("https://api.themoviedb.org/3/")
             // Same client, plus retries when TMDB is busy (429) so rows, heroes and cards don't go missing.
-            .client(okHttpClient.newBuilder().addInterceptor(com.nuvio.tv.core.network.TmdbRetryInterceptor()).build())
+            // RCTV: TMDB answers are small, so a stalled connection gives up after 15-20 s (not the
+            // shared client's 30-60 s), and pages and the Guide's details don't wait on it as long.
+            .client(
+                okHttpClient.newBuilder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(20, TimeUnit.SECONDS)
+                    .addInterceptor(com.nuvio.tv.core.network.TmdbRetryInterceptor())
+                    .build()
+            )
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
 

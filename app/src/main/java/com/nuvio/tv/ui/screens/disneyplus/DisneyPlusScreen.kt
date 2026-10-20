@@ -144,6 +144,12 @@ fun DisneyPlusScreen(
     // Cleared once anything has focus again (so a row scrolled back into view later doesn't take it).
     var returnFocus by remember { mutableStateOf<HubReturnFocus?>(if (initialFocusDone) viewModel.returnFocus else null) }
     LaunchedEffect(returnFocus) {
+        if (returnFocus == null) return@LaunchedEffect
+        // Not found in a moment (the row is gone): forgotten, so it can't take focus later.
+        launch {
+            kotlinx.coroutines.delay(com.nuvio.tv.ui.screens.channelprofile.RETURN_FOCUS_WINDOW_MS)
+            returnFocus = null
+        }
         if (returnFocus?.rowId != HubReturnFocus.HERO) return@LaunchedEffect
         for (attempt in 0 until 12) {
             withFrameNanos { }

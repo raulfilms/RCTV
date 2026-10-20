@@ -55,6 +55,9 @@ private const val SEE_ALL_ROUNDS = 60
 /** Which of the channel's two title rows a "See All" page shows. */
 enum class ChannelTitlesKind { TV_SHOWS, MOVIES }
 
+/** The title last focused on a channel's page: its row and place in the row. */
+data class ChannelTitleFocus(val kind: ChannelTitlesKind, val index: Int)
+
 /** A channel's "See All" page: every title of one row, more loading as the person scrolls. */
 data class ChannelSeeAllState(
     val kind: ChannelTitlesKind,
@@ -100,6 +103,10 @@ class ChannelProfileViewModel @Inject constructor(
     private val watchProgressRepository: WatchProgressRepository,
     private val libraryRepository: LibraryRepository
 ) : ViewModel() {
+
+    /** RCTV: the title focused last, so coming back from its page puts focus on it again. */
+    var titleFocus: ChannelTitleFocus? = null
+
 
     /** Title art for the horizontal cards (rows and See All), found as they appear. */
     val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = repository.titleArtResolver

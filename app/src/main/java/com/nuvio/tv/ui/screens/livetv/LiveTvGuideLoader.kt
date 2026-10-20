@@ -340,14 +340,15 @@ class LiveTvGuideLoader @Inject constructor(
 
     /** One source's channels; never throws (a failing source just adds nothing). */
     private suspend fun loadSourceChannels(source: LiveTvSource): Result<List<LiveTvChannel>> = runCatching {
-        val rawChannels = when (val connection = source.connection) {
+        val rawChannels: List<LiveTvChannel> = when (val connection = source.connection) {
             is LiveTvConnection.M3u -> {
                 val request = Request.Builder().url(connection.playlistUrl).build()
-                val body = okHttpClient.newCall(request).execute().use { response ->
+                // Read as it downloads (a provider's full playlist can be tens of megabytes).
+                okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) error("HTTP ${response.code}")
-                    response.body?.string().orEmpty()
+                    val body = response.body ?: error("Empty response")
+                    M3uPlaylistParser.parse(body.charStream())
                 }
-                M3uPlaylistParser.parse(body)
             }
             is LiveTvConnection.Xtream -> xtreamClient.fetchChannels(connection)
             is LiveTvConnection.Stalker -> {
