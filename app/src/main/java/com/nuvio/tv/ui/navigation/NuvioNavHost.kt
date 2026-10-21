@@ -1225,7 +1225,34 @@ private fun PlaybackNavHost(
                         Screen.CatalogSeeAll.createRoute(catalogId, addonId, type, fromSearch = true)
                     )
                 },
-                onOpenDiscover = { navController.navigate(Screen.Discover.route) }
+                onOpenDiscover = { navController.navigate(Screen.Discover.route) },
+                // RCTV: Search finds channels, the guide's programs and sports too.
+                onOpenChannel = { channel ->
+                    navController.navigate(Screen.ChannelProfile.createRoute(channel.id))
+                },
+                onPlayChannel = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    )
+                },
+                onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } },
+                onOpenLeague = { league ->
+                    navController.navigate(
+                        Screen.SportsLeagueDetail.createRoute(
+                            leagueId = league.id,
+                            leagueName = league.name,
+                            sportName = league.sportName,
+                            badgeUrl = league.badgeUrl
+                        )
+                    )
+                },
+                onOpenGame = rememberGameOpener(navController)
             )
         }
 

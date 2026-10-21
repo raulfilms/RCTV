@@ -1091,7 +1091,7 @@ private fun ChannelLogoTile(
 }
 
 /** A dark one-color logo (meant for light backgrounds) turned white for the dark tiles; others as they are. */
-private object GuideLogoWhitening : coil3.transform.Transformation() {
+internal object GuideLogoWhitening : coil3.transform.Transformation() {
     override val cacheKey: String = "guide_logo_white_v1"
 
     override suspend fun transform(input: Bitmap, size: coil3.size.Size): Bitmap {

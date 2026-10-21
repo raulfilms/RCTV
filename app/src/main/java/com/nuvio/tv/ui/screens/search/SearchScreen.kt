@@ -136,7 +136,15 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
     onNavigateToDetail: (String, String, String) -> Unit,
     onNavigateToSeeAll: (catalogId: String, addonId: String, type: String) -> Unit = { _, _, _ -> },
-    onOpenDiscover: () -> Unit = {}
+    onOpenDiscover: () -> Unit = {},
+    /** RCTV: a channel of the Live TV guide: its page. */
+    onOpenChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = {},
+    /** RCTV: a guide program on now: its channel plays (ready to play). */
+    onPlayChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = {},
+    onOpenTeam: (com.nuvio.tv.domain.model.SportsTeam) -> Unit = {},
+    onOpenLeague: (com.nuvio.tv.domain.model.SportsLeague) -> Unit = {},
+    /** RCTV: a game: on now plays it, any other opens its page. */
+    onOpenGame: (com.nuvio.tv.domain.model.SportsEvent) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsState()
@@ -375,6 +383,25 @@ fun SearchScreen(
             trimmedQuery.length >= MIN_SEARCH_QUERY_LENGTH &&
             trimmedQuery != trimmedSubmittedQuery
     }
+    // RCTV: channels, the guide's programs and sports found for this search. The strong ones (a
+    // name that is what was typed, starts with it or has it as a whole word) show above the movies
+    // and series, the rest under them; with no movies or series, all of them on top.
+    // Like the movies and series, the last search's stay up while the next one is looked for (no
+    // flashing on every letter typed); the new ones replace them, or clear them when there are none.
+    val extrasForQuery = remember(uiState.extras, trimmedSubmittedQuery, isDiscoverMode) {
+        uiState.extras.takeIf {
+            !isDiscoverMode && !it.isEmpty && trimmedSubmittedQuery.length >= MIN_SEARCH_QUERY_LENGTH
+        }
+    }
+    val catalogRowsShown = visibleCatalogRows.isNotEmpty()
+    val topExtraKinds = remember(extrasForQuery, catalogRowsShown) {
+        val extras = extrasForQuery ?: return@remember emptyList()
+        if (!catalogRowsShown) extras.rows else extras.rows.filter { it in extras.strong }
+    }
+    val bottomExtraKinds = remember(extrasForQuery, catalogRowsShown) {
+        val extras = extrasForQuery ?: return@remember emptyList()
+        if (!catalogRowsShown) emptyList() else extras.rows.filter { it !in extras.strong }
+    }
     val showRecentSearches = remember(
         trimmedQuery,
         uiState.recentSearches
@@ -386,13 +413,14 @@ fun SearchScreen(
         isDiscoverMode,
         uiState.discoverResults,
         trimmedSubmittedQuery,
-        uiState.catalogRows
+        uiState.catalogRows,
+        extrasForQuery
     ) {
         if (isDiscoverMode) {
             false
         } else {
             trimmedSubmittedQuery.length >= MIN_SEARCH_QUERY_LENGTH &&
-                uiState.catalogRows.any { it.items.isNotEmpty() }
+                (uiState.catalogRows.any { it.items.isNotEmpty() } || extrasForQuery != null)
         }
     }
     val submitCurrentQuery: (String) -> Unit = { submittedQuery ->
@@ -612,6 +640,74 @@ fun SearchScreen(
             searchRowStates.values.toList().forEach { it.scrollToItem(0) }
         }
 
+        // RCTV: what the channel, guide and sports rows' cards open.
+        val latestOnOpenChannel by rememberUpdatedState(onOpenChannel)
+        val latestOnPlayChannel by rememberUpdatedState(onPlayChannel)
+        val latestOnOpenTeam by rememberUpdatedState(onOpenTeam)
+        val latestOnOpenLeague by rememberUpdatedState(onOpenLeague)
+        val latestOnOpenGame by rememberUpdatedState(onOpenGame)
+        val extraActions = remember(viewModel) {
+            SearchExtraActions(
+                onChannel = { channel -> latestOnOpenChannel(channel) },
+                onProgram = { result ->
+                    if (result.program.isAiringAt(System.currentTimeMillis())) {
+                        coroutineScope.launch { latestOnPlayChannel(viewModel.playableChannel(result.channel)) }
+                    } else {
+                        latestOnOpenChannel(result.channel)
+                    }
+                },
+                onTeam = { team -> latestOnOpenTeam(team) },
+                onLeague = { league -> latestOnOpenLeague(league) },
+                onGame = { event -> latestOnOpenGame(event) }
+            )
+        }
+        val extrasShown = extrasForQuery
+        /** The channel, guide and sports rows of [kinds]; [atTop]: the first one is the first row of results. */
+        val extraRows: androidx.compose.foundation.lazy.LazyListScope.(List<SearchExtraRowKind>, Boolean) -> Unit = { kinds, atTop ->
+            if (extrasShown != null) {
+                kinds.forEachIndexed { position, kind ->
+                    item(key = kind.rowKey(), contentType = "search_extra_row") {
+                        val rowKey = kind.rowKey()
+                        SearchExtraRow(
+                            kind = kind,
+                            extras = extrasShown,
+                            actions = extraActions,
+                            focusIndex = when {
+                                restoringSearchFocus.value && rowKey == viewModel.savedFocusRowKey ->
+                                    viewModel.savedFocusItemIndex
+                                focusResults && atTop && position == 0 -> 0
+                                else -> -1
+                            },
+                            // Anchor Up to the field from the first row of results.
+                            upFocusRequester = if (atTop && position == 0) searchFocusRequester else null,
+                            onItemFocused = {
+                                if (focusResults) focusResults = false
+                                if (restoringSearchFocus.value) {
+                                    restoringSearchFocus.value = false
+                                    didRestoreSearchFocus.value = true
+                                    viewModel.hasSavedSearchFocus = false
+                                }
+                                pendingFocusMoveToResultsQuery = null
+                                lastFocusedRowKey = rowKey
+                                // Back from these rows goes straight to the search field.
+                                focusedResultItemIndex.intValue = 0
+                            },
+                            onItemOpened = { index ->
+                                // Coming back lands on this card.
+                                viewModel.savedFocusRowKey = rowKey
+                                viewModel.savedFocusItemIndex = index
+                                viewModel.savedRowScrollPositions = searchRowStates.mapValues {
+                                    it.value.firstVisibleItemIndex to it.value.firstVisibleItemScrollOffset
+                                }
+                                viewModel.hasSavedSearchFocus = true
+                            },
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -732,6 +828,7 @@ fun SearchScreen(
                     // skeletons on every keystroke, which on a remote reads as flicker because each
                     // letter outlasts the debounce, so existing results are kept instead.
                     (hasPendingUnsubmittedQuery || uiState.isSearching) && visibleCatalogRows.isEmpty() -> {
+                        extraRows(topExtraKinds, true)
                         items(SEARCH_SKELETON_ROW_COUNT, key = { "search_skeleton_$it" }) { index ->
                             val skeletonRow = remember(index) {
                                 com.nuvio.tv.domain.model.CatalogRow(
@@ -771,12 +868,19 @@ fun SearchScreen(
                     }
 
                     uiState.error != null && uiState.catalogRows.isEmpty() -> {
+                        extraRows(topExtraKinds, true)
                         item {
                             ErrorState(
                                 message = uiState.error ?: stringResource(R.string.search_error_failed),
                                 onRetry = { viewModel.onEvent(SearchEvent.Retry) }
                             )
                         }
+                    }
+
+                    !uiState.isSearching && !hasPendingUnsubmittedQuery && visibleCatalogRows.isEmpty() &&
+                        topExtraKinds.isNotEmpty() -> {
+                        // No movies or series: the channels, guide and sports found.
+                        extraRows(topExtraKinds, true)
                     }
 
                     !uiState.isSearching && !hasPendingUnsubmittedQuery && visibleCatalogRows.isEmpty() -> {
@@ -790,6 +894,7 @@ fun SearchScreen(
                     }
 
                     else -> {
+                        extraRows(topExtraKinds, true)
                         itemsIndexed(
                             items = visibleCatalogRows,
                             key = { index, item ->
@@ -824,7 +929,7 @@ fun SearchScreen(
                                 rowFocusRequester = rowFocusRequester,
                                 entryFocusRequester = entryFocusRequester,
                                 // Anchor Up to the field; geometric focus varies with the card.
-                                upFocusRequester = if (index == 0) searchFocusRequester else null,
+                                upFocusRequester = if (index == 0 && topExtraKinds.isEmpty()) searchFocusRequester else null,
                                 listState = listState,
                                 restorerFocusedIndex = if (restoringSearchFocus.value && catalogKey == viewModel.savedFocusRowKey) {
                                     viewModel.savedFocusItemIndex
@@ -845,7 +950,7 @@ fun SearchScreen(
                                         viewModel.savedFocusItemIndex
                                     // The remembered card, not item 0. A query change clears
                                     // the map, so a new search still lands on the first item.
-                                    focusResults && index == 0 ->
+                                    focusResults && index == 0 && topExtraKinds.isEmpty() ->
                                         searchRowFocusedItemIndex[catalogKey] ?: 0
                                     else -> -1
                                 },
@@ -891,6 +996,9 @@ fun SearchScreen(
                                 }
                             )
                         }
+
+                        // The channels, guide and sports found that aren't as close a match.
+                        extraRows(bottomExtraKinds, false)
 
                         // Results are up but more catalogs are still answering, as on mobile.
                         if (uiState.isSearching || hasPendingUnsubmittedQuery) {

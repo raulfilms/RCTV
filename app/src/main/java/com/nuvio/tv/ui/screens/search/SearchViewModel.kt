@@ -44,6 +44,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.nuvio.tv.ui.screens.sports.withClock
+
+/** RCTV: a guide channel's name as Search shows it: "US: ESPN2 FHD" → "ESPN2". */
+private fun searchChannelName(name: String): String =
+    com.nuvio.tv.ui.screens.channelprofile.ChannelBrands.displayName(
+        com.nuvio.tv.ui.screens.livetv.LiveTvViewModel.stripCountryTag(name)
+    ).ifBlank { name }
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
@@ -56,7 +63,10 @@ class SearchViewModel @Inject constructor(
     private val watchProgressRepository: com.nuvio.tv.domain.repository.WatchProgressRepository,
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val guideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader,
+    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore,
+    private val sportsSearchIndex: SportsSearchIndex
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -97,7 +107,17 @@ class SearchViewModel @Inject constructor(
     private var revealBatchAfterNextDiscoverFetch = false
     private var hideUnreleasedContent = false
 
+    /** RCTV: what Search looks for in the Live TV guide and in sports (trimmed; empty: nothing). */
+    private val extrasQuery = MutableStateFlow("")
+    private var extrasSourcesReadyAtMs = 0L
+
     private companion object {
+        /** How often the guide and sports results are looked at again while a search shows (on now, scores). */
+        const val EXTRAS_REFRESH_MS = 60_000L
+        /** How long the guide and sports results wait for things to settle before they're looked for. */
+        const val EXTRAS_SETTLE_MS = 150L
+        /** How often a search makes sure the guide is loaded. */
+        const val EXTRAS_ENSURE_EVERY_MS = 5L * 60 * 1000
         const val DISCOVER_INITIAL_LIMIT = 100
         const val DISCOVER_SHOW_MORE_BATCH = 50
         const val SUGGESTION_DEBOUNCE_MS = 150L
@@ -116,6 +136,7 @@ class SearchViewModel @Inject constructor(
 
     init {
         posterOptions.bind(viewModelScope)
+        observeExtras()
         viewModelScope.launch {
             watchProgressRepository.observeWatchedMovieIds()
                 .collect { ids -> _watchedMovieIds.value = ids }
@@ -433,7 +454,7 @@ class SearchViewModel @Inject constructor(
             row.items.any { item -> !item.id.startsWith("__placeholder_") }
         } || catalogsMap.values.any { row ->
             row.items.any { item -> !item.id.startsWith("__placeholder_") }
-        }
+        } || hasExtrasFor(query)
         if (!hasRealResults) return
         viewModelScope.launch {
             searchHistoryDataStore.saveRecentSearch(query, MAX_RECENT_SEARCHES)
@@ -505,6 +526,8 @@ class SearchViewModel @Inject constructor(
         if (!keepSuggestions) {
             suggestionJob?.cancel()
         }
+        // RCTV: channels, the guide's programs and sports, alongside the movies and series.
+        updateExtrasQuery(query)
         _uiState.update {
             it.copy(
                 submittedQuery = submittedSearchQuery(query),
@@ -565,7 +588,7 @@ class SearchViewModel @Inject constructor(
                 // An explicit submit that lands on a query the live search already finished still
                 // counts as a search the user confirmed, so remember it instead of skipping out
                 // of the history save below.
-                if (rememberToHistory && catalogsMap.values.any { row -> row.items.isNotEmpty() }) {
+                if (rememberToHistory && (catalogsMap.values.any { row -> row.items.isNotEmpty() } || hasExtrasFor(query))) {
                     viewModelScope.launch {
                         searchHistoryDataStore.saveRecentSearch(query, MAX_RECENT_SEARCHES)
                     }
@@ -683,7 +706,7 @@ class SearchViewModel @Inject constructor(
                     // rememberSearchFromTextInput)
                     // writes history. Live search fires per keystroke and would otherwise record
                     // every prefix ("do", "dog") even when the user never confirmed the search.
-                    if (rememberToHistory && catalogsMap.values.any { row -> row.items.isNotEmpty() }) {
+                    if (rememberToHistory && (catalogsMap.values.any { row -> row.items.isNotEmpty() } || hasExtrasFor(query))) {
                         viewModelScope.launch {
                             searchHistoryDataStore.saveRecentSearch(query, MAX_RECENT_SEARCHES)
                         }
@@ -692,6 +715,88 @@ class SearchViewModel @Inject constructor(
             }
         }
         searchRunJob = job
+    }
+
+    // ------------------------------------------------------------------ Channels, guide and sports
+
+    private fun hasExtrasFor(query: String): Boolean {
+        val extras = _uiState.value.extras
+        return !extras.isEmpty && extras.query.equals(query, ignoreCase = true)
+    }
+
+    /** Looks for [query] in the guide and in sports too (the guide and the sports loaded first, when they aren't). */
+    private fun updateExtrasQuery(query: String) {
+        val wanted = if (query.length >= MIN_SEARCH_QUERY_LENGTH) query else ""
+        if (wanted.isNotEmpty()) prepareExtras()
+        extrasQuery.value = wanted
+    }
+
+    private fun prepareExtras() {
+        sportsSearchIndex.ensure()
+        val now = System.currentTimeMillis()
+        if (now - extrasSourcesReadyAtMs < EXTRAS_ENSURE_EVERY_MS) return
+        extrasSourcesReadyAtMs = now
+        viewModelScope.launch {
+            val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList())
+                .filter { it.enabled }
+            // No IPTV source: no guide to look through (the sample guide isn't searched).
+            if (sources.isNotEmpty()) guideLoader.ensure(sources)
+        }
+    }
+
+    /** Keeps the guide and sports results up to date with what's typed, the guide and the sports loaded. */
+    private fun observeExtras() {
+        val ticks = kotlinx.coroutines.flow.flow {
+            while (true) {
+                emit(Unit)
+                delay(EXTRAS_REFRESH_MS)
+            }
+        }
+        viewModelScope.launch {
+            combine(extrasQuery, guideLoader.guide, sportsSearchIndex.state, ticks) { query, guide, sports, _ ->
+                Triple(query, guide, sports)
+            }.collectLatest { (query, guide, sports) ->
+                if (query.isEmpty()) {
+                    if (!_uiState.value.extras.isEmpty || _uiState.value.extras.query.isNotEmpty()) {
+                        _uiState.update { it.copy(extras = SearchExtraResults()) }
+                    }
+                    return@collectLatest
+                }
+                // A moment's wait: letters typed, the guide and the leagues loading all come in bursts.
+                delay(EXTRAS_SETTLE_MS)
+                val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    runCatching { findExtras(query, guide, sports) }.getOrNull()
+                } ?: return@collectLatest
+                if (extrasQuery.value == query) _uiState.update { it.copy(extras = found) }
+            }
+        }
+    }
+
+    private fun findExtras(
+        query: String,
+        guide: com.nuvio.tv.ui.screens.livetv.LiveGuideSnapshot?,
+        sports: SportsSearchIndex.Snapshot
+    ): SearchExtraResults {
+        // The sample guide (no IPTV source added) has nothing to watch: not searched.
+        val usable = guide?.takeIf { !it.isPreview && it.channels.isNotEmpty() }
+        val index = usable?.let { GuideSearchCache.indexFor(it.channels, it.epgByChannel) { channel -> searchChannelName(channel.name) } }
+        val now = System.currentTimeMillis()
+        return SearchExtrasFinder.find(
+            rawQuery = query,
+            guide = index,
+            teams = sports.teams,
+            leagues = sports.leagues,
+            games = sports.games,
+            // As the clock has them: a game whose start time has come is live.
+            clock = { event -> event.withClock(now) },
+            now = now
+        )
+    }
+
+    /** A guide channel ready to play: its address right now (a Stalker portal hands out short-lived ones). */
+    suspend fun playableChannel(channel: com.nuvio.tv.domain.model.LiveTvChannel): com.nuvio.tv.domain.model.LiveTvChannel {
+        val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
+        return channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources))
     }
 
     private suspend fun loadCatalog(

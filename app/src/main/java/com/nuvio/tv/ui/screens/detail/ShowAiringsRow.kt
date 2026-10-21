@@ -300,13 +300,15 @@ fun ShowAiringsRow(
 
 /** A showing: the program's picture (or the show's), the channel's logo, LIVE or when, the channel. */
 @Composable
-private fun AiringCard(
+internal fun AiringCard(
     airing: ShowAiring,
     isOnNow: Boolean,
     now: Long,
     fallbackImageUrl: String?,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** What the card says (Search: the program's title); default the episode's name, else the title. */
+    cardText: String? = null
 ) {
     val program = airing.program
     val channel = airing.channel
@@ -401,7 +403,7 @@ private fun AiringCard(
                     }
                 }
                 Text(
-                    text = program.subtitle?.takeIf { it.isNotBlank() } ?: program.title,
+                    text = cardText ?: program.subtitle?.takeIf { it.isNotBlank() } ?: program.title,
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,

@@ -233,6 +233,9 @@ class EspnSportsClient @Inject constructor(
         ) + PpvEventsSource.BOXING_LEAGUES.associate { it.leaguePath to it.name } +
             VirtualLeagues.LEAGUES.associate { it.leaguePath to it.name }
 
+        /** A league's short name as the app shows it ("NBA", "La Liga"), before anything is loaded; null when it has none. */
+        fun feedLabel(leaguePath: String): String? = FEED_LABELS[leaguePath]
+
         /** Golf, tennis, racing and PPV Events have players, drivers and fighters, not teams. */
         private fun hasTeams(feed: Feed): Boolean =
             feed.sportPath != GOLF && feed.sportPath != VirtualLeagues.TENNIS && feed.sportPath != "racing" &&
@@ -1070,10 +1073,14 @@ class EspnSportsClient @Inject constructor(
         /** Leagues ("sport:league") loaded first: the person's own. */
         firstLeagueIds: Set<String> = emptySet(),
         /** Each league's games as soon as they're in (on the loading threads). */
-        onResult: ((FeedResult) -> Unit)? = null
+        onResult: ((FeedResult) -> Unit)? = null,
+        /** Days before today too (Search: yesterday's games). */
+        daysBack: Int = 0
     ): List<FeedResult> {
         val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        if (daysBack > 0) calendar.add(Calendar.DAY_OF_YEAR, -daysBack)
         val start = dayFormat.format(calendar.time)
+        if (daysBack > 0) calendar.add(Calendar.DAY_OF_YEAR, daysBack)
         calendar.add(Calendar.DAY_OF_YEAR, rangeDays)
         val end = dayFormat.format(calendar.time)
         return fetchFixturesInRange("$start-$end", byPriority(feeds, firstLeagueIds), onResult)

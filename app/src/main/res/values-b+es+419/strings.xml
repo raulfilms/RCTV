@@ -2035,7 +2035,13 @@
 
 
     <string name="search_keyboard_hint">Presiona Listo en el teclado para buscar</string>
-    <string name="search_placeholder">Buscar películas y series</string>
+    <string name="search_placeholder">Buscar películas, series, canales y deportes</string>
+    <string name="search_row_channels">Canales</string>
+    <string name="search_row_programs">En la guía</string>
+    <string name="search_row_teams">Equipos</string>
+    <string name="search_row_leagues">Ligas</string>
+    <string name="search_row_games">Partidos y eventos</string>
+    <string name="search_channel_on_now">Ahora: %1$s</string>
     <string name="search_start_title">Empezar a buscar</string>
     <string name="search_start_subtitle">Ingresa al menos 2 caracteres</string>
     <string name="search_start_subtitle_no_discover">Descubrir está desactivado. Ingresa al menos 2 caracteres</string>

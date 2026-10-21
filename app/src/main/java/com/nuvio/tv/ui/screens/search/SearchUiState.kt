@@ -47,7 +47,9 @@ data class SearchUiState(
     val posterCardHeightDp: Int = 189,
     val posterCardCornerRadiusDp: Int = 12,
     val recentSearches: List<String> = emptyList(),
-    val suggestions: List<String> = emptyList()
+    val suggestions: List<String> = emptyList(),
+    /** RCTV: channels, the guide's programs, sports teams, leagues and games found too. */
+    val extras: SearchExtraResults = SearchExtraResults()
 )
 
 @Immutable

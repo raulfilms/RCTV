@@ -2038,7 +2038,13 @@
 
 
     <string name="search_keyboard_hint">Press Done on the keyboard to search</string>
-    <string name="search_placeholder">Search movies &amp; series</string>
+    <string name="search_placeholder">Search movies, series, channels &amp; sports</string>
+    <string name="search_row_channels">Channels</string>
+    <string name="search_row_programs">On the Guide</string>
+    <string name="search_row_teams">Teams</string>
+    <string name="search_row_leagues">Leagues</string>
+    <string name="search_row_games">Games &amp; Events</string>
+    <string name="search_channel_on_now">Now: %1$s</string>
     <string name="search_start_title">Start Searching</string>
     <string name="search_start_subtitle">Enter at least 2 characters</string>
     <string name="search_start_subtitle_no_discover">Discover is disabled. Enter at least 2 characters</string>
