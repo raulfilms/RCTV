@@ -607,10 +607,22 @@ class TmdbMetadataService(
             .toList()
     }
 
+    /**
+     * TMDB's episodes of [seasonNumbers], by season and number. RCTV: a cartoon's season rebuilt the
+     * IMDb way (see [com.nuvio.tv.core.imdb.ImdbEpisodeOrder]) comes told the same way: an IMDb
+     * episode's halves together, under its IMDb number.
+     */
     suspend fun fetchEpisodeEnrichment(
         tmdbId: String,
         seasonNumbers: List<Int>,
         language: String = "en"
+    ): Map<Pair<Int, Int>, TmdbEpisodeEnrichment> =
+        com.nuvio.tv.core.imdb.EpisodeOrderRegistry.remap(tmdbId, fetchTmdbSeasonEpisodes(tmdbId, seasonNumbers, language))
+
+    private suspend fun fetchTmdbSeasonEpisodes(
+        tmdbId: String,
+        seasonNumbers: List<Int>,
+        language: String
     ): Map<Pair<Int, Int>, TmdbEpisodeEnrichment> = withContext(ioDispatcher) {
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val cacheKey = "$tmdbId:${seasonNumbers.sorted().joinToString(",")}:$normalizedLanguage"
@@ -618,7 +630,7 @@ class TmdbMetadataService(
         episodeInFlight[cacheKey]?.let { existing ->
             return@withContext awaitShared(existing) {
                 episodeInFlight.remove(cacheKey, existing)
-                fetchEpisodeEnrichment(tmdbId, seasonNumbers, language)
+                fetchTmdbSeasonEpisodes(tmdbId, seasonNumbers, language)
             }
         }
 
@@ -627,7 +639,7 @@ class TmdbMetadataService(
         episodeInFlight.putIfAbsent(cacheKey, requestDeferred)?.let { existing ->
             return@withContext awaitShared(existing) {
                 episodeInFlight.remove(cacheKey, existing)
-                fetchEpisodeEnrichment(tmdbId, seasonNumbers, language)
+                fetchTmdbSeasonEpisodes(tmdbId, seasonNumbers, language)
             }
         }
         try {

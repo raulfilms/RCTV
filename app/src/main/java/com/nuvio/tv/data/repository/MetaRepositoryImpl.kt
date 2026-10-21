@@ -33,12 +33,16 @@ import javax.inject.Singleton
 class MetaRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val addonRepository: AddonRepository
+    private val addonRepository: AddonRepository,
+    /** RCTV: cartoons told in halves listed the IMDb way, as the stream addons number them (none in tests). */
+    private val episodeOrder: com.nuvio.tv.core.imdb.ImdbEpisodeOrder? = null
 ) : MetaRepository {
     companion object {
         private const val TAG = "MetaRepository"
         /** Default TTL when addon response has no Cache-Control header (6 hours). */
         private const val DEFAULT_TTL_MS = 6L * 60 * 60 * 1000
+        /** RCTV: a meta whose IMDb episode order wasn't in yet: asked again after this long. */
+        private const val UNSETTLED_META_TTL_MS = 60_000L
         /** Minimum TTL for meta responses even when server says no-cache/no-store (5 minutes).
          *  Prevents excessive re-fetching on every details screen visit for addons
          *  that don't set meaningful Cache-Control headers. */
@@ -190,8 +194,8 @@ class MetaRepositoryImpl @Inject constructor(
                     val response = api.getMeta(url)
                     if (response.isSuccessful) {
                         val metaDto = response.body()?.meta ?: return@async null
-                        val meta = metaDto.toDomain(context.getString(R.string.episodes_episode))
-                        val ttlMs = parseMaxAgeMs(response.headers()["Cache-Control"])
+                        val (meta, settled) = ordered(metaDto.toDomain(context.getString(R.string.episodes_episode)))
+                        val ttlMs = settledTtl(parseMaxAgeMs(response.headers()["Cache-Control"]), settled)
                         val cached = CachedMeta(meta, System.currentTimeMillis() + ttlMs)
                         metaCache[cacheKey] = cached
                         addonMetaCache[metaLookupCacheKey(requestedType, id)] = cached
@@ -314,8 +318,8 @@ class MetaRepositoryImpl @Inject constructor(
                         val metaDto = response.body()?.meta
                         if (metaDto != null) {
                             val episodeLabel = context.getString(R.string.episodes_episode)
-                            val meta = metaDto.toDomain(episodeLabel)
-                            val ttlMs = parseMaxAgeMs(response.headers()["Cache-Control"])
+                            val (meta, settled) = ordered(metaDto.toDomain(episodeLabel))
+                            val ttlMs = settledTtl(parseMaxAgeMs(response.headers()["Cache-Control"]), settled)
                             val cached = CachedMeta(meta, System.currentTimeMillis() + ttlMs)
                             addonMetaCache[cacheKey] = cached
                             metaCache[addonMetaCacheKey(addon.baseUrl, requestedType, id)] = cached
@@ -401,8 +405,8 @@ class MetaRepositoryImpl @Inject constructor(
                             if (response.isSuccessful) {
                                 val metaDto = response.body()?.meta
                                 if (metaDto != null) {
-                                    val meta = metaDto.toDomain(context.getString(R.string.episodes_episode))
-                                    val ttlMs = parseMaxAgeMs(response.headers()["Cache-Control"])
+                                    val (meta, settled) = ordered(metaDto.toDomain(context.getString(R.string.episodes_episode)))
+                                    val ttlMs = settledTtl(parseMaxAgeMs(response.headers()["Cache-Control"]), settled)
                                     val cached = CachedMeta(meta, System.currentTimeMillis() + ttlMs)
                                     addonMetaCache[cacheKey] = cached
                                     metaCache[addonMetaCacheKey(addon.baseUrl, candidateType, id)] = cached
@@ -518,8 +522,8 @@ class MetaRepositoryImpl @Inject constructor(
                     val response = api.getMeta(url)
                     if (response.isSuccessful) {
                         val metaDto = response.body()?.meta ?: return@async null
-                        val meta = metaDto.toDomain(context.getString(R.string.episodes_episode))
-                        val ttlMs = parseMaxAgeMs(response.headers()["Cache-Control"])
+                        val (meta, settled) = ordered(metaDto.toDomain(context.getString(R.string.episodes_episode)))
+                        val ttlMs = settledTtl(parseMaxAgeMs(response.headers()["Cache-Control"]), settled)
                         val cached = CachedMeta(meta, System.currentTimeMillis() + ttlMs)
                         primaryAddonMetaCache[cacheKey] = cached
                         metaCache[addonMetaCacheKey(addon.baseUrl, candidateType, id)] = cached
@@ -723,6 +727,23 @@ class MetaRepositoryImpl @Inject constructor(
      * addons responding with no-cache/no-store/max-age=0 still get a short
      * grace period, preventing re-fetches on every details screen visit.
      */
+    /** RCTV: [meta] with a cartoon's seasons told the IMDb way; and whether that's settled. */
+    private suspend fun ordered(meta: Meta): Pair<Meta, Boolean> =
+        episodeOrder?.let { order ->
+            try {
+                order.apply(meta)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "IMDb episode order failed for ${meta.id}: ${e.message}")
+                meta to true
+            }
+        } ?: (meta to true)
+
+    /** A meta whose IMDb episode order is still being looked up is kept only briefly (asked again soon). */
+    private fun settledTtl(ttlMs: Long, settled: Boolean): Long =
+        if (settled) ttlMs else minOf(ttlMs, UNSETTLED_META_TTL_MS)
+
     private fun parseMaxAgeMs(cacheControl: String?): Long {
         if (cacheControl == null) return DEFAULT_TTL_MS
         val parsed = CacheControl.parse(okhttp3.Headers.headersOf("Cache-Control", cacheControl))
