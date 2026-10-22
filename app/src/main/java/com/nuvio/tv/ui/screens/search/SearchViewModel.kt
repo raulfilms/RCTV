@@ -64,9 +64,10 @@ class SearchViewModel @Inject constructor(
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
     @ApplicationContext private val context: Context,
-    private val guideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader,
-    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore,
-    private val sportsSearchIndex: SportsSearchIndex
+    // RCTV: what Search looks through besides the addons (the guide, the IPTV sources, sports); none in tests.
+    private val guideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader? = null,
+    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore? = null,
+    private val sportsSearchIndex: SportsSearchIndex? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -732,20 +733,24 @@ class SearchViewModel @Inject constructor(
     }
 
     private fun prepareExtras() {
-        sportsSearchIndex.ensure()
+        sportsSearchIndex?.ensure()
+        val store = liveTvDataStore ?: return
+        val loader = guideLoader ?: return
         val now = System.currentTimeMillis()
         if (now - extrasSourcesReadyAtMs < EXTRAS_ENSURE_EVERY_MS) return
         extrasSourcesReadyAtMs = now
         viewModelScope.launch {
-            val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList())
+            val sources = runCatching { store.sources.first() }.getOrDefault(emptyList())
                 .filter { it.enabled }
             // No IPTV source: no guide to look through (the sample guide isn't searched).
-            if (sources.isNotEmpty()) guideLoader.ensure(sources)
+            if (sources.isNotEmpty()) loader.ensure(sources)
         }
     }
 
     /** Keeps the guide and sports results up to date with what's typed, the guide and the sports loaded. */
     private fun observeExtras() {
+        val loader = guideLoader ?: return
+        val sportsIndex = sportsSearchIndex ?: return
         val ticks = kotlinx.coroutines.flow.flow {
             while (true) {
                 emit(Unit)
@@ -753,7 +758,7 @@ class SearchViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            combine(extrasQuery, guideLoader.guide, sportsSearchIndex.state, ticks) { query, guide, sports, _ ->
+            combine(extrasQuery, loader.guide, sportsIndex.state, ticks) { query, guide, sports, _ ->
                 Triple(query, guide, sports)
             }.collectLatest { (query, guide, sports) ->
                 if (query.isEmpty()) {
@@ -795,8 +800,10 @@ class SearchViewModel @Inject constructor(
 
     /** A guide channel ready to play: its address right now (a Stalker portal hands out short-lived ones). */
     suspend fun playableChannel(channel: com.nuvio.tv.domain.model.LiveTvChannel): com.nuvio.tv.domain.model.LiveTvChannel {
-        val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
-        return channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources))
+        val store = liveTvDataStore ?: return channel
+        val loader = guideLoader ?: return channel
+        val sources = runCatching { store.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
+        return channel.copy(streamUrl = loader.resolvePlaybackUrl(channel, sources))
     }
 
     private suspend fun loadCatalog(
