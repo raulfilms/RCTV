@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -224,6 +225,7 @@ internal fun SearchExtraRow(
 }
 
 /** A row of cards under a title like Search's other rows; Up from any card goes to [upFocusRequester] when set. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ExtraRow(
     title: String,
