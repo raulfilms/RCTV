@@ -1319,7 +1319,7 @@ fun AppleLandscapeCard(
                     countryCode = flagCountry,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 10.dp, bottom = 9.dp)
+                        .padding(end = 8.dp, bottom = 8.dp)
                 )
             }
             if (rankNumber != null) {

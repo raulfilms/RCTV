@@ -21,10 +21,10 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import java.util.Locale
 
-/** Height of a title card's flag: easy to recognize from the couch, small beside the artwork. */
-val CountryFlagHeight: Dp = 20.dp
+/** Height of a title card's flag: easy to recognize from the couch, small beside the artwork (RCTV: a little smaller). */
+val CountryFlagHeight: Dp = 15.dp
 
-private val FlagShape = RoundedCornerShape(3.dp)
+private val FlagShape = RoundedCornerShape(2.dp)
 
 /**
  * RCTV: a country's flag ([countryCode], ISO 3166-1 alpha-2) at a set height, in its own
