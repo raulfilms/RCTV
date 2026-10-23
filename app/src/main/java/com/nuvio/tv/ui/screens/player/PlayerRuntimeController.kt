@@ -417,6 +417,10 @@ class PlayerRuntimeController(
     internal var hideStreamSourceIndicatorJob: Job? = null
     /** RCTV: looking for the title in another audio language. */
     internal var audioLanguageSwitchJob: Job? = null
+    /** RCTV: the next episode made ready ~7 minutes before the end (see NextEpisodePrefetch). */
+    internal var nextEpisodePrefetch: NextEpisodePrefetch? = null
+    internal var nextEpisodePrefetchJob: Job? = null
+    internal var nextEpisodePrefetchVideoId: String? = null
     internal var hidePlayerEngineSwitchInfoJob: Job? = null
     internal var hideSubtitleDelayOverlayJob: Job? = null
     internal var subtitleAutoSyncLoadJob: Job? = null

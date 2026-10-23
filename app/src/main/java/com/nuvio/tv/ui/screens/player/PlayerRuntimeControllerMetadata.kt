@@ -357,6 +357,8 @@ internal fun PlayerRuntimeController.evaluatePostPlayOverlayVisibility(positionM
     // Prefer the largest known duration; the per-poll value can drop transiently.
     val effectiveDurationEarly = maxOf(durationMs, lastKnownDuration)
     if (isShortPlaceholderDuration(effectiveDurationEarly)) return
+    // RCTV: ~7 minutes before the end the next episode is made ready in the background.
+    if (_uiState.value.error.isNullOrBlank()) maybePrefetchNextEpisode(positionMs, effectiveDurationEarly)
     // Act only after this stream has reported a position away from its end.
     if (!endDetectionArmed) {
         if (!PlayerNextEpisodeRules.isAwayFromEnd(

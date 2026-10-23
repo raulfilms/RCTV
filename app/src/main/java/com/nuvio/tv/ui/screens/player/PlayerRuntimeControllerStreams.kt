@@ -1699,6 +1699,47 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 return@launch
             }
 
+            // RCTV: the next episode was made ready minutes ago (its source picked, its link
+            // given and opened): it starts at once, no "finding sources".
+            val prepared = awaitPrefetchedNextEpisode(nextVideo.id)
+            if (prepared != null) {
+                if (!userInitiated) {
+                    val readyText = sourceSummary(prepared.original)?.takeIf { it.isNotBlank() } ?: " "
+                    for (remaining in 3 downTo 1) {
+                        _uiState.update { current ->
+                            current.copy(
+                                postPlayMode = PostPlayMode.AutoPlay(
+                                    nextEpisode = current.nextEpisode ?: nextInfo,
+                                    searching = false,
+                                    sourceName = readyText,
+                                    countdownSec = remaining,
+                                ),
+                            )
+                        }
+                        delay(1000)
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        postPlayMode = null,
+                        postPlayDismissedForCurrentEpisode = true,
+                        playbackEnded = false,
+                    )
+                }
+                com.nuvio.tv.core.smartscraper.AutoStreamSession.begin(
+                    videoId = nextVideo.id,
+                    current = prepared.original,
+                    candidates = prepared.fallbacks,
+                    config = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.config.autoStream
+                )
+                switchToEpisodeStream(
+                    stream = prepared.playable,
+                    forcedTargetVideo = nextVideo,
+                    isAutoPlay = !userInitiated
+                )
+                return@launch
+            }
+
             val installedAddons = addonRepository.getInstalledAddons().first().enabledAddons()
             val installedAddonOrder = installedAddons.map { it.displayName }
             // RCTV: the next episode's best smart source, not whichever addon answered first.
@@ -1737,23 +1778,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
             val searchSettled = CompletableDeferred<Unit>()
 
             // RCTV: the next episode as the app knows it (its streams are checked against it).
-            val nextEpisodeRequest = com.nuvio.tv.core.smartscraper.SmartSourceRequest(
-                title = contentName ?: title,
-                alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
-                year = com.nuvio.tv.core.smartscraper.SmartSourceRequest.yearOf(year),
-                isSeries = true,
-                season = nextVideo.season,
-                episode = nextVideo.episode,
-                imdbId = contentId?.takeIf { it.startsWith("tt") }?.substringBefore(':'),
-                runtimeMinutes = nextVideo.runtime,
-                equivalentEpisodes = com.nuvio.tv.core.imdb.EpisodeOrderRegistry.equivalentEpisodes(
-                    contentId, nextVideo.season, nextVideo.episode
-                ),
-                // The next episode in the language chosen last (else the show's own).
-                preferredLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(playerSettings.preferredAudioLanguage)
-                    ?: com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage),
-                originalLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage)
-            )
+            val nextEpisodeRequest = nextEpisodeSmartRequest(nextVideo, playerSettings)
             // Auto Stream: its order for the next episode (what to fall back on, too).
             var autoStreamChain: List<Stream> = emptyList()
 
@@ -1882,8 +1907,11 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 resolveDirectDebridStreamIfNeeded(it, nextVideo.season, nextVideo.episode)
             }
             if (streamToPlay != null) {
-                val sourceName = (streamToPlay.name?.takeIf { it.isNotBlank() } ?: streamToPlay.addonName).trim()
-                for (remaining in 3 downTo 1) {
+                // RCTV: never the addon's name (the card only says when it starts).
+                val sourceName = sourceSummary(streamToPlay)?.takeIf { it.isNotBlank() } ?: " "
+                // "Next episode" pressed: it starts now, no countdown.
+                val countdownFrom = if (userInitiated) 0 else 3
+                for (remaining in countdownFrom downTo 1) {
                     _uiState.update { current ->
                         val episodeForMode = current.nextEpisode ?: nextInfo
                         current.copy(
