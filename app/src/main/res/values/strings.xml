@@ -4358,4 +4358,25 @@
     <string name="audio_language_searching_short">Looking for it…</string>
     <string name="audio_language_not_found">No %1$s audio for this title in your sources</string>
     <string name="smart_filter_language_format">Language: %1$s</string>
+    <!-- RCTV: IMDb from Account, and linking it from the phone (QR) -->
+    <string name="account_imdb_subtitle">Sync your IMDb watchlist and ratings. Link it with your phone\'s camera</string>
+    <string name="imdb_phone_title">Link from your phone</string>
+    <string name="imdb_phone_hint">Scan with your phone\'s camera and paste your IMDb link there</string>
+    <string name="imdb_phone_no_network">Connect the TV to your network to link from your phone</string>
+    <string name="web_imdb_title">Link IMDb to %1$s</string>
+    <string name="web_imdb_for_profile">For the profile %1$s</string>
+    <string name="web_imdb_step1">Open your IMDb watchlist (sign in to IMDb if it asks).</string>
+    <string name="web_imdb_open">Open IMDb</string>
+    <string name="web_imdb_step2">Copy the page\'s link (Share › Copy link, or from the address bar).</string>
+    <string name="web_imdb_step3">Paste it here and tap Link.</string>
+    <string name="web_imdb_label">Your IMDb link or id</string>
+    <string name="web_imdb_link">Link</string>
+    <string name="web_imdb_linking">Linking… this can take a minute</string>
+    <string name="web_imdb_linked_as">Linked: %1$s</string>
+    <string name="web_imdb_still_working">The TV is still bringing in your lists. You can close this page.</string>
+    <string name="web_imdb_error_empty">Paste your IMDb link first</string>
+    <string name="web_imdb_error_connection">Couldn\'t reach the TV. Keep IMDb open in the TV\'s settings and try again.</string>
+    <string name="web_imdb_unlink_confirm">Unlink IMDb from the TV?</string>
+    <string name="web_imdb_public_note">Make your IMDb watchlist public so it shows on the TV (Watchlist › Edit › Public). Your ratings sync either way.</string>
+    <string name="web_imdb_privacy_note">Only your profile\'s link goes to the TV, never your IMDb password.</string>
 </resources>

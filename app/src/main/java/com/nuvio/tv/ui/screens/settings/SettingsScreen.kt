@@ -1205,6 +1205,38 @@ private fun AccountSettingsInline(
 ) {
     val accountViewModel: com.nuvio.tv.ui.screens.account.AccountViewModel = hiltViewModel()
     val accountUiState by accountViewModel.uiState.collectAsStateWithLifecycle()
+    // RCTV: IMDb is synced from here too (its page opens over the account, Back returns).
+    val imdbViewModel: ImdbSettingsViewModel = hiltViewModel()
+    val imdbAccount by imdbViewModel.account.collectAsStateWithLifecycle()
+    var showImdb by remember { mutableStateOf(false) }
+    var focusImdbRow by remember { mutableStateOf(false) }
+    val imdbRowFocusRequester = remember { FocusRequester() }
+    val imdbPageFocusRequester = remember { FocusRequester() }
+
+    BackHandler(enabled = showImdb) {
+        showImdb = false
+        focusImdbRow = true
+    }
+
+    if (showImdb) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { imdbPageFocusRequester.requestFocus() }
+        }
+        ImdbSettingsContent(
+            viewModel = imdbViewModel,
+            initialFocusRequester = imdbPageFocusRequester
+        )
+        return
+    }
+
+    if (focusImdbRow) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { imdbRowFocusRequester.requestFocus() }
+            focusImdbRow = false
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -1224,6 +1256,16 @@ private fun AccountSettingsInline(
                 viewModel = accountViewModel,
                 onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn,
                 initialFocusRequester = initialFocusRequester
+            )
+        }
+        SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
+            SettingsActionRow(
+                title = stringResource(R.string.imdb_title),
+                subtitle = stringResource(R.string.account_imdb_subtitle),
+                value = imdbAccount.nickname ?: imdbAccount.userId ?: stringResource(R.string.imdb_not_linked),
+                onClick = { showImdb = true },
+                leadingRawIconRes = R.raw.imdb_logo_2016,
+                modifier = Modifier.focusRequester(imdbRowFocusRequester)
             )
         }
     }

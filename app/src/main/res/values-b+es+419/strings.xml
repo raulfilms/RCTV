@@ -3826,4 +3826,25 @@
     <string name="audio_language_searching_short">Buscando…</string>
     <string name="audio_language_not_found">No hay audio en %1$s para este título en tus fuentes</string>
     <string name="smart_filter_language_format">Idioma: %1$s</string>
+    <!-- RCTV: IMDb desde Cuenta, y vincularlo desde el teléfono (QR) -->
+    <string name="account_imdb_subtitle">Sincroniza tu watchlist y tus calificaciones de IMDb. Vincúlalo con la cámara del teléfono</string>
+    <string name="imdb_phone_title">Vincular desde el teléfono</string>
+    <string name="imdb_phone_hint">Escanea con la cámara del teléfono y pega ahí tu link de IMDb</string>
+    <string name="imdb_phone_no_network">Conecta la TV a tu red para vincular desde el teléfono</string>
+    <string name="web_imdb_title">Vincular IMDb a %1$s</string>
+    <string name="web_imdb_for_profile">Para el perfil %1$s</string>
+    <string name="web_imdb_step1">Abre tu watchlist de IMDb (inicia sesión en IMDb si te lo pide).</string>
+    <string name="web_imdb_open">Abrir IMDb</string>
+    <string name="web_imdb_step2">Copia el link de la página (Compartir › Copiar link, o desde la barra de direcciones).</string>
+    <string name="web_imdb_step3">Pégalo aquí y toca Vincular.</string>
+    <string name="web_imdb_label">Tu link o id de IMDb</string>
+    <string name="web_imdb_link">Vincular</string>
+    <string name="web_imdb_linking">Vinculando… puede tardar un minuto</string>
+    <string name="web_imdb_linked_as">Vinculado: %1$s</string>
+    <string name="web_imdb_still_working">La TV todavía está trayendo tus listas. Ya puedes cerrar esta página.</string>
+    <string name="web_imdb_error_empty">Primero pega tu link de IMDb</string>
+    <string name="web_imdb_error_connection">No se pudo conectar con la TV. Deja IMDb abierto en los ajustes de la TV y vuelve a intentarlo.</string>
+    <string name="web_imdb_unlink_confirm">¿Desvincular IMDb de la TV?</string>
+    <string name="web_imdb_public_note">Pon pública tu watchlist en IMDb para que salga en la TV (Watchlist › Editar › Pública). Tus calificaciones se sincronizan igual.</string>
+    <string name="web_imdb_privacy_note">Solo el link de tu perfil llega a la TV, nunca tu contraseña de IMDb.</string>
 </resources>
