@@ -83,8 +83,8 @@ data class SmartScraperConfig(
 data class AutoStreamConfig(
     /** Files must be smaller than this (6.0 GB itself isn't allowed). */
     val maxFileSizeGb: Double = 6.0,
-    /** The lowest resolution allowed (480p is the last resort). */
-    val minResolution: VideoResolution = VideoResolution.SD,
+    /** The lowest resolution allowed (480p, then 360p, are the last resorts). */
+    val minResolution: VideoResolution = VideoResolution.LOW,
     /** Only these audio layouts (never 7.1 or more). */
     val allowedChannels: Set<AudioChannels> = setOf(AudioChannels.CH_5_1, AudioChannels.CH_2_0),
     /** A file whose audio isn't said is tried only after every one whose audio is 5.1 or stereo. */

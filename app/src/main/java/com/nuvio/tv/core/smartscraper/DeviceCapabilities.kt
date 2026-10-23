@@ -11,44 +11,74 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * What this TV can show and decode: its biggest picture, which HDR it shows (Dolby Vision, HDR10,
- * HDR10+, HLG), and whether it decodes AV1/HEVC in hardware. Read once.
+ * What the TV on the HDMI can show and this box can decode: the TV's biggest picture (what it
+ * reports over HDMI, and the mode it's in now), which HDR it shows (Dolby Vision, HDR10, HDR10+,
+ * HLG), and whether AV1/HEVC are decoded in hardware. The TV is read again every time (the box
+ * may be on another TV now); the decoders once.
  */
 @Singleton
 class DeviceCapabilities @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    @Volatile private var cached: DeviceProfile? = null
+    private class Decoders(val av1: Boolean, val hevc: Boolean, val dolbyVision: Boolean)
 
-    fun profile(): DeviceProfile = cached ?: detect().also { cached = it }
+    @Volatile private var decoders: Decoders? = null
+    @Volatile private var lastLogged: DeviceProfile? = null
 
-    private fun detect(): DeviceProfile = runCatching {
+    fun profile(): DeviceProfile = runCatching {
         val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
             ?.getDisplay(Display.DEFAULT_DISPLAY)
-        val maxHeight = display?.supportedModes
-            ?.maxOfOrNull { minOf(it.physicalWidth, it.physicalHeight) }
-            ?: 0
-        @Suppress("DEPRECATION")
-        val hdrTypes = display?.hdrCapabilities?.supportedHdrTypes?.toSet().orEmpty()
-        val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { !it.isEncoder }
-        fun hasDecoder(mime: String, hardwareOnly: Boolean): Boolean = decoders.any { info ->
-            info.supportedTypes.any { it.equals(mime, ignoreCase = true) } &&
-                (!hardwareOnly || isHardware(info))
-        }
-        val dolbyVisionDecoder = hasDecoder("video/dolby-vision", hardwareOnly = false)
+            ?: return DeviceProfile.UNKNOWN
+        val codecs = decoders ?: readDecoders().also { decoders = it }
+        // The TV's modes over HDMI (the biggest it takes) and the one it's in now.
+        val modeHeights = display.supportedModes.map { minOf(it.physicalWidth, it.physicalHeight) } +
+            listOfNotNull(display.mode?.let { minOf(it.physicalWidth, it.physicalHeight) })
+        val maxHeight = modeHeights.maxOrNull() ?: 0
+        val hdrTypes = hdrTypesOf(display)
         DeviceProfile(
             maxResolution = if (maxHeight > 0) VideoResolution.ofHeight(maxHeight) else VideoResolution.UHD_2160,
             supportsHdr10 = HDR_TYPE_HDR10 in hdrTypes || HDR_TYPE_HDR10_PLUS in hdrTypes,
             supportsHdr10Plus = HDR_TYPE_HDR10_PLUS in hdrTypes,
-            supportsDolbyVision = HDR_TYPE_DOLBY_VISION in hdrTypes && dolbyVisionDecoder,
+            supportsDolbyVision = HDR_TYPE_DOLBY_VISION in hdrTypes && codecs.dolbyVision,
             supportsHlg = HDR_TYPE_HLG in hdrTypes,
-            hasHardwareAv1 = hasDecoder("video/av01", hardwareOnly = true),
-            hasHardwareHevc = hasDecoder("video/hevc", hardwareOnly = true),
-            isKnown = display != null
-        ).also { Log.i(TAG, "Device: $it") }
+            hasHardwareAv1 = codecs.av1,
+            hasHardwareHevc = codecs.hevc,
+            isKnown = true
+        ).also { profile ->
+            if (profile != lastLogged) {
+                lastLogged = profile
+                Log.i(TAG, "TV: up to ${profile.maxResolution.label}, HDR10=${profile.supportsHdr10} " +
+                    "HDR10+=${profile.supportsHdr10Plus} DV=${profile.supportsDolbyVision} HLG=${profile.supportsHlg} " +
+                    "AV1=${profile.hasHardwareAv1} HEVC=${profile.hasHardwareHevc}")
+            }
+        }
     }.getOrElse {
-        Log.w(TAG, "Couldn't read the device's capabilities: ${it.message}")
+        Log.w(TAG, "Couldn't read the TV's capabilities: ${it.message}")
         DeviceProfile.UNKNOWN
+    }
+
+    /** The HDR types the TV takes (from its mode on newer Android, else from the display). */
+    private fun hdrTypesOf(display: Display): Set<Int> {
+        val types = HashSet<Int>()
+        if (Build.VERSION.SDK_INT >= 34) {
+            display.mode?.supportedHdrTypes?.let { modeTypes -> types += modeTypes.toList() }
+            display.supportedModes.forEach { mode -> types += mode.supportedHdrTypes.toList() }
+        }
+        @Suppress("DEPRECATION")
+        display.hdrCapabilities?.supportedHdrTypes?.let { types += it.toList() }
+        return types
+    }
+
+    private fun readDecoders(): Decoders {
+        val infos = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { !it.isEncoder }
+        fun has(mime: String, hardwareOnly: Boolean): Boolean = infos.any { info ->
+            info.supportedTypes.any { it.equals(mime, ignoreCase = true) } && (!hardwareOnly || isHardware(info))
+        }
+        return Decoders(
+            av1 = has("video/av01", hardwareOnly = true),
+            hevc = has("video/hevc", hardwareOnly = true),
+            dolbyVision = has("video/dolby-vision", hardwareOnly = false)
+        )
     }
 
     private fun isHardware(info: android.media.MediaCodecInfo): Boolean =

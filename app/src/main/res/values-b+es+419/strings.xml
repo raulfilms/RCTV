@@ -3762,11 +3762,11 @@
     <string name="smart_debug">Modo depuración</string>
     <string name="smart_debug_sub">Muestra el Smart Score de cada fuente y registra el porqué</string>
     <string name="autoplay_mode_auto_stream">Auto Stream (el mejor stream automáticamente)</string>
-    <string name="autoplay_mode_auto_stream_desc">Al darle Play empieza el mejor stream solo: el título y episodio correctos, menos de 6 GB, 5.1 o estéreo, la mayor resolución que tu conexión reproduce. Si uno no arranca, se prueba el siguiente.</string>
+    <string name="autoplay_mode_auto_stream_desc">Al darle Play empieza solo: el título y episodio correctos, la mayor resolución que tu TV muestra y tu internet reproduce (4K, 2K, 1080p, 720p y luego menos), HDR solo si tu TV lo tiene. Si uno no arranca, se prueba el siguiente.</string>
     <string name="stream_auto_play_auto_stream_short">Auto Stream</string>
     <string name="auto_stream_title">Auto Stream</string>
-    <string name="auto_stream_sub">Al darle Play empieza el mejor stream solo: nadie tiene que escoger la fuente</string>
-    <string name="settings_auto_stream_desc">Reproducción con un clic: menos de 6 GB, 5.1 o estéreo, empieza en segundos</string>
+    <string name="auto_stream_sub">Al darle Play empieza el mejor stream solo: la app lee tu TV y tu internet; nadie escoge nada</string>
+    <string name="settings_auto_stream_desc">Reproducción con un clic: lo mejor que tu TV y tu internet permiten, empieza en segundos</string>
     <string name="auto_stream_max_size">Tamaño máximo de archivo</string>
     <string name="auto_stream_max_size_sub">Los archivos de este tamaño o más nunca se escogen</string>
     <string name="auto_stream_collect">Tiempo de búsqueda</string>
@@ -3774,7 +3774,7 @@
     <string name="auto_stream_unverified_audio">Archivos que no indican su audio</string>
     <string name="auto_stream_unverified_audio_sub">Se prueban al final, solo si no hay ninguno 5.1 o estéreo que sirva</string>
     <string name="auto_stream_trying_next">Esa fuente no arrancó: probando la siguiente…</string>
-    <string name="auto_stream_nothing_found">Auto Stream no encontró un stream dentro de sus límites (tamaño, 5.1 o estéreo): escoge uno</string>
+    <string name="auto_stream_nothing_found">Ningún stream de este título se puede reproducir ahora: escoge uno</string>
     <string name="audio_language_searching">Buscando audio en %1$s…</string>
     <string name="audio_language_searching_short">Buscando…</string>
     <string name="audio_language_not_found">No hay audio en %1$s para este título en tus fuentes</string>

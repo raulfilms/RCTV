@@ -13,7 +13,7 @@ enum class AutoStreamReject(val description: String) {
     TOO_LARGE("At or over the Auto Stream size limit"),
     AUDIO_NOT_ALLOWED("Audio other than 5.1 or stereo"),
     AUDIO_UNVERIFIED("Audio not given"),
-    LOW_RESOLUTION("Below 480p"),
+    LOW_RESOLUTION("Below the lowest resolution allowed"),
     THREE_D("3D")
 }
 
@@ -27,7 +27,16 @@ data class AutoStreamCandidate(
     val fitsConnection: Boolean,
     val copies: List<ScoredSource> = emptyList(),
     /** Its audio is in the language wanted (or none is wanted). */
-    val languageMatch: Boolean = true
+    val languageMatch: Boolean = true,
+    /**
+     * The TV shows its picture as meant: no HDR on a TV without HDR, no Dolby Vision-only file on
+     * one without Dolby Vision, a codec it decodes in hardware.
+     */
+    val tvCompatible: Boolean = true,
+    /** Its place in the resolution order for this TV (higher first): see [AutoStreamEngine.tier]. */
+    val tier: Int = 0,
+    /** Outside Auto Stream's limits (size, audio): chosen only because nothing within them exists. */
+    val relaxed: Boolean = false
 ) {
     val stream: Stream get() = scored.stream
     val release: ParsedRelease get() = scored.release
@@ -38,9 +47,21 @@ data class AutoStreamResult(
     val candidates: List<AutoStreamCandidate>,
     val rejected: List<Pair<ScoredSource, AutoStreamReject>>,
     /** What to play, then what to try next when it fails, in order (never another title or episode). */
-    val chain: List<Stream>
+    val chain: List<Stream>,
+    /** Nothing was within Auto Stream's limits: these are the best of the rest (never a list to choose from). */
+    val relaxed: Boolean = false
 ) {
     val best: AutoStreamCandidate? get() = candidates.firstOrNull()
+
+    /**
+     * The best is already all it can be (the TV's own resolution, in the language wanted, smooth on
+     * this connection, ready at once): no need to wait for slower addons.
+     */
+    fun bestIsIdeal(context: SmartRankingContext): Boolean {
+        val best = best ?: return false
+        return !relaxed && best.languageMatch && best.fitsConnection && best.tvCompatible && best.verified &&
+            best.scored.source.cache == CacheState.CACHED && best.tier >= AutoStreamEngine.tvTier(context.device)
+    }
 
     companion object {
         val EMPTY = AutoStreamResult(emptyList(), emptyList(), emptyList())
@@ -48,11 +69,13 @@ data class AutoStreamResult(
 }
 
 /**
- * Auto Stream's choice: not the absolute best release, the highest practical quality that starts
- * quickly and plays smoothly, under hard rules: the right title, year, season and episode; under
- * 6 GB; 480p to 4K; 5.1 or stereo only. Then the highest resolution the connection plays (4K → 2K →
- * 1080p → 720p → 480p), 5.1 over stereo, and among near-equals the source that starts fastest and
- * most reliably. HDR, IMAX and the codec only tip the balance; they never break a rule.
+ * Auto Stream's choice, made alone (no list, ever): the right title, year, season and episode, in
+ * the language wanted; then strictly the highest resolution this TV shows and this connection
+ * plays smoothly: 4K → 2K → 1080p → 720p → 480p → 360p (720p only when there's no 1080p, and so
+ * on). The TV is read from the HDMI: no 4K HDR on a TV without HDR (a 1080p, or a 4K without HDR,
+ * instead), Dolby Vision only where it shows. Within Auto Stream's limits (under 6 GB, 5.1 or
+ * stereo) when anything is; else the best of the rest. Among equals: 5.1 over stereo, then what
+ * starts fastest and most reliably.
  */
 object AutoStreamEngine {
 
@@ -63,25 +86,21 @@ object AutoStreamEngine {
     ): AutoStreamResult {
         if (sources.isEmpty()) return AutoStreamResult.EMPTY
         val config = context.config.autoStream
+        val judged = sources.map { SmartScoreEngine.judge(it, request, context) }
         val rejected = ArrayList<Pair<ScoredSource, AutoStreamReject>>()
-        val valid = ArrayList<AutoStreamCandidate>()
-        for (source in sources) {
-            val scored = SmartScoreEngine.judge(source, request, context)
+        val strict = judged.mapNotNull { scored ->
             val reject = rejection(scored, request, config)
             if (reject != null) {
                 rejected += scored to reject
-                continue
+                null
+            } else {
+                candidate(scored, request, context, relaxed = false)
             }
-            val fits = fitsConnection(scored.requiredMbps, context)
-            valid += AutoStreamCandidate(
-                scored = scored,
-                score = score(scored, fits, context),
-                verified = scored.release.channels in config.allowedChannels && scored.release.resolution.isKnown,
-                fitsConnection = fits,
-                languageMatch = request.preferredLanguage == null || request.preferredLanguage in scored.audioLanguages
-            )
         }
-        val ordered = valid.sortedWith(ORDER)
+        // Nothing within the limits: the best of the rest still plays (the right content, ready to play).
+        val relaxed = strict.isEmpty()
+        val pool = if (!relaxed) strict else judged.filter(::playableAtAll).map { candidate(it, request, context, relaxed = true) }
+        val ordered = pool.sortedWith(ORDER)
         // The same file from several addons/services: its fastest, most reliable copy first.
         val groups = LinkedHashMap<String, MutableList<AutoStreamCandidate>>()
         ordered.forEach { groups.getOrPut(SourceProviderAdapters.releaseKey(it.scored.source)) { mutableListOf() }.add(it) }
@@ -89,7 +108,86 @@ object AutoStreamEngine {
         val chain = candidates
             .flatMap { candidate -> listOf(candidate.stream) + candidate.copies.map { it.stream } }
             .take(1 + MAX_CHAIN)
-        return AutoStreamResult(candidates = candidates, rejected = rejected, chain = chain)
+        return AutoStreamResult(candidates = candidates, rejected = rejected, chain = chain, relaxed = relaxed && candidates.isNotEmpty())
+    }
+
+    private fun candidate(
+        scored: ScoredSource,
+        request: SmartSourceRequest,
+        context: SmartRankingContext,
+        relaxed: Boolean
+    ): AutoStreamCandidate {
+        val fits = fitsConnection(requiredMbps(scored, request), context)
+        val compatible = tvCompatible(scored.release, context.device)
+        return AutoStreamCandidate(
+            scored = scored,
+            score = score(scored, compatible, context),
+            verified = scored.release.channels in context.config.autoStream.allowedChannels,
+            fitsConnection = fits,
+            languageMatch = request.preferredLanguage == null || request.preferredLanguage in scored.audioLanguages,
+            tvCompatible = compatible,
+            tier = tier(scored.release.resolution, context.device),
+            relaxed = relaxed
+        )
+    }
+
+    /** The right content and playable right away (whatever its size or audio). */
+    private fun playableAtAll(scored: ScoredSource): Boolean {
+        val source = scored.source
+        return scored.rejection !in WRONG_CONTENT && source.isPlayable && source.cache != CacheState.UNCACHED &&
+            !scored.release.source.isLowQuality && !scored.release.is3d
+    }
+
+    /**
+     * Its place in the resolution order for [device] (higher first): up to the TV's own resolution
+     * 4K 60 → 2K 50 → 1080p 40 → 720p 30 → 480p 20 → 360p 10 → unknown 0. Above the TV's own (a 4K
+     * on a 1080p TV) it comes right after the TV's own resolution, before the next one down.
+     */
+    fun tier(resolution: VideoResolution, device: DeviceProfile): Int {
+        val level = resolution.level
+        if (level < 0) return 0
+        val cap = tvMaxLevel(device)
+        return if (level <= cap) (level + 1) * 10 else (cap + 1) * 10 - (level - cap)
+    }
+
+    /** The tier of the TV's own resolution (what a file needs to be all the TV shows). */
+    fun tvTier(device: DeviceProfile): Int = (tvMaxLevel(device) + 1) * 10
+
+    private fun tvMaxLevel(device: DeviceProfile): Int =
+        if (device.isKnown && device.maxResolution.isKnown) device.maxResolution.level else VideoResolution.UHD_2160.level
+
+    /**
+     * Whether the TV shows the file as meant: a TV without HDR gets no HDR (it would look washed
+     * out), one without Dolby Vision no Dolby Vision-only file (wrong colors); a codec it can't
+     * decode in hardware stutters. Unknown TV: anything.
+     */
+    fun tvCompatible(release: ParsedRelease, device: DeviceProfile): Boolean {
+        if (!device.isKnown) return true
+        when (release.codec) {
+            VideoCodec.AV1 -> if (!device.hasHardwareAv1) return false
+            VideoCodec.HEVC -> if (!device.hasHardwareHevc) return false
+            else -> Unit
+        }
+        val hdr = release.hdr - HdrFormat.SDR
+        if (hdr.isEmpty()) return true
+        val dolbyVision = HdrFormat.DOLBY_VISION in hdr
+        val hdr10 = hdr.any { it == HdrFormat.HDR10 || it == HdrFormat.HDR10_PLUS || it == HdrFormat.HDR }
+        val hlg = HdrFormat.HLG in hdr
+        return (dolbyVision && device.supportsDolbyVision) ||
+            (hdr10 && device.supportsHdr10) ||
+            (hlg && device.supportsHlg)
+    }
+
+    /**
+     * What the file needs from the connection (Mbps, with headroom): from its size and the title's
+     * length; when the length isn't known, a movie's or an episode's usual one.
+     */
+    fun requiredMbps(scored: ScoredSource, request: SmartSourceRequest): Double {
+        scored.bitrateMbps?.let { return it * SmartScoreEngine.HEADROOM }
+        val release = scored.release
+        val size = release.sizeBytes?.takeIf { !release.sizeIsPack } ?: return scored.requiredMbps
+        val minutes = if (request.isSeries) TYPICAL_EPISODE_MINUTES else TYPICAL_MOVIE_MINUTES
+        return size * 8.0 / (minutes * 60.0) / 1_000_000.0 * SmartScoreEngine.HEADROOM
     }
 
     /** The hard rules, in their order: right content, playable, a real release, the size, the audio, the picture. */
@@ -131,33 +229,19 @@ object AutoStreamEngine {
         }
     }
 
-    private fun score(scored: ScoredSource, fits: Boolean, context: SmartRankingContext): Int {
+    /** Among files of the same resolution: 5.1 over stereo, HDR the TV shows, then speed and reliability. */
+    private fun score(scored: ScoredSource, tvCompatible: Boolean, context: SmartRankingContext): Int {
         val release = scored.release
         val source = scored.source
         val config = context.config
         val device = context.device
-        var score = when (release.resolution) {
-            VideoResolution.UHD_2160 -> 100
-            VideoResolution.QHD_1440 -> 88
-            VideoResolution.FHD_1080 -> 78
-            VideoResolution.HD_720 -> 55
-            VideoResolution.SD -> 30
-            VideoResolution.LOW -> 0
-            VideoResolution.UNKNOWN -> 25
-        }
-        // A picture the connection won't keep up with falls below the next one down that it will.
-        if (!fits) score -= 45
+        var score = 0
         score += when (release.channels) {
             AudioChannels.CH_5_1 -> 12
             AudioChannels.CH_2_0 -> 0
             else -> -8
         }
-        val hdr10 = release.hdr.any { it == HdrFormat.HDR10 || it == HdrFormat.HDR10_PLUS || it == HdrFormat.HDR }
-        val dolbyVisionOnly = HdrFormat.DOLBY_VISION in release.hdr && !hdr10
-        when {
-            dolbyVisionOnly && device.isKnown && !device.supportsDolbyVision -> score -= 10
-            config.preferHdr && release.hdr.any { it != HdrFormat.SDR } && (!device.isKnown || device.supportsHdr10) -> score += 3
-        }
+        if (tvCompatible && config.preferHdr && release.hdr.any { it != HdrFormat.SDR } && device.isKnown) score += 3
         score += when (release.codec) {
             VideoCodec.HEVC -> if (device.hasHardwareHevc) 2 else 0
             VideoCodec.AV1 -> if (device.isKnown && !device.hasHardwareAv1) -15 else 1
@@ -221,14 +305,17 @@ object AutoStreamEngine {
     )
 
     /**
-     * The language wanted first (Spanish when Español was chosen: the other only when none is);
-     * then verified ones (audio and picture known); among them, what the connection keeps up
-     * with before what it doesn't (a 480p that plays beats a 4K that buffers); then the score.
+     * The language wanted first (the other only when none is in it); then what the connection keeps
+     * up with (a 720p that plays beats a 4K that buffers) and the TV shows as meant; then strictly
+     * the resolution order (4K → 2K → 1080p → 720p → 480p → 360p); then audio said to be 5.1 or
+     * stereo; then the score (5.1 over stereo, HDR, speed, reliability).
      */
     private val ORDER: Comparator<AutoStreamCandidate> =
         compareBy<AutoStreamCandidate> { if (it.languageMatch) 0 else 1 }
-            .thenBy { if (it.verified) 0 else 1 }
             .thenBy { if (it.fitsConnection) 0 else 1 }
+            .thenBy { if (it.tvCompatible) 0 else 1 }
+            .thenByDescending { it.tier }
+            .thenBy { if (it.verified) 0 else 1 }
             .thenByDescending { it.score }
             .thenByDescending { it.scored.breakdown.playbackReliability }
 
@@ -239,4 +326,6 @@ object AutoStreamEngine {
     private const val CONNECTION_MARGIN = 1.2
     private const val MEDIUM_MAX_MBPS = 15.0
     private const val SLOW_MAX_MBPS = 6.0
+    private const val TYPICAL_MOVIE_MINUTES = 110
+    private const val TYPICAL_EPISODE_MINUTES = 45
 }

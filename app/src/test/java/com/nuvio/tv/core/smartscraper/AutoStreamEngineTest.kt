@@ -76,12 +76,70 @@ class AutoStreamEngineTest {
     }
 
     @Test
-    fun `a file that doesn't say its audio is tried after the ones that do`() {
+    fun `resolution comes strictly first, then audio said to be 5 1 or stereo`() {
         val result = rank(
             stream("unsaid", "Movie.2020.2160p.WEB-DL.HEVC", 5.5),
-            stream("said", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5)
+            stream("said", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5),
+            stream("hd", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0)
         )
-        assertEquals(listOf("said", "unsaid"), result.candidates.map { it.stream.infoHash })
+        assertEquals(listOf("unsaid", "said", "hd"), result.candidates.map { it.stream.infoHash })
+    }
+
+    @Test
+    fun `480p before 360p when nothing better exists`() {
+        val result = rank(
+            stream("360", "Movie.2020.360p.WEB-DL.AAC2.0.x264", 0.5),
+            stream("480", "Movie.2020.480p.WEB-DL.AAC2.0.x264", 0.9)
+        )
+        assertEquals(listOf("480", "360"), result.candidates.map { it.stream.infoHash })
+    }
+
+    @Test
+    fun `a 1080p TV without HDR gets 1080p, then a 4K without HDR, never 4K HDR first`() {
+        val tv = SmartRankingContext(
+            device = DeviceProfile(maxResolution = VideoResolution.FHD_1080, supportsHdr10 = false, isKnown = true)
+        )
+        val result = rank(
+            stream("4khdr", "Movie.2020.2160p.WEB-DL.DDP5.1.HDR10.HEVC", 5.6),
+            stream("4ksdr", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 5.4),
+            stream("1080", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0),
+            stream("720", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0),
+            context = tv
+        )
+        assertEquals(listOf("1080", "4ksdr", "720", "4khdr"), result.candidates.map { it.stream.infoHash })
+    }
+
+    @Test
+    fun `a 4K HDR TV gets 4K HDR, Dolby Vision only when it shows it`() {
+        val tv = SmartRankingContext(
+            device = DeviceProfile(
+                maxResolution = VideoResolution.UHD_2160,
+                supportsHdr10 = true,
+                supportsDolbyVision = false,
+                isKnown = true
+            )
+        )
+        val result = rank(
+            stream("dvonly", "Movie.2020.2160p.WEB-DL.DDP5.1.DV.HEVC", 5.6),
+            stream("hdr10", "Movie.2020.2160p.WEB-DL.DDP5.1.HDR10.HEVC", 5.5),
+            stream("1080", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0),
+            context = tv
+        )
+        assertEquals("hdr10", result.best?.stream?.infoHash)
+        assertEquals("dvonly", result.candidates.last().stream.infoHash)
+        assertTrue(result.bestIsIdeal(tv))
+        val only1080 = rank(stream("1080", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0), context = tv)
+        assertTrue(!only1080.bestIsIdeal(tv))
+    }
+
+    @Test
+    fun `when nothing is within the limits the best of the rest still plays, never a list`() {
+        val result = rank(
+            stream("big", "Movie.2020.2160p.BluRay.TrueHD.7.1.HEVC", 12.0),
+            stream("bigger", "Movie.2020.2160p.BluRay.REMUX.TrueHD.7.1.HEVC", 40.0)
+        )
+        assertTrue(result.relaxed)
+        assertEquals(2, result.candidates.size)
     }
 
     @Test

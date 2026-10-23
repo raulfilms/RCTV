@@ -1,6 +1,11 @@
 package com.nuvio.tv.core.smartscraper
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.nuvio.tv.domain.model.Stream
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -23,10 +28,20 @@ class SmartScraper @Inject constructor(
 ) {
     private val normalized = ConcurrentHashMap<String, NormalizedSource>()
     private val searchIds = AtomicLong(0)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         SmartScraperEnvironment.install(this)
+        // The internet's speed ready for the first Play (once the app has settled).
+        scope.launch {
+            delay(STARTUP_MEASURE_DELAY_MS)
+            if (settings.config.value.connectionAware) connection.measure()
+        }
     }
+
+    /** The internet's download speed now (measured again when the last measurement is old). */
+    suspend fun measureConnection(): Double? =
+        if (settings.config.value.connectionAware) connection.measure() else null
 
     val config: SmartScraperConfig get() = settings.config.value
 
@@ -173,6 +188,7 @@ class SmartScraper @Inject constructor(
     private companion object {
         const val TAG = "SmartScraper"
         const val MAX_CACHED = 4_000
+        const val STARTUP_MEASURE_DELAY_MS = 8_000L
     }
 }
 

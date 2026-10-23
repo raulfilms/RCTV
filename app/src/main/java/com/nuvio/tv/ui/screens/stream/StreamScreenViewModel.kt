@@ -80,6 +80,8 @@ import javax.inject.Inject
 private const val TAG = "StreamScreenViewModel"
 private const val DIRECT_AUTOPLAY_HARD_TIMEOUT_MS = 60_000L
 private const val STREAM_FILTER_PAGE_SIZE = 100
+/** From Play, Auto Stream may start the ideal stream this soon (else it waits for more addons). */
+private const val AUTO_STREAM_EARLY_DECISION_MS = 1_500L
 /** When a source won't start, at most this many more are tried. */
 private const val MAX_SMART_FALLBACK_ATTEMPTS = 3
 
@@ -388,6 +390,8 @@ class StreamScreenViewModel @Inject constructor(
                 (autoStreamConfig.budgetSeconds - 2).coerceAtLeast(autoStreamConfig.collectSeconds) * 1_000L
             fun autoStreamStillWaiting(): Boolean = autoStreamMode && System.currentTimeMillis() < autoStreamGiveUpAtMs
             autoStreamChain = emptyList()
+            // The internet's speed, measured while the addons are asked (it adds no wait).
+            val speedTestJob = if (autoStreamMode) newScope.launch { smartScraper.measureConnection() } else null
             if (manualSelection) {
                 directAutoPlayModeInitializedForSession = true
                 directAutoPlayFlowEnabledForSession = false
@@ -740,6 +744,20 @@ class StreamScreenViewModel @Inject constructor(
                             lastSuccessData = result.data
                             applySuccess(result.data, isAllLoaded = false)
                             launchDirectDebridPreparationIfNeeded(result.data)
+
+                            // RCTV Auto Stream: the ideal stream for this TV and connection is already
+                            // here (its resolution, ready at once): it starts now, like Netflix or
+                            // Disney+, without waiting for the slower addons.
+                            if (autoStreamMode && directFlowActive && !autoSelectTriggered && !resolvedAutoPlayTarget &&
+                                !autoPlayHandledForSession && speedTestJob?.isCompleted != false &&
+                                System.currentTimeMillis() - loadStartedAtMs >= AUTO_STREAM_EARLY_DECISION_MS
+                            ) {
+                                val early = smartScraper.autoStreamRank(result.data.flatMap { it.streams }, smartRequest())
+                                if (early.bestIsIdeal(smartScraper.rankingContext())) {
+                                    applySuccess(result.data, isAllLoaded = true)
+                                    if (resolvedAutoPlayTarget) autoSelectTriggered = true
+                                }
+                            }
 
                             if (autoSelectTriggered || resolvedAutoPlayTarget || autoPlayHandledForSession) {
                                 // Already resolved — nothing more to do.
