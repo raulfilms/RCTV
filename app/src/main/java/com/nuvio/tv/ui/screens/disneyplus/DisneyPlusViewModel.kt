@@ -49,7 +49,7 @@ private const val SEE_ALL_ROUNDS = 60
 /** How long a page waits for its banner's title logos before opening without them (they follow). */
 private const val HERO_LOGO_WAIT_MS = 1_200L
 /** RCTV: how long a collection's logo is waited for before its name shows instead. */
-private const val COLLECTION_LOGO_WAIT_MS = 4_000L
+private const val COLLECTION_LOGO_WAIT_MS = 2_000L
 
 /** Release rows label as "NEW" what came out this many days ago or less. */
 private const val NEW_BADGE_DAYS = 14L
@@ -624,6 +624,21 @@ class DisneyPlusViewModel @Inject constructor(
     }
 
     private suspend fun loadCollectionArt() {
+        // RCTV: the universes' logos are looked up ahead (kept for the app's lifetime), so their
+        // pages open with them right away.
+        hubSpec.rows.filter { it.kind == DisneyRowKind.COLLECTIONS }.flatMap { it.collections }.distinct()
+            .mapNotNull { com.nuvio.tv.data.disneyplus.CollectionLogos.forPage(it) }
+            .forEach { logo ->
+                viewModelScope.launch {
+                    try {
+                        repository.collectionLogo(logo)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Looked for again when its page opens.
+                    }
+                }
+            }
         // Tiles with their own bundled picture don't need backdrops from TMDB (saves dozens of
         // lookups on pages with big collection rows, like HBO Max's).
         val hubs = hubSpec.rows.filter { it.kind == DisneyRowKind.COLLECTIONS }.flatMap { it.collections }.distinct()
