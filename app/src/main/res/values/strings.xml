@@ -4130,6 +4130,10 @@
     <string name="livetv_details_in_library">In library</string>
     <string name="livetv_details_browse_episodes">Browse episodes</string>
     <string name="livetv_details_view_movie">View movie</string>
+    <string name="livetv_watch_live_btn">Watch Live</string>
+    <string name="livetv_watch_from_beginning_btn">Watch From Beginning</string>
+    <string name="livetv_watch_vod_btn">Watch VOD</string>
+    <string name="livetv_vod_looking">Looking for it…</string>
     <string name="livetv_details_today">Today, %1$s</string>
     <string name="livetv_details_tomorrow">Tomorrow, %1$s</string>
     <string name="livetv_library_already">Already in your library: %1$s</string>

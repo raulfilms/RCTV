@@ -164,7 +164,12 @@ data class ProgramDetailsTmdb(
     /** Its movie or series, its game, or (neither) the program itself is in the library. */
     val inLibrary: Boolean = false,
     /** It's being added to the library. */
-    val isAdding: Boolean = false
+    val isAdding: Boolean = false,
+    /**
+     * RCTV: its movie or episode from its sources ("Watch From Beginning" on now, "Watch VOD"
+     * later): null when there's none (not on TMDB, the episode can't be told).
+     */
+    val vod: com.nuvio.tv.data.livetv.LiveVodState? = null
 )
 
 /** Where the Guide puts focus when it shows again: a channel's logo, or what's on now on it. */
@@ -178,7 +183,8 @@ class LiveTvViewModel @Inject constructor(
     private val liveProgramLibrary: LiveProgramLibrary,
     private val liveEventLibrary: LiveEventLibrary,
     private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
-    private val playerSession: com.nuvio.tv.data.livetv.LiveTvPlayerSession
+    private val playerSession: com.nuvio.tv.data.livetv.LiveTvPlayerSession,
+    private val liveVodFinder: com.nuvio.tv.data.livetv.LiveVodFinder
 ) : ViewModel() {
 
     // ------------------------------------------------------------------ guide artwork
@@ -729,6 +735,8 @@ class LiveTvViewModel @Inject constructor(
             }
             // TMDB's answer shows (and its actions work) as soon as it's in: it never waits for ESPN.
             // Not on TMDB, the program itself can be added to the Library from what the guide says.
+            // RCTV: its movie or episode from its sources, as soon as that's known.
+            if (!_uiState.value.isPreviewGuide) launch { watchVod(program) }
             val art = programArt(program)
             val found = try {
                 liveProgramLibrary.findTitle(program)
@@ -737,7 +745,7 @@ class LiveTvViewModel @Inject constructor(
             } catch (e: Exception) {
                 null
             }
-            _programDetailsTmdb.value = ProgramDetailsTmdb(isLoading = false, match = found, art = art)
+            _programDetailsTmdb.update { it.copy(isLoading = false, match = found, art = art) }
             val titleInLibrary = launch { watchInLibrary(channel, program, game = null, match = found) }
             // Then the game, when it's one ESPN has: it's what the program is (and what's added).
             val game = gameLookup?.await() ?: return@launch
@@ -762,6 +770,35 @@ class LiveTvViewModel @Inject constructor(
         runCatching {
             inLibrary.collect { saved -> _programDetailsTmdb.update { it.copy(inLibrary = saved) } }
         }.onFailure { if (it is CancellationException) throw it }
+    }
+
+    /** RCTV: the open program's movie or episode, and whether its sources have it (kept current). */
+    private suspend fun watchVod(program: EpgProgram) {
+        val target = liveVodFinder.target(program, DETAILS_TMDB_WAIT_MS) ?: return
+        liveVodFinder.status(target).collect { status ->
+            _programDetailsTmdb.update { it.copy(vod = com.nuvio.tv.data.livetv.LiveVodState(target, status)) }
+        }
+    }
+
+    /**
+     * RCTV: focus rested on a program on now: its movie or episode and its sources are looked up
+     * ahead, so choosing it can offer "Watch From Beginning" right away.
+     */
+    fun onProgramFocusSettled(program: EpgProgram) {
+        if (_uiState.value.isPreviewGuide) return
+        if (!program.isAiringAt(System.currentTimeMillis())) return
+        liveVodFinder.prepare(program)
+    }
+
+    /**
+     * RCTV: what's on now was chosen. True when it can be watched from the beginning (its movie or
+     * episode is on TMDB and its sources have it, or are still being asked): its details open with
+     * "Watch Live" and "Watch From Beginning". False: it plays live at once, nothing asked.
+     */
+    suspend fun offersWatchFromBeginning(program: EpgProgram): Boolean {
+        if (_uiState.value.isPreviewGuide) return false
+        val target = liveVodFinder.target(program, CLICK_TMDB_WAIT_MS) ?: return false
+        return liveVodFinder.awaitStatus(target, CLICK_SOURCES_WAIT_MS) != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE
     }
 
     fun dismissProgramDetails() {
@@ -842,6 +879,11 @@ class LiveTvViewModel @Inject constructor(
     }
 
     companion object {
+        /** Choosing what's on now: how long TMDB, then its sources, are waited for (looked up ahead on focus). */
+        private const val CLICK_TMDB_WAIT_MS = 1_500L
+        private const val CLICK_SOURCES_WAIT_MS = 1_500L
+        /** A program's details: how long TMDB is waited for its movie or episode. */
+        private const val DETAILS_TMDB_WAIT_MS = 20_000L
         private val COUNTRY_PREFIX = Regex("^([A-Z]{2,3})\\s*[-:|]\\s+")
 
         /** "US - FOX News Detroit" -> "FOX News Detroit"; "MTV - Music Television" stays (MTV isn't a country). */

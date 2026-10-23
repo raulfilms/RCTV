@@ -244,6 +244,9 @@ class LiveProgramLibrary @Inject constructor(
     private suspend fun libraryId(match: LiveProgramMatch): String =
         imdbIdFor(match.tmdbId, match.itemType) ?: match.itemId
 
+    /** The title's IMDb id (what the sources are asked by); null when TMDB doesn't know it. */
+    suspend fun imdbId(match: LiveProgramMatch): String? = imdbIdFor(match.tmdbId, match.itemType)
+
     private val imdbIds = ConcurrentHashMap<String, String>()
 
     private suspend fun imdbIdFor(tmdbId: Int, type: String): String? {

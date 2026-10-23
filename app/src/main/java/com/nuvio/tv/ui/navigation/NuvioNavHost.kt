@@ -101,6 +101,26 @@ private fun rememberGameOpener(navController: NavHostController): (SportsEvent) 
         }
     )
 
+/**
+ * RCTV: a Live TV program's movie or episode, played from its sources the Auto Stream way (the best
+ * source picked, no list): "Watch From Beginning" ([fromBeginning]) or "Watch VOD".
+ */
+private fun liveVodRoute(target: com.nuvio.tv.data.livetv.LiveVodTarget, fromBeginning: Boolean): String =
+    Screen.Stream.createRoute(
+        videoId = target.videoId,
+        contentType = target.contentType,
+        title = target.title,
+        poster = target.match.poster,
+        backdrop = target.match.backdrop,
+        season = target.season,
+        episode = target.episode,
+        episodeName = target.episodeName,
+        year = target.year,
+        contentId = target.imdbId,
+        contentName = target.title,
+        startFromBeginning = fromBeginning
+    )
+
 private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetail.createRoute(
     eventId = event.id,
     name = event.name,
@@ -1146,6 +1166,13 @@ private fun PlaybackNavHost(
                         popUpTo(Screen.Player.route) { inclusive = true }
                     }
                 },
+                // RCTV Live TV: "Watch From Beginning" plays what's on from its sources instead
+                // (Back returns to the Guide).
+                onWatchLiveVod = { target ->
+                    navController.navigate(liveVodRoute(target, fromBeginning = true)) {
+                        popUpTo(Screen.Player.route) { inclusive = true }
+                    }
+                },
                 // Live TV: "More info" (or an episode from Episodes) opens what's on as any title,
                 // on that episode (Back returns to the Guide).
                 onOpenLiveTitle = { itemId, itemType, season, episode ->
@@ -1347,6 +1374,10 @@ private fun PlaybackNavHost(
                 // A later show's "View movie" / "Browse episodes": its page, like any title.
                 onOpenTitle = { itemId, itemType ->
                     navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType))
+                },
+                // RCTV: "Watch From Beginning" / "Watch VOD": from its sources (Back returns to the Guide).
+                onWatchVod = { target, fromBeginning ->
+                    navController.navigate(liveVodRoute(target, fromBeginning))
                 }
             )
         }

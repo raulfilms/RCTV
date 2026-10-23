@@ -36,7 +36,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -81,10 +84,17 @@ fun LiveTvScreen(
     onOpenChannelProfile: (LiveTvChannel) -> Unit = {},
     /** Opens a movie's or series' page (from a later show's details: "View movie", "Browse episodes"). */
     onOpenTitle: (itemId: String, itemType: String) -> Unit = { _, _ -> },
+    /**
+     * RCTV: a program's movie or episode from its sources: "Watch From Beginning" (on now,
+     * [fromBeginning]) or "Watch VOD" (later).
+     */
+    onWatchVod: (target: com.nuvio.tv.data.livetv.LiveVodTarget, fromBeginning: Boolean) -> Unit = { _, _ -> },
     showBuiltInHeader: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    // RCTV: what's on now being chosen (its "Watch From Beginning" is looked up): one at a time.
+    var liveChoiceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // Stalker channels carry a short-lived "cmd" token as streamUrl instead of a real URL, so it
     // must be resolved to a playable one right before navigating to the player. A no-op for
@@ -134,9 +144,22 @@ fun LiveTvScreen(
                     val airingNow = program == null || program.isAiringAt(System.currentTimeMillis())
                     when {
                         // What's on now plays right away; later shows open their details.
+                        // RCTV: what's on now that can be watched from the beginning (its movie or
+                        // episode on TMDB, and in its sources) opens its details instead, with
+                        // "Watch Live" and "Watch From Beginning".
                         !uiState.isPreviewGuide && airingNow -> {
                             viewModel.guideReturnFocus = GuideReturnFocus(channel.id, onLogo = false)
-                            resolvingPlayChannel(channel)
+                            if (program == null) {
+                                resolvingPlayChannel(channel)
+                            } else if (liveChoiceJob?.isActive != true) {
+                                liveChoiceJob = coroutineScope.launch {
+                                    if (viewModel.offersWatchFromBeginning(program)) {
+                                        viewModel.openProgramDetails(channel, program)
+                                    } else {
+                                        resolvingPlayChannel(channel)
+                                    }
+                                }
+                            }
                         }
                         // Sample guide: what's on now opens the player's screen (no video).
                         uiState.isPreviewGuide && airingNow -> {
@@ -161,7 +184,9 @@ fun LiveTvScreen(
                 // Select held on what's on now: a movie goes into the library right away; a series
                 // asks whether to add the episode or the whole series.
                 onLiveProgramLongClick = viewModel::openLibraryPrompt,
-                detailsOpen = uiState.selectedProgram != null
+                detailsOpen = uiState.selectedProgram != null,
+                // RCTV: what's on now, focused a moment, is looked up ahead (TMDB, then its sources).
+                onProgramFocusSettled = viewModel::onProgramFocusSettled
             )
         } else Column(
             modifier = Modifier
@@ -244,7 +269,17 @@ fun LiveTvScreen(
                         resolvingPlayChannel(selectedChannel)
                     }
                 },
-                onDismiss = viewModel::dismissProgramDetails
+                onDismiss = viewModel::dismissProgramDetails,
+                // RCTV: on now, "Watch From Beginning"; later, "Watch VOD" (sample guide: neither).
+                onWatchVod = if (uiState.isPreviewGuide) {
+                    null
+                } else {
+                    ({ target ->
+                        val fromBeginning = selectedProgram.isAiringAt(System.currentTimeMillis())
+                        viewModel.dismissProgramDetails()
+                        onWatchVod(target, fromBeginning)
+                    })
+                }
             )
         }
     }

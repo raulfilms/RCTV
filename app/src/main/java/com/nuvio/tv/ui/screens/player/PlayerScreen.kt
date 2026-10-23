@@ -160,6 +160,8 @@ fun PlayerScreen(
     onPlayLiveChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = {},
     /** Live TV: "More info" on what's on, or an episode from Episodes: its movie's or series' page. */
     onOpenLiveTitle: (itemId: String, itemType: String, season: Int?, episode: Int?) -> Unit = { _, _, _, _ -> },
+    /** RCTV Live TV: "Watch From Beginning": what's on, from its sources. */
+    onWatchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = {},
     liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -189,6 +191,12 @@ fun PlayerScreen(
     var reportCodeVisible by remember { mutableStateOf(false) }
     var exitDispatched by remember { mutableStateOf(false) }
     var externalHandoffInProgress by remember { mutableStateOf(false) }
+    // RCTV Live TV: Left (a channel can't go back) offers "Watch From Beginning" in the middle of
+    // the screen, when what's on is a movie or an episode the sources have.
+    val isLiveTvChannel = uiState.contentType.equals("live", ignoreCase = true)
+    val liveVod by liveTvViewModel.vod.collectAsState()
+    val liveVodOffered = isLiveTvChannel && liveVod?.let { it.status != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE } == true
+    var liveVodPromptVisible by remember { mutableStateOf(false) }
 
     val exitPlayer: () -> Unit = exitPlayer@{
         if (exitDispatched) return@exitPlayer
@@ -227,6 +235,13 @@ fun PlayerScreen(
             viewModel.stopAndRelease()
             onOpenLiveTitle(match.itemId, match.itemType, episode.season, episode.episode)
         }
+    val watchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = watchLiveVod@{ target ->
+        if (exitDispatched) return@watchLiveVod
+        exitDispatched = true
+        liveVodPromptVisible = false
+        viewModel.stopAndRelease()
+        onWatchLiveVod(target)
+    }
     val exitPlayerFromError: () -> Unit = exitPlayerFromError@{
         if (exitDispatched) return@exitPlayerFromError
         exitDispatched = true
@@ -297,6 +312,12 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
+        // RCTV: Back on "Watch From Beginning" goes back to the channel.
+        if (liveVodPromptVisible) {
+            liveVodPromptVisible = false
+            runCatching { containerFocusRequester.requestFocus() }
+            return@handleBackPress
+        }
         if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
@@ -745,7 +766,8 @@ fun PlayerScreen(
                         shouldConfirmNextEpisodeOnEnd ||
                         uiState.postPlayMode is PostPlayMode.StillWatching ||
                         postPlayRecommendationState.isVisible ||
-                        uiState.error != null
+                        uiState.error != null ||
+                        liveVodPromptVisible
                 if (panelOrDialogOpen) return@onKeyEvent false
 
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
@@ -795,7 +817,13 @@ fun PlayerScreen(
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
                             val overlayButtonsCoexist = skipButtonActuallyVisible &&
                                 uiState.postPlayMode is PostPlayMode.AutoPlay
-                            if (!uiState.showControls && !overlayButtonsCoexist) {
+                            if (liveVodOffered && !uiState.showControls &&
+                                keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                            ) {
+                                // RCTV: a live channel can't go back: "Watch From Beginning" instead.
+                                liveVodPromptVisible = true
+                                true
+                            } else if (!uiState.showControls && !overlayButtonsCoexist) {
                                 val isLeft =
                                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                                 val deltaMs = PlayerScrubRates.deltaMsForKeyRepeat(
@@ -876,6 +904,11 @@ fun PlayerScreen(
                             true
                         }
                         KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                            // RCTV: rewinding a live channel offers "Watch From Beginning".
+                            if (liveVodOffered) {
+                                liveVodPromptVisible = true
+                                return@onKeyEvent true
+                            }
                             viewModel.onEvent(
                                 PlayerEvent.OnSeekBy(
                                     PlayerScrubRates.deltaMsForKeyRepeat(
@@ -1394,6 +1427,27 @@ fun PlayerScreen(
                 onBack = { exitPlayer() },
                 skipButtonVisible = skipButtonActuallyVisible
             )
+        }
+
+        // RCTV Live TV: what's on is looked up (TMDB, then its sources) while the channel plays, and
+        // Left shows "Watch From Beginning" in the middle of the screen.
+        if (isLiveTvChannel) {
+            LiveVodWatcher(liveViewModel = liveTvViewModel, channelName = uiState.title, channelLogo = uiState.logo)
+            LaunchedEffect(liveVodOffered, uiState.showControls) {
+                if (!liveVodOffered || uiState.showControls) liveVodPromptVisible = false
+            }
+            val promptVod = liveVod
+            if (liveVodPromptVisible && liveVodOffered && promptVod != null) {
+                LiveWatchFromBeginningPrompt(
+                    state = promptVod,
+                    onWatch = { watchLiveVod(promptVod.target) },
+                    onDismiss = {
+                        liveVodPromptVisible = false
+                        runCatching { containerFocusRequester.requestFocus() }
+                    },
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
 
         // Aspect ratio indicator (floating pill)

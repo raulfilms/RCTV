@@ -60,7 +60,8 @@ data class LivePlayerEpisodesState(
 class LiveTvPlayerViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val session: LiveTvPlayerSession,
-    private val liveProgramLibrary: LiveProgramLibrary
+    private val liveProgramLibrary: LiveProgramLibrary,
+    private val liveVodFinder: com.nuvio.tv.data.livetv.LiveVodFinder
 ) : ViewModel() {
 
     val guide: StateFlow<LiveTvPlayerSession.Guide> = session.guide
@@ -210,11 +211,38 @@ class LiveTvPlayerViewModel @Inject constructor(
         }
     }
 
+    private val _vod = MutableStateFlow<com.nuvio.tv.data.livetv.LiveVodState?>(null)
+
+    /**
+     * RCTV: what's on now from its sources ("Watch From Beginning" when Left is pressed): its movie
+     * or episode, and whether a source has it. Null: it can't be (not on TMDB, the episode unknown).
+     */
+    val vod: StateFlow<com.nuvio.tv.data.livetv.LiveVodState?> = _vod.asStateFlow()
+    private var vodProgram: EpgProgram? = null
+    private var vodJob: Job? = null
+
+    /** RCTV: what's on now changed (or the channel did): it's looked up on TMDB and in the sources. */
+    fun prepareVod(program: EpgProgram?) {
+        if (program == vodProgram) return
+        vodProgram = program
+        vodJob?.cancel()
+        _vod.value = null
+        if (program == null || session.guide.value.isPreview) return
+        vodJob = viewModelScope.launch {
+            val target = liveVodFinder.target(program, VOD_TMDB_WAIT_MS) ?: return@launch
+            liveVodFinder.status(target).collect { status ->
+                _vod.value = com.nuvio.tv.data.livetv.LiveVodState(target, status)
+            }
+        }
+    }
+
     /** The address to play a channel at (the sample guide's channels open the player's design view). */
     suspend fun playableUrl(channel: LiveTvChannel): String =
         if (session.guide.value.isPreview) PlayerDesignPreview.URL else session.playableUrl(channel)
 
     private companion object {
         const val TICK_MS = 20_000L
+        /** How long TMDB is waited for what's on now's movie or episode. */
+        const val VOD_TMDB_WAIT_MS = 30_000L
     }
 }

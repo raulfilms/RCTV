@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -111,6 +112,8 @@ private val BlockShape = RoundedCornerShape(AppleTvRadius.Poster)
 
 private const val SLOT_MS = 30L * 60_000L
 private const val MINUTE_MS = 60_000L
+/** How long focus rests on a program before it's looked up ahead (see onProgramFocusSettled). */
+private const val FOCUS_SETTLE_MS = 800L
 
 // The app background (#17161B) with the contrast color (#2B2F37) on the programs and logos:
 // what's on now a step lighter, the focused one lighter still with a white edge.
@@ -191,6 +194,11 @@ internal fun LiveTvTimelineGuide(
     programArt: suspend (EpgProgram) -> GuideProgramArt = { GuideProgramArt.NONE },
     /** A program's details are open over the guide (they hold focus; it comes back when they close). */
     detailsOpen: Boolean = false,
+    /**
+     * RCTV: focus rested on a program a moment (its movie or episode, and its sources, are looked up
+     * ahead, so choosing it can offer "Watch From Beginning" at once).
+     */
+    onProgramFocusSettled: (EpgProgram) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -277,6 +285,17 @@ internal fun LiveTvTimelineGuide(
         val key = logoKey(channel)
         pendingKey = key
         focusMoves.trySend(key to row)
+    }
+
+    // RCTV: a program focused for a moment (not each one focus passes over) is looked up ahead.
+    val onFocusSettled by androidx.compose.runtime.rememberUpdatedState(onProgramFocusSettled)
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { previewProgramState.value }
+            .collectLatest { program ->
+                if (program == null) return@collectLatest
+                kotlinx.coroutines.delay(FOCUS_SETTLE_MS)
+                onFocusSettled(program)
+            }
     }
 
     LaunchedEffect(focusMoves) {

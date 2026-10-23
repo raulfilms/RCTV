@@ -23,7 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,8 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
 import com.nuvio.tv.data.livetv.LiveProgramMatch
+import com.nuvio.tv.data.livetv.LiveVodStatus
+import com.nuvio.tv.data.livetv.LiveVodTarget
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.ui.components.AppleTvColors
@@ -86,7 +90,12 @@ internal fun LiveTvProgramDetailsOverlay(
     onWatch: (() -> Unit)?,
     onAddToLibrary: () -> Unit,
     onOpenTitle: (LiveProgramMatch) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /**
+     * RCTV: its movie or episode from its sources: "Watch From Beginning" on now, "Watch VOD" later
+     * (only when TMDB has it and its sources do). Null: not offered here.
+     */
+    onWatchVod: ((LiveVodTarget) -> Unit)? = null
 ) {
     BackHandler(onBack = onDismiss)
     val airingNow = program.isAiringAt(nowMs)
@@ -163,9 +172,26 @@ internal fun LiveTvProgramDetailsOverlay(
             Spacer(modifier = Modifier.height(14.dp))
 
             // The actions, focus starting on the first one.
+            // RCTV: watching it from its sources (shown once TMDB has it; usable once a source is found).
+            val vod = tmdb.vod?.takeIf { onWatchVod != null && it.status != LiveVodStatus.UNAVAILABLE }
+            val vodAction = vod?.let { state ->
+                val checking = state.status == LiveVodStatus.CHECKING
+                DetailsAction(
+                    icon = if (airingNow) Icons.Default.Replay else Icons.Default.OndemandVideo,
+                    label = when {
+                        checking -> stringResource(R.string.livetv_vod_looking)
+                        airingNow -> stringResource(R.string.livetv_watch_from_beginning_btn)
+                        else -> stringResource(R.string.livetv_watch_vod_btn)
+                    },
+                    onClick = { onWatchVod?.invoke(state.target) },
+                    enabled = !checking
+                )
+            }
             val actions = buildList {
                 if (onWatch != null && airingNow) {
-                    add(DetailsAction(Icons.Default.PlayArrow, stringResource(R.string.livetv_watch_channel_btn), onWatch))
+                    add(DetailsAction(Icons.Default.PlayArrow, stringResource(R.string.livetv_watch_live_btn), onWatch))
+                    // On now: "Watch Live", then "Watch From Beginning".
+                    vodAction?.let { add(it) }
                 }
                 when {
                     // Focusable meanwhile, so focus is in the panel from the start.
@@ -187,6 +213,8 @@ internal fun LiveTvProgramDetailsOverlay(
                                 onClick = { onOpenTitle(match) }
                             )
                         )
+                        // Later: "Watch VOD" below the rest.
+                        if (!airingNow) vodAction?.let { add(it) }
                     }
                     // Not on TMDB: its game (or the program itself) goes to the Library's Events.
                     else -> {
@@ -202,8 +230,10 @@ internal fun LiveTvProgramDetailsOverlay(
                 }
             }
             val firstAction = remember { FocusRequester() }
-            // The actions change once TMDB answers: focus the first one again.
-            LaunchedEffect(tmdb.isLoading, match?.tmdbId, tmdb.game?.id, actions.size) {
+            // The actions change once TMDB answers: focus the first one again (not when the VOD
+            // row shows or changes: focus stays where it is).
+            val vodRows = if (vodAction != null && actions.contains(vodAction)) 1 else 0
+            LaunchedEffect(tmdb.isLoading, match?.tmdbId, tmdb.game?.id, actions.size - vodRows) {
                 repeat(6) {
                     withFrameNanos { }
                     if (runCatching { firstAction.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
