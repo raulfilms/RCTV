@@ -4134,6 +4134,9 @@
     <string name="livetv_watch_from_beginning_btn">Watch From Beginning</string>
     <string name="livetv_watch_vod_btn">Watch VOD</string>
     <string name="livetv_vod_looking">Looking for it…</string>
+    <string name="subtitle_auto_sync_working">Syncing subtitles with the audio…</string>
+    <string name="subtitle_auto_sync_done">Subtitles synced with the audio (%1$s)</string>
+    <string name="subtitle_auto_sync_already">Subtitles already in sync with the audio</string>
     <string name="livetv_details_today">Today, %1$s</string>
     <string name="livetv_details_tomorrow">Tomorrow, %1$s</string>
     <string name="livetv_library_already">Already in your library: %1$s</string>

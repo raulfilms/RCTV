@@ -322,6 +322,16 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         }
     }
 
+    /** RCTV: subtitle times multiplied by [speed] (a subtitle made for another frame rate). */
+    fun setSubtitleSpeed(speed: Double) {
+        if (!initialized) return
+        runCatching {
+            mpv.setPropertyDouble("sub-speed", speed)
+        }.onFailure {
+            Log.w(TAG, "Failed to set subtitle speed on mpv: ${it.message}")
+        }
+    }
+
     fun setAudioDelayMs(delayMs: Int) {
         if (!initialized) return
         runCatching {

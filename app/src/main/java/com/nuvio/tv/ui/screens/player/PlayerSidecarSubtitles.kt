@@ -179,11 +179,12 @@ internal fun PlayerRuntimeController.renderSidecarCuesAtCurrentPosition() {
     val cues = sidecarTimedCues
     if (cues.isEmpty() || activeSidecarSubtitleKey == null) return
     val player = _exoPlayer ?: return
-    val positionUs = (
+    // RCTV: a subtitle made for another frame rate is stretched to the movie (see subtitleTimeScale).
+    val positionUs = ((
         player.currentPosition.coerceAtLeast(0L) * 1_000L +
             audioDelayUs.get() -
             subtitleDelayUs.get()
-        ).coerceAtLeast(0L)
+        ) / subtitleTimeScale).toLong().coerceAtLeast(0L)
     val active = collectActiveSidecarCues(cues, positionUs)
     val stripSdh = currentPlayerSettingsForReport.subtitleStyle.stripSdh
     // Sign before sanitising, filtering and merging to skip that work while cues are
