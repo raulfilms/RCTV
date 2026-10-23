@@ -279,7 +279,9 @@ fun LiveTvScreen(
                         viewModel.dismissProgramDetails()
                         onWatchVod(target, fromBeginning)
                     })
-                }
+                },
+                // RCTV: what's on now (chosen in the guide): only "Watch Live" and "Watch From Beginning".
+                liveChoice = true
             )
         }
     }

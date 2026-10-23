@@ -95,7 +95,12 @@ internal fun LiveTvProgramDetailsOverlay(
      * RCTV: its movie or episode from its sources: "Watch From Beginning" on now, "Watch VOD" later
      * (only when TMDB has it and its sources do). Null: not offered here.
      */
-    onWatchVod: ((LiveVodTarget) -> Unit)? = null
+    onWatchVod: ((LiveVodTarget) -> Unit)? = null,
+    /**
+     * RCTV: what's on now, chosen in the guide (it can be watched from the beginning): only
+     * "Watch Live" and "Watch From Beginning", nothing else.
+     */
+    liveChoice: Boolean = false
 ) {
     BackHandler(onBack = onDismiss)
     val airingNow = program.isAiringAt(nowMs)
@@ -188,10 +193,16 @@ internal fun LiveTvProgramDetailsOverlay(
                 )
             }
             val actions = buildList {
-                if (onWatch != null && airingNow) {
-                    add(DetailsAction(Icons.Default.PlayArrow, stringResource(R.string.livetv_watch_live_btn), onWatch))
-                    // On now: "Watch Live", then "Watch From Beginning".
+                // RCTV: what's on now, chosen in the guide: "Watch Live" and "Watch From Beginning" only.
+                if (liveChoice && airingNow) {
+                    if (onWatch != null) {
+                        add(DetailsAction(Icons.Default.PlayArrow, stringResource(R.string.livetv_watch_live_btn), onWatch))
+                    }
                     vodAction?.let { add(it) }
+                    return@buildList
+                }
+                if (onWatch != null && airingNow) {
+                    add(DetailsAction(Icons.Default.PlayArrow, stringResource(R.string.livetv_watch_channel_btn), onWatch))
                 }
                 when {
                     // Focusable meanwhile, so focus is in the panel from the start.
