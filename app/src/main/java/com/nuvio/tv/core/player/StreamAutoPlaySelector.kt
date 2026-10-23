@@ -1,6 +1,8 @@
 package com.nuvio.tv.core.player
 
 import com.nuvio.tv.core.build.AppFeaturePolicy
+import com.nuvio.tv.core.smartscraper.SmartScraperEnvironment
+import com.nuvio.tv.core.smartscraper.SmartSourceRequest
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.data.local.StreamAutoPlaySource
 import com.nuvio.tv.domain.model.AddonStreams
@@ -55,7 +57,11 @@ object StreamAutoPlaySelector {
         selectedPlugins: Set<String>,
         preferredBingeGroup: String? = null,
         preferBingeGroupInSelection: Boolean = false,
-        bingeGroupOnly: Boolean = false
+        bingeGroupOnly: Boolean = false,
+        /** SMART: the title asked for (its streams are checked against it). */
+        smartRequest: SmartSourceRequest? = null,
+        /** SMART: the Smart Scraper's order already worked out (else it's worked out here). */
+        smartRanking: List<Stream>? = null
     ): Stream? {
         if (streams.isEmpty()) return null
 
@@ -101,6 +107,14 @@ object StreamAutoPlaySelector {
         return when (mode) {
             StreamAutoPlayMode.MANUAL -> null
             StreamAutoPlayMode.FIRST_STREAM -> candidateStreams.firstOrNull { isPlayable(it) }
+            // RCTV: the best smart source that can play now (never one that breaks a hard rule:
+            // wrong title or episode, under 720p, CAM/TS, over the size limit, not cached).
+            StreamAutoPlayMode.SMART -> {
+                val ranking = smartRanking
+                    ?: SmartScraperEnvironment.rank(candidateStreams, smartRequest ?: SmartSourceRequest.UNKNOWN).fallbackChain
+                val candidates = candidateStreams.toHashSet()
+                ranking.firstOrNull { it in candidates && isPlayable(it) }
+            }
             StreamAutoPlayMode.REGEX_MATCH -> {
                 val pattern = regexPattern.trim()
  

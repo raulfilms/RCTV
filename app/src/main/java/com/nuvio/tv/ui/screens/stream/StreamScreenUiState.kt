@@ -33,6 +33,16 @@ data class StreamScreenUiState(
     val filteredStreams: List<Stream> = emptyList(),
     val availableAddons: List<String> = emptyList(),
     val sourceChips: List<SourceChipItem> = emptyList(),
+    /**
+     * RCTV Smart Scraper: the sources as shown, the first [smartSourceCount] of them the smart
+     * ones (best first, each file once), then all of them; in manual mode, the ones that fit the
+     * chosen filters, in the chosen order. [filteredStreams] is their streams.
+     */
+    val sourceItems: List<SmartSourceItem> = emptyList(),
+    val smartSourceCount: Int = 0,
+    val smartView: com.nuvio.tv.core.smartscraper.SmartSourceViewSettings = com.nuvio.tv.core.smartscraper.SmartSourceViewSettings(),
+    /** What to try, one after another, when a source fails to start (the smart order). */
+    val smartFallbackChain: List<Stream> = emptyList(),
     val autoPlayStream: Stream? = null,
     val autoPlayPlaybackInfo: StreamPlaybackInfo? = null,
     val error: String? = null,

@@ -1701,8 +1701,9 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
 
             val installedAddons = addonRepository.getInstalledAddons().first().enabledAddons()
             val installedAddonOrder = installedAddons.map { it.displayName }
+            // RCTV: the next episode's best smart source, not whichever addon answered first.
             val effectiveMode = if (shouldAutoSelectInManualMode) {
-                StreamAutoPlayMode.FIRST_STREAM
+                StreamAutoPlayMode.SMART
             } else {
                 playerSettings.streamAutoPlayMode
             }
@@ -1752,7 +1753,20 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                         null
                     },
                     preferBingeGroupInSelection = playerSettings.streamAutoPlayPreferBingeGroupForNextEpisode,
-                    bingeGroupOnly = bingeGroupOnlyManualMode
+                    bingeGroupOnly = bingeGroupOnlyManualMode,
+                    smartRequest = com.nuvio.tv.core.smartscraper.SmartSourceRequest(
+                        title = contentName ?: title,
+                        alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
+                        year = com.nuvio.tv.core.smartscraper.SmartSourceRequest.yearOf(year),
+                        isSeries = true,
+                        season = nextVideo.season,
+                        episode = nextVideo.episode,
+                        imdbId = contentId?.takeIf { it.startsWith("tt") }?.substringBefore(':'),
+                        runtimeMinutes = nextVideo.runtime,
+                        equivalentEpisodes = com.nuvio.tv.core.imdb.EpisodeOrderRegistry.equivalentEpisodes(
+                            contentId, nextVideo.season, nextVideo.episode
+                        )
+                    )
                 )
             }
 

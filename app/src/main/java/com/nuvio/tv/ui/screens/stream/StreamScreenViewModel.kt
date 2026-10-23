@@ -17,6 +17,15 @@ import com.nuvio.tv.core.torrent.TorrentService
 import com.nuvio.tv.core.torrent.TorrentState
 import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.player.StreamAutoPlaySelector
+import com.nuvio.tv.core.imdb.EpisodeOrderRegistry
+import com.nuvio.tv.core.smartscraper.ScoredSource
+import com.nuvio.tv.core.smartscraper.SmartScoreEngine
+import com.nuvio.tv.core.smartscraper.SmartScraper
+import com.nuvio.tv.core.smartscraper.SmartScraperSettingsStore
+import com.nuvio.tv.core.smartscraper.SmartSourceEntry
+import com.nuvio.tv.core.smartscraper.SmartSourceRequest
+import com.nuvio.tv.core.smartscraper.SmartSourceViewSettings
+import com.nuvio.tv.core.smartscraper.SmartSourcesResult
 import com.nuvio.tv.core.tracking.TrackingMediaKind
 import com.nuvio.tv.core.tracking.TrackingMediaReference
 import com.nuvio.tv.core.tracking.TrackingScrobbleAction
@@ -68,6 +77,8 @@ import javax.inject.Inject
 private const val TAG = "StreamScreenViewModel"
 private const val DIRECT_AUTOPLAY_HARD_TIMEOUT_MS = 60_000L
 private const val STREAM_FILTER_PAGE_SIZE = 100
+/** When a source won't start, at most this many more are tried. */
+private const val MAX_SMART_FALLBACK_ATTEMPTS = 3
 
 @HiltViewModel
 class StreamScreenViewModel @Inject constructor(
@@ -91,6 +102,8 @@ class StreamScreenViewModel @Inject constructor(
     private val subtitleRepository: com.nuvio.tv.domain.repository.SubtitleRepository,
     private val subtitleFileCache: com.nuvio.tv.core.player.SubtitleFileCache,
     private val torrentService: TorrentService,
+    private val smartScraper: SmartScraper,
+    private val smartScraperSettings: SmartScraperSettingsStore,
     profileManager: com.nuvio.tv.core.profile.ProfileManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -138,6 +151,16 @@ class StreamScreenViewModel @Inject constructor(
         ?.toBooleanStrictOrNull()
         ?: false
     private val streamCacheKey: String = "${contentType.lowercase()}|$videoId"
+
+    // RCTV Smart Scraper (declared before init: it may lay sources out right away).
+    /** Every source the Smart Scraper laid out (the shown ones are its first page). */
+    private var sourceItemsFull: List<SmartSourceItem> = emptyList()
+    @Volatile private var lastSmartResult: SmartSourcesResult = SmartSourcesResult.EMPTY
+
+    private val isSeriesContent: Boolean =
+        contentType.equals("series", ignoreCase = true) || contentType.equals("tv", ignoreCase = true) ||
+            (season != null && episode != null)
+
 
     private val _uiState = MutableStateFlow(
         StreamScreenUiState(
@@ -207,20 +230,11 @@ class StreamScreenViewModel @Inject constructor(
                             )
                         }
                         val updatedAllStreams = updatedAddonStreams.flatMap { it.streams }
-                        val currentFilter = state.selectedAddonFilter
-                        val fullFiltered = if (currentFilter == null) {
-                            updatedAllStreams
-                        } else {
-                            updatedAllStreams.filter { it.addonName == currentFilter }
-                        }
-                        streamFilterFullList = fullFiltered
-                        val pageEnd = state.filteredStreams.size.coerceAtMost(fullFiltered.size)
-                            .coerceAtLeast(STREAM_FILTER_PAGE_SIZE.coerceAtMost(fullFiltered.size))
+                        // RCTV: the sources stay as the Smart Scraper laid them out (badges aren't
+                        // shown, and they don't change how a source ranks).
                         state.copy(
                             addonStreams = updatedAddonStreams,
-                            allStreams = updatedAllStreams,
-                            filteredStreams = if (pageEnd >= fullFiltered.size) fullFiltered
-                                else fullFiltered.subList(0, pageEnd)
+                            allStreams = updatedAllStreams
                         )
                     }
                 }
@@ -300,7 +314,9 @@ class StreamScreenViewModel @Inject constructor(
                         isLoading = true,
                         error = null,
                         selectedAddonFilter = null,
-                        filteredStreams = emptyList()
+                        filteredStreams = emptyList(),
+                        sourceItems = emptyList(),
+                        smartSourceCount = 0
                     )
                 }
                 loadStreams(forceRefresh = true)
@@ -502,6 +518,8 @@ class StreamScreenViewModel @Inject constructor(
 
                 val allStreams = mergedAddonStreams.flatMap { it.streams }
                 val availableAddons = mergedAddonStreams.map { it.addonName }
+                // RCTV Smart Scraper: every stream checked against the title, filtered, scored, ranked.
+                val smartResult = smartScraper.rank(allStreams, smartRequest())
                 // Auto-select only after all addons have responded or the
                 // configured timeout has elapsed. This gives slower addons a
                 // chance to return higher-quality streams before the selector
@@ -519,7 +537,9 @@ class StreamScreenViewModel @Inject constructor(
                         selectedAddons = playerSettings.streamAutoPlaySelectedAddons,
                         selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
                         preferredBingeGroup = persistedBingeGroup,
-                        preferBingeGroupInSelection = persistedBingeGroup != null
+                        preferBingeGroupInSelection = persistedBingeGroup != null,
+                        smartRequest = smartRequest(),
+                        smartRanking = smartResult.fallbackChain
                     )
                 }
                 if (selectedAutoPlayStream != null) {
@@ -532,36 +552,34 @@ class StreamScreenViewModel @Inject constructor(
                 } else {
                     allStreams.filter { it.addonName == currentFilter }
                 }
-                streamFilterFullList = fullFiltered
-                val paginatedStreams = if (fullFiltered.size > STREAM_FILTER_PAGE_SIZE) {
-                    fullFiltered.subList(0, STREAM_FILTER_PAGE_SIZE)
-                } else {
-                    fullFiltered
-                }
 
                 updateUiStateIfChanged {
-                    it.copy(
-                        isLoading = false,
-                        addonStreams = mergedAddonStreams,
-                        allStreams = allStreams,
-                        filteredStreams = paginatedStreams,
-                        availableAddons = availableAddons,
-                        sourceChips = mergeSourceChipStatuses(
-                            existing = _uiState.value.sourceChips,
-                            succeededNames = mergedAddonStreams.map { it.addonName }
+                    laidOut(
+                        state = it.copy(
+                            isLoading = false,
+                            addonStreams = mergedAddonStreams,
+                            allStreams = allStreams,
+                            availableAddons = availableAddons,
+                            sourceChips = mergeSourceChipStatuses(
+                                existing = _uiState.value.sourceChips,
+                                succeededNames = mergedAddonStreams.map { it.addonName }
+                            ),
+                            // Preserve an already-resolved stream: the post-collect
+                            // "isAllLoaded=true" pass re-runs the selector with
+                            // shouldAutoSelect=false once a target is resolved, and
+                            // would otherwise clobber the real pick with null before
+                            // Compose observes it.
+                            autoPlayStream = selectedAutoPlayStream ?: it.autoPlayStream,
+                            error = null,
+                            showDirectAutoPlayOverlay = if (directAutoPlayFlowEnabledForSession || it.autoPlayPlaybackInfo != null) {
+                                true
+                            } else {
+                                false
+                            }
                         ),
-                        // Preserve an already-resolved stream: the post-collect
-                        // "isAllLoaded=true" pass re-runs the selector with
-                        // shouldAutoSelect=false once a target is resolved, and
-                        // would otherwise clobber the real pick with null before
-                        // Compose observes it.
-                        autoPlayStream = selectedAutoPlayStream ?: it.autoPlayStream,
-                        error = null,
-                        showDirectAutoPlayOverlay = if (directAutoPlayFlowEnabledForSession || it.autoPlayPlaybackInfo != null) {
-                            true
-                        } else {
-                            false
-                        }
+                        streams = fullFiltered,
+                        result = if (currentFilter == null) smartResult else null,
+                        keepPage = false
                     )
                 }
                 scheduleStreamBadgePresentation(mergedAddonStreams)
@@ -637,14 +655,13 @@ class StreamScreenViewModel @Inject constructor(
                                 } else {
                                     updatedAllStreams.filter { it.addonName == currentFilter }
                                 }
-                                streamFilterFullList = fullFiltered
-                                val pageEnd = state.filteredStreams.size.coerceAtMost(fullFiltered.size)
-                                    .coerceAtLeast(STREAM_FILTER_PAGE_SIZE.coerceAtMost(fullFiltered.size))
-                                state.copy(
-                                    addonStreams = updatedGroups,
-                                    allStreams = updatedAllStreams,
-                                    filteredStreams = if (pageEnd >= fullFiltered.size) fullFiltered
-                                        else fullFiltered.subList(0, pageEnd)
+                                laidOut(
+                                    state = state.copy(
+                                        addonStreams = updatedGroups,
+                                        allStreams = updatedAllStreams
+                                    ),
+                                    streams = fullFiltered,
+                                    keepPage = true
                                 )
                             }
                         }
@@ -1136,28 +1153,141 @@ class StreamScreenViewModel @Inject constructor(
             } else {
                 state.allStreams.filter { it.addonName == addonName }
             }
-            streamFilterFullList = fullFiltered
-            val paginatedStreams = if (fullFiltered.size > STREAM_FILTER_PAGE_SIZE) {
-                fullFiltered.subList(0, STREAM_FILTER_PAGE_SIZE)
-            } else {
-                fullFiltered
-            }
-            state.copy(
-                selectedAddonFilter = addonName,
-                filteredStreams = paginatedStreams
+            laidOut(
+                state = state.copy(selectedAddonFilter = addonName),
+                streams = fullFiltered,
+                keepPage = false
             )
         }
     }
 
     fun expandFilteredStreamsIfNeeded() {
-        val current = _uiState.value.filteredStreams
-        val full = streamFilterFullList
+        val current = _uiState.value.sourceItems
+        val full = sourceItemsFull
         if (current.size >= full.size) return
         val nextEnd = (current.size + STREAM_FILTER_PAGE_SIZE).coerceAtMost(full.size)
         updateUiStateIfChanged {
-            it.copy(filteredStreams = full.subList(0, nextEnd))
+            val page = full.subList(0, nextEnd)
+            it.copy(sourceItems = page, filteredStreams = page.map { item -> item.stream })
         }
     }
+
+    // ==================================================================== RCTV Smart Scraper
+
+    /** The title asked for, as the app knows it: its streams are checked against it. */
+    private fun smartRequest(): SmartSourceRequest {
+        val state = _uiState.value
+        val showId = contentId ?: videoId
+        return SmartSourceRequest(
+            title = contentName?.takeIf { it.isNotBlank() } ?: title,
+            alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
+            year = SmartSourceRequest.yearOf(state.year ?: year),
+            isSeries = isSeriesContent,
+            season = season,
+            episode = episode,
+            imdbId = showId.substringBefore(':').takeIf { it.startsWith("tt") },
+            tmdbId = showId.takeIf { it.startsWith("tmdb:") }?.removePrefix("tmdb:")?.substringBefore(':'),
+            runtimeMinutes = state.runtime ?: runtime,
+            equivalentEpisodes = EpisodeOrderRegistry.equivalentEpisodes(showId, season, episode)
+        )
+    }
+
+    /**
+     * [state] with [streams] ranked (or [result], already ranked) and laid out: the smart sources,
+     * then all of them; or, in manual mode, the ones that fit the filters, in the chosen order.
+     * [keepPage]: keep as many shown as are now (else the first page).
+     */
+    private fun laidOut(
+        state: StreamScreenUiState,
+        streams: List<Stream>,
+        result: SmartSourcesResult? = null,
+        keepPage: Boolean
+    ): StreamScreenUiState {
+        val ranked = result ?: smartScraper.rank(streams, smartRequest())
+        lastSmartResult = ranked
+        val view = smartScraperSettings.view.value
+        val debug = smartScraper.config.debug
+        val items = ArrayList<SmartSourceItem>(ranked.smart.size + ranked.all.size)
+        if (view.manual) {
+            SmartScoreEngine.applyManual(ranked.all, view.filters, view.sort).mapTo(items) { it.toSourceItem(debug) }
+        } else {
+            ranked.smart.mapTo(items) { it.toSourceItem(debug) }
+            ranked.all.mapTo(items) { it.toSourceItem(debug) }
+        }
+        val smartCount = if (view.manual) 0 else ranked.smart.size
+        sourceItemsFull = items
+        streamFilterFullList = items.map { it.stream }
+        val shown = if (keepPage) state.sourceItems.size.coerceAtLeast(STREAM_FILTER_PAGE_SIZE) else STREAM_FILTER_PAGE_SIZE
+        val page = if (items.size > shown) items.subList(0, shown) else items
+        return state.copy(
+            sourceItems = page,
+            smartSourceCount = smartCount,
+            filteredStreams = page.map { it.stream },
+            smartView = view,
+            smartFallbackChain = ranked.fallbackChain
+        )
+    }
+
+    private fun SmartSourceEntry.toSourceItem(debug: Boolean) = SmartSourceItem(
+        stream = best.stream,
+        release = best.release,
+        labels = labels,
+        copies = copyCount,
+        score = best.score,
+        isSmart = true,
+        rejection = null,
+        debugText = if (debug) SmartSourceText.debug(best) else null
+    )
+
+    private fun ScoredSource.toSourceItem(debug: Boolean) = SmartSourceItem(
+        stream = stream,
+        release = release,
+        labels = SmartScoreEngine.attributeLabels(release),
+        copies = 1,
+        score = score,
+        isSmart = false,
+        rejection = rejection,
+        debugText = if (debug) SmartSourceText.debug(this) else null
+    )
+
+    /** Automatic ⇄ manual, the order, the filters: the sources are laid out again (not searched again). */
+    fun updateSmartView(transform: (SmartSourceViewSettings) -> SmartSourceViewSettings) {
+        smartScraperSettings.updateView(transform)
+        updateUiStateIfChanged { state ->
+            val streams = state.selectedAddonFilter?.let { addon -> state.allStreams.filter { it.addonName == addon } }
+                ?: state.allStreams
+            laidOut(state, streams, result = lastSmartResult.takeIf { it !== SmartSourcesResult.EMPTY }, keepPage = false)
+        }
+    }
+
+    /**
+     * [stream] ready to play; when it can't be (the debrid service won't give its link), the next
+     * smart sources are tried, a few at most, never another title or episode.
+     */
+    suspend fun resolveSmartStreamForPlayback(stream: Stream): StreamPlaybackInfo? {
+        resolveStreamForPlayback(stream)?.let { return it }
+        smartScraper.recordPlayback(stream, ok = false)
+        if (!smartScraper.config.autoFallback) return null
+        val chain = _uiState.value.smartFallbackChain
+        val index = chain.indexOfFirst { it.isSameSource(stream) }
+        val next = (if (index >= 0) chain.drop(index + 1) else chain)
+            .filterNot { it.isSameSource(stream) }
+            .take(MAX_SMART_FALLBACK_ATTEMPTS)
+        for (candidate in next) {
+            Log.i(TAG, "Smart fallback: the source didn't start, trying the next one")
+            val info = resolveStreamForPlayback(candidate)
+            if (info != null) {
+                updateUiStateIfChanged { it.copy(playbackErrorMessage = null) }
+                return info
+            }
+            smartScraper.recordPlayback(candidate, ok = false)
+        }
+        return null
+    }
+
+    private fun Stream.isSameSource(other: Stream): Boolean =
+        url == other.url && infoHash == other.infoHash && ytId == other.ytId &&
+            addonName == other.addonName && fileIdx == other.fileIdx
 
     suspend fun resolveStreamForPlayback(stream: Stream): StreamPlaybackInfo? {
         if (!directDebridResolver.shouldResolveToPlayableStream(stream)) {

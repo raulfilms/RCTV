@@ -108,6 +108,7 @@ class ImdbEpisodeOrder @Inject constructor(
 
     /** TMDB's episodes of this show will be told the same way (its own numbers are the halves too). */
     private fun register(meta: Meta, imdbId: String, orders: Map<Int, ImdbSeasonOrder>) {
+        EpisodeOrderRegistry.registerImdb(imdbId, orders)
         val tmdbIdFromMeta = meta.id.removePrefix("tmdb:").substringBefore(':').takeIf { meta.id.startsWith("tmdb:") && it.all(Char::isDigit) }
         if (tmdbIdFromMeta != null) {
             EpisodeOrderRegistry.registerTmdb(tmdbIdFromMeta, orders)
@@ -213,9 +214,27 @@ class ImdbEpisodeOrder @Inject constructor(
  */
 object EpisodeOrderRegistry {
     private val byTmdb = ConcurrentHashMap<String, Map<Int, ImdbSeasonOrder>>()
+    private val byImdb = ConcurrentHashMap<String, Map<Int, ImdbSeasonOrder>>()
 
     fun registerTmdb(tmdbId: String, orders: Map<Int, ImdbSeasonOrder>) {
         byTmdb[tmdbId] = orders
+    }
+
+    fun registerImdb(imdbId: String, orders: Map<Int, ImdbSeasonOrder>) {
+        byImdb[imdbId] = orders
+    }
+
+    /**
+     * The numbers the parts of IMDb's [episode] of [season] have elsewhere (TMDB/TVDB, and files
+     * named that way: "S01E04E05" is IMDb's episode 2 of SpongeBob); empty when the show is told the
+     * same way everywhere. [showId]: "tt0206512", "tt0206512:1:2" or "tmdb:387".
+     */
+    fun equivalentEpisodes(showId: String?, season: Int?, episode: Int?): Set<Int> {
+        if (showId.isNullOrBlank() || season == null || episode == null) return emptySet()
+        val orders = byImdb[showId.substringBefore(':')]
+            ?: byTmdb[showId.removePrefix("tmdb:").substringBefore(':')]
+            ?: return emptySet()
+        return orders[season]?.groups?.firstOrNull { it.imdbEpisode == episode }?.episodes?.toSet().orEmpty()
     }
 
     /**

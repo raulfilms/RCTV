@@ -1,5 +1,7 @@
 package com.nuvio.tv.data.repository
 
+import kotlinx.coroutines.withTimeoutOrNull
+import com.nuvio.tv.core.smartscraper.SmartScraperEnvironment
 import android.content.Context
 import android.util.Log
 import com.nuvio.tv.R
@@ -190,8 +192,21 @@ class StreamRepositoryImpl @Inject constructor(
                 // Launch addon jobs
                 streamAddons.forEach { addon ->
                     launch {
+                        val startedAtMs = System.currentTimeMillis()
                         try {
-                            val streamsResult = getStreamsFromAddon(addon, type, videoId)
+                            // RCTV: each addon has its own time limit (Smart Scraper's), so a slow
+                            // one never holds the others' results; how each does is learned.
+                            val timeoutMs = SmartScraperEnvironment.config.providerTimeoutSeconds * 1_000L
+                            val streamsResult = withTimeoutOrNull(timeoutMs) {
+                                getStreamsFromAddon(addon, type, videoId)
+                            } ?: NetworkResult.Error(
+                                context.getString(com.nuvio.tv.R.string.stream_error_detail_addon_timeout)
+                            )
+                            SmartScraperEnvironment.recordProviderResponse(
+                                provider = addon.displayName,
+                                responseMs = System.currentTimeMillis() - startedAtMs,
+                                ok = streamsResult is NetworkResult.Success
+                            )
                             when (streamsResult) {
                                 is NetworkResult.Success -> {
                                     if (streamsResult.data.isNotEmpty()) {
@@ -232,6 +247,7 @@ class StreamRepositoryImpl @Inject constructor(
                         } catch (e: Exception) {
                             if (e is CancellationException) throw e
                             Log.e(TAG, "Addon ${addon.name} failed: ${e.message}")
+                            SmartScraperEnvironment.recordProviderResponse(addon.displayName, null, ok = false)
                             attemptedFailures += StreamAttemptFailure(
                                 addonName = addon.displayName,
                                 kind = StreamFailureKind.REQUEST_FAILED,

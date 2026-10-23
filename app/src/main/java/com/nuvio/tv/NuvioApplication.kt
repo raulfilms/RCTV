@@ -46,6 +46,8 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     @Inject lateinit var sentrySettingsDataStore: SentrySettingsDataStore
     @Inject lateinit var imagePerformancePreferences: ImagePerformancePreferences
     @Inject lateinit var simklAnimeIdPreferenceHolder: SimklAnimeIdPreferenceHolder
+    /** RCTV: created at start so every part of the app (the player's next episode too) ranks with it. */
+    @Inject lateinit var smartScraper: com.nuvio.tv.core.smartscraper.SmartScraper
 
     companion object {
         /**

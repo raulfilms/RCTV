@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,7 @@ import com.nuvio.tv.ui.components.NuvioDialog
 private enum class PlaybackSection {
     GENERAL,
     STREAM_SELECTION,
+    SMART_SCRAPER,
     AUDIO_TRAILER,
     SUBTITLES,
     P2P,
@@ -204,6 +206,9 @@ internal fun PlaybackSettingsSections(
     var afrExpanded by rememberSaveable { mutableStateOf(false) }
     var autoSkipExpanded by rememberSaveable { mutableStateOf(false) }
     var streamExpanded by rememberSaveable { mutableStateOf(false) }
+    var smartScraperExpanded by rememberSaveable { mutableStateOf(false) }
+    val smartScraperViewModel: SmartScraperSettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val smartScraperConfig by smartScraperViewModel.config.collectAsState()
     var audioTrailerExpanded by rememberSaveable { mutableStateOf(false) }
     var subtitlesExpanded by rememberSaveable { mutableStateOf(false) }
     var p2pExpanded by rememberSaveable { mutableStateOf(false) }
@@ -213,6 +218,7 @@ internal fun PlaybackSettingsSections(
     val afrHeaderFocus = remember { FocusRequester() }
     val autoSkipHeaderFocus = remember { FocusRequester() }
     val streamHeaderFocus = remember { FocusRequester() }
+    val smartScraperHeaderFocus = remember { FocusRequester() }
     val audioTrailerHeaderFocus = remember { FocusRequester() }
     val subtitlesHeaderFocus = remember { FocusRequester() }
     val p2pHeaderFocus = remember { FocusRequester() }
@@ -256,6 +262,8 @@ internal fun PlaybackSettingsSections(
     val strSectionGeneralDesc = stringResource(R.string.playback_section_general_desc)
     val strSectionPlayer = stringResource(R.string.playback_section_player)
     val strSectionPlayerDesc = stringResource(R.string.playback_section_player_desc)
+    val strSectionSmartScraper = stringResource(R.string.settings_smart_scraper)
+    val strSectionSmartScraperDesc = stringResource(R.string.settings_smart_scraper_desc)
     val strSectionAudio = stringResource(R.string.playback_section_audio)
     val strSectionAudioDesc = stringResource(R.string.playback_section_audio_desc)
     val strSectionSubtitles = stringResource(R.string.playback_section_subtitles)
@@ -301,6 +309,11 @@ internal fun PlaybackSettingsSections(
     LaunchedEffect(streamExpanded, focusedSection) {
         if (!streamExpanded && focusedSection == PlaybackSection.STREAM_SELECTION) {
             streamHeaderFocus.requestFocus()
+        }
+    }
+    LaunchedEffect(smartScraperExpanded, focusedSection) {
+        if (!smartScraperExpanded && focusedSection == PlaybackSection.SMART_SCRAPER) {
+            smartScraperHeaderFocus.requestFocus()
         }
     }
     LaunchedEffect(audioTrailerExpanded, focusedSection) {
@@ -574,6 +587,23 @@ internal fun PlaybackSettingsSections(
                     onFocused = { focusedSection = PlaybackSection.STREAM_SELECTION }
                 )
             }
+        }
+
+        // RCTV: the Smart Scraper's rules (how sources are checked, filtered and ranked).
+        playbackCollapsibleSection(
+            keyPrefix = "smart_scraper",
+            title = strSectionSmartScraper,
+            description = strSectionSmartScraperDesc,
+            expanded = smartScraperExpanded,
+            onToggle = { smartScraperExpanded = !smartScraperExpanded },
+            focusRequester = smartScraperHeaderFocus,
+            onHeaderFocused = { focusedSection = PlaybackSection.SMART_SCRAPER }
+        ) {
+            smartScraperSettingsItems(
+                config = smartScraperConfig,
+                onUpdate = smartScraperViewModel::update,
+                onItemFocused = { focusedSection = PlaybackSection.SMART_SCRAPER }
+            )
         }
 
         playbackCollapsibleSection(

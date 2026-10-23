@@ -98,7 +98,6 @@ import com.nuvio.tv.ui.components.P2pConsentDialog
 import com.nuvio.tv.ui.components.StreamBadgeChips
 import com.nuvio.tv.ui.components.StreamsSkeletonList
 import com.nuvio.tv.ui.screens.player.LoadingOverlay
-import com.nuvio.tv.ui.screens.player.AddonFilterChips
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.navigation.sourceSelectionRestoreTarget
 import androidx.compose.runtime.DisposableEffect
@@ -282,7 +281,7 @@ fun StreamScreen(
             viewModel.onEvent(StreamScreenEvent.OnAutoPlayConsumed)
             return@LaunchedEffect
         }
-        val playbackInfo = viewModel.resolveStreamForPlayback(stream)
+        val playbackInfo = viewModel.resolveSmartStreamForPlayback(stream)
         if (playbackInfo == null) {
             viewModel.onEvent(StreamScreenEvent.OnAutoPlayConsumed)
             return@LaunchedEffect
@@ -442,7 +441,11 @@ fun StreamScreen(
                 RightStreamSection(
                     isLoading = uiState.isLoading,
                     error = uiState.error,
-                    streams = uiState.filteredStreams,
+                    items = uiState.sourceItems,
+                    smartCount = uiState.smartSourceCount,
+                    smartView = uiState.smartView,
+                    hasAnyStreams = uiState.allStreams.isNotEmpty(),
+                    onSmartViewChange = { viewModel.updateSmartView(it) },
                     availableAddons = uiState.availableAddons,
                     sourceChips = uiState.sourceChips,
                     selectedAddonFilter = uiState.selectedAddonFilter,
@@ -463,7 +466,7 @@ fun StreamScreen(
                             focusedStreamIndex = currentIndex
                         }
                         scope.coroutineLaunch {
-                            val playbackInfo = viewModel.resolveStreamForPlayback(stream)
+                            val playbackInfo = viewModel.resolveSmartStreamForPlayback(stream)
                             if (playbackInfo != null) {
                                 pendingRestoreOnResume = true
                                 routePlayback(playbackInfo)
@@ -728,7 +731,11 @@ private fun LeftContentSection(
 private fun RightStreamSection(
     isLoading: Boolean,
     error: String?,
-    streams: List<Stream>,
+    items: List<SmartSourceItem>,
+    smartCount: Int,
+    smartView: com.nuvio.tv.core.smartscraper.SmartSourceViewSettings,
+    hasAnyStreams: Boolean,
+    onSmartViewChange: ((com.nuvio.tv.core.smartscraper.SmartSourceViewSettings) -> com.nuvio.tv.core.smartscraper.SmartSourceViewSettings) -> Unit,
     availableAddons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddonFilter: String?,
@@ -759,7 +766,9 @@ private fun RightStreamSection(
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // RCTV: the addons are never named: only "Refresh" and "All" above the streams.
     val orderedAddonNames = remember { emptyList<String>() }
-    val firstStreamKey = streams.firstOrNull()?.stableKey(0)
+    val firstStreamKey = items.firstOrNull()?.stream?.stableKey(0)
+    // RCTV: Up from the first source goes to the Automatic/Manual chip that's on.
+    val modeFocusRequester = remember { FocusRequester() }
     val refreshFocusRequester = remember { FocusRequester() }
     val allFocusRequester = remember { FocusRequester() }
     val addonFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
@@ -818,13 +827,12 @@ private fun RightStreamSection(
         }
         trackedFirstStreamKey = firstStreamKey
     }
-    fun requestChipFocus(index: Int) {
-        if (index !in chipFocusRequesters.indices) return
+    fun requestChipFocus(@Suppress("UNUSED_PARAMETER") index: Int) {
         userMovedFromFirstResult = true
         focusJob?.cancel()
         focusJob = scope.coroutineLaunch {
             withFrameNanos { }
-            runCatching { chipFocusRequesters[index].requestFocus() }
+            runCatching { modeFocusRequester.requestFocus() }
         }
     }
 
@@ -834,27 +842,26 @@ private fun RightStreamSection(
     ) {
         val chipRowHeight = NuvioTheme.spacing.huge
 
-        // Addon filter chips
+        // RCTV Smart Scraper: Refresh, Automatic / Manual, and in manual mode the order and filters.
         Box(modifier = Modifier.height(chipRowHeight)) {
             androidx.compose.animation.AnimatedVisibility(
                 visible = sourceChips.isNotEmpty() || (!isLoading && availableAddons.isNotEmpty()),
                 enter = fadeIn(animationSpec = tween(300)),
                 exit = fadeOut(animationSpec = tween(300))
             ) {
-                AddonFilterChips(
-                    addons = emptyList(),
-                    sourceChips = emptyList(),
-                    selectedAddon = null,
+                SmartSourceControls(
+                    view = smartView,
                     isStillFetching = sourceChips.any { it.status == SourceChipStatus.LOADING },
                     onRefresh = {
                         userMovedFromFirstResult = false
                         firstResultFocusAssigned = false
                         onRefresh()
                     },
-                    onAddonSelected = { onAddonFilterSelected(null) },
-                    externalFocusRequesters = chipFocusRequesters,
-                    externalOrderedNames = orderedAddonNames,
-                    debugTag = "StreamScreen"
+                    onViewChange = { transform ->
+                        userMovedFromFirstResult = true
+                        onSmartViewChange(transform)
+                    },
+                    modeFocusRequester = modeFocusRequester
                 )
             }
         }
@@ -905,12 +912,24 @@ private fun RightStreamSection(
                             onRetry = onRetry
                         )
                     }
-                    streams.isEmpty() -> {
+                    items.isEmpty() && hasAnyStreams && smartView.manual -> {
+                        // Manual mode: nothing fits the chosen filters.
+                        Text(
+                            text = stringResource(R.string.smart_no_matches),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = NuvioTheme.extendedColors.textSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(NuvioTheme.spacing.xxl)
+                        )
+                    }
+                    items.isEmpty() -> {
                         EmptyState(onPreviewPlayer = onPreviewPlayer)
                     }
                     else -> {
                         StreamsList(
-                            streams = streams,
+                            items = items,
+                            smartCount = smartCount,
+                            manual = smartView.manual,
                             onStreamSelected = onStreamSelected,
                             focusedStreamIndex = focusedStreamIndex,
                             shouldRestoreFocusedStream = shouldRestoreFocusedStream,
@@ -1077,7 +1096,9 @@ private fun EmptyState(onPreviewPlayer: (() -> Unit)? = null) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun StreamsList(
-    streams: List<Stream>,
+    items: List<SmartSourceItem>,
+    smartCount: Int,
+    manual: Boolean,
     onStreamSelected: (Stream) -> Unit,
     focusedStreamIndex: Int = 0,
     shouldRestoreFocusedStream: Boolean = false,
@@ -1100,6 +1121,10 @@ private fun StreamsList(
     val lastKeyRepeatDispatchRef = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     val restoreFocusRequester = remember { FocusRequester() }
     val streamListState = rememberLazyListState()
+    val streams = remember(items) { items.map { it.stream } }
+    // RCTV: a header over the smart sources and one over all of them: where source [index] is in the list.
+    val hasSmartHeader = smartCount > 0
+    fun lazyIndexOf(index: Int): Int = index + (if (hasSmartHeader) 1 else 0) + (if (index >= smartCount) 1 else 0)
     val streamKeys = remember(streams) {
         val seen = mutableMapOf<String, Int>()
         streams.map { stream ->
@@ -1141,7 +1166,7 @@ private fun StreamsList(
         }
         repeat(2) { withFrameNanos { } }
         try {
-            streamListState.scrollToItem(targetIndex)
+            streamListState.scrollToItem(lazyIndexOf(targetIndex))
             withFrameNanos { }
             restoreFocusRequester.requestFocus()
         } catch (_: Exception) {
@@ -1156,7 +1181,7 @@ private fun StreamsList(
         }
     }
     LaunchedEffect(lastVisibleIndex.value, streams.size) {
-        if (lastVisibleIndex.value >= streams.size - 20) {
+        if (lastVisibleIndex.value >= lazyIndexOf(streams.size) - 20) {
             onExpandStreams()
         }
     }
@@ -1205,16 +1230,56 @@ private fun StreamsList(
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
         contentPadding = PaddingValues(start = NuvioTheme.spacing.sm, end = NuvioTheme.spacing.sm, top = NuvioTheme.spacing.sm, bottom = NuvioTheme.spacing.xxl)
     ) {
-        itemsIndexed(streams, key = { index, _ ->
+        if (hasSmartHeader) {
+            item(key = "smart_sources_header") {
+                SmartSourcesHeader(stringResource(R.string.smart_sources_header))
+            }
+        }
+        itemsIndexed(items.take(smartCount), key = { index, _ ->
             streamKeys[index]
-        }) { index, stream ->
+        }) { index, item ->
             Box(modifier = Modifier.padding(vertical = NuvioTheme.spacing.xs)) {
                 StreamCard(
-                    stream = stream,
+                    stream = item.stream,
+                    item = item,
                     showFileSizeBadges = showFileSizeBadges,
                     showAddonLogo = showAddonLogo,
                     badgePlacement = badgePlacement,
-                    reserveBadgeSpace = hasBadgeRules && stream.badges.isEmpty(),
+                    reserveBadgeSpace = false,
+                    onClick = { onStreamSelected(item.stream) },
+                    focusRequester = when {
+                        shouldRestoreFocusedStream && index == focusedStreamIndex.coerceIn(0, (streams.lastIndex).coerceAtLeast(0)) -> restoreFocusRequester
+                        else -> streamFocusRequesters.getOrPut(streamKeys[index]) { FocusRequester() }
+                    },
+                    onFocusChanged = { focused ->
+                        if (index == 0) {
+                            firstCardHasFocus = focused
+                        }
+                    },
+                    onUpKey = if (index == 0) {{ onRequestChipFocus(1) }} else null
+                )
+            }
+        }
+        if (items.size > smartCount) {
+            item(key = "all_sources_header") {
+                SmartSourcesHeader(
+                    stringResource(if (manual) R.string.smart_sources_manual_header else R.string.smart_sources_all_header)
+                )
+            }
+        }
+        itemsIndexed(items.drop(smartCount), key = { offset, _ ->
+            streamKeys[smartCount + offset]
+        }) { offset, item ->
+            val index = smartCount + offset
+            val stream = item.stream
+            Box(modifier = Modifier.padding(vertical = NuvioTheme.spacing.xs)) {
+                StreamCard(
+                    stream = stream,
+                    item = item,
+                    showFileSizeBadges = showFileSizeBadges,
+                    showAddonLogo = showAddonLogo,
+                    badgePlacement = badgePlacement,
+                    reserveBadgeSpace = false,
                     onClick = { onStreamSelected(stream) },
                     focusRequester = when {
                         shouldRestoreFocusedStream && index == focusedStreamIndex.coerceIn(0, (streams.lastIndex).coerceAtLeast(0)) -> restoreFocusRequester
@@ -1225,11 +1290,7 @@ private fun StreamsList(
                             firstCardHasFocus = focused
                         }
                     },
-                    onUpKey = if (index == 0) {{
-                        val idx = if (selectedAddonFilter == null) 1
-                                  else orderedAddonNames.indexOf(selectedAddonFilter) + 2
-                        onRequestChipFocus(idx)
-                    }} else null
+                    onUpKey = if (index == 0) {{ onRequestChipFocus(1) }} else null
                 )
             }
         }
@@ -1240,6 +1301,8 @@ private fun StreamsList(
 @Composable
 private fun StreamCard(
     stream: Stream,
+    /** RCTV Smart Scraper: what the source is, its labels, its copies (null: read from the stream). */
+    item: SmartSourceItem? = null,
     showFileSizeBadges: Boolean,
     showAddonLogo: Boolean,
     badgePlacement: StreamBadgePlacement,
@@ -1254,10 +1317,16 @@ private fun StreamCard(
     val unknownStreamLabel = stringResource(R.string.stream_generic_label)
     // RCTV: what the stream is (4K, HDR, size, language), never its addon's or service's words.
     val label = remember(stream, unknownStreamLabel) { com.nuvio.tv.ui.util.SourcePrivacy.streamLabel(stream, unknownStreamLabel) }
-    val streamName = label.title
-    val streamDescription = label.details
-    // Neither the addons' badges (they name services): the file's size alone.
-    val hasBadges = (showFileSizeBadges && stream.behaviorHints?.videoSize != null) || reserveBadgeSpace
+    // RCTV Smart Scraper: its normalized metadata ("4K · Dolby Vision", "7.4 GB · DDP Atmos 5.1 · HEVC"),
+    // what's known only; and how many addons/services have the same file (never which).
+    val copiesText = item?.copies?.takeIf { it > 1 }?.let { stringResource(R.string.smart_source_copies, it) }
+    val streamName = remember(item, label) { item?.release?.let(SmartSourceText::picture) ?: label.title }
+    val streamDescription = remember(item, label, copiesText) {
+        val details = item?.release?.let(SmartSourceText::details) ?: label.details
+        listOfNotNull(details, copiesText).joinToString(" · ").ifBlank { null }
+    }
+    // Neither the addons' badges (they name services): the size is in the details already when known.
+    val hasBadges = item == null && ((showFileSizeBadges && stream.behaviorHints?.videoSize != null) || reserveBadgeSpace)
     val cardShape = RoundedCornerShape(NuvioTheme.radii.md)
     val hasGradientFocusRing = NuvioTheme.palette.focusRingGradient.size > 1
 
@@ -1361,6 +1430,20 @@ private fun StreamCard(
                     } else {
                         Spacer(modifier = Modifier.height(22.dp))
                     }
+                }
+
+                if (item != null && item.labels.isNotEmpty()) {
+                    SmartLabelChips(
+                        labels = item.labels,
+                        modifier = Modifier.padding(top = NuvioTheme.spacing.xxs)
+                    )
+                }
+                item?.debugText?.let { debug ->
+                    Text(
+                        text = debug,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NuvioTheme.extendedColors.textSecondary.copy(alpha = 0.8f)
+                    )
                 }
             }
 

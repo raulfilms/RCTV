@@ -367,7 +367,9 @@ data class PlayerSettings(
 }
 
 enum class StreamAutoPlayMode {
-    MANUAL, FIRST_STREAM, REGEX_MATCH
+    MANUAL, FIRST_STREAM, REGEX_MATCH,
+    /** RCTV: the Smart Scraper's best source (right title, best practical quality for this TV and connection). */
+    SMART
 }
 
 enum class StreamAutoPlaySource {
