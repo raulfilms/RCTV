@@ -261,7 +261,7 @@ data class PlayerSettings(
     val frameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.OFF,
     val resolutionMatchingEnabled: Boolean = false,
     // Stream selection settings
-    val streamAutoPlayMode: StreamAutoPlayMode = StreamAutoPlayMode.MANUAL,
+    val streamAutoPlayMode: StreamAutoPlayMode = StreamAutoPlayMode.AUTO_STREAM,
     val streamAutoPlaySource: StreamAutoPlaySource = StreamAutoPlaySource.ALL_SOURCES,
     val streamAutoPlaySelectedAddons: Set<String> = emptySet(),
     val streamAutoPlaySelectedPlugins: Set<String> = emptySet(),
@@ -368,8 +368,12 @@ data class PlayerSettings(
 
 enum class StreamAutoPlayMode {
     MANUAL, FIRST_STREAM, REGEX_MATCH,
-    /** RCTV: the Smart Scraper's best source (right title, best practical quality for this TV and connection). */
-    SMART
+    /**
+     * RCTV Auto Stream (the default): Play starts the best stream on its own, chosen by the Smart
+     * Scraper under Auto Stream's rules (right title and episode, under 6 GB, 5.1 or stereo, the
+     * highest resolution the connection plays), trying the next one when one fails.
+     */
+    AUTO_STREAM
 }
 
 enum class StreamAutoPlaySource {
@@ -914,9 +918,11 @@ class PlayerSettingsDataStore @Inject constructor(
                     runCatching { FrameRateMatchingMode.valueOf(it) }.getOrNull()
                 } ?: if (prefs[frameRateMatchingKey] == true) FrameRateMatchingMode.START_STOP else FrameRateMatchingMode.OFF,
                 resolutionMatchingEnabled = prefs[resolutionMatchingEnabledKey] ?: false,
+                // RCTV: Auto Stream unless the person chose otherwise ("SMART" was its first name).
                 streamAutoPlayMode = prefs[streamAutoPlayModeKey]?.let {
-                    runCatching { StreamAutoPlayMode.valueOf(it) }.getOrDefault(StreamAutoPlayMode.MANUAL)
-                } ?: StreamAutoPlayMode.MANUAL,
+                    if (it == "SMART") StreamAutoPlayMode.AUTO_STREAM
+                    else runCatching { StreamAutoPlayMode.valueOf(it) }.getOrDefault(StreamAutoPlayMode.AUTO_STREAM)
+                } ?: StreamAutoPlayMode.AUTO_STREAM,
                 streamAutoPlaySource = prefs[streamAutoPlaySourceKey]?.let {
                     runCatching { StreamAutoPlaySource.valueOf(it) }.getOrDefault(StreamAutoPlaySource.ALL_SOURCES)
                 } ?: StreamAutoPlaySource.ALL_SOURCES,

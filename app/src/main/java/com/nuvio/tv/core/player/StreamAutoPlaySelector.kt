@@ -58,9 +58,9 @@ object StreamAutoPlaySelector {
         preferredBingeGroup: String? = null,
         preferBingeGroupInSelection: Boolean = false,
         bingeGroupOnly: Boolean = false,
-        /** SMART: the title asked for (its streams are checked against it). */
+        /** AUTO_STREAM: the title asked for (its streams are checked against it). */
         smartRequest: SmartSourceRequest? = null,
-        /** SMART: the Smart Scraper's order already worked out (else it's worked out here). */
+        /** AUTO_STREAM: Auto Stream's order already worked out (else it's worked out here). */
         smartRanking: List<Stream>? = null
     ): Stream? {
         if (streams.isEmpty()) return null
@@ -86,6 +86,22 @@ object StreamAutoPlaySelector {
         }
         if (candidateStreams.isEmpty()) return null
 
+        // RCTV Auto Stream: only what its rules allow (right title and episode, under 6 GB, 5.1 or
+        // stereo, 480p to 4K), in its order; the binge group kept from the last episode is
+        // preferred among those, never over them.
+        if (mode == StreamAutoPlayMode.AUTO_STREAM) {
+            val candidates = candidateStreams.toHashSet()
+            val ranking = (smartRanking
+                ?: SmartScraperEnvironment.autoStreamRank(candidateStreams, smartRequest ?: SmartSourceRequest.UNKNOWN).chain)
+                .filter { it in candidates && isPlayable(it) }
+            val group = preferredBingeGroup?.trim().orEmpty()
+            if (preferBingeGroupInSelection && group.isNotEmpty()) {
+                ranking.firstOrNull { it.behaviorHints?.bingeGroup == group }?.let { return it }
+            }
+            if (bingeGroupOnly) return null
+            return ranking.firstOrNull()
+        }
+
         // Binge group matching takes priority over mode — even in MANUAL mode,
         // a persisted binge group should auto-play without showing the picker.
         val targetBingeGroup = preferredBingeGroup?.trim().orEmpty()
@@ -107,14 +123,7 @@ object StreamAutoPlaySelector {
         return when (mode) {
             StreamAutoPlayMode.MANUAL -> null
             StreamAutoPlayMode.FIRST_STREAM -> candidateStreams.firstOrNull { isPlayable(it) }
-            // RCTV: the best smart source that can play now (never one that breaks a hard rule:
-            // wrong title or episode, under 720p, CAM/TS, over the size limit, not cached).
-            StreamAutoPlayMode.SMART -> {
-                val ranking = smartRanking
-                    ?: SmartScraperEnvironment.rank(candidateStreams, smartRequest ?: SmartSourceRequest.UNKNOWN).fallbackChain
-                val candidates = candidateStreams.toHashSet()
-                ranking.firstOrNull { it in candidates && isPlayable(it) }
-            }
+            StreamAutoPlayMode.AUTO_STREAM -> null // chosen above
             StreamAutoPlayMode.REGEX_MATCH -> {
                 val pattern = regexPattern.trim()
  

@@ -1186,6 +1186,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (playbackState == Player.STATE_BUFFERING) {
                             if (hasRenderedFirstFrame && rebufferStartedAtMs == 0L) {
                                 rebufferCount += 1
+                                onAutoStreamRebuffer(rebufferCount)
                                 rebufferStartedAtMs = SystemClock.elapsedRealtime()
                                 playbackAnalyticsDiagnostics.onRebufferStarted(this@apply, rebufferCount)
                                 Log.i(
@@ -1701,6 +1702,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                                 playerSettingsDataStore.setLastPlaybackDiagnostics(errorDiagnostics)
                             }
                         }
+
+                        // RCTV Auto Stream: the title's next valid source plays instead of the error.
+                        if (tryAutoStreamFallback("error ${error.errorCodeName}")) return
 
                         // Fatal error: stop any next-episode auto-play that may have been
                         // armed by a short placeholder ENDED or residual post-play state.

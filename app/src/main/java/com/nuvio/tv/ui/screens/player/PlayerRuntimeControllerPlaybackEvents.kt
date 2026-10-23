@@ -1571,6 +1571,8 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             filterEpisodeStreamsByAddon(event.addonName)
         }
         is PlayerEvent.OnEpisodeStreamSelected -> {
+            // RCTV: chosen by hand: Auto Stream doesn't swap it on its own.
+            com.nuvio.tv.core.smartscraper.AutoStreamSession.end()
             switchToEpisodeStream(event.stream)
         }
         PlayerEvent.OnShowSourcesPanel -> {
@@ -1586,6 +1588,7 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             filterSourceStreamsByAddon(event.addonName)
         }
         is PlayerEvent.OnSourceStreamSelected -> {
+            com.nuvio.tv.core.smartscraper.AutoStreamSession.end()
             switchToSourceStream(event.stream)
         }
         PlayerEvent.OnDismissTransientOverlay -> {

@@ -254,6 +254,7 @@ object ReleaseParser {
             if (RES_1080.containsMatchIn(text)) add(VideoResolution.FHD_1080)
             if (RES_720.containsMatchIn(text)) add(VideoResolution.HD_720)
             if (RES_SD.containsMatchIn(text)) add(VideoResolution.SD)
+            if (RES_LOW.containsMatchIn(text)) add(VideoResolution.LOW)
         }
         return found.maxByOrNull { it.level }
     }
@@ -397,7 +398,8 @@ object ReleaseParser {
     private val RES_1440 = rx("$B(1440[pi]?|2k|2560 ?x ?1440)$E")
     private val RES_1080 = rx("$B(1080[pi]|fhd|full ?hd|1920 ?x ?1080)$E")
     private val RES_720 = rx("$B(720[pi]|1280 ?x ?720)$E")
-    private val RES_SD = rx("$B(480[pi]|576[pi]|360[pi]|240[pi]|sd)$E")
+    private val RES_SD = rx("$B(480[pi]|576[pi]|sd)$E")
+    private val RES_LOW = rx("$B(360[pi]|240[pi])$E")
     private val SD_HINT = rx("$B(dvd ?rip|xvid|divx|vhs ?rip)$E")
 
     private val CAM = rx("$B(cam ?rip|hd ?cam|hq ?cam|cam)$E")

@@ -18,6 +18,8 @@ import com.nuvio.tv.core.torrent.TorrentState
 import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.player.StreamAutoPlaySelector
 import com.nuvio.tv.core.imdb.EpisodeOrderRegistry
+import com.nuvio.tv.core.smartscraper.AutoStreamEngine
+import com.nuvio.tv.core.smartscraper.AutoStreamSession
 import com.nuvio.tv.core.smartscraper.ScoredSource
 import com.nuvio.tv.core.smartscraper.SmartScoreEngine
 import com.nuvio.tv.core.smartscraper.SmartScraper
@@ -72,6 +74,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 private const val TAG = "StreamScreenViewModel"
@@ -153,6 +156,9 @@ class StreamScreenViewModel @Inject constructor(
     private val streamCacheKey: String = "${contentType.lowercase()}|$videoId"
 
     // RCTV Smart Scraper (declared before init: it may lay sources out right away).
+    /** Auto Stream's order for this title, once it chose (what to play, then fall back on). */
+    private var autoStreamChain: List<Stream> = emptyList()
+
     /** Every source the Smart Scraper laid out (the shown ones are its first page). */
     private var sourceItemsFull: List<SmartSourceItem> = emptyList()
     @Volatile private var lastSmartResult: SmartSourcesResult = SmartSourcesResult.EMPTY
@@ -369,6 +375,15 @@ class StreamScreenViewModel @Inject constructor(
         streamLoadJob = newScope.launch {
             streamLoadCompleted = false
             val playerSettings = playerSettingsDataStore.playerSettings.first()
+            // RCTV Auto Stream: its own rules and timing (answers gathered ~5 s, nothing valid by
+            // ~8 s means the sources are shown), never on a screen opened to choose by hand.
+            val autoStreamMode = playerSettings.streamAutoPlayMode == StreamAutoPlayMode.AUTO_STREAM && !manualSelection
+            val autoStreamConfig = smartScraper.config.autoStream
+            val loadStartedAtMs = System.currentTimeMillis()
+            val autoStreamGiveUpAtMs = loadStartedAtMs +
+                (autoStreamConfig.budgetSeconds - 2).coerceAtLeast(autoStreamConfig.collectSeconds) * 1_000L
+            fun autoStreamStillWaiting(): Boolean = autoStreamMode && System.currentTimeMillis() < autoStreamGiveUpAtMs
+            autoStreamChain = emptyList()
             if (manualSelection) {
                 directAutoPlayModeInitializedForSession = true
                 directAutoPlayFlowEnabledForSession = false
@@ -525,6 +540,11 @@ class StreamScreenViewModel @Inject constructor(
                 // chance to return higher-quality streams before the selector
                 // picks from whatever is available.
                 val shouldAutoSelect = !autoPlayHandledForSession && !resolvedAutoPlayTarget && isAllLoaded
+                val autoStreamResult = if (shouldAutoSelect && autoStreamMode) {
+                    smartScraper.autoStreamRank(allStreams, smartRequest())
+                } else {
+                    null
+                }
                 val selectedAutoPlayStream = if (!shouldAutoSelect) {
                     null
                 } else {
@@ -539,11 +559,20 @@ class StreamScreenViewModel @Inject constructor(
                         preferredBingeGroup = persistedBingeGroup,
                         preferBingeGroupInSelection = persistedBingeGroup != null,
                         smartRequest = smartRequest(),
-                        smartRanking = smartResult.fallbackChain
+                        smartRanking = autoStreamResult?.chain ?: smartResult.fallbackChain
                     )
                 }
                 if (selectedAutoPlayStream != null) {
                     resolvedAutoPlayTarget = true
+                    autoStreamResult?.let { autoStreamChain = it.chain }
+                }
+                // Auto Stream: what it's about to play ("4K · 5.7 GB · 5.1"), never where from.
+                val autoStreamSummary = if (selectedAutoPlayStream != null && autoStreamResult != null &&
+                    playerSettings.showPlayerLoadingStatus
+                ) {
+                    AutoStreamEngine.summary(smartScraper.normalize(selectedAutoPlayStream).release).ifBlank { null }
+                } else {
+                    null
                 }
 
                 val currentFilter = _uiState.value.selectedAddonFilter
@@ -570,6 +599,7 @@ class StreamScreenViewModel @Inject constructor(
                             // would otherwise clobber the real pick with null before
                             // Compose observes it.
                             autoPlayStream = selectedAutoPlayStream ?: it.autoPlayStream,
+                            directAutoPlayMessage = autoStreamSummary ?: it.directAutoPlayMessage,
                             error = null,
                             showDirectAutoPlayOverlay = if (directAutoPlayFlowEnabledForSession || it.autoPlayPlaybackInfo != null) {
                                 true
@@ -622,7 +652,25 @@ class StreamScreenViewModel @Inject constructor(
             var autoSelectTriggered = false
             var timeoutElapsed = false
             var debridPreparationLaunched = false
-            val isUnlimitedTimeout = playerSettings.streamAutoPlayTimeoutSeconds == PlayerSettings.STREAM_AUTOPLAY_TIMEOUT_UNLIMITED
+            val isUnlimitedTimeout = !autoStreamMode &&
+                playerSettings.streamAutoPlayTimeoutSeconds == PlayerSettings.STREAM_AUTOPLAY_TIMEOUT_UNLIMITED
+
+            /** Auto Stream found nothing it may play in time: the sources are shown, and why. */
+            fun autoStreamGaveUp() {
+                autoPlayHandledForSession = true
+                directAutoPlayFlowEnabledForSession = false
+                val hadStreams = lastSuccessData?.any { it.streams.isNotEmpty() } == true
+                updateUiStateIfChanged {
+                    it.copy(
+                        isLoading = false,
+                        isDirectAutoPlayFlow = false,
+                        showDirectAutoPlayOverlay = false,
+                        directAutoPlayMessage = null,
+                        playbackErrorMessage = if (hadStreams) context.getString(R.string.auto_stream_nothing_found) else it.playbackErrorMessage
+                    )
+                }
+                externalPlaybackTracker.releaseAutoNextOverlay(forceRelease = true)
+            }
 
             fun launchDirectDebridPreparationIfNeeded(streamGroups: List<AddonStreams>) {
                 if (debridPreparationLaunched || streamGroups.none { group -> group.streams.any { it.isReadyForDebridPreparation() } }) {
@@ -691,7 +739,7 @@ class StreamScreenViewModel @Inject constructor(
                                 applySuccess(result.data, isAllLoaded = true)
                                 if (resolvedAutoPlayTarget) {
                                     autoSelectTriggered = true
-                                } else if (directAutoPlayFlowEnabledForSession && !isUnlimitedTimeout) {
+                                } else if (directAutoPlayFlowEnabledForSession && !isUnlimitedTimeout && !autoStreamStillWaiting()) {
                                     // Bounded/instant timeout: no match found.
                                     // If there are still torrents with a pending
                                     // debrid cache check, wait for the next emission
@@ -723,6 +771,11 @@ class StreamScreenViewModel @Inject constructor(
                                     result.data, installedAddonOrder
                                 )
                                 val allStreams = orderedStreams.flatMap { it.streams }
+                                val earlyAutoStream = if (autoStreamMode) {
+                                    smartScraper.autoStreamRank(allStreams, smartRequest())
+                                } else {
+                                    null
+                                }
                                 val earlyMatch = StreamAutoPlaySelector.selectAutoPlayStream(
                                     streams = allStreams,
                                     mode = playerSettings.streamAutoPlayMode,
@@ -733,9 +786,12 @@ class StreamScreenViewModel @Inject constructor(
                                     selectedPlugins = playerSettings.streamAutoPlaySelectedPlugins,
                                     preferredBingeGroup = persistedBingeGroup,
                                     preferBingeGroupInSelection = true,
-                                    bingeGroupOnly = true
+                                    bingeGroupOnly = true,
+                                    smartRequest = smartRequest(),
+                                    smartRanking = earlyAutoStream?.chain
                                 )
                                 if (earlyMatch != null) {
+                                    earlyAutoStream?.let { autoStreamChain = it.chain }
                                     resolvedAutoPlayTarget = true
                                     autoSelectTriggered = true
                                     updateUiStateIfChanged {
@@ -781,7 +837,9 @@ class StreamScreenViewModel @Inject constructor(
                     lastSuccessData?.let { applySuccess(it, isAllLoaded = true) }
                 }
                 markRemainingSourceChipsAsError()
-                if (directAutoPlayFlowEnabledForSession && !resolvedAutoPlayTarget) {
+                if (autoStreamMode && directAutoPlayFlowEnabledForSession && !resolvedAutoPlayTarget) {
+                    autoStreamGaveUp()
+                } else if (directAutoPlayFlowEnabledForSession && !resolvedAutoPlayTarget) {
                     directAutoPlayFlowEnabledForSession = false
                     // All addons finished with no instant stream to auto-play: drop the loader and
                     // reveal the manual picker now instead of holding until the hard timeout. Clear
@@ -806,8 +864,28 @@ class StreamScreenViewModel @Inject constructor(
             // - unlimited: check each addon response as it arrives; if a match
             //   is found use it immediately; otherwise keep waiting until all
             //   addons finish or the hard timeout (60s) forces a fallback.
-            val timeoutMs = playerSettings.streamAutoPlayTimeoutSeconds * 1_000L
-            if (PlayerSettings.isBoundedTimeout(playerSettings.streamAutoPlayTimeoutSeconds)) {
+            val timeoutMs = if (autoStreamMode) {
+                autoStreamConfig.collectSeconds * 1_000L
+            } else {
+                playerSettings.streamAutoPlayTimeoutSeconds * 1_000L
+            }
+            if (autoStreamMode && directFlowActive) {
+                // Auto Stream's last call: still nothing it may play, the sources are shown.
+                launch {
+                    delay((autoStreamGiveUpAtMs - System.currentTimeMillis()).coerceAtLeast(0L))
+                    if (!directAutoPlayFlowEnabledForSession || resolvedAutoPlayTarget) return@launch
+                    lastSuccessData?.let { applySuccess(it, isAllLoaded = true) }
+                    if (resolvedAutoPlayTarget) {
+                        autoSelectTriggered = true
+                    } else {
+                        autoStreamGaveUp()
+                    }
+                }
+            }
+            if (autoStreamMode) {
+                // Sooner when every addon has answered (the stream flow ends then).
+                withTimeoutOrNull(timeoutMs) { streamLoadInner.join() }
+            } else if (PlayerSettings.isBoundedTimeout(playerSettings.streamAutoPlayTimeoutSeconds)) {
                 delay(timeoutMs)
             }
             timeoutElapsed = true
@@ -825,7 +903,9 @@ class StreamScreenViewModel @Inject constructor(
             // user sees the stream picker.
             // For unlimited: keep the overlay — we continue checking as more
             // addons respond until the hard timeout below.
-            if (directFlowActive && !resolvedAutoPlayTarget && lastSuccessData != null && !isUnlimitedTimeout) {
+            if (directFlowActive && !resolvedAutoPlayTarget && lastSuccessData != null && !isUnlimitedTimeout &&
+                !autoStreamStillWaiting()
+            ) {
                 // If torrents are still pending cache check, the next emission
                 // will carry the result — don't tear down yet.
                 val hasCheckingTorrents = lastSuccessData?.any { group ->
@@ -1264,25 +1344,50 @@ class StreamScreenViewModel @Inject constructor(
      * [stream] ready to play; when it can't be (the debrid service won't give its link), the next
      * smart sources are tried, a few at most, never another title or episode.
      */
-    suspend fun resolveSmartStreamForPlayback(stream: Stream): StreamPlaybackInfo? {
-        resolveStreamForPlayback(stream)?.let { return it }
+    suspend fun resolveSmartStreamForPlayback(stream: Stream, auto: Boolean = false): StreamPlaybackInfo? {
+        // Auto Stream's pick: each source gets a few seconds to give its link, then the next valid
+        // one is tried; the player keeps the rest to move on to if one won't start.
+        val autoChain = autoStreamChain.takeIf { auto && it.isNotEmpty() }
+        if (autoChain == null) AutoStreamSession.end()
+        val resolveTimeoutMs = smartScraper.config.autoStream.resolveTimeoutSeconds * 1_000L
+        suspend fun attempt(candidate: Stream): StreamPlaybackInfo? =
+            if (autoChain != null) withTimeoutOrNull(resolveTimeoutMs) { resolveStreamForPlayback(candidate) }
+            else resolveStreamForPlayback(candidate)
+
+        attempt(stream)?.let { info ->
+            autoChain?.let { beginAutoStreamSession(stream, it) }
+            return info
+        }
         smartScraper.recordPlayback(stream, ok = false)
-        if (!smartScraper.config.autoFallback) return null
-        val chain = _uiState.value.smartFallbackChain
+        if (autoChain == null && !smartScraper.config.autoFallback) return null
+        val chain = autoChain ?: _uiState.value.smartFallbackChain
+        val maxAttempts = if (autoChain != null) smartScraper.config.autoStream.maxFallbacks else MAX_SMART_FALLBACK_ATTEMPTS
         val index = chain.indexOfFirst { it.isSameSource(stream) }
         val next = (if (index >= 0) chain.drop(index + 1) else chain)
             .filterNot { it.isSameSource(stream) }
-            .take(MAX_SMART_FALLBACK_ATTEMPTS)
+            .take(maxAttempts)
         for (candidate in next) {
-            Log.i(TAG, "Smart fallback: the source didn't start, trying the next one")
-            val info = resolveStreamForPlayback(candidate)
+            Log.i(TAG, "Fallback: the source didn't start, trying the next one")
+            val info = attempt(candidate)
             if (info != null) {
                 updateUiStateIfChanged { it.copy(playbackErrorMessage = null) }
+                autoChain?.let { beginAutoStreamSession(candidate, it) }
                 return info
             }
             smartScraper.recordPlayback(candidate, ok = false)
         }
         return null
+    }
+
+    /** The player may move on to [chain]'s next sources after [current] if it won't start. */
+    private fun beginAutoStreamSession(current: Stream, chain: List<Stream>) {
+        val index = chain.indexOfFirst { it.isSameSource(current) }
+        AutoStreamSession.begin(
+            videoId = videoId,
+            current = current,
+            candidates = if (index >= 0) chain.drop(index + 1) else chain,
+            config = smartScraper.config.autoStream
+        )
     }
 
     private fun Stream.isSameSource(other: Stream): Boolean =

@@ -135,7 +135,7 @@ internal fun LazyListScope.autoPlaySettingsItems(
             StreamAutoPlayMode.MANUAL -> stringResource(R.string.autoplay_mode_manual)
             StreamAutoPlayMode.FIRST_STREAM -> stringResource(R.string.autoplay_mode_first)
             StreamAutoPlayMode.REGEX_MATCH -> stringResource(R.string.autoplay_mode_regex)
-            StreamAutoPlayMode.SMART -> stringResource(R.string.autoplay_mode_smart)
+            StreamAutoPlayMode.AUTO_STREAM -> stringResource(R.string.autoplay_mode_auto_stream)
         }
         NavigationSettingsItem(
             icon = Icons.Default.PlayArrow,
@@ -564,7 +564,7 @@ private fun StreamAutoPlayModeDialog(
     onDismiss: () -> Unit
 ) {
     val options = listOf(
-        SettingsPickerOption(StreamAutoPlayMode.SMART, stringResource(R.string.autoplay_mode_smart), stringResource(R.string.autoplay_mode_smart_desc)),
+        SettingsPickerOption(StreamAutoPlayMode.AUTO_STREAM, stringResource(R.string.autoplay_mode_auto_stream), stringResource(R.string.autoplay_mode_auto_stream_desc)),
         SettingsPickerOption(StreamAutoPlayMode.MANUAL, stringResource(R.string.autoplay_mode_manual), stringResource(R.string.autoplay_mode_manual_desc)),
         SettingsPickerOption(StreamAutoPlayMode.FIRST_STREAM, stringResource(R.string.autoplay_mode_first), stringResource(R.string.autoplay_mode_first_desc)),
         SettingsPickerOption(StreamAutoPlayMode.REGEX_MATCH, stringResource(R.string.autoplay_mode_regex), stringResource(R.string.autoplay_mode_regex_desc))

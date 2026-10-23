@@ -11,11 +11,14 @@ import com.nuvio.tv.domain.model.Stream
 
 /** A picture's height, as releases name it ("4K", "UHD", "3840x2160" are all 2160p). */
 enum class VideoResolution(val level: Int, val label: String) {
-    UHD_2160(4, "4K"),
-    QHD_1440(3, "2K"),
-    FHD_1080(2, "1080p"),
-    HD_720(1, "720p"),
-    SD(0, "SD"),
+    UHD_2160(5, "4K"),
+    QHD_1440(4, "2K"),
+    FHD_1080(3, "1080p"),
+    HD_720(2, "720p"),
+    /** 480p/576p. */
+    SD(1, "SD"),
+    /** 360p and lower. */
+    LOW(0, "360p"),
     UNKNOWN(-1, "");
 
     val isKnown: Boolean get() = this != UNKNOWN
@@ -26,7 +29,8 @@ enum class VideoResolution(val level: Int, val label: String) {
             height >= 1400 -> QHD_1440
             height >= 1000 -> FHD_1080
             height >= 700 -> HD_720
-            height > 0 -> SD
+            height >= 450 -> SD
+            height > 0 -> LOW
             else -> UNKNOWN
         }
 

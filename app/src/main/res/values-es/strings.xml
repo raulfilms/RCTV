@@ -643,7 +643,7 @@
     <string name="stream_retry">Reintentar</string>
     <string name="stream_no_streams">No se encontraron transmisiones</string>
     <string name="stream_no_streams_hint">Intenta instalar más complementos para encontrar transmisiones</string>
-    <string name="stream_finding_source">Buscando fuente de transmisión</string>
+    <string name="stream_finding_source">Buscando el mejor stream…</string>
     <string name="stream_type_torrent">Torrent</string>
     <string name="stream_type_youtube">YouTube</string>
     <string name="stream_type_external">Externo</string>
@@ -1513,9 +1513,6 @@
     <string name="settings_group_sources">Fuentes</string>
     <string name="settings_group_system">Sistema</string>
     <string name="settings_glass_version">RCTV v%1$s</string>
-    <string name="autoplay_mode_smart">Smart (la mejor fuente automáticamente)</string>
-    <string name="autoplay_mode_smart_desc">Reproduce la mejor fuente del Smart Scraper: el título correcto y la mejor calidad práctica para este TV y tu conexión, dentro del tamaño máximo.</string>
-    <string name="stream_auto_play_smart_short">Smart</string>
     <string name="smart_sources_automatic">Automático</string>
     <string name="smart_sources_manual">Manual</string>
     <string name="smart_sources_header">Fuentes Smart</string>
@@ -1571,4 +1568,18 @@
     <string name="smart_learn_sub">Qué fuentes responden y reproducen; se guarda solo en este TV</string>
     <string name="smart_debug">Modo depuración</string>
     <string name="smart_debug_sub">Muestra el Smart Score de cada fuente y registra el porqué</string>
+    <string name="autoplay_mode_auto_stream">Auto Stream (el mejor stream automáticamente)</string>
+    <string name="autoplay_mode_auto_stream_desc">Al darle Play empieza el mejor stream solo: el título y episodio correctos, menos de 6 GB, 5.1 o estéreo, la mayor resolución que tu conexión reproduce. Si uno no arranca, se prueba el siguiente.</string>
+    <string name="stream_auto_play_auto_stream_short">Auto Stream</string>
+    <string name="auto_stream_title">Auto Stream</string>
+    <string name="auto_stream_sub">Al darle Play empieza el mejor stream solo: nadie tiene que escoger la fuente</string>
+    <string name="settings_auto_stream_desc">Reproducción con un clic: menos de 6 GB, 5.1 o estéreo, empieza en segundos</string>
+    <string name="auto_stream_max_size">Tamaño máximo de archivo</string>
+    <string name="auto_stream_max_size_sub">Los archivos de este tamaño o más nunca se escogen</string>
+    <string name="auto_stream_collect">Tiempo de búsqueda</string>
+    <string name="auto_stream_collect_sub">Cuánto se esperan las respuestas de las fuentes antes de escoger (menos si ya respondieron todas)</string>
+    <string name="auto_stream_unverified_audio">Archivos que no indican su audio</string>
+    <string name="auto_stream_unverified_audio_sub">Se prueban al final, solo si no hay ninguno 5.1 o estéreo que sirva</string>
+    <string name="auto_stream_trying_next">Esa fuente no arrancó: probando la siguiente…</string>
+    <string name="auto_stream_nothing_found">Auto Stream no encontró un stream dentro de sus límites (tamaño, 5.1 o estéreo): escoge uno</string>
 </resources>

@@ -69,7 +69,7 @@ fun EssentialPlaybackSettingsContent(
                             StreamAutoPlayMode.FIRST_STREAM -> stringResource(R.string.stream_auto_play_first_stream)
                             StreamAutoPlayMode.MANUAL -> stringResource(R.string.stream_auto_play_manual_short)
                             StreamAutoPlayMode.REGEX_MATCH -> stringResource(R.string.stream_auto_play_smart_match)
-                            StreamAutoPlayMode.SMART -> stringResource(R.string.stream_auto_play_smart_short)
+                            StreamAutoPlayMode.AUTO_STREAM -> stringResource(R.string.stream_auto_play_auto_stream_short)
                             null -> ""
                         },
                         trailingIcon = Icons.Default.PlayArrow,
@@ -77,7 +77,7 @@ fun EssentialPlaybackSettingsContent(
                             val current = settings?.streamAutoPlayMode ?: StreamAutoPlayMode.MANUAL
                             // RCTV: "on" is the Smart Scraper's best source.
                             val next = if (current == StreamAutoPlayMode.MANUAL) {
-                                StreamAutoPlayMode.SMART
+                                StreamAutoPlayMode.AUTO_STREAM
                             } else {
                                 StreamAutoPlayMode.MANUAL
                             }

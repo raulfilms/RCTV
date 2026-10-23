@@ -57,7 +57,9 @@ data class SmartScraperConfig(
     val lowBandwidthMbps: Double = 6.0,
     /** Each addon's answer is waited for this long (the slow one never holds the rest). */
     val providerTimeoutSeconds: Int = 30,
-    val weights: SmartScoreWeights = SmartScoreWeights()
+    val weights: SmartScoreWeights = SmartScoreWeights(),
+    /** One-click playback's own, stricter rules. */
+    val autoStream: AutoStreamConfig = AutoStreamConfig()
 ) {
     val maxFileSizeBytes: Long?
         get() = maxFileSizeGb.takeIf { it > 0.0 }?.let { (it * ParsedRelease.BYTES_PER_GB).toLong() }
@@ -71,6 +73,34 @@ data class SmartScraperConfig(
         /** An episode whose length isn't known is taken as this long (for its sizes only). */
         const val DEFAULT_EPISODE_MINUTES = 45
     }
+}
+
+/**
+ * Auto Stream: Play starts a stream on its own. Stricter than the smart sources: under 6 GB (never
+ * at or over it), 5.1 or stereo only (never 7.1), 4K → 2K → 1080p → 720p → 480p, the highest the
+ * connection plays smoothly, chosen within seconds; a source that fails is skipped for the next.
+ */
+data class AutoStreamConfig(
+    /** Files must be smaller than this (6.0 GB itself isn't allowed). */
+    val maxFileSizeGb: Double = 6.0,
+    /** The lowest resolution allowed (480p is the last resort). */
+    val minResolution: VideoResolution = VideoResolution.SD,
+    /** Only these audio layouts (never 7.1 or more). */
+    val allowedChannels: Set<AudioChannels> = setOf(AudioChannels.CH_5_1, AudioChannels.CH_2_0),
+    /** A file whose audio isn't said is tried only after every one whose audio is 5.1 or stereo. */
+    val allowUnverifiedAudio: Boolean = true,
+    /** Addons' answers are gathered this long (sooner when they've all answered) before choosing. */
+    val collectSeconds: Int = 5,
+    /** From Play to playing: past this, nothing valid found means the sources are shown. */
+    val budgetSeconds: Int = 10,
+    /** Each source gets this long to give its link before the next is tried. */
+    val resolveTimeoutSeconds: Int = 4,
+    /** Each source gets this long to show its first picture before the next is tried. */
+    val startupTimeoutSeconds: Int = 12,
+    /** At most this many sources are tried after the first. */
+    val maxFallbacks: Int = 4
+) {
+    val maxFileSizeBytes: Long get() = (maxFileSizeGb * ParsedRelease.BYTES_PER_GB).toLong()
 }
 
 /** How fast and steady the connection is now. */

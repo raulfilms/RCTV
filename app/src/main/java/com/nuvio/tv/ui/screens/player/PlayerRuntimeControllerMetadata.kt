@@ -416,14 +416,15 @@ internal fun PlayerRuntimeController.evaluatePostPlayOverlayVisibility(positionM
 }
 
 internal fun PlayerRuntimeController.showStreamSourceIndicator(stream: Stream) {
-    val chosenSource = (stream.name?.takeIf { it.isNotBlank() } ?: stream.addonName).trim()
+    // RCTV: what the source is ("4K · 5.7 GB · 5.1"), never its addon's or service's name.
+    val chosenSource = sourceSummary(stream)?.trim().orEmpty()
     if (chosenSource.isBlank()) return
 
     hideStreamSourceIndicatorJob?.cancel()
     _uiState.update {
         it.copy(
             showStreamSourceIndicator = true,
-            streamSourceIndicatorText = "Source: $chosenSource"
+            streamSourceIndicatorText = chosenSource
         )
     }
     hideStreamSourceIndicatorJob = scope.launch {

@@ -68,6 +68,18 @@ class SmartScraper @Inject constructor(
         return result
     }
 
+    /** Auto Stream's choice for a title's streams: what it may play, best first, and what to fall back on. */
+    fun autoStreamRank(
+        streams: List<Stream>,
+        request: SmartSourceRequest,
+        context: SmartRankingContext = rankingContext()
+    ): AutoStreamResult {
+        if (streams.isEmpty()) return AutoStreamResult.EMPTY
+        val result = AutoStreamEngine.rank(streams.map(::normalize), request, context)
+        if (context.config.debug) logAutoStream(result, request, context)
+        return result
+    }
+
     /** An addon answered for a title after [responseMs] (or failed, or timed out). */
     fun recordProviderResponse(provider: String, responseMs: Long?, ok: Boolean) {
         if (!config.learnFromPlayback) return
@@ -132,6 +144,30 @@ class SmartScraper @Inject constructor(
         }
     }
 
+    private fun logAutoStream(result: AutoStreamResult, request: SmartSourceRequest, context: SmartRankingContext) {
+        val id = searchIds.incrementAndGet()
+        Log.d(
+            TAG,
+            "Auto Stream #$id: ${request.title} (${request.year ?: "?"})" +
+                (if (request.isEpisode) " S${request.season}E${request.episode}" else "") +
+                " · ${result.candidates.size} valid, ${result.rejected.size} rejected · " +
+                "connection=${context.connection.profile} ${context.connection.availableMbps ?: "?"} Mbps"
+        )
+        result.candidates.forEachIndexed { index, candidate ->
+            Log.d(
+                TAG,
+                "#$id AUTO ${index + 1}: score=${candidate.score} verified=${candidate.verified} " +
+                    "fits=${candidate.fitsConnection} copies=${1 + candidate.copies.size} " +
+                    "${AutoStreamEngine.summary(candidate.release)} " +
+                    "provider=${candidate.scored.source.provider.family}/${candidate.scored.source.provider.debrid} " +
+                    "RAW=${candidate.release.releaseName}"
+            )
+        }
+        result.rejected.forEach { (scored, reason) ->
+            Log.d(TAG, "#$id AUTO REJECTED (${reason.description}): ${AutoStreamEngine.summary(scored.release)} RAW=${scored.release.releaseName}")
+        }
+    }
+
     private fun f(value: Float) = String.format(Locale.US, "%.2f", value)
 
     private companion object {
@@ -154,6 +190,13 @@ object SmartScraperEnvironment {
     fun rank(streams: List<Stream>, request: SmartSourceRequest): SmartSourcesResult =
         scraper?.rank(streams, request)
             ?: SmartScoreEngine.rank(streams.map(SourceProviderAdapters::normalize), request)
+
+    fun autoStreamRank(streams: List<Stream>, request: SmartSourceRequest): AutoStreamResult =
+        scraper?.autoStreamRank(streams, request)
+            ?: AutoStreamEngine.rank(streams.map(SourceProviderAdapters::normalize), request)
+
+    fun normalize(stream: Stream): NormalizedSource =
+        scraper?.normalize(stream) ?: SourceProviderAdapters.normalize(stream)
 
     fun recordPlayback(stream: Stream, ok: Boolean) {
         scraper?.recordPlayback(stream, ok)

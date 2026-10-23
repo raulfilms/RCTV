@@ -245,6 +245,7 @@ object SmartScoreEngine {
             VideoResolution.FHD_1080 -> 5.0
             VideoResolution.HD_720 -> 2.5
             VideoResolution.SD -> 1.2
+            VideoResolution.LOW -> 0.6
             VideoResolution.UNKNOWN -> 5.0
         }
         when (release.codec) {
@@ -256,12 +257,13 @@ object SmartScoreEngine {
     }
 
     /** What a file of this picture usually needs when its bitrate isn't known (Mbps). */
-    private fun defaultMbps(resolution: VideoResolution): Double = when (resolution) {
+    fun defaultMbps(resolution: VideoResolution): Double = when (resolution) {
         VideoResolution.UHD_2160 -> 20.0
         VideoResolution.QHD_1440 -> 12.0
         VideoResolution.FHD_1080 -> 8.0
         VideoResolution.HD_720 -> 4.0
         VideoResolution.SD -> 2.0
+        VideoResolution.LOW -> 1.0
         VideoResolution.UNKNOWN -> 8.0
     }
 
@@ -505,7 +507,7 @@ object SmartScoreEngine {
     private val ABOVE_TARGET = floatArrayOf(0.9f, 0.72f, 0.45f)
 
     /** What a stream needs beyond its average bitrate to play smoothly (its peaks, the network's ups and downs). */
-    private const val HEADROOM = 1.3
+    const val HEADROOM = 1.3
 }
 
 /** How the person sorts the sources in manual mode (never by provider: providers aren't shown). */

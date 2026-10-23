@@ -1789,7 +1789,7 @@
     <string name="stream_no_streams">No streams found</string>
     <string name="stream_no_streams_hint">Try installing more addons to find streams</string>
     <string name="stream_preview_player">Preview player</string>
-    <string name="stream_finding_source">Finding stream source</string>
+    <string name="stream_finding_source">Finding the best stream…</string>
     <string name="debrid_resolving_stream">Resolving debrid stream</string>
     <string name="debrid_stale_stream">This Debrid result expired. Refreshing streams.</string>
     <string name="debrid_missing_api_key">Add a Debrid API key in Settings.</string>
@@ -4238,9 +4238,6 @@
     <string name="settings_group_sources">Sources</string>
     <string name="settings_group_system">System</string>
     <string name="settings_glass_version">RCTV v%1$s</string>
-    <string name="autoplay_mode_smart">Smart (best source automatically)</string>
-    <string name="autoplay_mode_smart_desc">Plays the Smart Scraper\'s best source: the right title, the best practical quality for this TV and connection, within the size limit.</string>
-    <string name="stream_auto_play_smart_short">Smart</string>
     <string name="smart_sources_automatic">Automatic</string>
     <string name="smart_sources_manual">Manual</string>
     <string name="smart_sources_header">Smart sources</string>
@@ -4296,4 +4293,18 @@
     <string name="smart_learn_sub">Which sources answer and play, kept on this TV only</string>
     <string name="smart_debug">Debug mode</string>
     <string name="smart_debug_sub">Shows each source\'s Smart Score and logs why</string>
+    <string name="autoplay_mode_auto_stream">Auto Stream (best stream automatically)</string>
+    <string name="autoplay_mode_auto_stream_desc">Play starts the best stream on its own: the right title and episode, under 6 GB, 5.1 or stereo, the highest resolution your connection plays. If one won\'t start, the next is tried.</string>
+    <string name="stream_auto_play_auto_stream_short">Auto Stream</string>
+    <string name="auto_stream_title">Auto Stream</string>
+    <string name="auto_stream_sub">Play starts the best stream on its own: nobody has to choose a source</string>
+    <string name="settings_auto_stream_desc">One-click playback: under 6 GB, 5.1 or stereo, starts in seconds</string>
+    <string name="auto_stream_max_size">Maximum file size</string>
+    <string name="auto_stream_max_size_sub">Files this size or bigger are never chosen</string>
+    <string name="auto_stream_collect">Search time</string>
+    <string name="auto_stream_collect_sub">How long sources\' answers are gathered before choosing (sooner when all have answered)</string>
+    <string name="auto_stream_unverified_audio">Files that don\'t say their audio</string>
+    <string name="auto_stream_unverified_audio_sub">Tried last, only when no 5.1 or stereo file fits</string>
+    <string name="auto_stream_trying_next">That source didn\'t start: trying the next one…</string>
+    <string name="auto_stream_nothing_found">Auto Stream found no stream under its limits (size, 5.1 or stereo): choose one</string>
 </resources>

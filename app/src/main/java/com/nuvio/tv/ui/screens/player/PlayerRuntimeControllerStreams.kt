@@ -1703,7 +1703,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
             val installedAddonOrder = installedAddons.map { it.displayName }
             // RCTV: the next episode's best smart source, not whichever addon answered first.
             val effectiveMode = if (shouldAutoSelectInManualMode) {
-                StreamAutoPlayMode.SMART
+                StreamAutoPlayMode.AUTO_STREAM
             } else {
                 playerSettings.streamAutoPlayMode
             }
@@ -1736,9 +1736,30 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
             // finishes, so the waiting code below resumes without polling.
             val searchSettled = CompletableDeferred<Unit>()
 
+            // RCTV: the next episode as the app knows it (its streams are checked against it).
+            val nextEpisodeRequest = com.nuvio.tv.core.smartscraper.SmartSourceRequest(
+                title = contentName ?: title,
+                alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
+                year = com.nuvio.tv.core.smartscraper.SmartSourceRequest.yearOf(year),
+                isSeries = true,
+                season = nextVideo.season,
+                episode = nextVideo.episode,
+                imdbId = contentId?.takeIf { it.startsWith("tt") }?.substringBefore(':'),
+                runtimeMinutes = nextVideo.runtime,
+                equivalentEpisodes = com.nuvio.tv.core.imdb.EpisodeOrderRegistry.equivalentEpisodes(
+                    contentId, nextVideo.season, nextVideo.episode
+                )
+            )
+            // Auto Stream: its order for the next episode (what to fall back on, too).
+            var autoStreamChain: List<Stream> = emptyList()
+
             fun trySelectStream(data: List<AddonStreams>): Stream? {
                 val orderedStreams = StreamAutoPlaySelector.orderAddonStreams(data, installedAddonOrder)
                 val allStreams = orderedStreams.flatMap { it.streams }
+                if (effectiveMode == StreamAutoPlayMode.AUTO_STREAM) {
+                    autoStreamChain = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment
+                        .autoStreamRank(allStreams, nextEpisodeRequest).chain
+                }
                 return StreamAutoPlaySelector.selectAutoPlayStream(
                     streams = allStreams,
                     mode = effectiveMode,
@@ -1754,19 +1775,8 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                     },
                     preferBingeGroupInSelection = playerSettings.streamAutoPlayPreferBingeGroupForNextEpisode,
                     bingeGroupOnly = bingeGroupOnlyManualMode,
-                    smartRequest = com.nuvio.tv.core.smartscraper.SmartSourceRequest(
-                        title = contentName ?: title,
-                        alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
-                        year = com.nuvio.tv.core.smartscraper.SmartSourceRequest.yearOf(year),
-                        isSeries = true,
-                        season = nextVideo.season,
-                        episode = nextVideo.episode,
-                        imdbId = contentId?.takeIf { it.startsWith("tt") }?.substringBefore(':'),
-                        runtimeMinutes = nextVideo.runtime,
-                        equivalentEpisodes = com.nuvio.tv.core.imdb.EpisodeOrderRegistry.equivalentEpisodes(
-                            contentId, nextVideo.season, nextVideo.episode
-                        )
-                    )
+                    smartRequest = nextEpisodeRequest,
+                    smartRanking = autoStreamChain.takeIf { effectiveMode == StreamAutoPlayMode.AUTO_STREAM }
                 )
             }
 
@@ -1889,6 +1899,18 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                         postPlayDismissedForCurrentEpisode = true,
                         playbackEnded = false,
                     )
+                }
+                // RCTV Auto Stream: if this one won't start, the episode's next valid source plays.
+                val chosen = selectedStream
+                if (effectiveMode == StreamAutoPlayMode.AUTO_STREAM && chosen != null) {
+                    com.nuvio.tv.core.smartscraper.AutoStreamSession.begin(
+                        videoId = nextVideo.id,
+                        current = chosen,
+                        candidates = autoStreamChain,
+                        config = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.config.autoStream
+                    )
+                } else {
+                    com.nuvio.tv.core.smartscraper.AutoStreamSession.end()
                 }
                 switchToEpisodeStream(
                     stream = streamToPlay,

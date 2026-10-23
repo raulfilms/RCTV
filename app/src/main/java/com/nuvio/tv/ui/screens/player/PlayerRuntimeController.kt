@@ -714,6 +714,8 @@ class PlayerRuntimeController(
         observeStreamBadgeSettings()
         observeDeviceLocalAspectMode()
         observePlayerStatsHud()
+        // RCTV Auto Stream: a source that won't start is skipped for the next one.
+        startAutoStreamWatch()
     }
 
     private fun observeTorrentSettings() {

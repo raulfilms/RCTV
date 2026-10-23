@@ -12,8 +12,17 @@ import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
+import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.data.local.PlayerSettingsDataStore
+import com.nuvio.tv.data.local.StreamAutoPlayMode
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import com.nuvio.tv.R
@@ -28,12 +37,71 @@ import javax.inject.Inject
 /** Settings → Playback → Smart Scraper: the rules the sources are checked, filtered and ranked by. */
 @HiltViewModel
 class SmartScraperSettingsViewModel @Inject constructor(
-    private val store: SmartScraperSettingsStore
+    private val store: SmartScraperSettingsStore,
+    private val playerSettingsDataStore: PlayerSettingsDataStore
 ) : ViewModel() {
     val config: StateFlow<SmartScraperConfig> = store.config
 
+    /** Auto Stream on: Play starts the best stream on its own. */
+    val autoStreamEnabled: StateFlow<Boolean> = playerSettingsDataStore.playerSettings
+        .map { it.streamAutoPlayMode == StreamAutoPlayMode.AUTO_STREAM }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     fun update(transform: (SmartScraperConfig) -> SmartScraperConfig) = store.updateConfig(transform)
+
+    fun setAutoStream(enabled: Boolean) {
+        viewModelScope.launch {
+            playerSettingsDataStore.setStreamAutoPlayMode(if (enabled) StreamAutoPlayMode.AUTO_STREAM else StreamAutoPlayMode.MANUAL)
+        }
+    }
 }
+
+/** Settings → Playback → Auto Stream: one switch, and its few rules. */
+internal fun LazyListScope.autoStreamSettingsItems(
+    enabled: Boolean,
+    config: SmartScraperConfig,
+    onSetEnabled: (Boolean) -> Unit,
+    onUpdate: ((SmartScraperConfig) -> SmartScraperConfig) -> Unit,
+    onItemFocused: () -> Unit
+) {
+    toggle("auto_stream_enabled", Icons.Default.PlayCircle, R.string.auto_stream_title, R.string.auto_stream_sub, enabled, onItemFocused, onSetEnabled)
+    if (!enabled) return
+    item(key = "auto_stream_max_size") {
+        NavigationSettingsItem(
+            icon = Icons.Default.Storage,
+            title = stringResource(R.string.auto_stream_max_size),
+            subtitle = "< ${formatGb(config.autoStream.maxFileSizeGb)} · ${stringResource(R.string.auto_stream_max_size_sub)}",
+            onClick = {
+                onUpdate { it.copy(autoStream = it.autoStream.copy(maxFileSizeGb = nextOf(it.autoStream.maxFileSizeGb, AUTO_STREAM_SIZES))) }
+            },
+            onFocused = onItemFocused
+        )
+    }
+    item(key = "auto_stream_collect") {
+        NavigationSettingsItem(
+            icon = Icons.Default.Timer,
+            title = stringResource(R.string.auto_stream_collect),
+            subtitle = "${config.autoStream.collectSeconds} s · ${stringResource(R.string.auto_stream_collect_sub)}",
+            onClick = {
+                onUpdate { it.copy(autoStream = it.autoStream.copy(collectSeconds = nextOf(it.autoStream.collectSeconds, AUTO_STREAM_COLLECT))) }
+            },
+            onFocused = onItemFocused
+        )
+    }
+    toggle(
+        "auto_stream_unverified_audio",
+        Icons.Default.SurroundSound,
+        R.string.auto_stream_unverified_audio,
+        R.string.auto_stream_unverified_audio_sub,
+        config.autoStream.allowUnverifiedAudio,
+        onItemFocused
+    ) { on -> onUpdate { it.copy(autoStream = it.autoStream.copy(allowUnverifiedAudio = on)) } }
+}
+
+private fun formatGb(gb: Double): String = if (gb % 1.0 == 0.0) "${gb.toInt()} GB" else "$gb GB"
+
+private val AUTO_STREAM_SIZES = listOf(6.0, 5.0, 4.0, 8.0)
+private val AUTO_STREAM_COLLECT = listOf(5, 3, 7)
 
 /** Each choice steps to the next on every press (no dialog); its value is shown before what it does. */
 internal fun LazyListScope.smartScraperSettingsItems(

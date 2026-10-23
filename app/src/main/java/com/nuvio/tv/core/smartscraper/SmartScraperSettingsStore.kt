@@ -51,7 +51,12 @@ class SmartScraperSettingsStore @Inject constructor(
             autoFallback = prefs.getBoolean(KEY_FALLBACK, defaults.autoFallback),
             duplicateGrouping = prefs.getBoolean(KEY_GROUPING, defaults.duplicateGrouping),
             learnFromPlayback = prefs.getBoolean(KEY_LEARN, defaults.learnFromPlayback),
-            debug = prefs.getBoolean(KEY_DEBUG, defaults.debug)
+            debug = prefs.getBoolean(KEY_DEBUG, defaults.debug),
+            autoStream = defaults.autoStream.copy(
+                maxFileSizeGb = prefs.getFloat(KEY_AUTO_MAX_SIZE, defaults.autoStream.maxFileSizeGb.toFloat()).toDouble(),
+                allowUnverifiedAudio = prefs.getBoolean(KEY_AUTO_UNVERIFIED_AUDIO, defaults.autoStream.allowUnverifiedAudio),
+                collectSeconds = prefs.getInt(KEY_AUTO_COLLECT, defaults.autoStream.collectSeconds)
+            )
         )
     }
 
@@ -69,6 +74,9 @@ class SmartScraperSettingsStore @Inject constructor(
             .putBoolean(KEY_GROUPING, config.duplicateGrouping)
             .putBoolean(KEY_LEARN, config.learnFromPlayback)
             .putBoolean(KEY_DEBUG, config.debug)
+            .putFloat(KEY_AUTO_MAX_SIZE, config.autoStream.maxFileSizeGb.toFloat())
+            .putBoolean(KEY_AUTO_UNVERIFIED_AUDIO, config.autoStream.allowUnverifiedAudio)
+            .putInt(KEY_AUTO_COLLECT, config.autoStream.collectSeconds)
             .apply()
     }
 
@@ -117,6 +125,9 @@ class SmartScraperSettingsStore @Inject constructor(
         const val KEY_GROUPING = "duplicate_grouping"
         const val KEY_LEARN = "learn_from_playback"
         const val KEY_DEBUG = "debug"
+        const val KEY_AUTO_MAX_SIZE = "auto_stream_max_file_size_gb"
+        const val KEY_AUTO_UNVERIFIED_AUDIO = "auto_stream_unverified_audio"
+        const val KEY_AUTO_COLLECT = "auto_stream_collect_seconds"
         const val KEY_VIEW_MANUAL = "view_manual"
         const val KEY_VIEW_SORT = "view_sort"
         const val KEY_F_RES = "filter_resolution"

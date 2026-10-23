@@ -81,6 +81,7 @@ import com.nuvio.tv.ui.components.NuvioDialog
 private enum class PlaybackSection {
     GENERAL,
     STREAM_SELECTION,
+    AUTO_STREAM,
     SMART_SCRAPER,
     AUDIO_TRAILER,
     SUBTITLES,
@@ -207,8 +208,10 @@ internal fun PlaybackSettingsSections(
     var autoSkipExpanded by rememberSaveable { mutableStateOf(false) }
     var streamExpanded by rememberSaveable { mutableStateOf(false) }
     var smartScraperExpanded by rememberSaveable { mutableStateOf(false) }
+    var autoStreamExpanded by rememberSaveable { mutableStateOf(false) }
     val smartScraperViewModel: SmartScraperSettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     val smartScraperConfig by smartScraperViewModel.config.collectAsState()
+    val autoStreamEnabled by smartScraperViewModel.autoStreamEnabled.collectAsState()
     var audioTrailerExpanded by rememberSaveable { mutableStateOf(false) }
     var subtitlesExpanded by rememberSaveable { mutableStateOf(false) }
     var p2pExpanded by rememberSaveable { mutableStateOf(false) }
@@ -219,6 +222,7 @@ internal fun PlaybackSettingsSections(
     val autoSkipHeaderFocus = remember { FocusRequester() }
     val streamHeaderFocus = remember { FocusRequester() }
     val smartScraperHeaderFocus = remember { FocusRequester() }
+    val autoStreamHeaderFocus = remember { FocusRequester() }
     val audioTrailerHeaderFocus = remember { FocusRequester() }
     val subtitlesHeaderFocus = remember { FocusRequester() }
     val p2pHeaderFocus = remember { FocusRequester() }
@@ -263,6 +267,8 @@ internal fun PlaybackSettingsSections(
     val strSectionPlayer = stringResource(R.string.playback_section_player)
     val strSectionPlayerDesc = stringResource(R.string.playback_section_player_desc)
     val strSectionSmartScraper = stringResource(R.string.settings_smart_scraper)
+    val strSectionAutoStream = stringResource(R.string.auto_stream_title)
+    val strSectionAutoStreamDesc = stringResource(R.string.settings_auto_stream_desc)
     val strSectionSmartScraperDesc = stringResource(R.string.settings_smart_scraper_desc)
     val strSectionAudio = stringResource(R.string.playback_section_audio)
     val strSectionAudioDesc = stringResource(R.string.playback_section_audio_desc)
@@ -309,6 +315,11 @@ internal fun PlaybackSettingsSections(
     LaunchedEffect(streamExpanded, focusedSection) {
         if (!streamExpanded && focusedSection == PlaybackSection.STREAM_SELECTION) {
             streamHeaderFocus.requestFocus()
+        }
+    }
+    LaunchedEffect(autoStreamExpanded, focusedSection) {
+        if (!autoStreamExpanded && focusedSection == PlaybackSection.AUTO_STREAM) {
+            autoStreamHeaderFocus.requestFocus()
         }
     }
     LaunchedEffect(smartScraperExpanded, focusedSection) {
@@ -587,6 +598,25 @@ internal fun PlaybackSettingsSections(
                     onFocused = { focusedSection = PlaybackSection.STREAM_SELECTION }
                 )
             }
+        }
+
+        // RCTV: Auto Stream (Play starts the best stream on its own) and its rules.
+        playbackCollapsibleSection(
+            keyPrefix = "auto_stream",
+            title = strSectionAutoStream,
+            description = strSectionAutoStreamDesc,
+            expanded = autoStreamExpanded,
+            onToggle = { autoStreamExpanded = !autoStreamExpanded },
+            focusRequester = autoStreamHeaderFocus,
+            onHeaderFocused = { focusedSection = PlaybackSection.AUTO_STREAM }
+        ) {
+            autoStreamSettingsItems(
+                enabled = autoStreamEnabled,
+                config = smartScraperConfig,
+                onSetEnabled = smartScraperViewModel::setAutoStream,
+                onUpdate = smartScraperViewModel::update,
+                onItemFocused = { focusedSection = PlaybackSection.AUTO_STREAM }
+            )
         }
 
         // RCTV: the Smart Scraper's rules (how sources are checked, filtered and ranked).
