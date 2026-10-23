@@ -1647,14 +1647,9 @@ fun PlayerScreen(
         // Subtitle style panel
         AnimatedVisibility(
             visible = uiState.showSubtitleStylePanel && uiState.error == null,
-            enter = slideInVertically(
-                animationSpec = tween(220),
-                initialOffsetY = { -it }
-            ),
-            exit = slideOutVertically(
-                animationSpec = tween(220),
-                targetOffsetY = { -it }
-            )
+            // RCTV: Subtitle Styling, as on Disney+ (fades in over the picture).
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(180))
         ) {
             Box(
                 modifier = Modifier.fillMaxSize()
@@ -1676,12 +1671,14 @@ fun PlayerScreen(
                 // RCTV: mpv puts ASS/SSA in the app's style too; only libass keeps their own look.
                 val isAssDisabled = isCurrentSubtitleAss && !isUsingMpv && uiState.useLibass
 
-                SubtitleStyleSidePanel(
+                SubtitleStylingPanel(
                     subtitleStyle = uiState.subtitleStyle,
-                    onEvent = { if (!isAssDisabled) viewModel.onEvent(it) },
+                    // Done always works; the rest only on a subtitle that takes the app's style.
+                    onEvent = { event ->
+                        if (!isAssDisabled || event is PlayerEvent.OnDismissSubtitleStylePanel) viewModel.onEvent(event)
+                    },
                     isStyleDisabledByLibass = isAssDisabled,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         }
@@ -2047,23 +2044,15 @@ private fun PlayerView.applySubtitleStyleIfNeeded(
         setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, scaledFontSize)
         setApplyEmbeddedFontSizes(false)
 
-        val typeface = if (subtitleStyle.bold) {
-            android.graphics.Typeface.DEFAULT_BOLD
-        } else {
-            android.graphics.Typeface.DEFAULT
-        }
-
-        val edgeType = if (subtitleStyle.outlineEnabled) {
-            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE
-        } else {
-            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE
-        }
+        // RCTV Subtitle Styling: font, edge, each line's box and the box behind all the lines.
+        val typeface = subtitleTypeface(subtitleStyle.font, subtitleStyle.bold)
+        val edgeType = subtitleStyle.edge.captionEdgeType()
 
         setStyle(
             androidx.media3.ui.CaptionStyleCompat(
                 subtitleStyle.textColor,
                 subtitleStyle.backgroundColor,
-                android.graphics.Color.TRANSPARENT,
+                subtitleStyle.windowColor,
                 edgeType,
                 subtitleStyle.outlineColor,
                 typeface

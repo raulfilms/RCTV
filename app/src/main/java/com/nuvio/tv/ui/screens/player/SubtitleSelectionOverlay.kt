@@ -293,7 +293,8 @@ internal fun SubtitleSelectionOverlay(
                     addonUrl.contains(".ass") || addonUrl.contains(".ssa")
             }
         }
-        isAss && (isUsingMpv || useLibass)
+        // RCTV: mpv puts ASS/SSA in the app's style too; only libass keeps their own look.
+        isAss && useLibass && !isUsingMpv
     }
 
     fun requestLanguageFocus(targetKey: String?) {
@@ -886,6 +887,55 @@ private fun SubtitleStyleRail(
                                 color = Color.White.copy(alpha = 0.7f)
                             )
                         }
+                    }
+                }
+            }
+            item {
+                // RCTV: every style choice, as on Disney+ (Subtitle Styling).
+                Card(
+                    onClick = { onEvent(PlayerEvent.OnOpenSubtitleStylePanel) },
+                    colors = overlayCardColors(selected = false),
+                    shape = CardDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(requireNotNull(focusRequesters[StyleFocusKey.StylingOpen]))
+                        .onPreviewKeyEvent { event ->
+                            when (event.nativeKeyEvent.keyCode) {
+                                moveLeftKey -> {
+                                    when (event.nativeKeyEvent.action) {
+                                        android.view.KeyEvent.ACTION_DOWN -> {
+                                            onMoveLeft()
+                                            true
+                                        }
+
+                                        android.view.KeyEvent.ACTION_UP -> true
+                                        else -> false
+                                    }
+                                }
+
+                                else -> false
+                            }
+                        }
+                        .onFocusChanged { if (it.isFocused) onStyleFocused(StyleFocusKey.StylingOpen) },
+                    scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = NuvioTheme.spacing.md, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.styling_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "›",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
                     }
                 }
             }
@@ -1675,6 +1725,7 @@ private object StyleFocusKey {
     const val OffsetDecrease = "offset_decrease"
     const val OffsetIncrease = "offset_increase"
     const val DelaySet = "delay_set"
+    const val StylingOpen = "styling_open"
     const val Reset = "reset"
     const val TextColorPrefix = "text_color"
     const val OpacityDecrease = "opacity_decrease"
@@ -1691,13 +1742,14 @@ private enum class OverlayFocusRail {
 private fun styleListIndexForFocusKey(focusKey: String): Int {
     return when {
         focusKey == StyleFocusKey.DelaySet -> 0
-        focusKey == StyleFocusKey.FontSizeDecrease || focusKey == StyleFocusKey.FontSizeIncrease -> 1
-        focusKey == StyleFocusKey.Bold -> 2
-        focusKey.startsWith("${StyleFocusKey.TextColorPrefix}:") -> 3
-        focusKey == StyleFocusKey.OpacityDecrease || focusKey == StyleFocusKey.OpacityIncrease -> 4
-        focusKey == StyleFocusKey.OutlineToggle || focusKey.startsWith("${StyleFocusKey.OutlineColorPrefix}:") -> 5
-        focusKey == StyleFocusKey.OffsetDecrease || focusKey == StyleFocusKey.OffsetIncrease -> 6
-        focusKey == StyleFocusKey.Reset -> 7
+        focusKey == StyleFocusKey.StylingOpen -> 1
+        focusKey == StyleFocusKey.FontSizeDecrease || focusKey == StyleFocusKey.FontSizeIncrease -> 2
+        focusKey == StyleFocusKey.Bold -> 3
+        focusKey.startsWith("${StyleFocusKey.TextColorPrefix}:") -> 4
+        focusKey == StyleFocusKey.OpacityDecrease || focusKey == StyleFocusKey.OpacityIncrease -> 5
+        focusKey == StyleFocusKey.OutlineToggle || focusKey.startsWith("${StyleFocusKey.OutlineColorPrefix}:") -> 6
+        focusKey == StyleFocusKey.OffsetDecrease || focusKey == StyleFocusKey.OffsetIncrease -> 7
+        focusKey == StyleFocusKey.Reset -> 8
         else -> 0
     }
 }
@@ -1720,6 +1772,7 @@ private fun rememberStyleFocusRequesters(): Map<String, FocusRequester> {
             StyleFocusKey.OffsetDecrease,
             StyleFocusKey.OffsetIncrease,
             StyleFocusKey.DelaySet,
+            StyleFocusKey.StylingOpen,
             StyleFocusKey.Reset
         ).associateWith { FocusRequester() } +
             OverlayTextColors.associate { color ->

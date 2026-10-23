@@ -355,6 +355,11 @@ sealed class PlayerEvent {
     data class OnSetSubtitleOutlineColor(val color: Int) : PlayerEvent()
     data class OnSetSubtitleVerticalOffset(val offset: Int) : PlayerEvent()
     data object OnResetSubtitleDefaults : PlayerEvent()
+    /** RCTV: Subtitle Styling (as on Disney+). */
+    data class OnSetSubtitleFont(val font: com.nuvio.tv.data.local.SubtitleFont) : PlayerEvent()
+    data class OnSetSubtitleEdge(val edge: com.nuvio.tv.data.local.SubtitleEdge) : PlayerEvent()
+    data class OnSetSubtitleBackgroundColor(val color: Int) : PlayerEvent()
+    data class OnSetSubtitleWindowColor(val color: Int) : PlayerEvent()
     data object OnToggleAspectRatio : PlayerEvent()
     data object OnSwitchInternalPlayerEngine : PlayerEvent()
     data object OnSwitchToMpvPlayer : PlayerEvent()

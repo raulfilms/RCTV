@@ -1720,6 +1720,18 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
         is PlayerEvent.OnSetSubtitleVerticalOffset -> {
             scope.launch { playerSettingsDataStore.setSubtitleVerticalOffset(event.offset) }
         }
+        is PlayerEvent.OnSetSubtitleFont -> {
+            scope.launch { playerSettingsDataStore.setSubtitleFont(event.font) }
+        }
+        is PlayerEvent.OnSetSubtitleEdge -> {
+            scope.launch { playerSettingsDataStore.setSubtitleEdge(event.edge) }
+        }
+        is PlayerEvent.OnSetSubtitleBackgroundColor -> {
+            scope.launch { playerSettingsDataStore.setSubtitleBackgroundColor(event.color) }
+        }
+        is PlayerEvent.OnSetSubtitleWindowColor -> {
+            scope.launch { playerSettingsDataStore.setSubtitleWindowColor(event.color) }
+        }
         PlayerEvent.OnResetSubtitleDefaults -> {
             scope.launch {
                 val defaults = SubtitleStyleSettings()
@@ -1731,6 +1743,9 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                 playerSettingsDataStore.setSubtitleOutlineWidth(defaults.outlineWidth)
                 playerSettingsDataStore.setSubtitleVerticalOffset(defaults.verticalOffset)
                 playerSettingsDataStore.setSubtitleBackgroundColor(defaults.backgroundColor)
+                playerSettingsDataStore.setSubtitleFont(defaults.font)
+                playerSettingsDataStore.setSubtitleEdge(defaults.edge)
+                playerSettingsDataStore.setSubtitleWindowColor(defaults.windowColor)
             }
         }
         PlayerEvent.OnToggleAspectRatio -> {

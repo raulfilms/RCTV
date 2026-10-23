@@ -152,8 +152,43 @@ data class SubtitleStyleSettings(
     val backgroundColor: Int = Color.Black.toArgb(),
     val outlineEnabled: Boolean = true,
     val outlineColor: Int = Color.Black.toArgb(),
-    val outlineWidth: Int = 2 // 1-5
+    val outlineWidth: Int = 2, // 1-5
+    /** RCTV: the subtitle's font (the choices Disney+ and TV captions offer). */
+    val font: SubtitleFont = SubtitleFont.DEFAULT,
+    /** RCTV: the letters' edge (an outline, a shadow...). */
+    val edge: SubtitleEdge = SubtitleEdge.OUTLINE,
+    /** RCTV: a box behind all the lines together (transparent: none); [backgroundColor] is each line's. */
+    val windowColor: Int = Color.Transparent.toArgb()
 )
+
+/** RCTV: a subtitle font, as TV captions name them. */
+enum class SubtitleFont(val key: String) {
+    DEFAULT("default"),
+    CASUAL("casual"),
+    CURSIVE("cursive"),
+    MONOSPACE_SANS("monospace_sans"),
+    MONOSPACE_SERIF("monospace_serif"),
+    PROPORTIONAL_SANS("proportional_sans"),
+    PROPORTIONAL_SERIF("proportional_serif"),
+    SMALL_CAPS("small_caps");
+
+    companion object {
+        fun fromKey(key: String?): SubtitleFont? = entries.firstOrNull { it.key == key }
+    }
+}
+
+/** RCTV: the edge around a subtitle's letters. */
+enum class SubtitleEdge(val key: String) {
+    NONE("none"),
+    OUTLINE("uniform"),
+    DROP_SHADOW("drop_shadow"),
+    RAISED("raised"),
+    DEPRESSED("depressed");
+
+    companion object {
+        fun fromKey(key: String?): SubtitleEdge? = entries.firstOrNull { it.key == key }
+    }
+}
 
 /**
  * Data class representing buffer settings
@@ -593,6 +628,9 @@ class PlayerSettingsDataStore @Inject constructor(
     private val subtitleOutlineEnabledKey = booleanPreferencesKey("subtitle_outline_enabled")
     private val subtitleOutlineColorKey = intPreferencesKey("subtitle_outline_color")
     private val subtitleOutlineWidthKey = intPreferencesKey("subtitle_outline_width")
+    private val subtitleFontKey = stringPreferencesKey("subtitle_font")
+    private val subtitleEdgeKey = stringPreferencesKey("subtitle_edge")
+    private val subtitleWindowColorKey = intPreferencesKey("subtitle_window_color")
 
     // Buffer settings keys
     private val minBufferMsKey = intPreferencesKey("min_buffer_ms")
@@ -1033,7 +1071,12 @@ class PlayerSettingsDataStore @Inject constructor(
                         },
                         outlineEnabled = prefs[subtitleOutlineEnabledKey] ?: true,
                         outlineColor = prefs[subtitleOutlineColorKey] ?: Color.Black.toArgb(),
-                        outlineWidth = prefs[subtitleOutlineWidthKey] ?: 2
+                        outlineWidth = prefs[subtitleOutlineWidthKey] ?: 2,
+                        font = SubtitleFont.fromKey(prefs[subtitleFontKey]) ?: SubtitleFont.DEFAULT,
+                        // Before the edge could be chosen: the outline switch.
+                        edge = SubtitleEdge.fromKey(prefs[subtitleEdgeKey])
+                            ?: if (prefs[subtitleOutlineEnabledKey] ?: true) SubtitleEdge.OUTLINE else SubtitleEdge.NONE,
+                        windowColor = prefs[subtitleWindowColorKey] ?: Color.Transparent.toArgb()
                     )
                 },
                 bufferSettings = BufferSettings(
@@ -1574,7 +1617,26 @@ class PlayerSettingsDataStore @Inject constructor(
             it[subtitleBackgroundChosenKey] = true
         }
     }
-    suspend fun setSubtitleOutlineEnabled(enabled: Boolean) { store().edit { it[subtitleOutlineEnabledKey] = enabled } }
+    suspend fun setSubtitleOutlineEnabled(enabled: Boolean) {
+        store().edit {
+            it[subtitleOutlineEnabledKey] = enabled
+            it[subtitleEdgeKey] = (if (enabled) SubtitleEdge.OUTLINE else SubtitleEdge.NONE).key
+        }
+    }
+
+    /** RCTV: the subtitle's font. */
+    suspend fun setSubtitleFont(font: SubtitleFont) { store().edit { it[subtitleFontKey] = font.key } }
+
+    /** RCTV: the letters' edge (the outline switch follows it). */
+    suspend fun setSubtitleEdge(edge: SubtitleEdge) {
+        store().edit {
+            it[subtitleEdgeKey] = edge.key
+            it[subtitleOutlineEnabledKey] = edge != SubtitleEdge.NONE
+        }
+    }
+
+    /** RCTV: the box behind all the lines together. */
+    suspend fun setSubtitleWindowColor(color: Int) { store().edit { it[subtitleWindowColorKey] = color } }
     suspend fun setSubtitleOutlineColor(color: Int) { store().edit { it[subtitleOutlineColorKey] = color } }
     suspend fun setSubtitleOutlineWidth(width: Int) { store().edit { it[subtitleOutlineWidthKey] = width.coerceIn(1, 5) } }
 

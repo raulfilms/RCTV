@@ -440,28 +440,50 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
                 (normalizedOffset * (MPV_SUB_POS_AT_BOTTOM - MPV_SUB_POS_AT_TOP))
             val subMarginY = (MPV_SUB_MARGIN_Y_MIN +
                 (normalizedOffset * (MPV_SUB_MARGIN_Y_MAX - MPV_SUB_MARGIN_Y_MIN))).toInt()
-            val outlineSize = when {
-                !style.outlineEnabled -> 0.0
+            val edgeSize = when {
+                style.edge == com.nuvio.tv.data.local.SubtitleEdge.NONE -> 0.0
                 isAssOrSsaSubtitleSelectedNow() -> style.outlineWidth.coerceIn(1, 6).toDouble()
                 else -> 1.0
             }
             val backgroundAlpha = (style.backgroundColor ushr 24) and 0xFF
-            // RCTV: a box behind each line (as the app's own subtitle drawing does): libass's opaque
-            // box, drawn in the outline's color, its size the box's padding.
+            val windowAlpha = (style.windowColor ushr 24) and 0xFF
+            // RCTV Subtitle Styling: a box behind each line (libass's opaque box, drawn in the outline's
+            // color, its size the box's padding); else a box behind all the lines together (the
+            // window: libass's background box); else the letters' edge (outline or shadow).
             val boxed = backgroundAlpha > 0
-            val borderStyle = if (boxed) "opaque-box" else "outline-and-shadow"
-            val shadowOffset = 0.0
+            val windowed = !boxed && windowAlpha > 0
+            val borderStyle = when {
+                boxed -> "opaque-box"
+                windowed -> "background-box"
+                else -> "outline-and-shadow"
+            }
+            val outlineSize = when {
+                boxed -> MPV_SUB_BOX_PADDING
+                style.edge == com.nuvio.tv.data.local.SubtitleEdge.OUTLINE -> edgeSize
+                else -> 0.0
+            }
+            // In background-box mode, sub-shadow-offset is the box's padding.
+            val shadowOffset = when {
+                windowed -> 5.0
+                boxed -> 0.0
+                style.edge == com.nuvio.tv.data.local.SubtitleEdge.DROP_SHADOW -> 2.0
+                style.edge == com.nuvio.tv.data.local.SubtitleEdge.RAISED ||
+                    style.edge == com.nuvio.tv.data.local.SubtitleEdge.DEPRESSED -> 1.0
+                else -> 0.0
+            }
 
+            mpv.setPropertyString("sub-font", style.font.mpvFamily())
             mpv.setPropertyDouble("sub-scale", scale)
             mpv.setPropertyBoolean("sub-bold", style.bold)
-            mpv.setPropertyDouble("sub-outline-size", if (boxed) MPV_SUB_BOX_PADDING else outlineSize)
+            mpv.setPropertyDouble("sub-outline-size", outlineSize)
             mpv.setPropertyDouble("sub-pos", subPos)
             mpv.setPropertyInt("sub-margin-y", subMarginY)
             mpv.setPropertyDouble("sub-shadow-offset", shadowOffset)
             mpv.setPropertyString("sub-border-style", borderStyle)
             mpv.setPropertyString("sub-color", toMpvColor(style.textColor))
-            mpv.setPropertyString("sub-back-color", toMpvColor(style.backgroundColor))
+            mpv.setPropertyString("sub-back-color", toMpvColor(if (windowed) style.windowColor else style.backgroundColor))
             mpv.setPropertyString("sub-outline-color", toMpvColor(if (boxed) style.backgroundColor else style.outlineColor))
+            mpv.setPropertyString("sub-shadow-color", toMpvColor(style.outlineColor))
             mpv.setPropertyBoolean("sub-filter-sdh", style.stripSdh)
             mpv.setPropertyBoolean("sub-filter-sdh-harder", style.stripSdh)
         }.onFailure {
