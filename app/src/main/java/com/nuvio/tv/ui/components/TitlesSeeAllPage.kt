@@ -106,7 +106,11 @@ fun TitlesSeeAllPage(
     remoteFilter: SeeAllRemoteFilter? = null,
     onRemoteFilterChange: (type: String?, genre: String?, year: String?) -> Unit = { _, _, _ -> },
     /** The filter menu opened (the remote filter looks up its counts then). */
-    onFilterMenuOpen: () -> Unit = {}
+    onFilterMenuOpen: () -> Unit = {},
+    /** RCTV: a film series' (or series') logo instead of [title] (see [CollectionTitle]). */
+    titleLogoUrl: String? = null,
+    /** RCTV: that logo is still being looked for. */
+    titleLogoPending: Boolean = false
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -233,11 +237,13 @@ fun TitlesSeeAllPage(
                 )
                 Spacer(modifier = Modifier.width(AppleTvSpacing.Space3 + 2.dp))
             }
-            Text(
-                text = title,
+            // RCTV: a collection of one film series or series shows its logo instead of its name.
+            CollectionTitle(
+                title = title,
+                logoUrl = titleLogoUrl,
+                logoPending = titleLogoPending,
                 style = AppleTvType.Title2,
                 color = AppleTvColors.Label,
-                maxLines = 1,
                 modifier = Modifier.weight(1f)
             )
 

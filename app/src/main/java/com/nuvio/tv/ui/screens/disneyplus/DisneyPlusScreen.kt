@@ -298,7 +298,10 @@ fun DisneyPlusScreen(
                     // Type / Genre / Year are worked out by TMDB over the row's whole catalog.
                     remoteFilter = seeAll.remoteFilter(),
                     onRemoteFilterChange = viewModel::setSeeAllFilter,
-                    onFilterMenuOpen = viewModel::loadSeeAllCounts
+                    onFilterMenuOpen = viewModel::loadSeeAllCounts,
+                    // RCTV: a film series' list (John Wick) is headed by its logo.
+                    titleLogoUrl = seeAll.titleLogo,
+                    titleLogoPending = seeAll.titleLogoPending
                 )
             }
 
@@ -388,11 +391,16 @@ fun DisneyPlusScreen(
                         }
                     } else if (!isMain) {
                         item(key = "hub_title") {
-                            Text(
-                                text = stringResource(uiState.hub.titleRes),
+                            // RCTV: a universe of one series or film series (Dexter) shows its logo.
+                            com.nuvio.tv.ui.components.CollectionTitle(
+                                title = stringResource(uiState.hub.titleRes),
+                                logoUrl = uiState.pageLogo,
+                                logoPending = uiState.pageLogoPending,
                                 style = MaterialTheme.typography.headlineLarge,
                                 color = NuvioTheme.colors.TextPrimary,
-                                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl)
+                                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.xxxl),
+                                logoHeight = 80.dp,
+                                logoMaxWidth = 420.dp
                             )
                         }
                     }

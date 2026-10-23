@@ -97,6 +97,8 @@ class DisneyPlusRepository @Inject constructor(
     private val personPhotoCache = ConcurrentHashMap<Int, Optional<String>>()
     /** A franchise collection's name as artwork (its film's logo; null: none), by its name. */
     private val franchiseLogoCache = ConcurrentHashMap<String, Optional<String>>()
+    /** A series' or movie's logo (null: none), by its kind, name and year. */
+    private val titleLogoCache = ConcurrentHashMap<String, Optional<String>>()
     /** Every US watch provider's logo, by provider id (loaded once). */
     @Volatile private var providerLogoCache: Map<Int, String>? = null
     private val providerLogoMutex = Mutex()
@@ -402,15 +404,49 @@ class DisneyPlusRepository @Inject constructor(
                     ?: parts.filter { !it.releaseDate.isNullOrBlank() }.minByOrNull { it.releaseDate.orEmpty() }
                     ?: parts.firstOrNull()
                     ?: return@withPermit null
-                val logos = tmdbApi.getMovieImages(film.id, apiKey).body()?.logos.orEmpty()
-                    .filter { !it.filePath.isNullOrBlank() }
-                val best = (logos.filter { it.iso6391 == "en" }.sortedByDescending { it.voteAverage ?: 0.0 } +
-                    logos.sortedByDescending { it.voteAverage ?: 0.0 }).firstOrNull()
-                best?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
+                bestLogo(tmdbApi.getMovieImages(film.id, apiKey).body()?.logos.orEmpty())
             }
         }.onFailure { if (it is CancellationException) throw it }
         if (result.isSuccess) franchiseLogoCache[query] = Optional(result.getOrNull())
         result.getOrNull()
+    }
+
+    /** TMDB's best logo among [logos] (English first, then the best rated), as a w500 picture. */
+    private fun bestLogo(logos: List<com.nuvio.tv.data.remote.api.TmdbImage>): String? {
+        val usable = logos.filter { !it.filePath.isNullOrBlank() }
+        val best = (usable.filter { it.iso6391 == "en" }.sortedByDescending { it.voteAverage ?: 0.0 } +
+            usable.sortedByDescending { it.voteAverage ?: 0.0 }).firstOrNull()
+        return best?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
+    }
+
+    /**
+     * RCTV: a series' (or movie's) logo, found by its name and year on TMDB (a Paramount+ universe's
+     * page: "Dexter"). Null when TMDB has none.
+     */
+    suspend fun titleLogo(title: CuratedTitle): String? = withContext(Dispatchers.IO) {
+        val key = "${title.mediaType.value}:${title.title.lowercase(Locale.US)}:${title.year}"
+        titleLogoCache[key]?.let { return@withContext it.value }
+        val result = runCatching {
+            val preview = resolveCurated(title, language()) ?: throw java.io.IOException("Not found: ${title.title}")
+            val id = preview.id.removePrefix("tmdb:").toIntOrNull() ?: return@runCatching null
+            lookupLimiter.withPermit {
+                val response = if (title.mediaType == TmdbCollectionMediaType.TV) {
+                    tmdbApi.getTvImages(id, apiKey)
+                } else {
+                    tmdbApi.getMovieImages(id, apiKey)
+                }
+                if (!response.isSuccessful) throw java.io.IOException("TMDB images HTTP ${response.code()}")
+                bestLogo(response.body()?.logos.orEmpty())
+            }
+        }.onFailure { if (it is CancellationException) throw it }
+        if (result.isSuccess) titleLogoCache[key] = Optional(result.getOrNull())
+        result.getOrNull()
+    }
+
+    /** RCTV: the logo heading a collection's page (see [CollectionLogos]); null when TMDB has none. */
+    suspend fun collectionLogo(logo: CollectionLogo): String? = when (logo) {
+        is CollectionLogo.Franchise -> franchiseLogo(logo.query)
+        is CollectionLogo.Title -> titleLogo(logo.title)
     }
 
     /** A TMDB franchise collection's name and backdrop, for its card on Home (found by name). */

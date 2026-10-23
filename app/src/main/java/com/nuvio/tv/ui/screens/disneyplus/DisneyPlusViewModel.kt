@@ -48,6 +48,8 @@ private const val SEE_ALL_ROUNDS = 60
 
 /** How long a page waits for its banner's title logos before opening without them (they follow). */
 private const val HERO_LOGO_WAIT_MS = 1_200L
+/** RCTV: how long a collection's logo is waited for before its name shows instead. */
+private const val COLLECTION_LOGO_WAIT_MS = 4_000L
 
 /** Release rows label as "NEW" what came out this many days ago or less. */
 private const val NEW_BADGE_DAYS = 14L
@@ -93,7 +95,11 @@ data class HubSeeAllState(
     /** TMDB's totals by genre label (for the picked Type and Year), filled in once the menu opens. */
     val genreCounts: Map<String, Int> = emptyMap(),
     /** TMDB's totals by kind of title (for the picked Genre and Year). */
-    val typeCounts: Map<TmdbCollectionMediaType, Int> = emptyMap()
+    val typeCounts: Map<TmdbCollectionMediaType, Int> = emptyMap(),
+    /** RCTV: a film series' list (John Wick): its logo instead of its name, once found. */
+    val titleLogo: String? = null,
+    /** RCTV: its logo is being looked for (neither it nor the name shows meanwhile). */
+    val titleLogoPending: Boolean = false
 )
 
 /**
@@ -115,7 +121,11 @@ data class DisneyPlusUiState(
     val heroItems: List<MetaPreview> = emptyList(),
     val isHeroLoading: Boolean = true,
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
-    val rows: List<DisneyPlusRowState> = emptyList()
+    val rows: List<DisneyPlusRowState> = emptyList(),
+    /** RCTV: a universe of one series or film series (Dexter): its logo heads the page instead of its name. */
+    val pageLogo: String? = null,
+    /** RCTV: the page's logo is being looked for. */
+    val pageLogoPending: Boolean = false
 ) {
     /**
      * The page shows once its top (the hero) is ready, so it always opens at the top with focus on
@@ -174,6 +184,7 @@ class DisneyPlusViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(
         DisneyPlusUiState(
             hub = hub,
+            pageLogoPending = com.nuvio.tv.data.disneyplus.CollectionLogos.forPage(hub) != null,
             rows = hubSpec.rows
                 .filter { it.kind != DisneyRowKind.CONTINUE_WATCHING }
                 .map { spec ->
@@ -196,6 +207,13 @@ class DisneyPlusViewModel @Inject constructor(
     private val rowLimiter = Semaphore(6)
 
     init {
+        // RCTV: a universe of one series or film series is headed by its logo.
+        com.nuvio.tv.data.disneyplus.CollectionLogos.forPage(hub)?.let { logo ->
+            viewModelScope.launch {
+                val url = lookUpCollectionLogo(logo)
+                _uiState.update { it.copy(pageLogo = url, pageLogoPending = false) }
+            }
+        }
         val seeAllRow = directSeeAllRow
         if (seeAllRow != null) {
             // Just the row's See All page: nothing else of the page loads.
@@ -233,6 +251,8 @@ class DisneyPlusViewModel @Inject constructor(
         seeAllJob?.cancel()
         seeAllCountsJob?.cancel()
         seeAllCountsWanted = false
+        // RCTV: a film series' list (John Wick, Fast & Furious) is headed by its logo.
+        val collectionLogo = com.nuvio.tv.data.disneyplus.CollectionLogos.forList(hub, rowState.spec)
         _uiState.update {
             it.copy(
                 seeAll = HubSeeAllState(
@@ -240,13 +260,35 @@ class DisneyPlusViewModel @Inject constructor(
                     title = rowState.title,
                     items = items,
                     nextPage = if (hasMoreSources) 1 else null,
-                    mediaTypes = mediaTypes
+                    mediaTypes = mediaTypes,
+                    titleLogoPending = collectionLogo != null
                 )
             )
+        }
+        seeAllLogoJob?.cancel()
+        if (collectionLogo != null) {
+            seeAllLogoJob = viewModelScope.launch {
+                val url = lookUpCollectionLogo(collectionLogo)
+                _uiState.update { state ->
+                    val open = state.seeAll?.takeIf { it.rowId == rowId } ?: return@update state
+                    state.copy(seeAll = open.copy(titleLogo = url, titleLogoPending = false))
+                }
+            }
         }
         seeAllSession = repository.seeAllSession(rowState.spec)
         loadSeeAllMenus(rowState.spec, mediaTypes)
         loadMoreSeeAll()
+    }
+
+    private var seeAllLogoJob: Job? = null
+
+    /** RCTV: a collection's logo, waited for a few seconds at most (else its name shows). */
+    private suspend fun lookUpCollectionLogo(logo: com.nuvio.tv.data.disneyplus.CollectionLogo): String? = try {
+        withTimeoutOrNull(COLLECTION_LOGO_WAIT_MS) { repository.collectionLogo(logo) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     /** Pictures of the cards of the pages of cards, found once for the page's lifetime. */
