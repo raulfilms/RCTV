@@ -89,7 +89,8 @@ class SmartScraperSettingsStore @Inject constructor(
             hdr = enumOr(prefs.getString(KEY_F_HDR, null), HdrFilter.ANY),
             codec = enumOrNull<VideoCodec>(prefs.getString(KEY_F_CODEC, null)),
             imaxOnly = prefs.getBoolean(KEY_F_IMAX, false),
-            maxSizeGb = prefs.getFloat(KEY_F_SIZE, 0f).takeIf { it > 0f }?.toDouble()
+            maxSizeGb = prefs.getFloat(KEY_F_SIZE, 0f).takeIf { it > 0f }?.toDouble(),
+            language = enumOrNull<AudioLanguage>(prefs.getString(KEY_F_LANGUAGE, null))
         )
     )
 
@@ -103,6 +104,7 @@ class SmartScraperSettingsStore @Inject constructor(
             .putString(KEY_F_CODEC, view.filters.codec?.name)
             .putBoolean(KEY_F_IMAX, view.filters.imaxOnly)
             .putFloat(KEY_F_SIZE, view.filters.maxSizeGb?.toFloat() ?: 0f)
+            .putString(KEY_F_LANGUAGE, view.filters.language?.name)
             .apply()
     }
 
@@ -136,5 +138,6 @@ class SmartScraperSettingsStore @Inject constructor(
         const val KEY_F_CODEC = "filter_codec"
         const val KEY_F_IMAX = "filter_imax"
         const val KEY_F_SIZE = "filter_max_size_gb"
+        const val KEY_F_LANGUAGE = "filter_language"
     }
 }

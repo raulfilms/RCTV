@@ -96,6 +96,27 @@ enum class AudioChannels(val label: String, val count: Int) {
     UNKNOWN("", 0)
 }
 
+/**
+ * The audio languages the player offers: English first, then Spanish (like Disney+, only the
+ * audio changes, never the movie).
+ */
+enum class AudioLanguage(val code: String, val nativeName: String) {
+    ENGLISH("en", "English"),
+    SPANISH("es", "Español");
+
+    companion object {
+        /** "en", "eng", "en-US" → English; "es", "spa", "es-419", "lat" → Spanish; anything else null. */
+        fun ofCode(code: String?): AudioLanguage? {
+            val base = code?.trim()?.lowercase()?.substringBefore('-')?.substringBefore('_') ?: return null
+            return when (base) {
+                "en", "eng" -> ENGLISH
+                "es", "spa", "esp", "lat", "la" -> SPANISH
+                else -> null
+            }
+        }
+    }
+}
+
 /** How sure the parser is of each thing it read (0 = not found: UNKNOWN; 1 = said plainly by the addon). */
 data class FieldConfidence(
     val title: Float = 0f,
@@ -139,6 +160,8 @@ data class ParsedRelease(
     /** True when [sizeBytes] is the whole season pack's, not the episode's. */
     val sizeIsPack: Boolean = false,
     val languages: List<String> = emptyList(),
+    /** The audio languages the release says it has (its words, its flags); empty when it says none. */
+    val audioLanguages: Set<AudioLanguage> = emptySet(),
     val confidence: FieldConfidence = FieldConfidence()
 ) {
     val hasEpisodeInfo: Boolean get() = seasons.isNotEmpty() || episodes.isNotEmpty()
@@ -150,7 +173,7 @@ data class ParsedRelease(
 }
 
 /** Which addon family a stream came from (only to rank, group and learn; never shown). */
-enum class ProviderFamily { AIOSTREAMS, TORRENTIO, OTHER }
+enum class ProviderFamily { AIOSTREAMS, TORRENTIO, LATINODEBRID, OTHER }
 
 /** The AIOStreams setups the person runs (each its own addon). */
 enum class ProviderVariant { MAIN, IMAX, EXTENDED, DUBBED, NONE }
@@ -180,8 +203,19 @@ data class NormalizedSource(
     /** A stream that can't play here (a web page, no link at all). */
     val isPlayable: Boolean,
     /** Played from a torrent on this device (no debrid in between). */
-    val isPeerToPeer: Boolean
-)
+    val isPeerToPeer: Boolean,
+    /** Languages its provider is known for (LatinoDebrid: Spanish), whatever the release says. */
+    val providerLanguages: Set<AudioLanguage> = emptySet()
+) {
+    /**
+     * Its audio languages: what the release or its provider says; when neither says any, the
+     * title's own language (an untagged release is in the original audio), else English.
+     */
+    fun audioLanguages(originalLanguage: AudioLanguage?): Set<AudioLanguage> {
+        val said = release.audioLanguages + providerLanguages
+        return said.ifEmpty { setOf(originalLanguage ?: AudioLanguage.ENGLISH) }
+    }
+}
 
 /** The title the person asked for, as the app knows it (TMDB/IMDb metadata). */
 data class SmartSourceRequest(
@@ -199,7 +233,11 @@ data class SmartSourceRequest(
      * The other numbers [episode] goes by (a cartoon's halves TMDB numbers apart that IMDb and the
      * addons tell as one episode): a file named by any of them is this episode too.
      */
-    val equivalentEpisodes: Set<Int> = emptySet()
+    val equivalentEpisodes: Set<Int> = emptySet(),
+    /** The audio wanted (the language chosen in the player last); null: no preference. */
+    val preferredLanguage: AudioLanguage? = null,
+    /** The title's own language, when it's English or Spanish. */
+    val originalLanguage: AudioLanguage? = null
 ) {
     val isEpisode: Boolean get() = isSeries && season != null && episode != null
 
@@ -275,7 +313,9 @@ data class ScoredSource(
     /** The bitrate its size and the title's length give (Mbps); null when either is unknown. */
     val bitrateMbps: Double?,
     /** What it needs from the connection to play smoothly (Mbps), estimated from its bitrate or picture. */
-    val requiredMbps: Double
+    val requiredMbps: Double,
+    /** Its audio languages (said, or the title's own when none is said). */
+    val audioLanguages: Set<AudioLanguage> = emptySet()
 ) {
     val stream: Stream get() = source.stream
     val release: ParsedRelease get() = source.release

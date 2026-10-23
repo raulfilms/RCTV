@@ -109,6 +109,10 @@ data class PlayerUiState(
     val centerMixLevelDb: Int = 0,
     val isCenterMixAvailable: Boolean = false,
     val showAudioOverlay: Boolean = false,
+    /** RCTV: the audio language playing now (English or Español), when known. */
+    val currentAudioLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage? = null,
+    /** RCTV: the language being looked for on another source (the movie keeps playing meanwhile). */
+    val audioLanguageSwitching: com.nuvio.tv.core.smartscraper.AudioLanguage? = null,
     val showSubtitleOverlay: Boolean = false,
     val showSubtitleStylePanel: Boolean = false,
     val showSubtitleTimingDialog: Boolean = false,
@@ -287,6 +291,8 @@ sealed class PlayerEvent {
     data object OnCommitPreviewSeek : PlayerEvent()
     data class OnSeekTo(val position: Long) : PlayerEvent()
     data class OnSelectAudioTrack(val index: Int) : PlayerEvent()
+    /** RCTV: English or Español: only the audio changes, never the movie. */
+    data class OnSelectAudioLanguage(val language: com.nuvio.tv.core.smartscraper.AudioLanguage) : PlayerEvent()
     data class OnSetAudioDelayMs(val delayMs: Int) : PlayerEvent()
     data class OnSetAudioAmplificationDb(val db: Int) : PlayerEvent()
     data class OnSetPersistAudioAmplification(val enabled: Boolean) : PlayerEvent()

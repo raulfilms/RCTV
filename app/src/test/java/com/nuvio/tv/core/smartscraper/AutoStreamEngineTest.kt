@@ -105,6 +105,33 @@ class AutoStreamEngineTest {
         assertEquals("4K · 5.7 GB · 5.1 · HDR10", AutoStreamEngine.summary(release))
     }
 
+    @Test
+    fun `the language chosen comes first, LatinoDebrid's being Spanish`() {
+        val english4k = stream("en", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 5.6)
+        val latino = stream("es", "Movie.2020.1080p.WEB-DL.DD5.1.x264", 3.1, name = "LatinoDebrid\n1080p", addon = "LatinoDebrid")
+        val spanish = AutoStreamEngine.rank(
+            listOf(english4k, latino).map(SourceProviderAdapters::normalize),
+            movie.copy(preferredLanguage = AudioLanguage.SPANISH, originalLanguage = AudioLanguage.ENGLISH)
+        )
+        assertEquals("es", spanish.best?.stream?.infoHash)
+        val english = AutoStreamEngine.rank(
+            listOf(english4k, latino).map(SourceProviderAdapters::normalize),
+            movie.copy(preferredLanguage = AudioLanguage.ENGLISH, originalLanguage = AudioLanguage.ENGLISH)
+        )
+        assertEquals("en", english.best?.stream?.infoHash)
+    }
+
+    @Test
+    fun `audio languages are read from words and flags, never from subtitles`() {
+        assertEquals(
+            setOf(AudioLanguage.SPANISH, AudioLanguage.ENGLISH),
+            ReleaseParser.parseName("Movie.2020.1080p.WEB-DL.Dual.Latino-Ingles.DD5.1").audioLanguages
+        )
+        assertEquals(emptySet<AudioLanguage>(), ReleaseParser.parseName("Movie.2020.1080p.WEB-DL.Sub.Español").audioLanguages)
+        assertEquals(setOf(AudioLanguage.SPANISH), ReleaseParser.audioLanguagesIn("💾 2 GB 🇲🇽"))
+        assertEquals(setOf(AudioLanguage.SPANISH), ReleaseParser.parseName("Pelicula.2020.1080p.Castellano.AC3").audioLanguages)
+    }
+
     private fun rank(vararg streams: Stream, context: SmartRankingContext = SmartRankingContext.DEFAULT) =
         AutoStreamEngine.rank(streams.map(SourceProviderAdapters::normalize), movie, context)
 

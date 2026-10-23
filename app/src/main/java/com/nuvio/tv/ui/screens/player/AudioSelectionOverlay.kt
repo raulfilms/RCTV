@@ -67,6 +67,10 @@ internal fun AudioSelectionOverlay(
     isCenterMixAvailable: Boolean,
     persistAmplification: Boolean,
     onTrackSelected: (Int) -> Unit,
+    /** RCTV: the language playing, the one being looked for, and choosing one (English, Español). */
+    currentLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage? = null,
+    switchingLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage? = null,
+    onLanguageSelected: (com.nuvio.tv.core.smartscraper.AudioLanguage) -> Unit = {},
     onAudioDelayChange: (Int) -> Unit,
     onAmplificationChange: (Int) -> Unit,
     onCenterMixLevelChange: (Int) -> Unit,
@@ -101,24 +105,9 @@ internal fun AudioSelectionOverlay(
     LaunchedEffect(visible, tracks, selectedIndex) {
         if (!visible) return@LaunchedEffect
 
-        if (tracks.isNotEmpty()) {
-            val selectedListIndex = tracks.indexOfFirst { it.index == selectedIndex }.takeIf { it >= 0 } ?: 0
-            listState.scrollToItem(selectedListIndex)
-            delay(120)
-            runCatching { tracksFocusRequester.requestFocus() }
-        } else {
-            delay(120)
-            val initialControlsFocusRequester = when {
-                canDecreaseDelay -> delayMinusFocusRequester
-                canIncreaseDelay -> delayPlusFocusRequester
-                canDecreaseAmp -> ampMinusFocusRequester
-                canIncreaseAmp -> ampPlusFocusRequester
-                canDecreaseCenterMix -> centerMinusFocusRequester
-                canIncreaseCenterMix -> centerPlusFocusRequester
-                else -> persistFocusRequester
-            }
-            runCatching { initialControlsFocusRequester.requestFocus() }
-        }
+        // RCTV: the two languages (English, Español) are always there to focus.
+        delay(120)
+        runCatching { tracksFocusRequester.requestFocus() }
     }
 
     LaunchedEffect(visible, pendingControlFocusTarget, audioAmplificationDb, isAmplificationAvailable) {
@@ -177,10 +166,10 @@ internal fun AudioSelectionOverlay(
                 modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
             ) {
                 Column(modifier = Modifier.width(444.dp)) {
-                    AudioTracksContent(
-                        tracks = tracks,
-                        selectedIndex = selectedIndex,
-                        listState = listState,
+                    // RCTV: English, then Español; only the audio changes.
+                    AudioLanguagesContent(
+                        currentLanguage = currentLanguage,
+                        switchingLanguage = switchingLanguage,
                         initialFocusRequester = tracksFocusRequester,
                         rightFocusRequester = when {
                             canDecreaseDelay -> delayMinusFocusRequester
@@ -191,8 +180,7 @@ internal fun AudioSelectionOverlay(
                             canIncreaseCenterMix -> centerPlusFocusRequester
                             else -> persistFocusRequester
                         },
-                        onTrackFocused = { lastFocusedAudioIndex = it },
-                        onTrackSelected = onTrackSelected
+                        onLanguageSelected = onLanguageSelected
                     )
                 }
                 Column(modifier = Modifier.width(268.dp)) {
@@ -220,6 +208,101 @@ internal fun AudioSelectionOverlay(
                         onPersistAmplificationChange = onPersistAmplificationChange
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioLanguagesContent(
+    currentLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage?,
+    switchingLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage?,
+    initialFocusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester,
+    onLanguageSelected: (com.nuvio.tv.core.smartscraper.AudioLanguage) -> Unit
+) {
+    val focused = currentLanguage ?: com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .padding(top = NuvioTheme.spacing.sm, bottom = NuvioTheme.spacing.sm)
+            .fillMaxWidth()
+    ) {
+        com.nuvio.tv.core.smartscraper.AudioLanguage.entries.forEach { language ->
+            AudioLanguageCard(
+                name = language.nativeName,
+                detail = if (language == switchingLanguage) stringResource(R.string.audio_language_searching_short) else null,
+                isSelected = language == currentLanguage,
+                rightFocusRequester = rightFocusRequester,
+                focusRequester = if (language == focused) initialFocusRequester else null,
+                onClick = { onLanguageSelected(language) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioLanguageCard(
+    name: String,
+    detail: String?,
+    isSelected: Boolean,
+    rightFocusRequester: FocusRequester,
+    focusRequester: FocusRequester?,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusProperties { right = rightFocusRequester },
+        colors = CardDefaults.colors(
+            containerColor = if (isSelected) NuvioTheme.colors.Secondary else Color.Transparent,
+            focusedContainerColor = if (isSelected) NuvioTheme.colors.Secondary else Color.Transparent
+        ),
+        shape = CardDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
+        border = CardDefaults.border(
+            border = Border(
+                border = BorderStroke(NuvioTheme.spacing.xxs, Color.Transparent),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            ),
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            )
+        ),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.sm),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isSelected) NuvioTheme.colors.OnSecondary else Color.White
+                )
+                if (detail != null) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isSelected) NuvioTheme.colors.OnSecondary.copy(alpha = 0.82f) else Color.White.copy(alpha = 0.72f)
+                    )
+                }
+            }
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = NuvioTheme.colors.OnSecondary
+                )
             }
         }
     }

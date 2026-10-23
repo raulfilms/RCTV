@@ -1643,6 +1643,9 @@ fun PlayerScreen(
             centerMixLevelDb = uiState.centerMixLevelDb,
             isCenterMixAvailable = uiState.isCenterMixAvailable,
             onTrackSelected = { viewModel.onEvent(PlayerEvent.OnSelectAudioTrack(it)) },
+            currentLanguage = uiState.currentAudioLanguage,
+            switchingLanguage = uiState.audioLanguageSwitching,
+            onLanguageSelected = { viewModel.onEvent(PlayerEvent.OnSelectAudioLanguage(it)) },
             onAudioDelayChange = { viewModel.onEvent(PlayerEvent.OnSetAudioDelayMs(it)) },
             onAmplificationChange = { viewModel.onEvent(PlayerEvent.OnSetAudioAmplificationDb(it)) },
             onPersistAmplificationChange = {

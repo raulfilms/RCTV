@@ -156,6 +156,9 @@ class StreamScreenViewModel @Inject constructor(
     private val streamCacheKey: String = "${contentType.lowercase()}|$videoId"
 
     // RCTV Smart Scraper (declared before init: it may lay sources out right away).
+    /** The audio language chosen last in the player ("en", "es"; anything else: none). */
+    @Volatile private var preferredAudioLanguageSetting: String? = null
+
     /** Auto Stream's order for this title, once it chose (what to play, then fall back on). */
     private var autoStreamChain: List<Stream> = emptyList()
 
@@ -377,6 +380,7 @@ class StreamScreenViewModel @Inject constructor(
             val playerSettings = playerSettingsDataStore.playerSettings.first()
             // RCTV Auto Stream: its own rules and timing (answers gathered ~5 s, nothing valid by
             // ~8 s means the sources are shown), never on a screen opened to choose by hand.
+            preferredAudioLanguageSetting = playerSettings.preferredAudioLanguage
             val autoStreamMode = playerSettings.streamAutoPlayMode == StreamAutoPlayMode.AUTO_STREAM && !manualSelection
             val autoStreamConfig = smartScraper.config.autoStream
             val loadStartedAtMs = System.currentTimeMillis()
@@ -570,7 +574,13 @@ class StreamScreenViewModel @Inject constructor(
                 val autoStreamSummary = if (selectedAutoPlayStream != null && autoStreamResult != null &&
                     playerSettings.showPlayerLoadingStatus
                 ) {
-                    AutoStreamEngine.summary(smartScraper.normalize(selectedAutoPlayStream).release).ifBlank { null }
+                    val request = smartRequest()
+                    val source = smartScraper.normalize(selectedAutoPlayStream)
+                    val languages = source.audioLanguages(request.originalLanguage)
+                    AutoStreamEngine.summary(
+                        source.release,
+                        language = request.preferredLanguage?.takeIf { it in languages } ?: languages.firstOrNull()
+                    ).ifBlank { null }
                 } else {
                     null
                 }
@@ -1268,7 +1278,11 @@ class StreamScreenViewModel @Inject constructor(
             imdbId = showId.substringBefore(':').takeIf { it.startsWith("tt") },
             tmdbId = showId.takeIf { it.startsWith("tmdb:") }?.removePrefix("tmdb:")?.substringBefore(':'),
             runtimeMinutes = state.runtime ?: runtime,
-            equivalentEpisodes = EpisodeOrderRegistry.equivalentEpisodes(showId, season, episode)
+            equivalentEpisodes = EpisodeOrderRegistry.equivalentEpisodes(showId, season, episode),
+            // The language chosen in the player last, else the title's own.
+            preferredLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(preferredAudioLanguageSetting)
+                ?: com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage),
+            originalLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage)
         )
     }
 

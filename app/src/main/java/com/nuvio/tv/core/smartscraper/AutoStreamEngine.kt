@@ -25,7 +25,9 @@ data class AutoStreamCandidate(
     val verified: Boolean,
     /** The connection should play it smoothly. */
     val fitsConnection: Boolean,
-    val copies: List<ScoredSource> = emptyList()
+    val copies: List<ScoredSource> = emptyList(),
+    /** Its audio is in the language wanted (or none is wanted). */
+    val languageMatch: Boolean = true
 ) {
     val stream: Stream get() = scored.stream
     val release: ParsedRelease get() = scored.release
@@ -75,7 +77,8 @@ object AutoStreamEngine {
                 scored = scored,
                 score = score(scored, fits, context),
                 verified = scored.release.channels in config.allowedChannels && scored.release.resolution.isKnown,
-                fitsConnection = fits
+                fitsConnection = fits,
+                languageMatch = request.preferredLanguage == null || request.preferredLanguage in scored.audioLanguages
             )
         }
         val ordered = valid.sortedWith(ORDER)
@@ -189,8 +192,8 @@ object AutoStreamEngine {
         return score
     }
 
-    /** "4K · 5.7 GB · 5.1 · HDR10 · IMAX": what will play (never where from). */
-    fun summary(release: ParsedRelease): String = buildList {
+    /** "4K · 5.7 GB · 5.1 · HDR10 · IMAX · Español": what will play (never where from). */
+    fun summary(release: ParsedRelease, language: AudioLanguage? = null): String = buildList {
         if (release.resolution.isKnown) add(release.resolution.label)
         release.sizeBytes?.takeIf { !release.sizeIsPack }?.let { add(formatSize(it)) }
         if (release.channels != AudioChannels.UNKNOWN) add(release.channels.label)
@@ -201,6 +204,7 @@ object AutoStreamEngine {
             HdrFormat.HDR in release.hdr -> add(HdrFormat.HDR.label)
         }
         if (release.imax) add("IMAX")
+        language?.let { add(it.nativeName) }
     }.joinToString(" · ")
 
     private fun formatSize(bytes: Long): String {
@@ -217,11 +221,13 @@ object AutoStreamEngine {
     )
 
     /**
-     * Verified ones first (audio and picture known); among them, what the connection keeps up
+     * The language wanted first (Spanish when Español was chosen: the other only when none is);
+     * then verified ones (audio and picture known); among them, what the connection keeps up
      * with before what it doesn't (a 480p that plays beats a 4K that buffers); then the score.
      */
     private val ORDER: Comparator<AutoStreamCandidate> =
-        compareBy<AutoStreamCandidate> { if (it.verified) 0 else 1 }
+        compareBy<AutoStreamCandidate> { if (it.languageMatch) 0 else 1 }
+            .thenBy { if (it.verified) 0 else 1 }
             .thenBy { if (it.fitsConnection) 0 else 1 }
             .thenByDescending { it.score }
             .thenByDescending { it.scored.breakdown.playbackReliability }

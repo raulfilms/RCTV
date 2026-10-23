@@ -94,6 +94,7 @@ object ReleaseParser {
             sizeBytes = size.first,
             sizeIsPack = episodeInfo.isPack && size.first != null,
             languages = languagesIn(names.joinToString(" ") + " " + input.text),
+            audioLanguages = audioLanguagesIn(names.joinToString(" ") + "\n" + input.text),
             confidence = FieldConfidence(
                 title = when {
                     titleYear?.title == null && packTitle == null -> 0f
@@ -365,6 +366,24 @@ object ReleaseParser {
         return flags + words
     }
 
+    /**
+     * English and Spanish as a release says them: words ("Latino", "Castellano", "Español",
+     * "Spanish", "Dual Latino", "English", "Inglés") and flags (🇲🇽 🇪🇸 🇦🇷... / 🇺🇸 🇬🇧...).
+     */
+    fun audioLanguagesIn(text: String): Set<AudioLanguage> = buildSet {
+        // A language said of the subtitles ("Sub Español", "Subs Eng") isn't the audio's.
+        val audioText = text.replace(SUBTITLE_LANGUAGE, " ")
+        if (SPANISH_WORDS.containsMatchIn(audioText)) add(AudioLanguage.SPANISH)
+        if (ENGLISH_WORDS.containsMatchIn(audioText)) add(AudioLanguage.ENGLISH)
+        FLAG.findAll(text).forEach { match ->
+            val country = match.value.codePoints().toArray().joinToString("") { (it - 0x1F1E6 + 'A'.code).toChar().toString() }
+            when (country) {
+                in SPANISH_FLAGS -> add(AudioLanguage.SPANISH)
+                in ENGLISH_FLAGS -> add(AudioLanguage.ENGLISH)
+            }
+        }
+    }
+
     // ==================================================================== Patterns
 
     private fun rx(pattern: String) = Regex(pattern, RegexOption.IGNORE_CASE)
@@ -454,6 +473,18 @@ object ReleaseParser {
     private val SIZE = rx("(\\d+(?:[.,]\\d+)?)\\s?(tib|tb|gib|gb|mib|mb)(?![a-z])")
     /** A flag: two regional-indicator letters. */
     private val FLAG = Regex("[\\x{1F1E6}-\\x{1F1FF}]{2}")
+    private val SPANISH_WORDS = rx(
+        "$B(latino|lat|castellano|espa[ñn]ol|spanish|spa|esp|latam|dual[ .\\-]?lat\\w*|audio[ .]?latino|doblaje[ .]?latino)$E"
+    )
+    private val ENGLISH_WORDS = rx("$B(english|eng|ingl[eé]s)$E")
+    private val SUBTITLE_LANGUAGE = rx(
+        "$B(subs?|subt[ií]tulos?|subtitulado|subtitles?|subtitled|subbed)[ .\\-:/]*(?:(?:en|in)[ .])?" +
+            "(latino|castellano|espa[ñn]ol|spanish|spa|esp|english|eng|ingl[eé]s)$E"
+    )
+    private val SPANISH_FLAGS = setOf(
+        "MX", "ES", "AR", "CO", "CL", "PE", "VE", "UY", "PY", "BO", "EC", "GT", "HN", "SV", "NI", "CR", "PA", "DO", "CU", "PR"
+    )
+    private val ENGLISH_FLAGS = setOf("US", "GB", "CA", "AU", "NZ", "IE")
     private val LANGUAGE_WORDS = listOf(
         rx("${B}latino$E") to "Latino",
         rx("${B}castellano$E") to "Castellano",

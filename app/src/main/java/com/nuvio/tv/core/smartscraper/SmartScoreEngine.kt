@@ -54,7 +54,8 @@ object SmartScoreEngine {
             score = weighted(breakdown, config.weights),
             breakdown = breakdown,
             bitrateMbps = bitrate,
-            requiredMbps = required
+            requiredMbps = required,
+            audioLanguages = source.audioLanguages(request.originalLanguage)
         )
     }
 
@@ -524,11 +525,12 @@ data class SmartSourceFilters(
     val hdr: HdrFilter = HdrFilter.ANY,
     val codec: VideoCodec? = null,
     val imaxOnly: Boolean = false,
-    val maxSizeGb: Double? = null
+    val maxSizeGb: Double? = null,
+    val language: AudioLanguage? = null
 ) {
     val isEmpty: Boolean
         get() = resolution == null && audio == AudioFilter.ANY && hdr == HdrFilter.ANY && codec == null &&
-            !imaxOnly && maxSizeGb == null
+            !imaxOnly && maxSizeGb == null && language == null
 
     fun accepts(source: ScoredSource): Boolean {
         val release = source.release
@@ -547,6 +549,7 @@ data class SmartSourceFilters(
         }
         if (codec != null && release.codec != codec) return false
         if (imaxOnly && !release.imax) return false
+        if (language != null && language !in source.audioLanguages) return false
         if (maxSizeGb != null) {
             val gb = release.sizeGb ?: return false
             if (gb > maxSizeGb) return false

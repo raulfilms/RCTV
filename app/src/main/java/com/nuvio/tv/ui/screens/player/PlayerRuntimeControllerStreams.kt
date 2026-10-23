@@ -1748,7 +1748,11 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 runtimeMinutes = nextVideo.runtime,
                 equivalentEpisodes = com.nuvio.tv.core.imdb.EpisodeOrderRegistry.equivalentEpisodes(
                     contentId, nextVideo.season, nextVideo.episode
-                )
+                ),
+                // The next episode in the language chosen last (else the show's own).
+                preferredLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(playerSettings.preferredAudioLanguage)
+                    ?: com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage),
+                originalLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage)
             )
             // Auto Stream: its order for the next episode (what to fall back on, too).
             var autoStreamChain: List<Stream> = emptyList()

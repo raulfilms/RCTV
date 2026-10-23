@@ -1288,6 +1288,9 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                 )
             }
         }
+        is PlayerEvent.OnSelectAudioLanguage -> {
+            selectAudioLanguage(event.language)
+        }
         is PlayerEvent.OnSetAudioDelayMs -> {
             applyAudioDelay(event.delayMs)
         }
@@ -1429,9 +1432,11 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             }
         }
         PlayerEvent.OnShowAudioOverlay -> {
+            val playingLanguage = currentAudioLanguage()
             _uiState.update {
                 it.copy(
                     showAudioOverlay = true,
+                    currentAudioLanguage = playingLanguage,
                     showSubtitleOverlay = false,
                     showSubtitleStylePanel = false,
                     showMoreDialog = false,

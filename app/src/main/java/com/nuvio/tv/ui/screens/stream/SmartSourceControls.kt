@@ -139,6 +139,14 @@ internal fun SmartSourceControls(
                 onClick = { onViewChange { it.copy(filters = it.filters.copy(imaxOnly = !it.filters.imaxOnly)) } }
             )
         }
+        item(key = "language") {
+            val language = view.filters.language
+            SourceStatusFilterChip(
+                name = stringResource(R.string.smart_filter_language_format, language?.nativeName ?: any),
+                isSelected = language != null,
+                onClick = { onViewChange { it.copy(filters = it.filters.copy(language = next(it.filters.language, LANGUAGES))) } }
+            )
+        }
         item(key = "size") {
             val max = view.filters.maxSizeGb
             SourceStatusFilterChip(
@@ -162,6 +170,7 @@ private fun <T> next(current: T, choices: List<T>): T {
 private val RESOLUTIONS = listOf(null, VideoResolution.UHD_2160, VideoResolution.QHD_1440, VideoResolution.FHD_1080, VideoResolution.HD_720)
 private val CODECS = listOf(null, VideoCodec.HEVC, VideoCodec.AVC, VideoCodec.AV1)
 private val SIZES = listOf(null, 8.0, 6.0, 4.0, 2.0)
+private val LANGUAGES = listOf(null, com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH, com.nuvio.tv.core.smartscraper.AudioLanguage.SPANISH)
 
 /** A section's name over its sources ("SMART SOURCES", "ALL SOURCES"). */
 @Composable

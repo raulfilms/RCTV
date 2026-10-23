@@ -19,7 +19,7 @@ interface SourceProviderAdapter {
 object SourceProviderAdapters {
 
     /** Tried in order; the last one reads any addon. */
-    val adapters: List<SourceProviderAdapter> = listOf(TorrentioAdapter, AioStreamsAdapter, GenericStreamAdapter)
+    val adapters: List<SourceProviderAdapter> = listOf(LatinoDebridAdapter, TorrentioAdapter, AioStreamsAdapter, GenericStreamAdapter)
 
     fun normalize(stream: Stream): NormalizedSource =
         adapters.first { it.handles(stream) }.normalize(stream)
@@ -68,9 +68,13 @@ internal abstract class BaseStreamAdapter : SourceProviderAdapter {
             infoHash = stream.getEffectiveInfoHash(),
             fileIdx = stream.getEffectiveFileIdx(),
             isPlayable = isPlayable,
-            isPeerToPeer = stream.isTorrent() && identity.debrid == DebridService.NONE
+            isPeerToPeer = stream.isTorrent() && identity.debrid == DebridService.NONE,
+            providerLanguages = providerLanguages(stream)
         )
     }
+
+    /** Languages the provider itself stands for (none by default: the release says). */
+    protected open fun providerLanguages(stream: Stream): Set<AudioLanguage> = emptySet()
 
     /** The file's name and its torrent's, the file's first. */
     protected open fun releaseNames(stream: Stream): List<String> = buildList {
@@ -179,6 +183,26 @@ internal object AioStreamsAdapter : BaseStreamAdapter() {
     }
 
     private val DUBBED = Regex("dub|doblad|dual|latino|castellano|multi")
+}
+
+/**
+ * LatinoDebrid (and any other Latino addon added later: its name says "Latino"): Spanish (Latin
+ * American) audio, through the person's debrid services.
+ */
+internal object LatinoDebridAdapter : BaseStreamAdapter() {
+    override fun handles(stream: Stream): Boolean = LATINO.containsMatchIn(stream.addonName)
+
+    override fun identify(stream: Stream): ProviderIdentity {
+        val debrid = debridIn(listOfNotNull(stream.name, stream.description).joinToString(" "))
+            .takeIf { it != DebridService.NONE }
+            ?: stream.clientResolve?.service?.let { debridIn(it) }
+            ?: DebridService.NONE
+        return ProviderIdentity(key = stream.addonName, family = ProviderFamily.LATINODEBRID, debrid = debrid)
+    }
+
+    override fun providerLanguages(stream: Stream): Set<AudioLanguage> = setOf(AudioLanguage.SPANISH)
+
+    private val LATINO = Regex("(?<![a-z])latino", RegexOption.IGNORE_CASE)
 }
 
 /** Any other addon: the file's name where it's given, else its release-like lines. */
