@@ -33,7 +33,8 @@ class ThemeDataStore @Inject constructor(
     private val fontKey = stringPreferencesKey("selected_font")
     private val amoledModeKey = booleanPreferencesKey("amoled_mode")
     private val amoledSurfacesModeKey = booleanPreferencesKey("amoled_surfaces_mode")
-    private val settingsUiStyleKey = stringPreferencesKey("settings_ui_style")
+    // RCTV: a new key, so everyone starts on the Glass style once (then their own choice is kept).
+    private val settingsUiStyleKey = stringPreferencesKey("settings_ui_style_v2")
 
     val themeSelection: Flow<ThemeSelection> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs ->
@@ -69,11 +70,11 @@ class ThemeDataStore @Inject constructor(
 
     val settingsUiStyle: Flow<SettingsUiStyle> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs ->
-            val styleName = prefs[settingsUiStyleKey] ?: SettingsUiStyle.CLASSIC.name
+            val styleName = prefs[settingsUiStyleKey] ?: SettingsUiStyle.GLASS.name
             try {
                 SettingsUiStyle.valueOf(styleName)
             } catch (e: IllegalArgumentException) {
-                SettingsUiStyle.CLASSIC
+                SettingsUiStyle.GLASS
             }
         }
     }

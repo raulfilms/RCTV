@@ -122,12 +122,14 @@ internal fun isFlatSettingsStyle(): Boolean = NuvioTheme.settingsUiStyle != Sett
 @androidx.compose.runtime.ReadOnlyComposable
 internal fun settingsFocusFillColor(): Color = when (NuvioTheme.settingsUiStyle) {
     SettingsUiStyle.HORIZON -> NuvioTheme.colors.TextPrimary.copy(alpha = 0.1f)
+    SettingsUiStyle.GLASS -> SettingsGlassRowFocusedFill
     else -> NuvioTheme.colors.FocusBackground
 }
 
 @Composable
 @androidx.compose.runtime.ReadOnlyComposable
 internal fun settingsRowShape(): RoundedCornerShape = when (NuvioTheme.settingsUiStyle) {
+    SettingsUiStyle.GLASS -> SettingsGlassRowShape
     SettingsUiStyle.CLASSIC -> RoundedCornerShape(SettingsPillRadius)
     SettingsUiStyle.ZEN -> SettingsZenRowShape
     SettingsUiStyle.HORIZON -> SettingsHorizonRowShape
@@ -297,7 +299,12 @@ internal fun SettingsRailButton(
     var itemCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val glideIndicator = onFocusedItemPositioned != null
     val zen = isFlatSettingsStyle()
-    val railShape = if (zen) SettingsZenRowShape else RoundedCornerShape(SettingsPillRadius)
+    val glass = isGlassSettingsStyle()
+    val railShape = when {
+        glass -> SettingsGlassRowShape
+        zen -> SettingsZenRowShape
+        else -> RoundedCornerShape(SettingsPillRadius)
+    }
     val appliedModifier = if (focusRequester != null) {
         modifier.focusRequester(focusRequester)
     } else {
@@ -307,9 +314,10 @@ internal fun SettingsRailButton(
     Card(
         onClick = onClick,
         modifier = appliedModifier
-            .padding(top = NuvioTheme.spacing.xxs, bottom = NuvioTheme.spacing.xxs)
+            .padding(top = if (glass) 2.dp else NuvioTheme.spacing.xxs, bottom = if (glass) 2.dp else NuvioTheme.spacing.xxs)
             .fillMaxWidth()
-            .heightIn(min = SettingsRailItemHeight)
+            .heightIn(min = if (glass) 48.dp else SettingsRailItemHeight)
+            .settingsGlassFocus(glass && isFocused)
             .onGloballyPositioned { coordinates ->
                 itemCoordinates = coordinates
                 if (isFocused) onFocusedItemPositioned?.invoke(coordinates)
@@ -326,11 +334,13 @@ internal fun SettingsRailButton(
             },
         colors = CardDefaults.colors(
             containerColor = when {
+                glass && isSelected -> Color.White.copy(alpha = 0.07f)
                 zen -> Color.Transparent
                 isSelected -> NuvioTheme.colors.BackgroundCard
                 else -> NuvioTheme.colors.Background
             },
             focusedContainerColor = when {
+                glass -> Color.White.copy(alpha = 0.12f)
                 glideIndicator -> Color.Transparent
                 zen -> settingsFocusFillColor()
                 else -> NuvioTheme.colors.BackgroundCard
@@ -353,7 +363,22 @@ internal fun SettingsRailButton(
         shape = CardDefaults.shape(railShape),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
-        Box(
+        if (glass) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                SettingsGlassRailItemContent(
+                    title = title,
+                    icon = icon,
+                    rawIconRes = rawIconRes,
+                    isSelected = isSelected,
+                    isFocused = isFocused
+                )
+            }
+        } else Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = SettingsRailItemHeight),
@@ -533,6 +558,30 @@ internal fun SettingsDetailHeader(
     modifier: Modifier = Modifier
 ) {
     when (NuvioTheme.settingsUiStyle) {
+        // RCTV: the section's title, and what's in it under it in a quieter, smaller line.
+        SettingsUiStyle.GLASS -> Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(start = 2.dp, bottom = NuvioTheme.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 28.sp),
+                color = NuvioTheme.colors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                    color = NuvioTheme.colors.TextSecondary.copy(alpha = 0.78f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         SettingsUiStyle.ZEN -> Column(
             modifier = modifier
                 .fillMaxWidth()
@@ -600,6 +649,33 @@ internal fun SettingsGroupCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     when (NuvioTheme.settingsUiStyle) {
+        // RCTV: no box around a group: each option is its own card; the group's name over them.
+        SettingsUiStyle.GLASS -> Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(top = NuvioTheme.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (!title.isNullOrBlank()) {
+                Text(
+                    text = title.uppercase(),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = NuvioTheme.colors.TextSecondary.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 6.dp, top = 4.dp)
+                )
+            }
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NuvioTheme.colors.TextTertiary.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+            content()
+        }
         SettingsUiStyle.ZEN -> Column(
             modifier = modifier
                 .fillMaxWidth()
@@ -704,6 +780,7 @@ internal fun SettingsToggleRow(
     val contentAlpha = if (enabled) 1f else 0.4f
     var isFocused by remember { mutableStateOf(false) }
     val zen = isFlatSettingsStyle()
+    val glass = isGlassSettingsStyle()
 
     Card(
         onClick = {
@@ -712,6 +789,7 @@ internal fun SettingsToggleRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 62.dp)
+            .settingsGlassFocus(glass && isFocused)
             .focusProperties { canFocus = enabled }
             .semantics {
                 if (!enabled) disabled()
@@ -723,11 +801,13 @@ internal fun SettingsToggleRow(
                     if (nowFocused) onFocused()
                 }
             },
-        colors = CardDefaults.colors(
+        colors = if (glass) settingsGlassCardColors() else CardDefaults.colors(
             containerColor = if (zen) Color.Transparent else NuvioTheme.colors.Background,
             focusedContainerColor = if (zen) settingsFocusFillColor() else NuvioTheme.colors.Background
         ),
-        border = if (zen) {
+        border = if (glass) {
+            settingsGlassCardBorder()
+        } else if (zen) {
             CardDefaults.border(border = Border.None, focusedBorder = Border.None)
         } else {
             CardDefaults.border(
@@ -769,7 +849,8 @@ internal fun SettingsToggleRow(
             Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
             SettingsTogglePill(
                 checked = checked,
-                enabled = enabled
+                enabled = enabled,
+                focused = isFocused
             )
         }
     }
@@ -795,12 +876,14 @@ internal fun SettingsActionRow(
     val contentAlpha = if (enabled) 1f else 0.4f
     var isFocused by remember { mutableStateOf(false) }
     val zen = isFlatSettingsStyle()
+    val glass = isGlassSettingsStyle()
 
     Card(
         onClick = { if (enabled) onClick() },
         modifier = modifier
             .padding(top = NuvioTheme.spacing.xxs, bottom = NuvioTheme.spacing.xxs)
             .fillMaxWidth()
+            .settingsGlassFocus(glass && isFocused)
             .focusProperties { canFocus = enabled }
             .semantics {
                 if (!enabled) disabled()
@@ -812,11 +895,13 @@ internal fun SettingsActionRow(
                     if (nowFocused) onFocused()
                 }
             },
-        colors = CardDefaults.colors(
+        colors = if (glass) settingsGlassCardColors() else CardDefaults.colors(
             containerColor = if (zen) Color.Transparent else NuvioTheme.colors.Background,
             focusedContainerColor = if (zen) settingsFocusFillColor() else NuvioTheme.colors.Background
         ),
-        border = if (zen) {
+        border = if (glass) {
+            settingsGlassCardBorder()
+        } else if (zen) {
             CardDefaults.border(border = Border.None, focusedBorder = Border.None)
         } else {
             CardDefaults.border(
@@ -887,24 +972,47 @@ internal fun SettingsActionRow(
                 }
             }
 
-            if (!value.isNullOrBlank()) {
+            if (glass) {
+                // RCTV: the value in an outlined pill; a plain arrow only when there's no value (or the
+                // row says something else with its icon: open, expand).
+                if (!value.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(14.dp))
+                    SettingsGlassValuePill(
+                        text = value,
+                        focused = isFocused,
+                        enabled = enabled,
+                        color = if (valueColor == NuvioTheme.colors.TextSecondary) Color.White else valueColor
+                    )
+                }
+                if (value.isNullOrBlank() || trailingIcon != Icons.Default.ChevronRight) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Icon(
+                        imageVector = trailingIcon,
+                        contentDescription = null,
+                        tint = NuvioTheme.colors.TextSecondary.copy(alpha = contentAlpha),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else {
+                if (!value.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = valueColor.copy(alpha = contentAlpha),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = valueColor.copy(alpha = contentAlpha),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                Icon(
+                    imageVector = trailingIcon,
+                    contentDescription = null,
+                    tint = NuvioTheme.colors.TextTertiary.copy(alpha = contentAlpha),
+                    modifier = Modifier.size(18.dp)
                 )
             }
-
-            Spacer(modifier = Modifier.width(10.dp))
-            Icon(
-                imageVector = trailingIcon,
-                contentDescription = null,
-                tint = NuvioTheme.colors.TextTertiary.copy(alpha = contentAlpha),
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
@@ -1174,6 +1282,44 @@ internal fun SettingsChoiceChip(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val zen = isFlatSettingsStyle()
+    val glass = isGlassSettingsStyle()
+
+    if (glass) {
+        // RCTV: an outlined pill, filled a little when chosen.
+        Card(
+            onClick = onClick,
+            modifier = modifier
+                .settingsGlassFocus(isFocused, cornerRadius = 22.dp)
+                .onFocusChanged { state ->
+                    val nowFocused = state.isFocused
+                    if (isFocused != nowFocused) {
+                        isFocused = nowFocused
+                        if (nowFocused) onFocused()
+                    }
+                },
+            colors = CardDefaults.colors(
+                containerColor = Color.White.copy(alpha = if (selected) 0.16f else 0.05f),
+                focusedContainerColor = Color.White.copy(alpha = if (selected) 0.22f else 0.12f)
+            ),
+            border = CardDefaults.border(
+                border = if (selected) Border(
+                    border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(SettingsPillRadius)
+                ) else Border.None,
+                focusedBorder = Border.None
+            ),
+            shape = CardDefaults.shape(RoundedCornerShape(SettingsPillRadius)),
+            scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = if (selected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg, vertical = 10.dp)
+            )
+        }
+        return
+    }
 
     Card(
         onClick = onClick,
@@ -1235,8 +1381,13 @@ internal fun SettingsChoiceChip(
 @Composable
 private fun SettingsTogglePill(
     checked: Boolean,
-    enabled: Boolean
+    enabled: Boolean,
+    focused: Boolean = false
 ) {
+    if (isGlassSettingsStyle()) {
+        SettingsGlassSwitch(checked = checked, enabled = enabled, focused = focused)
+        return
+    }
     val alpha = if (enabled) 1f else 0.35f
     val zen = isFlatSettingsStyle()
     val trackColor = when {

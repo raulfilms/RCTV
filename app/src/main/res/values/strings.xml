@@ -4230,4 +4230,12 @@
         <item quantity="one">%1$d movie marked watched on IMDb</item>
         <item quantity="other">%1$d movies marked watched on IMDb</item>
     </plurals>
+    <!-- RCTV: Settings, Glass style -->
+    <string name="settings_style_glass">Glass</string>
+    <string name="settings_style_glass_desc">Side panel by section, each option its own card</string>
+    <string name="settings_group_profile">Profile</string>
+    <string name="settings_group_playback">Playback</string>
+    <string name="settings_group_sources">Sources</string>
+    <string name="settings_group_system">System</string>
+    <string name="settings_glass_version">RCTV v%1$s</string>
 </resources>

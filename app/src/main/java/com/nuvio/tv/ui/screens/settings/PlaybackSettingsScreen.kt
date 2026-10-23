@@ -636,12 +636,14 @@ internal fun ToggleSettingsItem(
     expandSubtitleOnFocus: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val glass = isGlassSettingsStyle()
     val contentAlpha = if (enabled) 1f else 0.4f
 
     Card(
         onClick = { if (enabled) onCheckedChange(!isChecked) },
         modifier = Modifier
             .fillMaxWidth()
+            .settingsGlassFocus(glass && isFocused)
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -649,17 +651,18 @@ internal fun ToggleSettingsItem(
                     if (nowFocused) onFocused()
                 }
             },
-        colors = CardDefaults.colors(
+        // RCTV: the Glass style's soft card (focus drawn by settingsGlassFocus).
+        colors = if (glass) settingsGlassCardColors() else CardDefaults.colors(
             containerColor = NuvioTheme.colors.Background,
             focusedContainerColor = NuvioTheme.colors.Background
         ),
-        border = CardDefaults.border(
+        border = if (glass) settingsGlassCardBorder() else CardDefaults.border(
             focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = if (enabled) 1f else 0.3f),
                 shape = RoundedCornerShape(SettingsPillRadius)
             )
         ),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
+        shape = if (glass) settingsGlassCardShape() else CardDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
@@ -709,16 +712,20 @@ internal fun ToggleSettingsItem(
 
             Spacer(modifier = Modifier.width(NuvioTheme.spacing.lg))
 
-            Switch(
-                checked = isChecked,
-                onCheckedChange = null, // Handled by Card onClick
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = NuvioTheme.colors.Secondary.copy(alpha = contentAlpha),
-                    checkedTrackColor = NuvioTheme.colors.Secondary.copy(alpha = 0.35f * contentAlpha),
-                    uncheckedThumbColor = NuvioTheme.colors.TextSecondary.copy(alpha = contentAlpha),
-                    uncheckedTrackColor = NuvioTheme.colors.Border
+            if (glass) {
+                SettingsGlassSwitch(checked = isChecked, enabled = enabled, focused = isFocused)
+            } else {
+                Switch(
+                    checked = isChecked,
+                    onCheckedChange = null, // Handled by Card onClick
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = NuvioTheme.colors.Secondary.copy(alpha = contentAlpha),
+                        checkedTrackColor = NuvioTheme.colors.Secondary.copy(alpha = 0.35f * contentAlpha),
+                        uncheckedThumbColor = NuvioTheme.colors.TextSecondary.copy(alpha = contentAlpha),
+                        uncheckedTrackColor = NuvioTheme.colors.Border
+                    )
                 )
-            )
+            }
         }
     }
 }
@@ -733,12 +740,14 @@ internal fun RenderTypeSettingsItem(
     enabled: Boolean = true
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val glass = isGlassSettingsStyle()
     val contentAlpha = if (enabled) 1f else 0.4f
 
     Card(
         onClick = { if (enabled) onClick() },
         modifier = Modifier
             .fillMaxWidth()
+            .settingsGlassFocus(glass && isFocused)
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -746,7 +755,10 @@ internal fun RenderTypeSettingsItem(
                     if (nowFocused) onFocused()
                 }
             },
-        colors = CardDefaults.colors(
+        colors = if (glass) CardDefaults.colors(
+            containerColor = Color.White.copy(alpha = if (isSelected) 0.12f else 0.05f),
+            focusedContainerColor = Color.White.copy(alpha = if (isSelected) 0.16f else 0.10f)
+        ) else CardDefaults.colors(
             containerColor = if (isSelected) {
                 NuvioTheme.colors.Primary.copy(alpha = 0.15f * contentAlpha)
             } else {
@@ -758,7 +770,13 @@ internal fun RenderTypeSettingsItem(
                 NuvioTheme.colors.BackgroundCard
             }
         ),
-        border = CardDefaults.border(
+        border = if (glass) CardDefaults.border(
+            border = if (isSelected) Border(
+                border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.55f * contentAlpha)),
+                shape = SettingsGlassRowShape
+            ) else Border.None,
+            focusedBorder = Border.None
+        ) else CardDefaults.border(
             focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = contentAlpha),
                 shape = RoundedCornerShape(SettingsSecondaryCardRadius)
@@ -768,7 +786,7 @@ internal fun RenderTypeSettingsItem(
                 shape = RoundedCornerShape(SettingsSecondaryCardRadius)
             ) else Border.None
         ),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(SettingsSecondaryCardRadius)),
+        shape = if (glass) settingsGlassCardShape() else CardDefaults.shape(shape = RoundedCornerShape(SettingsSecondaryCardRadius)),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
@@ -816,12 +834,14 @@ internal fun NavigationSettingsItem(
     enabled: Boolean = true
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val glass = isGlassSettingsStyle()
     val contentAlpha = if (enabled) 1f else 0.4f
 
     Card(
         onClick = { if (enabled) onClick() },
         modifier = Modifier
             .fillMaxWidth()
+            .settingsGlassFocus(glass && isFocused)
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -829,17 +849,18 @@ internal fun NavigationSettingsItem(
                     if (nowFocused) onFocused()
                 }
             },
-        colors = CardDefaults.colors(
+        // RCTV: the Glass style's soft card (focus drawn by settingsGlassFocus).
+        colors = if (glass) settingsGlassCardColors() else CardDefaults.colors(
             containerColor = NuvioTheme.colors.Background,
             focusedContainerColor = NuvioTheme.colors.Background
         ),
-        border = CardDefaults.border(
+        border = if (glass) settingsGlassCardBorder() else CardDefaults.border(
             focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = if (enabled) 1f else 0.3f),
                 shape = RoundedCornerShape(SettingsPillRadius)
             )
         ),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
+        shape = if (glass) settingsGlassCardShape() else CardDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(
@@ -978,6 +999,7 @@ private fun SliderSettingsItemLayout(
     modifier: Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val glass = isGlassSettingsStyle()
     val contentAlpha = if (enabled) 1f else 0.4f
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl   // ✅ ADD it here instead
 
@@ -985,6 +1007,7 @@ private fun SliderSettingsItemLayout(
         onClick = { },
         modifier = modifier
             .fillMaxWidth()
+            .settingsGlassFocus(glass && isFocused)
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -1007,17 +1030,18 @@ private fun SliderSettingsItemLayout(
                     else -> false
                 }
             },
-        colors = CardDefaults.colors(
+        // RCTV: the Glass style's soft card (focus drawn by settingsGlassFocus).
+        colors = if (glass) settingsGlassCardColors() else CardDefaults.colors(
             containerColor = NuvioTheme.colors.Background,
             focusedContainerColor = NuvioTheme.colors.Background
         ),
-        border = CardDefaults.border(
+        border = if (glass) settingsGlassCardBorder() else CardDefaults.border(
             focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = if (enabled) 1f else 0.3f),
                 shape = RoundedCornerShape(SettingsSecondaryCardRadius)
             )
         ),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(SettingsSecondaryCardRadius)),
+        shape = if (glass) settingsGlassCardShape() else CardDefaults.shape(shape = RoundedCornerShape(SettingsSecondaryCardRadius)),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Column(
@@ -1181,12 +1205,14 @@ internal fun ColorSettingsItem(
     enabled: Boolean = true
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val glass = isGlassSettingsStyle()
     val contentAlpha = if (enabled) 1f else 0.4f
 
     Card(
         onClick = { if (enabled) onClick() },
         modifier = Modifier
             .fillMaxWidth()
+            .settingsGlassFocus(glass && isFocused)
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -1194,17 +1220,18 @@ internal fun ColorSettingsItem(
                     if (nowFocused) onFocused()
                 }
             },
-        colors = CardDefaults.colors(
+        // RCTV: the Glass style's soft card (focus drawn by settingsGlassFocus).
+        colors = if (glass) settingsGlassCardColors() else CardDefaults.colors(
             containerColor = NuvioTheme.colors.Background,
             focusedContainerColor = NuvioTheme.colors.Background
         ),
-        border = CardDefaults.border(
+        border = if (glass) settingsGlassCardBorder() else CardDefaults.border(
             focusedBorder = Border(
                 border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = if (enabled) 1f else 0.3f),
                 shape = RoundedCornerShape(SettingsPillRadius)
             )
         ),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
+        shape = if (glass) settingsGlassCardShape() else CardDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
         Row(

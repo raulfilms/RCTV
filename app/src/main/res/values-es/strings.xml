@@ -1505,4 +1505,12 @@
         <item quantity="many">%1$d películas marcadas como vistas en IMDb</item>
         <item quantity="other">%1$d películas marcadas como vistas en IMDb</item>
     </plurals>
+    <!-- RCTV: Settings, Glass style -->
+    <string name="settings_style_glass">Cristal</string>
+    <string name="settings_style_glass_desc">Panel lateral por secciones, cada opción en su propia tarjeta</string>
+    <string name="settings_group_profile">Perfil</string>
+    <string name="settings_group_playback">Reproducción</string>
+    <string name="settings_group_sources">Fuentes</string>
+    <string name="settings_group_system">Sistema</string>
+    <string name="settings_glass_version">RCTV v%1$s</string>
 </resources>

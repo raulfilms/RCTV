@@ -45,7 +45,7 @@ val LocalAppTheme = staticCompositionLocalOf { AppTheme.WHITE }
 
 val LocalThemePalette = staticCompositionLocalOf { ThemeColors.White }
 
-val LocalSettingsUiStyle = staticCompositionLocalOf { SettingsUiStyle.CLASSIC }
+val LocalSettingsUiStyle = staticCompositionLocalOf { SettingsUiStyle.GLASS }
 
 val LocalNuvioFocusRingStyle = staticCompositionLocalOf {
     createFocusRingStyle(ThemeColors.Ocean)
@@ -58,7 +58,7 @@ fun NuvioTheme(
     appFont: AppFont = AppFont.INTER,
     amoledMode: Boolean = false,
     amoledSurfacesMode: Boolean = false,
-    settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC,
+    settingsUiStyle: SettingsUiStyle = SettingsUiStyle.GLASS,
     customThemeColors: CustomThemeColors = CustomThemeColors.Default,
     content: @Composable () -> Unit
 ) {

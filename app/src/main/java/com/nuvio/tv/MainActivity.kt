@@ -259,7 +259,7 @@ private data class MainUiPrefs(
     val smoothBringIntoViewEnabled: Boolean = true,
     val fastHorizontalNavigationEnabled: Boolean = false,
     val composeHighlighterEnabled: Boolean = false,
-    val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC,
+    val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.GLASS,
     val cardDepthStyle: CardDepthStyle = CardDepthStyle()
 )
 

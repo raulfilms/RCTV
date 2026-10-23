@@ -16,6 +16,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +85,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -125,6 +128,24 @@ private enum class IntegrationSettingsSection {
 internal enum class SettingsSectionDestination {
     Inline,
     External
+}
+
+/** RCTV: the groups the Glass side panel shows its sections in, in this order. */
+internal enum class SettingsGlassGroup { PROFILE, PLAYBACK, SOURCES, SYSTEM }
+
+internal fun SettingsCategory.glassGroup(): SettingsGlassGroup = when (this) {
+    SettingsCategory.ACCOUNT, SettingsCategory.PROFILES -> SettingsGlassGroup.PROFILE
+    SettingsCategory.PLAYBACK -> SettingsGlassGroup.PLAYBACK
+    SettingsCategory.INTEGRATION, SettingsCategory.CONTENT_DISCOVERY, SettingsCategory.TRACKING -> SettingsGlassGroup.SOURCES
+    else -> SettingsGlassGroup.SYSTEM
+}
+
+@Composable
+private fun SettingsGlassGroup.glassLabel(): String = when (this) {
+    SettingsGlassGroup.PROFILE -> stringResource(R.string.settings_group_profile)
+    SettingsGlassGroup.PLAYBACK -> stringResource(R.string.settings_group_playback)
+    SettingsGlassGroup.SOURCES -> stringResource(R.string.settings_group_sources)
+    SettingsGlassGroup.SYSTEM -> stringResource(R.string.settings_group_system)
 }
 
 internal data class SettingsSectionSpec(
@@ -286,7 +307,8 @@ fun SettingsScreen(
     val isEssentialMode = loadedExperienceMode == ExperienceMode.ESSENTIAL
 
     val allSectionSpecs = rememberSettingsSectionSpecs()
-    val visibleSections = remember(isPrimaryProfileActive, isEssentialMode, allSectionSpecs) {
+    val isGlassStyle = NuvioTheme.settingsUiStyle == SettingsUiStyle.GLASS
+    val visibleSections = remember(isPrimaryProfileActive, isEssentialMode, allSectionSpecs, isGlassStyle) {
         allSectionSpecs.filter { section ->
             when (section.category) {
                 SettingsCategory.EXPERIENCE -> false
@@ -299,6 +321,9 @@ fun SettingsScreen(
                 SettingsCategory.ADVANCED -> true
                 else -> true
             }
+        }.let { sections ->
+            // RCTV: the Glass side panel shows them by group (Profile, Playback, Sources, System).
+            if (isGlassStyle) sections.sortedBy { it.category.glassGroup().ordinal } else sections
         }
     }
 
@@ -735,12 +760,40 @@ fun SettingsScreen(
 
             Row(
                 modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+                horizontalArrangement = Arrangement.spacedBy(if (isGlassStyle) 28.dp else NuvioTheme.spacing.lg)
             ) {
+                // RCTV: in the Glass style, the sections sit in a dark rounded panel, "Settings" over
+                // them and the app's version under them.
+                Column(
+                    modifier = Modifier
+                        .width(if (isGlassStyle) 250.dp else 220.dp)
+                        .fillMaxHeight()
+                        .then(
+                            if (isGlassStyle) {
+                                Modifier
+                                    .clip(SettingsGlassPanelShape)
+                                    .background(SettingsGlassPanelFill)
+                                    .border(1.dp, SettingsGlassPanelBorder, SettingsGlassPanelShape)
+                                    .padding(vertical = 18.dp, horizontal = 10.dp)
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                if (isGlassStyle) {
+                    androidx.tv.material3.Text(
+                        text = stringResource(R.string.nav_settings),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NuvioTheme.colors.TextPrimary,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 10.dp, bottom = 10.dp)
+                    )
+                }
                 Box(
                     modifier = Modifier
-                        .width(220.dp)
-                        .fillMaxHeight()
+                        .fillMaxWidth()
+                        .weight(1f)
                         .onGloballyPositioned { railCoordinates = it }
                 ) {
                     if (isZenRailGlide) {
@@ -814,12 +867,25 @@ fun SettingsScreen(
                                     false
                                 }
                             },
-                        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+                        verticalArrangement = if (isGlassStyle) {
+                            Arrangement.spacedBy(2.dp)
+                        } else {
+                            Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+                        }
                     ) {
                         items(
                             items = visibleSections,
                             key = { it.category }
                         ) { section ->
+                          Column(modifier = Modifier.fillMaxWidth()) {
+                            // RCTV: the group's name over its first section (Glass).
+                            if (isGlassStyle) {
+                                val index = visibleSections.indexOf(section)
+                                val group = section.category.glassGroup()
+                                if (index == 0 || visibleSections[index - 1].category.glassGroup() != group) {
+                                    SettingsGlassGroupLabel(text = group.glassLabel())
+                                }
+                            }
                             SettingsRailButton(
                                 onFocused = {
                                     val restoringTo = railRestoringCategory
@@ -850,9 +916,21 @@ fun SettingsScreen(
                                     null
                                 }
                             )
+                          }
                         }
                     }
                     SettingsVerticalScrollIndicators(state = railListState)
+                }
+                if (isGlassStyle) {
+                    androidx.tv.material3.Text(
+                        text = stringResource(R.string.settings_glass_version, BuildConfig.VERSION_NAME),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NuvioTheme.colors.TextSecondary.copy(alpha = 0.55f),
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 10.dp, top = 10.dp)
+                    )
+                }
                 }
 
                 Box(

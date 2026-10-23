@@ -561,6 +561,7 @@ private fun SettingsStyleOptionCard(
 
 @Composable
 private fun SettingsUiStyle.localizedName(): String = when (this) {
+    SettingsUiStyle.GLASS -> stringResource(R.string.settings_style_glass)
     SettingsUiStyle.CLASSIC -> stringResource(R.string.settings_style_classic)
     SettingsUiStyle.ZEN -> stringResource(R.string.settings_style_zen)
     SettingsUiStyle.HORIZON -> stringResource(R.string.settings_style_horizon)
@@ -568,6 +569,7 @@ private fun SettingsUiStyle.localizedName(): String = when (this) {
 
 @Composable
 private fun SettingsUiStyle.localizedDescription(): String = when (this) {
+    SettingsUiStyle.GLASS -> stringResource(R.string.settings_style_glass_desc)
     SettingsUiStyle.CLASSIC -> stringResource(R.string.settings_style_classic_desc)
     SettingsUiStyle.ZEN -> stringResource(R.string.settings_style_zen_desc)
     SettingsUiStyle.HORIZON -> stringResource(R.string.settings_style_horizon_desc)

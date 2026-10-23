@@ -35,7 +35,7 @@ data class ThemeSettingsUiState(
     val availableFonts: List<AppFont> = AppFont.entries.toList(),
     val amoledMode: Boolean = false,
     val amoledSurfacesMode: Boolean = false,
-    val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC,
+    val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.GLASS,
     val availableSettingsUiStyles: List<SettingsUiStyle> = SettingsUiStyle.entries.toList()
 )
 
