@@ -8,15 +8,18 @@ import com.nuvio.tv.domain.model.SportsLeague
 import com.nuvio.tv.domain.model.SportsTeam
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /** A league's teams on the Teams page, under its short name ("NFL") and its sport's emoji ("🏈"). */
@@ -42,6 +45,12 @@ data class TeamsBrowseUiState(
  * teams are the league's full roster (every team in the league, not just whoever happens to be
  * playing this week), cached in-memory for the lifetime of this ViewModel so switching filters back
  * and forth doesn't re-fetch.
+ *
+ * RCTV: the leagues load a few at a time (the NCAA's, hundreds of teams each, one at a time) and
+ * show as they come, and only their teams are asked for: every league at once, each with its
+ * scoreboard too, and every league's games for ten days to name the person's teams, took more
+ * memory than a TV has (the system closed the app). The person's teams are named from the
+ * Library's saved ones and the leagues loaded.
  */
 @HiltViewModel
 class TeamsBrowseViewModel @Inject constructor(
@@ -55,11 +64,13 @@ class TeamsBrowseViewModel @Inject constructor(
 
     val filters = EspnSportsClient.TEAMS_FILTERS
 
-    private val sectionCache = mutableMapOf<String, List<TeamsLeagueSection>>()
+    /** Each league's sections once loaded (by "sport:league"); a league that couldn't load isn't kept (tried again). */
+    private val sectionCache = ConcurrentHashMap<String, List<TeamsLeagueSection>>()
+    private var loadJob: Job? = null
 
     init {
         viewModelScope.launch {
-            preferences.favoriteTeamIds.collect { ids ->
+            combine(preferences.favoriteTeamIds, sportsLibraryStore.teams) { ids, _ -> ids }.collect { ids ->
                 _uiState.update { it.copy(favoriteTeamIds = ids) }
                 hydrateFavoriteTeams(ids)
             }
@@ -78,79 +89,103 @@ class TeamsBrowseViewModel @Inject constructor(
     }
 
     fun selectFilter(filterId: String?) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, selectedFilterId = filterId) }
-            val feeds = if (filterId == null) {
-                // The leagues with teams (not golf's tours, NASCAR's series or PPV Events).
-                filters.map { it.feed }
-            } else {
-                filters.firstOrNull { it.id == filterId }?.let { listOf(it.feed) }.orEmpty()
+        loadJob?.cancel()
+        val feeds = if (filterId == null) {
+            // The leagues with teams (not golf's tours, NASCAR's series or PPV Events).
+            filters.map { it.feed }
+        } else {
+            filters.firstOrNull { it.id == filterId }?.let { listOf(it.feed) }.orEmpty()
+        }
+        // What's loaded already shows at once.
+        _uiState.update {
+            it.copy(
+                isLoading = feeds.any { feed -> !sectionCache.containsKey(keyOf(feed)) },
+                selectedFilterId = filterId,
+                sections = sectionsOf(feeds)
+            )
+        }
+        loadJob = viewModelScope.launch {
+            loadSections(feeds) {
+                // Each league as it comes in, in the filters' order.
+                _uiState.update { state ->
+                    if (state.selectedFilterId != filterId) state else state.copy(sections = sectionsOf(feeds))
+                }
             }
-            val sections = withContext(Dispatchers.IO) { loadSections(feeds) }
-            _uiState.update { it.copy(isLoading = false, sections = sections) }
+            _uiState.update { state ->
+                if (state.selectedFilterId != filterId) state else state.copy(isLoading = false, sections = sectionsOf(feeds))
+            }
+            hydrateFavoriteTeams(uiState.value.favoriteTeamIds)
         }
     }
 
-    private suspend fun loadSections(feeds: List<EspnSportsClient.Feed>): List<TeamsLeagueSection> = coroutineScope {
-        feeds.map { feed ->
-            async {
-                val cacheKey = "${feed.sportPath}:${feed.leaguePath}"
-                sectionCache.getOrPut(cacheKey) {
-                    // The scoreboard feed still supplies the league's real display name/badge; the
-                    // team list itself comes from the dedicated teams endpoint so every team in the
-                    // league shows up, not just whoever's playing within the scoreboard's date window.
-                    val feedResult = runCatching { client.fetchFeed(feed) }.getOrNull()
-                    val league = feedResult?.league ?: SportsLeague(id = cacheKey, name = feed.leaguePath, sportName = feed.sportLabel)
-                    val leagueLabel = filters.firstOrNull { it.id == cacheKey }?.label ?: league.name
-                    if (feed.leaguePath in EspnSportsClient.COLLEGE_LEAGUE_PATHS) {
-                        // The NCAA: every division's teams, a section per division or conference.
-                        val groups = runCatching { client.fetchTeamGroups(feed) }.getOrDefault(emptyList())
-                        groups.mapIndexed { index, group ->
-                            TeamsLeagueSection(
-                                league = league,
-                                teams = group.teams,
-                                label = listOfNotNull(leagueLabel, group.label).joinToString(" · "),
-                                emoji = feed.emoji,
-                                key = "$cacheKey#$index"
-                            )
-                        }.ifEmpty {
-                            listOf(TeamsLeagueSection(league, feedResult?.teams.orEmpty(), leagueLabel, feed.emoji))
-                        }
+    private fun keyOf(feed: EspnSportsClient.Feed): String = "${feed.sportPath}:${feed.leaguePath}"
+
+    /** [feeds]' sections loaded so far, in their order. */
+    private fun sectionsOf(feeds: List<EspnSportsClient.Feed>): List<TeamsLeagueSection> =
+        feeds.flatMap { sectionCache[keyOf(it)].orEmpty() }.filter { it.teams.isNotEmpty() }
+
+    /** The leagues of [feeds] not loaded yet, a few at a time (the NCAA's one at a time); [onLoaded] after each. */
+    private suspend fun loadSections(feeds: List<EspnSportsClient.Feed>, onLoaded: () -> Unit) = withContext(Dispatchers.IO) {
+        val permits = Semaphore(LEAGUES_AT_ONCE)
+        val heavyPermit = Semaphore(1)
+        coroutineScope {
+            feeds.filter { !sectionCache.containsKey(keyOf(it)) }.distinctBy { keyOf(it) }.forEach { feed ->
+                launch {
+                    val heavy = feed.leaguePath in EspnSportsClient.COLLEGE_LEAGUE_PATHS
+                    val sections = if (heavy) {
+                        heavyPermit.withPermit { permits.withPermit { sectionsOfLeague(feed) } }
                     } else {
-                        val fullRoster = runCatching { client.fetchTeams(feed) }.getOrNull()?.takeIf { it.isNotEmpty() }
-                        listOf(
-                            TeamsLeagueSection(
-                                league = league,
-                                teams = fullRoster ?: feedResult?.teams.orEmpty(),
-                                label = leagueLabel,
-                                emoji = feed.emoji
-                            )
-                        )
+                        permits.withPermit { sectionsOfLeague(feed) }
+                    }
+                    if (sections.any { it.teams.isNotEmpty() }) {
+                        sectionCache[keyOf(feed)] = sections
+                        onLoaded()
                     }
                 }
             }
-        }.awaitAll().flatten().filter { it.teams.isNotEmpty() }
+        }
     }
 
+    /** A league's teams: every one (the NCAA's by division or conference). Only the teams are asked for. */
+    private fun sectionsOfLeague(feed: EspnSportsClient.Feed): List<TeamsLeagueSection> {
+        val cacheKey = keyOf(feed)
+        val leagueLabel = filters.firstOrNull { it.id == cacheKey }?.label ?: feed.leaguePath
+        val league = SportsLeague(id = cacheKey, name = leagueLabel, sportName = feed.sportLabel)
+        return if (feed.leaguePath in EspnSportsClient.COLLEGE_LEAGUE_PATHS) {
+            // The NCAA: every division's teams, a section per division or conference.
+            val groups = runCatching { client.fetchTeamGroups(feed) }.getOrDefault(emptyList())
+            groups.mapIndexed { index, group ->
+                TeamsLeagueSection(
+                    league = league,
+                    teams = group.teams,
+                    label = listOfNotNull(leagueLabel, group.label).joinToString(" · "),
+                    emoji = feed.emoji,
+                    key = "$cacheKey#$index"
+                )
+            }
+        } else {
+            val teams = runCatching { client.fetchTeams(feed) }.getOrDefault(emptyList())
+            listOf(TeamsLeagueSection(league = league, teams = teams, label = leagueLabel, emoji = feed.emoji))
+        }
+    }
+
+    /** The person's teams: as loaded with their leagues, else as the Library keeps them. */
     private suspend fun hydrateFavoriteTeams(ids: Set<String>) {
         if (ids.isEmpty()) {
             _uiState.update { it.copy(favoriteTeams = emptyList()) }
             return
         }
-        val cached = sectionCache.values.flatten().flatMap { it.teams }.associateBy { it.id }
-        val missing = ids - cached.keys
-        val fetched = if (missing.isNotEmpty()) {
-            withContext(Dispatchers.IO) {
-                // Favorited teams whose league section hasn't been loaded yet: fall back to
-                // fetching every curated feed once so we can still resolve their names/badges.
-                runCatching { client.fetchAllFixtures() }.getOrDefault(emptyList())
-                    .flatMap { it.teams }
-                    .associateBy { it.id }
-            }
-        } else emptyMap()
-        val teams = ids.mapNotNull { id -> cached[id] ?: fetched[id] }
+        val loaded = sectionCache.values.flatten().flatMap { it.teams }.associateBy { it.id }
+        val saved = sportsLibraryStore.teams.value.associate { it.team.id to it.team }
+        val teams = ids.mapNotNull { id -> loaded[id] ?: saved[id] }
         _uiState.update { it.copy(favoriteTeams = teams) }
-        // The Library shows "My Teams" with these names and badges.
-        runCatching { sportsLibraryStore.rememberTeams(teams) }
+        // The Library shows "My Teams" with these names and badges: the ones it didn't have yet.
+        val newlyFound = teams.filter { it.id !in saved }
+        if (newlyFound.isNotEmpty()) runCatching { sportsLibraryStore.rememberTeams(newlyFound) }
+    }
+
+    private companion object {
+        /** How many leagues' teams are asked for at once. */
+        const val LEAGUES_AT_ONCE = 3
     }
 }
