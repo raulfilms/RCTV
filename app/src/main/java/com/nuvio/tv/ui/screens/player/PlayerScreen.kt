@@ -1673,7 +1673,8 @@ fun PlayerScreen(
                     false
                 }
                 val isUsingMpv = uiState.internalPlayerEngine == InternalPlayerEngine.MVP_PLAYER
-                val isAssDisabled = isCurrentSubtitleAss && (isUsingMpv || uiState.useLibass)
+                // RCTV: mpv puts ASS/SSA in the app's style too; only libass keeps their own look.
+                val isAssDisabled = isCurrentSubtitleAss && !isUsingMpv && uiState.useLibass
 
                 SubtitleStyleSidePanel(
                     subtitleStyle = uiState.subtitleStyle,
@@ -2069,7 +2070,9 @@ private fun PlayerView.applySubtitleStyleIfNeeded(
             )
         )
 
-        setApplyEmbeddedStyles(!isAss)
+        // RCTV: every subtitle in the same style (the black box behind each line), whatever its
+        // file or source asks for (colors, fonts, boxes of its own); where lines go is kept.
+        setApplyEmbeddedStyles(false)
 
         val bottomPaddingFraction =
             (0.06f + (subtitleStyle.verticalOffset / 250f)).coerceIn(0f, 0.4f)

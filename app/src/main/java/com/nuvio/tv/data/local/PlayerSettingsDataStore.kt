@@ -148,7 +148,8 @@ data class SubtitleStyleSettings(
     val verticalOffset: Int = 5, // Percentage from bottom (-20 to 50)
     val bold: Boolean = false,
     val textColor: Int = Color.White.toArgb(),
-    val backgroundColor: Int = Color.Transparent.toArgb(),
+    // RCTV: a black box behind each line, so subtitles read well on any picture.
+    val backgroundColor: Int = Color.Black.toArgb(),
     val outlineEnabled: Boolean = true,
     val outlineColor: Int = Color.Black.toArgb(),
     val outlineWidth: Int = 2 // 1-5
@@ -587,6 +588,8 @@ class PlayerSettingsDataStore @Inject constructor(
     private val subtitleBoldKey = booleanPreferencesKey("subtitle_bold")
     private val subtitleTextColorKey = intPreferencesKey("subtitle_text_color")
     private val subtitleBackgroundColorKey = intPreferencesKey("subtitle_background_color")
+    /** RCTV: a background chosen since the black box became the default (until then, the black box). */
+    private val subtitleBackgroundChosenKey = booleanPreferencesKey("subtitle_background_chosen_v2")
     private val subtitleOutlineEnabledKey = booleanPreferencesKey("subtitle_outline_enabled")
     private val subtitleOutlineColorKey = intPreferencesKey("subtitle_outline_color")
     private val subtitleOutlineWidthKey = intPreferencesKey("subtitle_outline_width")
@@ -1023,7 +1026,11 @@ class PlayerSettingsDataStore @Inject constructor(
                         verticalOffset = prefs[subtitleVerticalOffsetKey] ?: 5,
                         bold = prefs[subtitleBoldKey] ?: false,
                         textColor = prefs[subtitleTextColorKey] ?: Color.White.toArgb(),
-                        backgroundColor = prefs[subtitleBackgroundColorKey] ?: Color.Transparent.toArgb(),
+                        backgroundColor = if (prefs[subtitleBackgroundChosenKey] == true) {
+                            prefs[subtitleBackgroundColorKey] ?: Color.Black.toArgb()
+                        } else {
+                            Color.Black.toArgb()
+                        },
                         outlineEnabled = prefs[subtitleOutlineEnabledKey] ?: true,
                         outlineColor = prefs[subtitleOutlineColorKey] ?: Color.Black.toArgb(),
                         outlineWidth = prefs[subtitleOutlineWidthKey] ?: 2
@@ -1561,7 +1568,12 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setSubtitleVerticalOffset(offset: Int) { store().edit { it[subtitleVerticalOffsetKey] = offset.coerceIn(-20, 50) } }
     suspend fun setSubtitleBold(bold: Boolean) { store().edit { it[subtitleBoldKey] = bold } }
     suspend fun setSubtitleTextColor(color: Int) { store().edit { it[subtitleTextColorKey] = color } }
-    suspend fun setSubtitleBackgroundColor(color: Int) { store().edit { it[subtitleBackgroundColorKey] = color } }
+    suspend fun setSubtitleBackgroundColor(color: Int) {
+        store().edit {
+            it[subtitleBackgroundColorKey] = color
+            it[subtitleBackgroundChosenKey] = true
+        }
+    }
     suspend fun setSubtitleOutlineEnabled(enabled: Boolean) { store().edit { it[subtitleOutlineEnabledKey] = enabled } }
     suspend fun setSubtitleOutlineColor(color: Int) { store().edit { it[subtitleOutlineColorKey] = color } }
     suspend fun setSubtitleOutlineWidth(width: Int) { store().edit { it[subtitleOutlineWidthKey] = width.coerceIn(1, 5) } }

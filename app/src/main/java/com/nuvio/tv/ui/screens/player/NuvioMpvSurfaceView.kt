@@ -446,20 +446,22 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
                 else -> 1.0
             }
             val backgroundAlpha = (style.backgroundColor ushr 24) and 0xFF
-            val borderStyle = if (backgroundAlpha > 0) "background-box" else "outline-and-shadow"
-            // In background-box mode, sub-shadow-offset controls the box padding/margin
-            val shadowOffset = if (backgroundAlpha > 0) 5.0 else 0.0
+            // RCTV: a box behind each line (as the app's own subtitle drawing does): libass's opaque
+            // box, drawn in the outline's color, its size the box's padding.
+            val boxed = backgroundAlpha > 0
+            val borderStyle = if (boxed) "opaque-box" else "outline-and-shadow"
+            val shadowOffset = 0.0
 
             mpv.setPropertyDouble("sub-scale", scale)
             mpv.setPropertyBoolean("sub-bold", style.bold)
-            mpv.setPropertyDouble("sub-outline-size", outlineSize)
+            mpv.setPropertyDouble("sub-outline-size", if (boxed) MPV_SUB_BOX_PADDING else outlineSize)
             mpv.setPropertyDouble("sub-pos", subPos)
             mpv.setPropertyInt("sub-margin-y", subMarginY)
             mpv.setPropertyDouble("sub-shadow-offset", shadowOffset)
             mpv.setPropertyString("sub-border-style", borderStyle)
             mpv.setPropertyString("sub-color", toMpvColor(style.textColor))
             mpv.setPropertyString("sub-back-color", toMpvColor(style.backgroundColor))
-            mpv.setPropertyString("sub-outline-color", toMpvColor(style.outlineColor))
+            mpv.setPropertyString("sub-outline-color", toMpvColor(if (boxed) style.backgroundColor else style.outlineColor))
             mpv.setPropertyBoolean("sub-filter-sdh", style.stripSdh)
             mpv.setPropertyBoolean("sub-filter-sdh-harder", style.stripSdh)
         }.onFailure {
@@ -672,8 +674,9 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         mpv.setOptionString("gpu-context", "android")
         mpv.setOptionString("opengl-es", "yes")
         mpv.setOptionString("user-agent", PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
-        // Preserve native ASS/SSA styling behavior on MPV.
-        mpv.setOptionString("sub-ass-override", "no")
+        // RCTV: ASS/SSA subtitles in the app's style too (the black box behind each line), like
+        // every other subtitle.
+        mpv.setOptionString("sub-ass-override", "force")
         mpv.setOptionString("sub-codepage", "auto:utf-8")
         mpv.setOptionString("sub-font", "Roboto")
         mpv.setOptionString("sub-use-margins", "yes")
@@ -834,6 +837,8 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         private const val MPV_SUB_POS_AT_TOP = 72.4
         private const val MPV_SUB_MARGIN_Y_MIN = 0
         private const val MPV_SUB_MARGIN_Y_MAX = 60
+        /** RCTV: the space around each subtitle line inside its box (libass outline size). */
+        private const val MPV_SUB_BOX_PADDING = 3.0
     }
 }
 
