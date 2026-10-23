@@ -130,7 +130,7 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
             return@launch
         }
 
-        val position = (_exoPlayer?.currentPosition ?: _uiState.value.currentPosition).coerceAtLeast(0L)
+        val position = (currentPlaybackPositionMs() ?: _playbackTimeline.value.currentPosition).coerceAtLeast(0L)
         Log.i(TAG, "Playing the ${language.nativeName} source from ${position / 1000} s")
         AutoStreamSession.begin(
             videoId = currentVideoId ?: videoId,
