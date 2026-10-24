@@ -4379,4 +4379,9 @@
     <string name="web_imdb_unlink_confirm">Unlink IMDb from the TV?</string>
     <string name="web_imdb_public_note">Make your IMDb watchlist public so it shows on the TV (Watchlist › Edit › Public). Your ratings sync either way.</string>
     <string name="web_imdb_privacy_note">Only your profile\'s link goes to the TV, never your IMDb password.</string>
+    <!-- RCTV: the IMDb List's Title Type filter -->
+    <string name="library_filter_title_type">Title Type</string>
+    <string name="library_title_type_all">All</string>
+    <string name="library_title_type_movies">Movies</string>
+    <string name="library_title_type_shows">TV Shows</string>
 </resources>

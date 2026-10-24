@@ -398,6 +398,8 @@ fun LibraryScreen(
                     selectedGenre = uiState.selectedGenre,
                     selectedYear = uiState.selectedYear,
                     selectedWatchedFilter = uiState.selectedWatchedFilter,
+                    titleTypes = uiState.availableTitleTypes,
+                    selectedTitleType = uiState.selectedTitleType,
                     primaryFocusRequester = selectorFocusRequester,
                     upFocusRequester = primaryFocusRequester,
                     expandedPicker = expandedPicker,
@@ -426,6 +428,10 @@ fun LibraryScreen(
                     },
                     onSelectWatchedFilter = { filter ->
                         viewModel.onSelectWatchedFilter(filter)
+                        expandedPicker = null
+                    },
+                    onSelectTitleType = { titleType ->
+                        viewModel.onSelectTitleType(titleType)
                         expandedPicker = null
                     }
                 )
@@ -1227,6 +1233,9 @@ private fun LibrarySelectorsRow(
     selectedGenre: String?,
     selectedYear: String?,
     selectedWatchedFilter: LibraryWatchedFilter,
+    /** RCTV: the IMDb List's Title Type (movies or TV shows); empty for the other types. */
+    titleTypes: List<FilterOption>,
+    selectedTitleType: LibraryTitleType,
     primaryFocusRequester: FocusRequester,
     upFocusRequester: FocusRequester,
     expandedPicker: String?,
@@ -1236,7 +1245,8 @@ private fun LibrarySelectorsRow(
     onSelectSort: (LibrarySortOption) -> Unit,
     onSelectGenre: (String?) -> Unit,
     onSelectYear: (String?) -> Unit,
-    onSelectWatchedFilter: (LibraryWatchedFilter) -> Unit
+    onSelectWatchedFilter: (LibraryWatchedFilter) -> Unit,
+    onSelectTitleType: (LibraryTitleType) -> Unit
 ) {
     val selectedListLabel = listTabs.firstOrNull { it.key == selectedListKey }?.localizedTitle()
         ?: stringResource(R.string.action_select)
@@ -1298,6 +1308,27 @@ private fun LibrarySelectorsRow(
                     typeTabs.firstOrNull { it.key == option.value }?.let(onSelectType)
                 }
             )
+
+            // RCTV: the IMDb List's movies or TV shows.
+            if (titleTypes.isNotEmpty()) {
+                LibraryDropdownPicker(
+                    modifier = Modifier.weight(1f),
+                    upFocusRequester = upFocusRequester,
+                    title = stringResource(R.string.library_filter_title_type),
+                    value = stringResource(selectedTitleType.labelResId),
+                    selectedValue = selectedTitleType.key,
+                    expanded = expandedPicker == "title_type",
+                    options = LibraryTitleType.entries.map { titleType ->
+                        val count = titleTypes.firstOrNull { it.key == titleType.key }?.count
+                        val label = stringResource(titleType.labelResId)
+                        LibraryOption(if (count != null) "$label ($count)" else label, titleType.key)
+                    },
+                    onExpandedChange = { onExpandedChange("title_type", it) },
+                    onSelect = { option ->
+                        LibraryTitleType.entries.firstOrNull { it.key == option.value }?.let(onSelectTitleType)
+                    }
+                )
+            }
 
             if (sortOptions.isNotEmpty()) {
                 LibraryDropdownPicker(

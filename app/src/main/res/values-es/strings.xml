@@ -1654,4 +1654,9 @@
     <string name="web_imdb_unlink_confirm">¿Desvincular IMDb de la TV?</string>
     <string name="web_imdb_public_note">Pon pública tu watchlist en IMDb para que salga en la TV (Watchlist › Editar › Pública). Tus calificaciones se sincronizan igual.</string>
     <string name="web_imdb_privacy_note">Solo el link de tu perfil llega a la TV, nunca tu contraseña de IMDb.</string>
+    <!-- RCTV: el filtro Tipo de título del IMDb List -->
+    <string name="library_filter_title_type">Tipo de título</string>
+    <string name="library_title_type_all">Todos</string>
+    <string name="library_title_type_movies">Películas</string>
+    <string name="library_title_type_shows">Series</string>
 </resources>

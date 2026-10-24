@@ -99,6 +99,19 @@ enum class LibraryWatchedFilter(val key: String, val labelResId: Int) {
     UNWATCHED("unwatched", R.string.library_watched_filter_unwatched);
 }
 
+/** RCTV: the IMDb List's titles by kind: all, its movies, or its TV shows. */
+enum class LibraryTitleType(val key: String, val labelResId: Int) {
+    ALL("all", R.string.library_title_type_all),
+    MOVIES("movies", R.string.library_title_type_movies),
+    SHOWS("shows", R.string.library_title_type_shows);
+
+    fun matches(entry: LibraryEntry): Boolean = when (this) {
+        ALL -> true
+        MOVIES -> entry.type.equals(LIBRARY_TYPE_MOVIE, ignoreCase = true)
+        SHOWS -> entry.type.equals(LIBRARY_TYPE_SHOW, ignoreCase = true)
+    }
+}
+
 data class FilterOption(
     val key: String,
     val label: String,
@@ -145,6 +158,9 @@ data class LibraryUiState(
     val selectedGenre: String? = null,
     val selectedYear: String? = null,
     val selectedWatchedFilter: LibraryWatchedFilter = LibraryWatchedFilter.ALL,
+    /** RCTV: the IMDb List's Title Type filter (movies or TV shows), and how many of each it has. */
+    val selectedTitleType: LibraryTitleType = LibraryTitleType.ALL,
+    val availableTitleTypes: List<FilterOption> = emptyList(),
     val watchedMovieIds: Set<String> = emptySet(),
     val watchedSeriesIds: Set<String> = emptySet(),
     val isNuvioAccount: Boolean = false,
@@ -310,6 +326,12 @@ class LibraryViewModel @Inject constructor(
         _uiState.update { current ->
             val updated = current.copy(selectedYear = key)
             updated.withVisibleItems()
+        }
+    }
+
+    fun onSelectTitleType(titleType: LibraryTitleType) {
+        _uiState.update { current ->
+            current.copy(selectedTitleType = titleType).withVisibleItems()
         }
     }
 
@@ -940,7 +962,8 @@ class LibraryViewModel @Inject constructor(
         val imdbSelected = selectedTypeKey in LIBRARY_IMDB_TYPES
         val typeFiltered = when {
             extraSelected -> extraItems.filter { it.type == selectedTypeKey }
-            selectedTypeKey == LIBRARY_TYPE_IMDB_LIST -> imdbItems
+            // RCTV: its movies or its TV shows (Title Type).
+            selectedTypeKey == LIBRARY_TYPE_IMDB_LIST -> imdbItems.filter { selectedTitleType.matches(it) }
             selectedTypeKey == LIBRARY_TYPE_IMDB_TV_RATED -> imdbRatedSeries
             else -> listFiltered.filter { entry ->
                 selectedTypeKey == null ||
@@ -1076,6 +1099,20 @@ class LibraryViewModel @Inject constructor(
         }
         val typeTabsWithCounts = buildTypeTabsWithCounts(listFiltered, itemsForTypeCounts, extraItems, imdbCounts)
 
+        // RCTV: the IMDb List's Title Type choices, each counting the list's titles of the genre
+        // and year chosen.
+        val titleTypeOptions = if (selectedTypeKey == LIBRARY_TYPE_IMDB_LIST) {
+            val matching = imdbItems.filter { entry ->
+                (selectedGenre == null || entry.genres.any { it.equals(selectedGenre, ignoreCase = true) }) &&
+                    (selectedYear == null || entry.extractYear() == selectedYear)
+            }
+            LibraryTitleType.entries.map { titleType ->
+                FilterOption(key = titleType.key, label = titleType.key, count = matching.count { titleType.matches(it) })
+            }
+        } else {
+            emptyList()
+        }
+
         // Validate selections — clear if no longer valid (kept while an extra type is shown, for
         // when the titles come back)
         val validGenre = if (extraSelected) selectedGenre else selectedGenre?.takeIf { g -> genreOptions.any { it.key.equals(g, ignoreCase = true) } }
@@ -1086,6 +1123,7 @@ class LibraryViewModel @Inject constructor(
             availableTypeTabs = typeTabsWithCounts,
             availableGenres = genreOptions,
             availableYears = yearOptions,
+            availableTitleTypes = titleTypeOptions,
             selectedGenre = validGenre,
             selectedYear = validYear
         )
