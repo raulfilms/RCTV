@@ -69,6 +69,7 @@ internal fun PlayerRuntimeController.selectAudioLanguage(language: AudioLanguage
         rememberAudioSelection(track.index)
         selectAudioTrack(track.index)
         _uiState.update { it.copy(currentAudioLanguage = language, audioLanguageSwitching = null) }
+        followAudioWithSubtitle(language)
         return
     }
     // Its only audio, not labeled by language, is already it.
@@ -125,6 +126,60 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
         }
         val summary = AutoStreamEngine.summary(SmartScraperEnvironment.normalize(target).release, language)
         showPlayerNotice(summary.ifBlank { language.nativeName }, NOTICE_MS)
+        // The subtitle follows, once the new source shows (its own tracks are known then).
+        val waitUntil = System.currentTimeMillis() + SUBTITLE_FOLLOW_WAIT_MS
+        delay(1_000)
+        while (!hasRenderedFirstFrame && System.currentTimeMillis() < waitUntil) delay(300)
+        followAudioWithSubtitle(language)
+    }
+}
+
+private const val SUBTITLE_FOLLOW_WAIT_MS = 30_000L
+
+/**
+ * RCTV: the audio changed to [language]: a subtitle that's on changes to that language too (the
+ * file's own track in it, else the addons' best one, synced to the audio on its own); subtitles
+ * that are off stay off, and one already in that language stays.
+ */
+internal fun PlayerRuntimeController.followAudioWithSubtitle(language: AudioLanguage) {
+    val state = _uiState.value
+    val addonOn = state.selectedAddonSubtitle
+    val internalOn = state.subtitleTracks.firstOrNull { it.index == state.selectedSubtitleTrackIndex && !it.isForced }
+    if (addonOn == null && internalOn == null) return
+    val onLanguage = subtitleLanguageOf(addonOn?.lang ?: internalOn?.language ?: internalOn?.name)
+    if (onLanguage == language) return
+
+    // The file's own subtitle in that language (not a forced one) first.
+    val track = state.subtitleTracks.firstOrNull { !it.isForced && subtitleLanguageOf(it.language ?: it.name) == language }
+    if (track != null) {
+        autoSubtitleSelected = true
+        pendingAddonSubtitleLanguage = null
+        pendingAddonSubtitleTrackId = null
+        resetSubtitleAutoSyncState()
+        rememberInternalSubtitleSelection(track.index)
+        selectSubtitleTrack(track.index)
+        Log.i(TAG, "Subtitles follow the audio: the file's ${language.nativeName} track")
+        return
+    }
+    // Else the addons' first one in it (they come best first).
+    val subtitle = state.addonSubtitles.firstOrNull { subtitleLanguageOf(it.lang) == language } ?: run {
+        Log.i(TAG, "No ${language.nativeName} subtitle to follow the audio")
+        return
+    }
+    autoSubtitleSelected = true
+    rememberAddonSubtitleSelection(subtitle)
+    selectAddonSubtitle(subtitle)
+    Log.i(TAG, "Subtitles follow the audio: ${language.nativeName}")
+}
+
+/** A subtitle's language from its code or name ("spa", "es-419", "Spanish", "Español (Latino)"...). */
+private fun subtitleLanguageOf(text: String?): AudioLanguage? {
+    val value = text?.trim()?.lowercase() ?: return null
+    AudioLanguage.ofCode(value)?.let { return it }
+    return when {
+        Regex("spanish|espa[ñn]ol|castellano|latino").containsMatchIn(value) -> AudioLanguage.SPANISH
+        Regex("english|ingl[eé]s").containsMatchIn(value) -> AudioLanguage.ENGLISH
+        else -> null
     }
 }
 
