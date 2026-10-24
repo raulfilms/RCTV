@@ -79,6 +79,20 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    /**
+     * RCTV: the TV is running out of memory with the app on screen: the images kept in memory for
+     * later go, and what's no longer used is freed right away (a TV with 2 GB closes the app first).
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+        ) {
+            runCatching { SingletonImageLoader.get(this).memoryCache?.clear() }
+            Thread({ runCatching { Runtime.getRuntime().gc() } }, "rctv-free-memory").start()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         SentryInitializer.start(this, sentrySettingsDataStore)
@@ -176,6 +190,19 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             .allowHardware(false)
             .allowRgb565(imagePerformancePreferences.rgb565Enabled)
             .bitmapFactoryMaxParallelism(4)
+            // RCTV: every image shown is noted (how big it is in memory), so a close for memory says
+            // which screen's images took it.
+            .eventListener(object : coil3.EventListener() {
+                override fun onSuccess(request: coil3.request.ImageRequest, result: coil3.request.SuccessResult) {
+                    runCatching {
+                        com.nuvio.tv.core.diagnostics.SessionTrail.noteImage(
+                            request.data.toString(),
+                            result.image.width,
+                            result.image.height
+                        )
+                    }
+                }
+            })
             .build()
     }
 }

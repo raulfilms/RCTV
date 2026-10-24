@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.transformations
+import coil3.size.Dimension
 import coil3.size.Size
 import coil3.transform.Transformation
 import kotlin.math.PI
@@ -82,9 +83,12 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
     private val green = quantize(background.green)
     private val blue = quantize(background.blue)
 
-    override val cacheKey: String = "sports_logo_outline_v3_${red}_${green}_$blue"
+    override val cacheKey: String = "sports_logo_outline_v4_${red}_${green}_$blue"
 
-    override suspend fun transform(input: Bitmap, size: Size): Bitmap {
+    override suspend fun transform(source: Bitmap, size: Size): Bitmap {
+        // RCTV: no bigger than the space it's shown in (a 500-px logo decoded for a 180-px tile,
+        // hundreds of them on Sports' pages, took more memory than a 2 GB TV has).
+        val input = runCatching { fittedTo(source, size) }.getOrDefault(source)
         val backgroundRgb = Triple(red * 255 / QUANT_STEPS, green * 255 / QUANT_STEPS, blue * 255 / QUANT_STEPS)
         val backgroundLuma = (0.2126f * backgroundRgb.first + 0.7152f * backgroundRgb.second + 0.0722f * backgroundRgb.third) / 255f
         val visibleShare = runCatching { visibleShareOf(input, backgroundRgb, backgroundLuma) }.getOrNull() ?: return input
@@ -102,6 +106,20 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
         val LOGO_DARK: Int = 0xFF1C1C1E.toInt()
         fun quantize(channel: Float): Int = (channel.coerceIn(0f, 1f) * QUANT_STEPS).roundToInt()
     }
+}
+
+/** The biggest a logo is kept when its space isn't known. */
+private const val LOGO_MAX_PX = 512
+
+/** [input] shrunk to fit [size] (the space it's shown in) when it's clearly bigger; else as it is. */
+private fun fittedTo(input: Bitmap, size: Size): Bitmap {
+    val maxWidth = (size.width as? Dimension.Pixels)?.px?.takeIf { it > 0 } ?: LOGO_MAX_PX
+    val maxHeight = (size.height as? Dimension.Pixels)?.px?.takeIf { it > 0 } ?: LOGO_MAX_PX
+    val scale = minOf(maxWidth.toFloat() / input.width, maxHeight.toFloat() / input.height)
+    if (scale >= 0.8f) return input
+    val width = (input.width * scale).roundToInt().coerceAtLeast(1)
+    val height = (input.height * scale).roundToInt().coerceAtLeast(1)
+    return Bitmap.createScaledBitmap(input, width, height, true)
 }
 
 /**

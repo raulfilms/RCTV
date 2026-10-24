@@ -39,6 +39,14 @@ object SessionTrail {
     @Volatile private var memoryAsks = ""
     @Volatile private var previous: String? = null
     private var startedActivities = 0
+
+    // The screens this session went through, each with the most native memory seen on it ("home 210").
+    private val path = ArrayList<String>()
+    @Volatile private var screenPeakNativeMb = 0L
+    // The images shown on the screen that's on (how many, how much memory), and the session's biggest.
+    private var screenImages = 0
+    private var screenImageBytes = 0L
+    private val biggestImages = ArrayList<Pair<Long, String>>()
     /** Notes are written here, off the screen's thread. */
     private val writer: ScheduledExecutorService by lazy {
         Executors.newSingleThreadScheduledExecutor { task ->
@@ -102,12 +110,48 @@ object SessionTrail {
 
     /** The screen on now (its route, without what's in it). */
     fun setScreen(route: String?) {
-        val name = route?.substringBefore('?')?.takeIf { it.isNotBlank() } ?: return
+        val name = route?.substringBefore('?')?.substringBefore('/')?.takeIf { it.isNotBlank() } ?: return
         if (name == screen) return
+        synchronized(this) {
+            path += "$screen ${maxOf(screenPeakNativeMb, nativeMb())}"
+            while (path.size > PATH_KEPT) path.removeAt(0)
+            screenPeakNativeMb = nativeMb()
+            screenImages = 0
+            screenImageBytes = 0L
+        }
         screen = name
         screenSinceMs = System.currentTimeMillis()
         if (state == RUNNING) writeSoon()
     }
+
+    /**
+     * An image shown ([source]: its address; only its site and file name are kept): counted for the
+     * screen that's on, and kept when it's one of the session's biggest.
+     */
+    @Synchronized
+    fun noteImage(source: String, width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        val bytes = width.toLong() * height.toLong() * 4L
+        screenImages++
+        screenImageBytes += bytes
+        if (biggestImages.size < BIGGEST_KEPT || bytes > biggestImages.last().first) {
+            val name = shortSource(source)
+            biggestImages.removeAll { it.second.startsWith("$name ") }
+            biggestImages += bytes to "$name ${width}x$height (${bytes / MB} MB)"
+            biggestImages.sortByDescending { it.first }
+            while (biggestImages.size > BIGGEST_KEPT) biggestImages.removeAt(biggestImages.lastIndex)
+        }
+    }
+
+    /** "a.espncdn.com …/ari.png": the site and the file, not the whole address. */
+    private fun shortSource(source: String): String {
+        val noQuery = source.substringBefore('?')
+        val host = noQuery.substringAfter("://", "").substringBefore('/')
+        val file = noQuery.substringAfterLast('/').take(40)
+        return if (host.isBlank()) file.ifBlank { "image" } else "$host …/$file"
+    }
+
+    private fun nativeMb(): Long = runCatching { Debug.getNativeHeapAllocatedSize() / MB }.getOrDefault(0L)
 
     /** The app is being closed on purpose (exit, restart): not an unexpected close (written at once). */
     fun markClosedOnPurpose() {
@@ -141,6 +185,7 @@ object SessionTrail {
             val javaUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / MB
             val javaMaxMb = runtime.maxMemory() / MB
             val nativeMb = Debug.getNativeHeapAllocatedSize() / MB
+            if (nativeMb > screenPeakNativeMb) screenPeakNativeMb = nativeMb
             val device = ActivityManager.MemoryInfo().also { info ->
                 (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.getMemoryInfo(info)
             }
@@ -154,6 +199,13 @@ object SessionTrail {
                 append("tv=").append(device.availMem / MB).append(" MB free of ").append(device.totalMem / MB)
                     .append(" MB (low: ").append(if (device.lowMemory) "yes" else "no").append(")\n")
                 append("asks=").append(memoryAsks.ifBlank { "none" }).append('\n')
+                append("path=").append((path + "$screen $nativeMb").joinToString(" → ")).append(" (native MB)\n")
+                append("images=").append(screenImages).append(" on this screen (")
+                    .append(screenImageBytes / MB).append(" MB)")
+                if (biggestImages.isNotEmpty()) {
+                    append(" · biggest: ").append(biggestImages.joinToString(", ") { it.second })
+                }
+                append('\n')
                 append("device=Android ").append(Build.VERSION.RELEASE).append(" · ").append(Build.MANUFACTURER)
                     .append(' ').append(Build.MODEL).append('\n')
             }
@@ -176,9 +228,13 @@ object SessionTrail {
             append("app memory: ").append(values["app"].orEmpty()).append('\n')
             append("TV memory: ").append(values["tv"].orEmpty()).append('\n')
             append("asked to free memory: ").append(values["asks"].orEmpty()).append('\n')
+            values["path"]?.let { append("screens: ").append(it).append('\n') }
+            values["images"]?.let { append("images: ").append(it).append('\n') }
             append(values["device"].orEmpty())
         }
     }
 
     private const val MB = 1024L * 1024L
+    private const val PATH_KEPT = 6
+    private const val BIGGEST_KEPT = 3
 }
