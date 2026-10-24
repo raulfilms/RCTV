@@ -50,6 +50,11 @@ internal fun PlayerRuntimeController.startAutoStreamWatch() {
                 }
                 continue
             }
+            // RCTV: a debrid error clip ("Debrid not working"...) instead of the movie: the next source.
+            val clipDuration = _exoPlayer?.duration?.takeIf { it > 0 }
+                ?: _playbackTimeline.value.duration.takeIf { now - session.attemptStartedAtMs > 3_000L }
+                ?: 0L
+            if (skipIfDebridErrorClip(clipDuration)) continue
             if (hasRenderedFirstFrame) {
                 AutoStreamSession.markStarted(videoId)
                 SmartScraperEnvironment.recordPlayback(session.current, ok = true)
@@ -64,6 +69,18 @@ internal fun PlayerRuntimeController.startAutoStreamWatch() {
             tryAutoStreamFallback("no picture after ${session.startupTimeoutMs / 1000} s")
         }
     }
+}
+
+/**
+ * RCTV: the Auto Stream source turned out to be an addon's error clip (a few seconds: "Debrid not
+ * working", "download failed"...), not the movie or episode: the next source plays instead, before
+ * the clip is seen. True when it was skipped.
+ */
+internal fun PlayerRuntimeController.skipIfDebridErrorClip(durationMs: Long): Boolean {
+    if (!isShortPlaceholderDuration(durationMs) || _playbackTimeline.value.isLive) return false
+    val session = AutoStreamSession.current(currentVideoId) ?: return false
+    if (session.started) return false
+    return tryAutoStreamFallback("an error clip of ${durationMs / 1000} s, not the title")
 }
 
 /**

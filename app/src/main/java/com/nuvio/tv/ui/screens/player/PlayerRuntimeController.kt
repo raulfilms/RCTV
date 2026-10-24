@@ -423,6 +423,9 @@ class PlayerRuntimeController(
     @Volatile internal var subtitleTimeScale: Double = 1.0
     /** RCTV: the next episode made ready ~7 minutes before the end (see NextEpisodePrefetch). */
     internal var nextEpisodePrefetch: NextEpisodePrefetch? = null
+    /** RCTV: the other audio language's source, found and opened while the title plays (instant switch). */
+    @Volatile internal var preparedLanguage: PreparedLanguage? = null
+    internal var languagePrepareJob: Job? = null
     internal var nextEpisodePrefetchJob: Job? = null
     internal var nextEpisodePrefetchVideoId: String? = null
     internal var hidePlayerEngineSwitchInfoJob: Job? = null
@@ -727,6 +730,7 @@ class PlayerRuntimeController(
         // RCTV Auto Stream: a source that won't start is skipped for the next one.
         startAutoStreamWatch()
         startSubtitleAutoAlignWatch()
+        startLanguageReadyWatch()
     }
 
     private fun observeTorrentSettings() {

@@ -6,6 +6,8 @@ import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.smartscraper.AudioLanguage
 import com.nuvio.tv.core.smartscraper.AutoStreamEngine
 import com.nuvio.tv.core.smartscraper.AutoStreamSession
+import com.nuvio.tv.core.smartscraper.ProviderFamily
+import com.nuvio.tv.core.smartscraper.ProviderVariant
 import com.nuvio.tv.core.smartscraper.RejectReason
 import com.nuvio.tv.core.smartscraper.ReleaseParser
 import com.nuvio.tv.core.smartscraper.SmartScraperEnvironment
@@ -84,44 +86,20 @@ internal fun PlayerRuntimeController.selectAudioLanguage(language: AudioLanguage
 private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLanguage) {
     audioLanguageSwitchJob?.cancel()
     val isEpisode = contentType in listOf("series", "tv") && currentSeason != null && currentEpisode != null
-    val type = contentType ?: "movie"
     val videoId = (if (isEpisode) currentVideoId ?: contentId else contentId) ?: return
+    // RCTV: found and opened already while the title played: it switches at once.
+    val key = languageKey()
+    val prepared = preparedLanguage?.takeIf {
+        it.key == key && it.language == language && System.currentTimeMillis() - it.preparedAtMs < PREPARED_LANGUAGE_MAX_AGE_MS
+    }
     _uiState.update { it.copy(audioLanguageSwitching = language) }
-    showPlayerNotice(context.getString(com.nuvio.tv.R.string.audio_language_searching, language.nativeName), NOTICE_MS * 3)
+    if (prepared == null) {
+        showPlayerNotice(context.getString(com.nuvio.tv.R.string.audio_language_searching, language.nativeName), NOTICE_MS * 3)
+    }
 
     audioLanguageSwitchJob = scope.launch {
-        val streams = titleStreams(type, videoId, if (isEpisode) currentSeason else null, if (isEpisode) currentEpisode else null)
-        val original = AudioLanguage.ofCode(contentLanguage)
-        val durationMinutes = (_exoPlayer?.duration ?: 0L).takeIf { it > 0 }?.let { (it / 60_000L).toInt() }
-        val request = SmartSourceRequest(
-            title = contentName ?: title,
-            alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
-            year = SmartSourceRequest.yearOf(year),
-            isSeries = isEpisode,
-            season = if (isEpisode) currentSeason else null,
-            episode = if (isEpisode) currentEpisode else null,
-            imdbId = contentId?.takeIf { it.startsWith("tt") }?.substringBefore(':'),
-            runtimeMinutes = durationMinutes,
-            equivalentEpisodes = if (isEpisode) {
-                EpisodeOrderRegistry.equivalentEpisodes(contentId, currentSeason, currentEpisode)
-            } else {
-                emptySet()
-            },
-            preferredLanguage = language,
-            originalLanguage = original
-        )
-        val playing = currentStreamUrl
-        val auto = SmartScraperEnvironment.autoStreamRank(streams, request)
-        var chain = auto.candidates
-            .filter { it.languageMatch }
-            .flatMap { candidate -> listOf(candidate.stream) + candidate.copies.map { it.stream } }
-        if (chain.isEmpty()) {
-            // Beyond Auto Stream's limits (bigger, 7.1...): any right source in that language.
-            chain = SmartScraperEnvironment.rank(streams, request).all
-                .filter { language in it.audioLanguages && it.rejection !in UNUSABLE }
-                .map { it.stream }
-        }
-        chain = chain.filterNot { it.getStreamUrl() != null && it.getStreamUrl() == playing }
+        val chain = (prepared?.chain ?: languageChain(language)).orEmpty()
+        if (prepared != null) preparedLanguage = null
         val target = chain.firstOrNull()
         if (target == null) {
             Log.i(TAG, "No ${language.nativeName} source for this title")
@@ -129,7 +107,6 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
             showPlayerNotice(context.getString(com.nuvio.tv.R.string.audio_language_not_found, language.nativeName), NOTICE_MS)
             return@launch
         }
-
         val position = (currentPlaybackPositionMs() ?: _playbackTimeline.value.currentPosition).coerceAtLeast(0L)
         Log.i(TAG, "Playing the ${language.nativeName} source from ${position / 1000} s")
         AutoStreamSession.begin(
@@ -149,6 +126,65 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
         val summary = AutoStreamEngine.summary(SmartScraperEnvironment.normalize(target).release, language)
         showPlayerNotice(summary.ifBlank { language.nativeName }, NOTICE_MS)
     }
+}
+
+/**
+ * The title's sources in [language], the best first (Auto Stream's rules first, then any right one);
+ * null when it has none. RCTV: Spanish comes from LatinoDebrid and the LATAM addon (and AIOStreams'
+ * dubbed setup), English from the others (Torrentio, AIOStreams...); the rest only after them.
+ */
+internal suspend fun PlayerRuntimeController.languageChain(language: AudioLanguage): List<Stream>? {
+    val isEpisode = contentType in listOf("series", "tv") && currentSeason != null && currentEpisode != null
+    val type = contentType ?: "movie"
+    val videoId = (if (isEpisode) currentVideoId ?: contentId else contentId) ?: return null
+    val streams = titleStreams(type, videoId, if (isEpisode) currentSeason else null, if (isEpisode) currentEpisode else null)
+    val original = AudioLanguage.ofCode(contentLanguage)
+    val durationMinutes = (_exoPlayer?.duration ?: 0L).takeIf { it > 0 }?.let { (it / 60_000L).toInt() }
+    val request = SmartSourceRequest(
+        title = contentName ?: title,
+        alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
+        year = SmartSourceRequest.yearOf(year),
+        isSeries = isEpisode,
+        season = if (isEpisode) currentSeason else null,
+        episode = if (isEpisode) currentEpisode else null,
+        imdbId = contentId?.takeIf { it.startsWith("tt") }?.substringBefore(':'),
+        runtimeMinutes = durationMinutes,
+        equivalentEpisodes = if (isEpisode) {
+            EpisodeOrderRegistry.equivalentEpisodes(contentId, currentSeason, currentEpisode)
+        } else {
+            emptySet()
+        },
+        preferredLanguage = language,
+        originalLanguage = original
+    )
+    val playing = currentStreamUrl
+    val auto = SmartScraperEnvironment.autoStreamRank(streams, request)
+    var chain = auto.candidates
+        .filter { it.languageMatch }
+        .flatMap { candidate -> listOf(candidate.stream) + candidate.copies.map { it.stream } }
+    if (chain.isEmpty()) {
+        // Beyond Auto Stream's limits (bigger, 7.1...): any right source in that language.
+        chain = SmartScraperEnvironment.rank(streams, request).all
+            .filter { language in it.audioLanguages && it.rejection !in UNUSABLE }
+            .map { it.stream }
+    }
+    chain = chain.filterNot { it.getStreamUrl() != null && it.getStreamUrl() == playing }
+    return preferredProviders(chain, language).ifEmpty { null }
+}
+
+/** [chain] with the providers meant for [language] first (in their order), the others after. */
+private fun preferredProviders(chain: List<Stream>, language: AudioLanguage): List<Stream> {
+    val (preferred, others) = chain.partition { stream ->
+        val provider = runCatching { SmartScraperEnvironment.normalize(stream).provider }.getOrNull()
+            ?: return@partition false
+        if (language == AudioLanguage.SPANISH) {
+            provider.family == ProviderFamily.LATINODEBRID ||
+                (provider.family == ProviderFamily.AIOSTREAMS && provider.variant == ProviderVariant.DUBBED)
+        } else {
+            provider.family != ProviderFamily.LATINODEBRID
+        }
+    }
+    return preferred + others
 }
 
 /** Sources that can't be played as they are. */

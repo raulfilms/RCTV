@@ -180,8 +180,12 @@ internal fun PlayerRuntimeController.nextEpisodeSmartRequest(next: Video, player
     originalLanguage = AudioLanguage.ofCode(contentLanguage)
 )
 
-/** Opens [url]'s first megabytes on the player's own connection: false when it doesn't answer. */
-private suspend fun warmUp(url: String, headers: Map<String, String>): Boolean = withContext(Dispatchers.IO) {
+/**
+ * Opens [url]'s first megabytes on the player's own connection: false when it doesn't answer, or
+ * when it's a debrid error clip instead of the file (RCTV: a few megabytes in all, or one of the
+ * addons' error videos: "Debrid not working"...).
+ */
+internal suspend fun warmUp(url: String, headers: Map<String, String>): Boolean = withContext(Dispatchers.IO) {
     runCatching {
         val request = Request.Builder()
             .url(url)
@@ -190,6 +194,7 @@ private suspend fun warmUp(url: String, headers: Map<String, String>): Boolean =
             .build()
         PlayerPlaybackNetworking.playbackHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use false
+            if (isDebridErrorClip(response)) return@use false
             val input = response.body?.byteStream() ?: return@use false
             val buffer = ByteArray(64 * 1024)
             var total = 0L
@@ -201,4 +206,16 @@ private suspend fun warmUp(url: String, headers: Map<String, String>): Boolean =
             true
         }
     }.getOrDefault(false)
+}
+
+/** Smaller than this in all, a movie's or an episode's "file" is an addon's error clip. */
+private const val ERROR_CLIP_MAX_BYTES = 40L * 1024 * 1024
+
+/** RCTV: the answer is an addon's error video (its address, or a whole file of a few megabytes). */
+internal fun isDebridErrorClip(response: okhttp3.Response): Boolean {
+    val path = response.request.url.encodedPath.lowercase()
+    if (path.contains("/videos/") && path.endsWith(".mp4")) return true
+    val total = response.header("Content-Range")?.substringAfterLast('/')?.toLongOrNull()
+        ?: response.body?.contentLength()?.takeIf { response.code == 200 && it > 0 }
+    return total != null && total in 1 until ERROR_CLIP_MAX_BYTES
 }

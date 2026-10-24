@@ -75,6 +75,12 @@ object SmartScoreEngine {
         if (!request.isSeries) {
             // A movie asked for: an episode or a season isn't it.
             if (release.seasons.isNotEmpty()) return MetadataCheck(0f, RejectReason.WRONG_TYPE)
+            // RCTV: a movie of this year or last whose release doesn't say its year is most likely an
+            // older one of the same name (The Odyssey of 2026, not of 1997): kept in the list, never
+            // picked on its own.
+            if (wantedYear != null && foundYear == null && wantedYear >= java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1) {
+                return MetadataCheck(0.6f * title, RejectReason.WRONG_TITLE)
+            }
             val year = when {
                 wantedYear == null || foundYear == null -> 0.6f
                 foundYear == wantedYear -> 1f

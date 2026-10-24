@@ -202,7 +202,7 @@ internal object LatinoDebridAdapter : BaseStreamAdapter() {
 
     override fun providerLanguages(stream: Stream): Set<AudioLanguage> = setOf(AudioLanguage.SPANISH)
 
-    private val LATINO = Regex("(?<![a-z])latino", RegexOption.IGNORE_CASE)
+    private val LATINO = Regex("(?<![a-z])(latino|latam)", RegexOption.IGNORE_CASE)
 }
 
 /** Any other addon: the file's name where it's given, else its release-like lines. */
