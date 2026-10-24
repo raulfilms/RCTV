@@ -625,8 +625,17 @@ open class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     // Read off the main thread (a frozen app's trace is a file).
                     lastCrash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        com.nuvio.tv.core.diagnostics.CrashLog.take(context)
+                        val crash = com.nuvio.tv.core.diagnostics.CrashLog.take(context)
                             ?: com.nuvio.tv.core.diagnostics.CrashLog.takeLastExit(context)
+                        // RCTV: a close with no error kept: where the app was and how its memory stood.
+                        val trail = com.nuvio.tv.core.diagnostics.SessionTrail.takeUnexpectedEnd()
+                        if (crash == null) {
+                            trail
+                        } else if (trail != null && com.nuvio.tv.core.diagnostics.CrashLog.isSystemExit(crash)) {
+                            crash + "\n" + trail.lines().drop(2).joinToString("\n")
+                        } else {
+                            crash
+                        }
                     }
                 }
                 lastCrash?.let { trace ->
@@ -908,6 +917,7 @@ open class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(actualRoute) {
                         optimisticRoute = null
+                        com.nuvio.tv.core.diagnostics.SessionTrail.setScreen(actualRoute)
                     }
 
                     // Auto-play next episode for EXTERNAL players: the tracker resolves the
@@ -1158,6 +1168,7 @@ open class MainActivity : ComponentActivity() {
                     }
                     val handleExitApp: () -> Unit = {
                         if (!confirmExitEnabled || backPressedOnce) {
+                            com.nuvio.tv.core.diagnostics.SessionTrail.markClosedOnPurpose()
                             finishAffinity()
                             finishAndRemoveTask()
                             if (confirmExitEnabled) {

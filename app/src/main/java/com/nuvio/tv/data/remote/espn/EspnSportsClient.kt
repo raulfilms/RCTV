@@ -141,8 +141,15 @@ class EspnSportsClient @Inject constructor(
 
         const val GOLF = "golf"
 
-        /** Leagues loading at the same time (each holds its whole answer while it's read). */
-        private const val MAX_FEEDS_AT_ONCE = 6
+        /**
+         * Leagues loading at the same time (each holds its whole answer while it's read), in the
+         * whole app: RCTV: Sports, Search and the Guide share these, so pages loading leagues at the
+         * same time (Sports still filling in while Search or a team's page loads its own) never read
+         * more answers at once than this, and the heavy ones (tennis, the NCAA) one at a time.
+         */
+        private const val MAX_FEEDS_AT_ONCE = 3
+        private val feedPermits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
+        private val heavyFeedPermit = kotlinx.coroutines.sync.Semaphore(1)
 
         /** A league's games in the rows: the next ones (a college weekend alone is over a hundred). */
         private const val ROWS_EVENT_LIMIT = 120
@@ -1137,8 +1144,8 @@ class EspnSportsClient @Inject constructor(
         // than a TV has, and the system closed the app. On threads of their own, too: seventy
         // leagues waiting on the network took every thread the rest of the app reads and saves
         // with (the Guide, the settings), and the app stalled. The heavy leagues one at a time.
-        val permits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
-        val heavyPermit = kotlinx.coroutines.sync.Semaphore(1)
+        val permits = feedPermits
+        val heavyPermit = heavyFeedPermit
         return kotlinx.coroutines.runBlocking(feedDispatcher) {
             feeds.map { feed ->
                 async {

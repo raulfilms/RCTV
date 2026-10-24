@@ -400,6 +400,7 @@ fun ThemeSettingsContent(
             onConfirm = {
                 appIconConfirmation = null
                 if (viewModel.selectAppIcon(option)) {
+                    com.nuvio.tv.core.diagnostics.SessionTrail.markClosedOnPurpose()
                     context.findActivity()?.finishAffinity()
                     Process.killProcess(Process.myPid())
                 }

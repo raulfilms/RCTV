@@ -33,6 +33,7 @@ class AppRestarter @Inject constructor(
             SystemClock.elapsedRealtime() + RESTART_DELAY_MS,
             pendingIntent
         )
+        com.nuvio.tv.core.diagnostics.SessionTrail.markClosedOnPurpose()
         Process.killProcess(Process.myPid())
         exitProcess(0)
     }

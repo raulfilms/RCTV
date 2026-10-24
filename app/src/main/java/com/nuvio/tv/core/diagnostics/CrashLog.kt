@@ -26,6 +26,8 @@ object CrashLog {
     /** Keeps every crash's error (then lets the app close as it would have). */
     fun install(context: Context) {
         val appContext = context.applicationContext
+        // RCTV: and what the app was doing, for a close with no error to keep (see SessionTrail).
+        runCatching { SessionTrail.install(appContext) }
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             runCatching {
