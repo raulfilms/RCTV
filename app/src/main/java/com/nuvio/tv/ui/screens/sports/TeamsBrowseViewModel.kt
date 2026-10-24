@@ -91,8 +91,10 @@ class TeamsBrowseViewModel @Inject constructor(
     fun selectFilter(filterId: String?) {
         loadJob?.cancel()
         val feeds = if (filterId == null) {
-            // The leagues with teams (not golf's tours, NASCAR's series or PPV Events).
-            filters.map { it.feed }
+            // The leagues with teams (not golf's tours, NASCAR's series or PPV Events). RCTV: the
+            // NCAA's (a thousand teams each) only on their own chip: with every other league on the
+            // same page they took more memory than the TV has, and the system closed the app.
+            filters.map { it.feed }.filter { it.leaguePath !in EspnSportsClient.COLLEGE_LEAGUE_PATHS }
         } else {
             filters.firstOrNull { it.id == filterId }?.let { listOf(it.feed) }.orEmpty()
         }

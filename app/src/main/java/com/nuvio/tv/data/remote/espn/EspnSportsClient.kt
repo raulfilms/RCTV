@@ -865,6 +865,15 @@ class EspnSportsClient @Inject constructor(
         }
     }
 
+    /** [url]'s answer read as JSON as it comes in (see [boundedJson]). */
+    private fun <T> getJson(url: String, read: (com.google.gson.stream.JsonReader) -> T): T {
+        val request = Request.Builder().url(url).header("Accept", "application/json").build()
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw EspnException("HTTP ${response.code}")
+            return boundedJson(response, read = read)
+        }
+    }
+
     private fun parseStartTimeMs(dateText: String?): Long? {
         if (dateText.isNullOrBlank()) return null
         return runCatching { isoFormat.parse(dateText)?.time }.getOrNull()
@@ -1276,37 +1285,21 @@ class EspnSportsClient @Inject constructor(
         if (feed.isMlbStats()) return mlbStats.teams(feed)
         if (!hasTeams(feed)) return emptyList()
         if (feed.isBananaBall()) return bananaBall.teams()
-        // Every team (the NCAA's leagues have hundreds).
+        // Every team (the NCAA's leagues have hundreds): read as it comes in, only each team's few fields.
         val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=1000"
-        val json = JSONObject(get(url))
         val leagueId = "${feed.sportPath}:${feed.leaguePath}"
-
-        val teamsJson = json.optJSONArray("sports")
-            ?.optJSONObject(0)
-            ?.optJSONArray("leagues")
-            ?.optJSONObject(0)
-            ?.optJSONArray("teams") ?: JSONArray()
-
-        val teams = ArrayList<SportsTeam>(teamsJson.length())
-        for (i in 0 until teamsJson.length()) {
-            val teamJson = teamsJson.optJSONObject(i)?.optJSONObject("team") ?: continue
-            val id = teamJson.optString("id")?.takeIf { it.isNotBlank() } ?: continue
-            val name = teamJson.optString("displayName")?.takeIf { it.isNotBlank() }
-                ?: teamJson.optString("name").orEmpty()
-            val badge = teamJson.optJSONArray("logos")?.optJSONObject(0)?.optString("href")?.takeIf { it.isNotBlank() }
-
-            teams += SportsTeam(
-                id = id,
-                name = name,
-                shortName = teamJson.optString("abbreviation")?.takeIf { it.isNotBlank() },
+        return getJson(url) { EspnTeamsJson.readTeams(it) }.map { entry ->
+            SportsTeam(
+                id = entry.id,
+                name = entry.displayName ?: entry.name.orEmpty(),
+                shortName = entry.abbreviation,
                 sportName = feed.sportLabel,
                 leagueId = leagueId,
                 leagueName = feed.sportLabel,
-                badgeUrl = badge,
-                color = teamJson.optString("color")?.removePrefix("#")?.takeIf { it.length == 6 }
+                badgeUrl = entry.logo,
+                color = entry.color?.removePrefix("#")?.takeIf { it.length == 6 }
             )
         }
-        return teams
     }
 
     /** Some of a league's teams under one name: a division or a conference ("NCAA Division II"); null for the rest. */
@@ -1326,34 +1319,29 @@ class EspnSportsClient @Inject constructor(
         val groups = ArrayList<TeamGroup>()
         val grouped = HashSet<String>()
         runCatching {
-            val json = JSONObject(get("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/groups"))
-            fun walk(node: JSONObject, path: List<String>) {
-                val here = node.str("name")?.let { path + it } ?: path
-                val teamsJson = node.optJSONArray("teams")
-                if (teamsJson != null && teamsJson.length() > 0) {
+            val roots = getJson("$BASE_URL/${feed.sportPath}/${feed.leaguePath}/groups") { EspnTeamsJson.readGroups(it) }
+            fun walk(node: EspnGroupNode, path: List<String>) {
+                val here = node.name?.let { path + it } ?: path
+                if (node.teams.isNotEmpty()) {
                     val teams = ArrayList<SportsTeam>()
-                    for (i in 0 until teamsJson.length()) {
-                        val teamJson = teamsJson.optJSONObject(i) ?: continue
-                        val id = teamJson.str("id") ?: continue
-                        if (!grouped.add(id)) continue
+                    for (entry in node.teams) {
+                        if (!grouped.add(entry.id)) continue
                         teams += SportsTeam(
-                            id = id,
-                            name = teamJson.str("displayName") ?: teamJson.str("name") ?: continue,
-                            shortName = teamJson.str("abbreviation"),
+                            id = entry.id,
+                            name = entry.displayName ?: entry.name ?: continue,
+                            shortName = entry.abbreviation,
                             sportName = feed.sportLabel,
                             leagueId = leagueId,
                             leagueName = feed.sportLabel,
-                            badgeUrl = logoOf(teamJson),
-                            color = teamJson.str("color")?.removePrefix("#")?.takeIf { it.length == 6 } ?: colors[id]
+                            badgeUrl = entry.logo,
+                            color = entry.color?.removePrefix("#")?.takeIf { it.length == 6 } ?: colors[entry.id]
                         )
                     }
                     if (teams.isNotEmpty()) groups += TeamGroup(groupLabelOf(here), teams.sortedBy { it.name })
                 }
-                val children = node.optJSONArray("children") ?: return
-                for (i in 0 until children.length()) walk(children.optJSONObject(i) ?: continue, here)
+                node.children.forEach { walk(it, here) }
             }
-            val roots = json.optJSONArray("groups") ?: JSONArray()
-            for (i in 0 until roots.length()) walk(roots.optJSONObject(i) ?: continue, emptyList())
+            roots.forEach { walk(it, emptyList()) }
         }
         val rest = all.filter { it.id !in grouped }.sortedBy { it.name }
         return listOfNotNull(TeamGroup(null, rest).takeIf { rest.isNotEmpty() }) + groups
