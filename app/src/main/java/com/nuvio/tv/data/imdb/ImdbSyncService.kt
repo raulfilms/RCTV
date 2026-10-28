@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.imdb
 
+import com.nuvio.tv.data.local.SecretPreferences
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
@@ -129,6 +130,9 @@ class ImdbSyncService @Inject constructor(
 
     private fun store(profileId: Int) = factory.get(profileId, FEATURE)
 
+    /** RCTV (SEC-03): the IMDb session's cookies, kept sealed. */
+    private val secrets = SecretPreferences(FEATURE, listOf(cookiesKey))
+
     private class Stored(
         val input: String = "",
         val userId: String? = null,
@@ -150,7 +154,7 @@ class ImdbSyncService @Inject constructor(
 
     private val stored: StateFlow<Stored> = profileManager.activeProfileId
         // Switching profiles starts from nothing, so the last profile's lists never show for this one.
-        .flatMapLatest { profileId -> store(profileId).data.map { readStored(it) }.onStart { emit(Stored()) } }
+        .flatMapLatest { profileId -> store(profileId).data.map { secrets.sealInBackground(profileId, it) { store(profileId) }; readStored(it) }.onStart { emit(Stored()) } }
         .stateIn(scope, SharingStarted.Eagerly, Stored())
 
     val account: StateFlow<ImdbAccount> = combine(stored, syncing) { data, isSyncing -> accountOf(data, isSyncing) }
@@ -299,7 +303,7 @@ class ImdbSyncService @Inject constructor(
         }
         store(profileId).edit { prefs ->
             if (prefs[userIdKey] != userId) return@edit
-            prefs[cookiesKey] = cookies
+            prefs[cookiesKey] = secrets.seal(cookiesKey, cookies)
             prefs.remove(signInExpiredKey)
         }
         signInHintShown.remove(profileId)
@@ -658,7 +662,7 @@ class ImdbSyncService @Inject constructor(
             ratedMovieIds = readIds(prefs[ratedKey]),
             ratedCount = (prefs[ratedCountKey] ?: 0L).toInt(),
             ratedSeries = readTitles(prefs[ratedSeriesKey]),
-            cookies = prefs[cookiesKey]?.takeIf { it.isNotBlank() },
+            cookies = secrets.read(prefs, cookiesKey)?.takeIf { it.isNotBlank() },
             signInExpired = (prefs[signInExpiredKey] ?: 0L) > 0L,
             markedWatched = readIds(prefs[markedKey]),
             pendingWatched = readIds(prefs[pendingKey])

@@ -13,6 +13,7 @@ import java.security.KeyStore
 import java.util.Collections
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import kotlin.concurrent.thread
@@ -132,13 +133,6 @@ class SubtitleCredentialScopeTest {
         assertEquals("subtitle-own", request.header("X-Api-Key"))
         assertEquals(setOf("x-api-key"), request.tag(SubtitleOwnHeaders::class.java)?.names)
         assertTrue(request.tag(ForwardedStreamHeaders::class.java)?.names.orEmpty().none { it.lowercase() == "x-api-key" })
-
-        // The TLS retry drops both sets, but keeps cross-host headers.
-        val retry = request.withoutCredentialHeaders()
-        assertNull(retry.header("X-Api-Key"))
-        assertNull(retry.header("Authorization"))
-        assertEquals("https://subs.example/", retry.header("Referer"))
-        assertEquals("Player", retry.header("User-Agent"))
     }
 
     @Test
@@ -252,7 +246,7 @@ class SubtitleCredentialScopeTest {
     }
 
     @Test
-    fun `a redirect to a host failing hostname verification is retried without credentials`() {
+    fun `a redirect to a host failing hostname verification fails without a retry`() {
         val tls = testTls()
         // Cert only covers 127.0.0.1, so localhost fails verification. DNS is pinned to IPv4, otherwise
         // OkHttp reports the refused ::1 route instead.
@@ -274,28 +268,13 @@ class SubtitleCredentialScopeTest {
                 .retryOnConnectionFailure(false)
                 .sslSocketFactory(tls.socketFactory, tls.trustManager)
                 .build()
-            val permissive = subtitleUnvalidatedTlsHttpClient.newBuilder()
-                .dns(loopbackOnly)
-                .retryOnConnectionFailure(false)
-                .build()
 
-            executeSubtitleRequest(request, validated, permissive).use { assertEquals(200, it.code) }
+            // RCTV-AUD-002: the TLS failure is the request's failure; nothing reruns it without checks.
+            val failure = runCatching { executeSubtitleRequest(request, validated).close() }.exceptionOrNull()
+            assertTrue("expected SSLPeerUnverifiedException, got $failure", failure is SSLPeerUnverifiedException)
 
-            // Validated attempt, with credentials.
-            val redirectHops = server.requestsTo("/redirect.srt")
-            assertEquals(2, redirectHops.size)
-            assertEquals("secret", redirectHops[0]["x-api-key"])
-            assertEquals("own", redirectHops[0]["x-subtitle-key"])
-            // Retry, without them.
-            assertNull(redirectHops[1]["x-api-key"])
-            assertNull(redirectHops[1]["cookie"])
-            assertNull(redirectHops[1]["x-subtitle-key"])
-            val landed = server.requestsTo("/landed.srt").single()
-            assertNull(landed["x-api-key"])
-            assertNull(landed["cookie"])
-            assertNull(landed["authorization"])
-            assertNull(landed["x-subtitle-key"])
-            assertEquals("https://addon.example/", landed["referer"])
+            assertEquals(1, server.requestsTo("/redirect.srt").size)
+            assertTrue(server.requestsTo("/landed.srt").isEmpty())
         }
     }
 

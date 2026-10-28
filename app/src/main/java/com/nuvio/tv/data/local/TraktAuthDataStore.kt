@@ -72,11 +72,15 @@ class TraktAuthDataStore @Inject constructor(
     private fun store(profileId: Int = profileManager.activeProfileId.value) =
         factory.get(profileId, FEATURE)
 
+    /** RCTV (SEC-03): the Trakt session's tokens, kept sealed. */
+    private val secrets = SecretPreferences(FEATURE, listOf(accessTokenKey, refreshTokenKey))
+
     val state: Flow<TraktAuthState> = profileManager.activeProfileId.flatMapLatest { profileId ->
         store(profileId).data.map { preferences ->
+            secrets.sealInBackground(profileId, preferences) { store(profileId) }
             TraktAuthState(
-                accessToken = preferences[accessTokenKey],
-                refreshToken = preferences[refreshTokenKey],
+                accessToken = secrets.read(preferences, accessTokenKey),
+                refreshToken = secrets.read(preferences, refreshTokenKey),
                 tokenType = preferences[tokenTypeKey],
                 createdAt = preferences[createdAtKey],
                 expiresIn = preferences[expiresInKey]?.let(::normalizeTraktTokenLifetimeSeconds),
@@ -102,8 +106,8 @@ class TraktAuthDataStore @Inject constructor(
     suspend fun getCurrentState(profileId: Int): TraktAuthState {
         val prefs = store(profileId).data.first()
         return TraktAuthState(
-            accessToken = prefs[accessTokenKey],
-            refreshToken = prefs[refreshTokenKey],
+            accessToken = secrets.read(prefs, accessTokenKey),
+            refreshToken = secrets.read(prefs, refreshTokenKey),
             tokenType = prefs[tokenTypeKey],
             createdAt = prefs[createdAtKey],
             expiresIn = prefs[expiresInKey]?.let(::normalizeTraktTokenLifetimeSeconds),
@@ -119,8 +123,8 @@ class TraktAuthDataStore @Inject constructor(
 
     suspend fun saveToken(token: TraktTokenResponseDto) {
         store().edit { preferences ->
-            preferences[accessTokenKey] = token.accessToken
-            preferences[refreshTokenKey] = token.refreshToken
+            preferences[accessTokenKey] = secrets.seal(accessTokenKey, token.accessToken)
+            preferences[refreshTokenKey] = secrets.seal(refreshTokenKey, token.refreshToken)
             preferences[tokenTypeKey] = token.tokenType
             preferences[createdAtKey] = token.createdAt
             preferences[expiresInKey] = normalizeTraktTokenLifetimeSeconds(token.expiresIn)

@@ -117,6 +117,8 @@ class MemberAccessRepository @Inject constructor(
         scope.launch {
             while (true) {
                 delay(MemberAccessStaleAfterMs)
+                // RCTV (PERF-03): checked again only while the app is on screen (at once on return).
+                com.nuvio.tv.core.runtime.AppForeground.awaitForeground()
                 refreshIfStale()
             }
         }

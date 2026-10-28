@@ -5,64 +5,20 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.nuvio.tv.core.network.IPv4FirstDns
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLException
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 internal object PlayerPlaybackNetworking {
-    private val trustAllManager = object : X509TrustManager {
-        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
-
-        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
-
-        override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-    }
-
-    private val playbackHostnameVerifier = HostnameVerifier { _, _ -> true }
-
-    private val sslContext: SSLContext by lazy {
-        SSLContext.getInstance("TLS").apply {
-            init(null, arrayOf<TrustManager>(trustAllManager), SecureRandom())
-        }
-    }
-
     /**
-     * Fallback OkHttpClient equipped with trust-all SSL configuration for self-signed
-     * or untrusted local media servers (e.g. self-signed WebDAV / Plex / Jellyfin).
-     */
-    internal val trustAllPlaybackHttpClient: OkHttpClient by lazy {
-        val dispatcher = okhttp3.Dispatcher().apply {
-            maxRequests = 64
-            maxRequestsPerHost = 32
-        }
-        OkHttpClient.Builder()
-            .dispatcher(dispatcher)
-            .dns(IPv4FirstDns())
-            .eventListenerFactory(PlaybackConnectionEvents)
-            .sslSocketFactory(sslContext.socketFactory, trustAllManager)
-            .hostnameVerifier(playbackHostnameVerifier)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .retryOnConnectionFailure(true)
-            .build()
-    }
-
-    /**
-     * Primary OkHttpClient using standard system SSL certificates and full SNI support.
-     * Includes an automatic fallback to [trustAllPlaybackHttpClient] if an [SSLException]
-     * occurs on self-signed local media servers.
+     * Client for playback, prefetch, probes and subtitles: the system's certificate and hostname
+     * checks, with no way around them. RCTV (RCTV-AUD-002): a TLS error used to resend the request
+     * through a client that trusted any certificate and any host, which anyone on the network path
+     * could trigger; a server with an untrusted certificate now fails like any other TLS error.
+     * Credential headers stay on the host they were sent to when a request is redirected
+     * ([PlaybackRedirectCredentials], RCTV-AUD-009).
      */
     internal val playbackHttpClient: OkHttpClient by lazy {
         val dispatcher = okhttp3.Dispatcher().apply {
@@ -79,50 +35,30 @@ internal object PlayerPlaybackNetworking {
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
-            .addInterceptor { chain ->
-                val request = chain.request()
-                try {
-                    chain.proceed(request)
-                } catch (e: SSLException) {
-                    // Fallback to trust-all client if standard system SSL fails (e.g. self-signed local server)
-                    trustAllPlaybackHttpClient.newCall(request).execute()
-                }
-            }
+            .addNetworkInterceptor(PlaybackRedirectCredentials.offHostGuard)
             .build()
     }
 
-    fun createHttpClient(defaultHeaders: Map<String, String> = emptyMap()): OkHttpClient {
+    /**
+     * A client for a stream's own [defaultHeaders]: they only go to the stream's host (RCTV-AUD-009);
+     * Authorization is kept on that host even across a port change (WebDAV behind a proxy). With
+     * [streamUrl], a request of its own to another host (an HLS/DASH segment or a sidecar subtitle
+     * on a CDN) is sent without the stream's credentials.
+     */
+    fun createHttpClient(defaultHeaders: Map<String, String> = emptyMap(), streamUrl: HttpUrl? = null): OkHttpClient {
         val builder = playbackHttpClient.newBuilder()
-        if (defaultHeaders.any { it.key.equals("Authorization", ignoreCase = true) }) {
-            // OkHttp strips the Authorization header on cross-host redirects.
-            // WebDAV servers behind reverse proxies commonly redirect to a
-            // different host/port, causing auth to be lost. A network
-            // interceptor ensures the header is always present on every
-            // outgoing request — same behavior as mpv/curl.
-            val authValue = defaultHeaders.entries
-                .first { it.key.equals("Authorization", ignoreCase = true) }
-                .value
-            builder.addNetworkInterceptor { chain ->
-                val request = chain.request()
-                if (request.header("Authorization") == null) {
-                    chain.proceed(
-                        request.newBuilder()
-                            .header("Authorization", authValue)
-                            .build()
-                    )
-                } else {
-                    chain.proceed(request)
-                }
-            }
-        }
+        PlaybackRedirectCredentials.streamHeaderScope(defaultHeaders, streamUrl)?.let { builder.addNetworkInterceptor(it) }
         return builder
             .let { NuvioExoPlayerPerformanceHelper.applyNetworkOptimizations(it) }
             .build()
     }
 
     @UnstableApi
-    fun createHttpDataSourceFactory(defaultHeaders: Map<String, String> = emptyMap()): DataSource.Factory {
-        val client = createHttpClient(defaultHeaders)
+    fun createHttpDataSourceFactory(
+        defaultHeaders: Map<String, String> = emptyMap(),
+        streamUrl: HttpUrl? = null
+    ): DataSource.Factory {
+        val client = createHttpClient(defaultHeaders, streamUrl)
         val httpFactory = OkHttpDataSource.Factory(client).apply {
             setDefaultRequestProperties(defaultHeaders)
             if (defaultHeaders.none { it.key.equals("User-Agent", ignoreCase = true) }) {
@@ -135,9 +71,10 @@ internal object PlayerPlaybackNetworking {
     @UnstableApi
     fun createDataSourceFactory(
         context: android.content.Context,
-        defaultHeaders: Map<String, String> = emptyMap()
+        defaultHeaders: Map<String, String> = emptyMap(),
+        streamUrl: HttpUrl? = null
     ): DataSource.Factory {
-        return DefaultDataSource.Factory(context, createHttpDataSourceFactory(defaultHeaders))
+        return DefaultDataSource.Factory(context, createHttpDataSourceFactory(defaultHeaders, streamUrl))
     }
 
     fun openConnection(

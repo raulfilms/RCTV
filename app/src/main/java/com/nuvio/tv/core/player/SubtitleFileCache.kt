@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.player
 
+import com.nuvio.tv.core.network.forLog
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -23,7 +24,7 @@ class SubtitleFileCache @Inject constructor(
     @ApplicationContext private val context: Context,
     // Callers pass addon-provided subtitle URLs, so use the permissive addon client.
     // Keep it that way: anything routed through here inherits permissive TLS.
-    @param:Named("addonPermissive") private val okHttpClient: OkHttpClient
+    @param:Named("addon") private val okHttpClient: OkHttpClient
 ) {
     private val cacheDir: File
         get() = File(context.cacheDir, SUBTITLE_CACHE_DIR).also { it.mkdirs() }
@@ -74,7 +75,7 @@ class SubtitleFileCache @Inject constructor(
         try {
             okHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.w(TAG, "HTTP ${response.code} downloading subtitle: ${input.url}")
+                    Log.w(TAG, "HTTP ${response.code} downloading subtitle: ${input.url.forLog()}")
                     return@withContext null
                 }
 
@@ -91,7 +92,7 @@ class SubtitleFileCache @Inject constructor(
                 file
             )
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to download subtitle file: ${input.url}", e)
+            Log.w(TAG, "Failed to download subtitle file: ${input.url.forLog()}", e)
             file.delete()
             null
         }

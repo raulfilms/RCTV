@@ -25,6 +25,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -34,7 +36,6 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
 import javax.inject.Inject
-import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -51,7 +52,10 @@ import javax.inject.Singleton
  */
 @Singleton
 class EspnSportsClient @Inject constructor(
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient,
+    // RCTV (RCTV-AUD-021): the validating client. ESPN and the other sports sources here are fixed
+    // public hosts (ESPN, MLB, NASCAR, TheSportsDB, MotoGP, Banana Ball), so certificate and hostname
+    // checks cost nothing; it used to be given the client that accepts any certificate.
+    private val okHttpClient: OkHttpClient,
     @ApplicationContext private val appContext: Context
 ) {
     class EspnException(message: String) : Exception(message)
@@ -150,6 +154,32 @@ class EspnSportsClient @Inject constructor(
         private const val MAX_FEEDS_AT_ONCE = 3
         private val feedPermits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
         private val heavyFeedPermit = kotlinx.coroutines.sync.Semaphore(1)
+
+        /**
+         * RCTV (RCTV-AUD-007): each league's teams, read once for the whole app and shared by the
+         * Teams page, Search and Sports' Teams row: kept an hour, at most [ROSTERS_KEPT] leagues
+         * (the oldest dropped first), a failed or empty read not kept, dropped when the system asks
+         * for memory ([clearSharedRosters]); asked for at the same time, read once.
+         */
+        private val sharedRosters = SharedResults<List<SportsTeam>>(
+            keepMs = 60L * 60 * 1000,
+            maxKept = ROSTERS_KEPT,
+            isWorthKeeping = { it.isNotEmpty() }
+        )
+        private const val ROSTERS_KEPT = 80
+
+        /** Drops the shared league rosters (they're read again when next asked for). */
+        fun clearSharedRosters() {
+            sharedRosters.clear()
+            synchronized(liveClients) { liveClients.forEach { it.sharedScoreboards.clear() } }
+        }
+
+        /** The clients whose recent scoreboards [clearSharedRosters] drops too (the app has one). */
+        private val liveClients = java.util.Collections.newSetFromMap(java.util.WeakHashMap<EspnSportsClient, Boolean>())
+
+        /** How long a league's scoreboard for a range is reused: under the Sports page's quiet reload (2 min). */
+        private const val SCOREBOARD_KEEP_MS = 60_000L
+        private const val SCOREBOARDS_KEPT = 120
 
         /** A league's games in the rows: the next ones (a college weekend alone is over a hundred). */
         private const val ROWS_EVENT_LIMIT = 120
@@ -866,18 +896,77 @@ class EspnSportsClient @Inject constructor(
 
     private fun get(url: String): String {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        okHttpClient.newCall(request).execute().use { response ->
+        return executeCancellable(okHttpClient.newCall(request)) { response ->
             if (!response.isSuccessful) throw EspnException("HTTP ${response.code}")
-            return boundedBody(response)
+            boundedBody(response)
         }
     }
 
     /** [url]'s answer read as JSON as it comes in (see [boundedJson]). */
     private fun <T> getJson(url: String, read: (com.google.gson.stream.JsonReader) -> T): T {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        okHttpClient.newCall(request).execute().use { response ->
+        return executeCancellable(okHttpClient.newCall(request)) { response ->
             if (!response.isSuccessful) throw EspnException("HTTP ${response.code}")
-            return boundedJson(response, read = read)
+            boundedJson(response, read = read)
+        }
+    }
+
+    /**
+     * RCTV (RCTV-AUD-006): the requests a blocking league load makes on its thread, so that leaving
+     * the page stops a request already waiting on ESPN too, not only the leagues not started yet.
+     */
+    private class OpenCalls {
+        private val calls = java.util.concurrent.ConcurrentLinkedQueue<okhttp3.Call>()
+        @Volatile private var cancelled = false
+
+        fun add(call: okhttp3.Call) {
+            calls += call
+            if (cancelled) call.cancel()
+        }
+
+        fun remove(call: okhttp3.Call) {
+            calls -= call
+        }
+
+        fun cancelAll() {
+            cancelled = true
+            calls.forEach { it.cancel() }
+        }
+    }
+
+    private val openCalls = ThreadLocal<OpenCalls?>()
+
+    /** [call] run, and cancelled with the coroutine that runs [cancellableBlocking] on this thread. */
+    private fun <T> executeCancellable(call: okhttp3.Call, read: (okhttp3.Response) -> T): T {
+        val open = openCalls.get()
+        open?.add(call)
+        try {
+            return call.execute().use(read)
+        } finally {
+            open?.remove(call)
+        }
+    }
+
+    /**
+     * [block] (blocking, on this thread), its ESPN requests cancelled as soon as the calling
+     * coroutine is: a watcher on another thread waits for the cancellation and cancels them.
+     */
+    private suspend fun <T> cancellableBlocking(block: () -> T): T = kotlinx.coroutines.coroutineScope {
+        val open = OpenCalls()
+        val watcher = launch(Dispatchers.Default) {
+            try {
+                kotlinx.coroutines.awaitCancellation()
+            } finally {
+                open.cancelAll()
+            }
+        }
+        val previous = openCalls.get()
+        openCalls.set(open)
+        try {
+            block()
+        } finally {
+            openCalls.set(previous)
+            watcher.cancel()
         }
     }
 
@@ -1079,11 +1168,24 @@ class EspnSportsClient @Inject constructor(
     }
 
     /**
+     * RCTV (PERF-01): a league's scoreboard for a range, reused for [SCOREBOARD_KEEP_MS] by every page
+     * that asks for the same one (Sports opened again, its reload, Search, the Guide), and read once
+     * when asked for at the same time. A failed read isn't kept, and a read that failed (or was
+     * cancelled with its page) is read again by whoever was waiting for it. Dropped when the system
+     * asks for memory ([clearSharedRosters]).
+     */
+    internal val sharedScoreboards = SharedResults<FeedResult>(
+        keepMs = SCOREBOARD_KEEP_MS,
+        maxKept = SCOREBOARDS_KEPT,
+        waitersReadAgainOnFailure = true
+    ).also { synchronized(liveClients) { liveClients += this } }
+
+    /**
      * Fetches every curated feed. [rangeDays] widens the scoreboard window beyond "today" so
      * upcoming (not just live/today's) fixtures show up too. Each feed is fetched independently, so
      * one league being down/unreachable never blocks the rest.
      */
-    fun fetchAllFixtures(
+    suspend fun fetchAllFixtures(
         rangeDays: Int = 10,
         feeds: List<Feed> = FEEDS,
         /** Leagues ("sport:league") loaded first: the person's own. */
@@ -1123,7 +1225,7 @@ class EspnSportsClient @Inject constructor(
      * Every curated league's games the day before, the day of and the day after [timeMs]: to find
      * which game a TV guide program is.
      */
-    fun fetchFixturesAround(timeMs: Long, feeds: List<Feed> = FEEDS): List<FeedResult> {
+    suspend fun fetchFixturesAround(timeMs: Long, feeds: List<Feed> = FEEDS): List<FeedResult> {
         val dayMs = 24L * 60 * 60 * 1000
         val format = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         val start = format.format(java.util.Date(timeMs - dayMs))
@@ -1131,7 +1233,7 @@ class EspnSportsClient @Inject constructor(
         return fetchFixturesInRange("$start-$end", feeds)
     }
 
-    private fun fetchFixturesInRange(
+    private suspend fun fetchFixturesInRange(
         range: String,
         feeds: List<Feed>,
         onResult: ((FeedResult) -> Unit)? = null
@@ -1144,9 +1246,12 @@ class EspnSportsClient @Inject constructor(
         // than a TV has, and the system closed the app. On threads of their own, too: seventy
         // leagues waiting on the network took every thread the rest of the app reads and saves
         // with (the Guide, the settings), and the app stalled. The heavy leagues one at a time.
+        // RCTV (RCTV-AUD-006): in the caller's coroutine, not a blocking one of its own: when the
+        // page that asked is left, no league that hasn't started loading starts (one already
+        // reading its answer finishes it).
         val permits = feedPermits
         val heavyPermit = heavyFeedPermit
-        return kotlinx.coroutines.runBlocking(feedDispatcher) {
+        return kotlinx.coroutines.withContext(feedDispatcher) {
             feeds.map { feed ->
                 async {
                     // A league of another's events (a Grand Slam, a boxing body): only its tile, its
@@ -1157,9 +1262,20 @@ class EspnSportsClient @Inject constructor(
                         val feedRange = if (feed.sportPath == VirtualLeagues.TENNIS) tennisRange else range
                         val load: suspend () -> FeedResult? = {
                             permits.withPermit {
-                                runCatching { fetchFeedRaw(feed, feedRange, limit = ROWS_EVENT_LIMIT).deduplicated() }
-                                    .recoverCatching { fetchFeed(feed) }
-                                    .getOrNull()
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                val first = runCatching {
+                                    cancellableBlocking {
+                                        sharedScoreboards.get("${feed.sportPath}/${feed.leaguePath}|$feedRange|$ROWS_EVENT_LIMIT") {
+                                            fetchFeedRaw(feed, feedRange, limit = ROWS_EVENT_LIMIT).deduplicated()
+                                        }
+                                    }
+                                }
+                                if (first.isSuccess) {
+                                    first.getOrNull()
+                                } else {
+                                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                    runCatching { cancellableBlocking { fetchFeed(feed) } }.getOrNull()
+                                }
                             }
                         }
                         if (feed.isHeavy()) heavyPermit.withPermit { load() } else load()
@@ -1295,7 +1411,12 @@ class EspnSportsClient @Inject constructor(
         // Every team (the NCAA's leagues have hundreds): read as it comes in, only each team's few fields.
         val url = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/teams?limit=1000"
         val leagueId = "${feed.sportPath}:${feed.leaguePath}"
-        return getJson(url) { EspnTeamsJson.readTeams(it) }.map { entry ->
+        // Read once for every page that asks (RCTV-AUD-007, [sharedRosters]).
+        return sharedRosters.get(url) { readTeams(feed, url, leagueId) }
+    }
+
+    private fun readTeams(feed: Feed, url: String, leagueId: String): List<SportsTeam> =
+        getJson(url) { EspnTeamsJson.readTeams(it) }.map { entry ->
             SportsTeam(
                 id = entry.id,
                 name = entry.displayName ?: entry.name.orEmpty(),
@@ -1307,7 +1428,6 @@ class EspnSportsClient @Inject constructor(
                 color = entry.color?.removePrefix("#")?.takeIf { it.length == 6 }
             )
         }
-    }
 
     /** Some of a league's teams under one name: a division or a conference ("NCAA Division II"); null for the rest. */
     data class TeamGroup(val label: String?, val teams: List<SportsTeam>)
@@ -1370,10 +1490,10 @@ class EspnSportsClient @Inject constructor(
      * found (a league roster fetch failed, or ESPN renamed the team) is simply skipped rather than
      * breaking the whole row.
      */
-    fun fetchHomeTeamRowPicks(): List<SportsTeam> {
-        // Each league's teams once, all at once.
+    suspend fun fetchHomeTeamRowPicks(): List<SportsTeam> {
+        // Each league's teams once, all at once (RCTV-AUD-006: in the caller's coroutine).
         val feeds = HOME_TEAM_ROW_PICKS.map { it.feed }.distinct()
-        val rosters = kotlinx.coroutines.runBlocking(feedDispatcher) {
+        val rosters = kotlinx.coroutines.withContext(feedDispatcher) {
             feeds.map { feed -> async { feed to runCatching { fetchTeams(feed) }.getOrDefault(emptyList()) } }
                 .awaitAll()
                 .toMap()

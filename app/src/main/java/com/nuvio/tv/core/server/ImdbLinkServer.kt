@@ -37,7 +37,12 @@ class ImdbLinkServer(
     port: Int = 8094
 ) : NanoHTTPD(port) {
 
-    override fun serve(session: IHTTPSession): Response = try {
+    /** RCTV (SEC-04): only the phone that opened the TV's address (its key) gets an answer. */
+    val access = LanConfigAccess()
+
+    override fun serve(session: IHTTPSession): Response = access.guard(session, this::route)
+
+    private fun route(session: IHTTPSession): Response = try {
         when {
             session.method == Method.GET && session.uri == "/" ->
                 newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", ImdbLinkWebPage.html(context))

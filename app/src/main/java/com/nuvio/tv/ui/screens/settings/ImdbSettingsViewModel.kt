@@ -176,7 +176,7 @@ class ImdbSettingsViewModel @Inject constructor(
             return
         }
         phoneServer = server
-        val url = "http://$ip:${server.listeningPort}"
+        val url = server.access.shareUrl("http://$ip:${server.listeningPort}")
         _phoneLink.value = ImdbPhoneLink(qr = QrCodeGenerator.generate(url, 512), url = url)
     }
 

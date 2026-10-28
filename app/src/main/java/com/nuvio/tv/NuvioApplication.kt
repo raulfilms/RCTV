@@ -89,6 +89,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
         ) {
             runCatching { SingletonImageLoader.get(this).memoryCache?.clear() }
+            com.nuvio.tv.data.remote.espn.EspnSportsClient.clearSharedRosters()
             Thread({ runCatching { Runtime.getRuntime().gc() } }, "rctv-free-memory").start()
         }
     }
@@ -98,6 +99,10 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         SentryInitializer.start(this, sentrySettingsDataStore)
         // RCTV: a crash's error is kept and shown the next time the app opens.
         com.nuvio.tv.core.diagnostics.CrashLog.install(this)
+        // RCTV (RCTV-AUD-001): how full the images' memory cache is, in the session notes.
+        com.nuvio.tv.core.diagnostics.SessionTrail.imageCacheProbe = {
+            SingletonImageLoader.get(this).memoryCache?.let { it.size to it.maxSize }
+        }
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()
         // Load locale synchronously so it's available before Activity.attachBaseContext.

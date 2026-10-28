@@ -23,7 +23,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class StalkerClient @Inject constructor(
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient
+    @Named("addon") private val okHttpClient: OkHttpClient
 ) {
     class StalkerException(message: String) : Exception(message)
 

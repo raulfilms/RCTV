@@ -159,7 +159,10 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         cacheKey: String? = null
     ): MediaSource {
         val sanitizedHeaders = sanitizeHeaders(headers)
-        val httpDataSourceFactory = PlayerPlaybackNetworking.createDataSourceFactory(context, sanitizedHeaders)
+        // RCTV (RCTV-AUD-009): the stream's credentials stay on its host; its segments and sidecar
+        // subtitles on other hosts get its other headers only.
+        val streamHttpUrl = url.toHttpUrlOrNull()
+        val httpDataSourceFactory = PlayerPlaybackNetworking.createDataSourceFactory(context, sanitizedHeaders, streamHttpUrl)
 
         val resolvedMimeType = mimeTypeOverride ?: inferMimeType(
             url = url,
@@ -204,7 +207,16 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
         val useChunkSessionSource = useParallelConnections && !liveStream && !isHls && !isDash
         parallelStartupPrefetchUnlocked.set(!useChunkSessionSource)
         val progressiveUpstreamFactory: DataSource.Factory = if (useChunkSessionSource) {
-            val okHttpFactory = OkHttpDataSource.Factory(playbackHttpClient).apply {
+            // RCTV (RCTV-AUD-009): after the first request, the chunks go straight to the address
+            // the redirect led to; the stream's credentials only go to the stream's own host.
+            val chunkClient = PlaybackRedirectCredentials.streamHeaderScope(
+                sanitizedHeaders,
+                streamHttpUrl,
+                PlaybackRedirectCredentials.OtherHostRequests.CROSS_HOST_HEADERS_ONLY
+            )
+                ?.let { scope -> playbackHttpClient.newBuilder().addNetworkInterceptor(scope).build() }
+                ?: playbackHttpClient
+            val okHttpFactory = OkHttpDataSource.Factory(chunkClient).apply {
                 setDefaultRequestProperties(sanitizedHeaders)
                 setUserAgent(DEFAULT_USER_AGENT)
             }
@@ -230,7 +242,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
             // direct OkHttpDataSource with persistent connection pooling. If routed through
             // DefaultDataSource, LocalhostZeroCopyDataSource intercepts 127.0.0.1 and drops
             // the socket on every container seek with Connection: close, aborting streaming contexts.
-            PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders)
+            PlayerPlaybackNetworking.createHttpDataSourceFactory(sanitizedHeaders, streamHttpUrl)
         } else {
             httpDataSourceFactory
         }

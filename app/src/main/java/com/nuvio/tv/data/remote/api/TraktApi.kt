@@ -45,6 +45,7 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.PUT
 import retrofit2.http.Query
+import retrofit2.http.Url
 
 interface TraktApi {
 
@@ -67,6 +68,16 @@ interface TraktApi {
     suspend fun revokeToken(
         @Body body: TraktRevokeRequestDto
     ): Response<Unit>
+
+    /** RCTV (SEC-01): the same token requests, sent to the server that adds the client secret ([url]). */
+    @POST
+    suspend fun requestDeviceTokenAt(@Url url: String, @Body body: TraktDeviceTokenRequestDto): Response<TraktTokenResponseDto>
+
+    @POST
+    suspend fun refreshTokenAt(@Url url: String, @Body body: TraktRefreshTokenRequestDto): Response<TraktTokenResponseDto>
+
+    @POST
+    suspend fun revokeTokenAt(@Url url: String, @Body body: TraktRevokeRequestDto): Response<Unit>
 
     @GET("users/settings")
     suspend fun getUserSettings(

@@ -7,6 +7,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.nuvio.tv.ui.screens.player.ParallelRangeDataSource
 import com.nuvio.tv.ui.screens.player.PlayerPlaybackNetworking
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 
 @UnstableApi
@@ -70,7 +71,16 @@ object StreamSpeedTester {
         }
 
         try {
-            val okHttpFactory = OkHttpDataSource.Factory(PlayerPlaybackNetworking.playbackHttpClient).apply {
+            // RCTV (RCTV-AUD-009): chunks go straight to the redirect's address; credentials stay on the stream's host.
+            val chunkClient = com.nuvio.tv.ui.screens.player.PlaybackRedirectCredentials
+                .streamHeaderScope(
+                    headers,
+                    url.toHttpUrlOrNull(),
+                    com.nuvio.tv.ui.screens.player.PlaybackRedirectCredentials.OtherHostRequests.CROSS_HOST_HEADERS_ONLY
+                )
+                ?.let { scope -> PlayerPlaybackNetworking.playbackHttpClient.newBuilder().addNetworkInterceptor(scope).build() }
+                ?: PlayerPlaybackNetworking.playbackHttpClient
+            val okHttpFactory = OkHttpDataSource.Factory(chunkClient).apply {
                 setDefaultRequestProperties(headers)
             }
             // Use existing ParallelRangeDataSource from the app

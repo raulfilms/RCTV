@@ -131,7 +131,8 @@ internal fun PlayerRuntimeController.reconnectLiveTv(reason: String, light: Bool
             if (view != null) {
                 hasRenderedFirstFrame = false
                 view.applyLiveStreamTuning(true)
-                view.setMediaUsingLoadfile(currentStreamUrl, currentHeaders)
+                val (mpvUrl, mpvHeaders) = mpvMediaFor(currentStreamUrl, currentHeaders)
+                view.setMediaUsingLoadfile(mpvUrl, mpvHeaders)
                 view.setPaused(paused)
                 liveStuckSinceMs = SystemClock.elapsedRealtime()
                 return@launch

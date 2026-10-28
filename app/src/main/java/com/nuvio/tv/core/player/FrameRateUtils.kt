@@ -6,6 +6,7 @@ import android.media.MediaExtractor
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import com.nuvio.tv.core.network.forLog
 import android.view.Display
 import androidx.media3.common.MimeTypes
 import io.github.anilbeesetti.nextlib.mediainfo.MediaInfo
@@ -1275,7 +1276,7 @@ object FrameRateUtils {
             }
         } catch (e: Exception) {
             call.cancel()
-            Log.w(TAG, "fetchHttpRangeToFile failed for url=$url range=$rangeHeader: ${e.message}")
+            Log.w(TAG, "fetchHttpRangeToFile failed for url=${url.forLog()} range=$rangeHeader: ${e.message}")
             HttpRangeFetchResult(success = false)
         }
     }

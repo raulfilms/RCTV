@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import com.nuvio.tv.core.network.isTlsCertificateFailure
 import android.content.Context
 import com.nuvio.tv.data.local.LiveTvDataStore
 import com.nuvio.tv.data.remote.stalker.StalkerClient
@@ -75,7 +76,7 @@ class LiveTvGuideLoader @Inject constructor(
     private val liveTvDataStore: LiveTvDataStore,
     private val xtreamClient: XtreamClient,
     private val stalkerClient: StalkerClient,
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient
+    @Named("addon") private val okHttpClient: OkHttpClient
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
@@ -291,6 +292,9 @@ class LiveTvGuideLoader @Inject constructor(
         }
         // RCTV: never which IPTV source (or server) it was: that the channels couldn't load.
         val error = when {
+            // RCTV (RCTV-AUD-021): the provider's certificate didn't check out (settings kept).
+            channels.isEmpty() && failures.isNotEmpty() && failures.all { (_, failure) -> failure.isTlsCertificateFailure() } ->
+                appContext.getString(com.nuvio.tv.R.string.livetv_channels_certificate_invalid)
             channels.isEmpty() && failures.isNotEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_load_failed)
             channels.isEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_none)
             failures.isNotEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_some_failed)

@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.repository
 
+import com.nuvio.tv.core.network.forLog
 import android.content.Context
 import android.util.Log
 import com.nuvio.tv.core.network.NetworkResult
@@ -206,7 +207,7 @@ class MetaRepositoryImpl @Inject constructor(
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.w(TAG, "getMeta failed for $url: ${e.message}")
+                    Log.w(TAG, "getMeta failed for ${url.forLog()}: ${e.message}")
                     null
                 } finally {
                     inFlightMeta.remove(cacheKey)
@@ -397,7 +398,7 @@ class MetaRepositoryImpl @Inject constructor(
                         }
 
                         val url = buildMetaUrl(addon.baseUrl, candidateType, id)
-                        Log.d(TAG, "Trying meta addonId=${addon.id} addonName=${addon.name} type=$candidateType id=$id url=$url")
+                        Log.d(TAG, "Trying meta addonId=${addon.id} addonName=${addon.name} type=$candidateType id=$id url=${url.forLog()}")
                         loopAddonNames += addon.displayName
                         attempted++
                         try {
@@ -534,7 +535,7 @@ class MetaRepositoryImpl @Inject constructor(
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.w(TAG, "Primary meta fetch failed for $url: ${e.message}")
+                    Log.w(TAG, "Primary meta fetch failed for ${url.forLog()}: ${e.message}")
                     null
                 } finally {
                     inFlightPrimaryMeta.remove(cacheKey)

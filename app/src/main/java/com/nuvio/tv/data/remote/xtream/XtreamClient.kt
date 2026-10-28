@@ -21,7 +21,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class XtreamClient @Inject constructor(
-    @Named("addonPermissive") private val okHttpClient: OkHttpClient
+    @Named("addon") private val okHttpClient: OkHttpClient
 ) {
     class XtreamException(message: String) : Exception(message)
 

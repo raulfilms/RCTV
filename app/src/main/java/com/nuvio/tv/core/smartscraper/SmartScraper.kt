@@ -35,7 +35,7 @@ class SmartScraper @Inject constructor(
         // The internet's speed ready for the first Play (once the app has settled).
         scope.launch {
             delay(STARTUP_MEASURE_DELAY_MS)
-            if (settings.config.value.connectionAware) connection.measure()
+            if (settings.config.value.connectionAware) connection.measure(maxAgeMs = ConnectionMonitor.STARTUP_TEST_MAX_AGE_MS)
         }
     }
 

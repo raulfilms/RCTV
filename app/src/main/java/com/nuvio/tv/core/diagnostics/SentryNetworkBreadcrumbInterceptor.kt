@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.diagnostics
 
+import com.nuvio.tv.core.network.forLog
 import io.sentry.Breadcrumb
 import io.sentry.Sentry
 import io.sentry.SentryLevel
@@ -52,15 +53,17 @@ class SentryNetworkBreadcrumbInterceptor : Interceptor {
         elapsedMs: Long,
         error: Throwable?
     ) {
+        // RCTV (RCTV-AUD-011, 021): scheme and host only. Addon requests share this interceptor and
+        // their paths carry the user's debrid keys and addon configuration; nothing of the path or
+        // query is sent to the crash service.
         val breadcrumb = if (statusCode == null) {
-            Breadcrumb.http(scrubbedUrl(url), method)
+            Breadcrumb.http(url.forLog(), method)
         } else {
-            Breadcrumb.http(scrubbedUrl(url), method, statusCode)
+            Breadcrumb.http(url.forLog(), method, statusCode)
         }
         breadcrumb.setCategory("http.client")
         breadcrumb.setLevel(levelFor(statusCode, error))
         breadcrumb.setData("host", url.host)
-        breadcrumb.setData("path", url.encodedPath)
         breadcrumb.setData("elapsed_ms", elapsedMs)
         if (error != null) {
             breadcrumb.setData("error_type", error.javaClass.name)
@@ -77,14 +80,6 @@ class SentryNetworkBreadcrumbInterceptor : Interceptor {
             code >= 400 -> SentryLevel.WARNING
             else -> SentryLevel.INFO
         }
-    }
-
-    private fun scrubbedUrl(url: HttpUrl): String {
-        return url.newBuilder()
-            .query(null)
-            .fragment(null)
-            .build()
-            .toString()
     }
 
     private fun elapsedMs(startedAtNs: Long): Long {

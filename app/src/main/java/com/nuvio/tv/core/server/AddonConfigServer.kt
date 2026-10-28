@@ -31,7 +31,12 @@ class AddonConfigServer(
         pendingChanges[id]?.status = AddonChangeStatus.REJECTED
     }
 
-    override fun serve(session: IHTTPSession): Response {
+    /** RCTV (SEC-04): only the phone that opened the TV's address (its key) gets an answer. */
+    val access = LanConfigAccess()
+
+    override fun serve(session: IHTTPSession): Response = access.guard(session, this::route)
+
+    private fun route(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
 

@@ -4384,4 +4384,7 @@
     <string name="library_title_type_all">All</string>
     <string name="library_title_type_movies">Movies</string>
     <string name="library_title_type_shows">TV Shows</string>
+    <!-- RCTV (RCTV-AUD-021): a server whose HTTPS certificate does not check out. -->
+    <string name="network_error_invalid_certificate">Couldn\'t connect securely: the server\'s HTTPS certificate isn\'t valid (expired, self-signed or issued for another address).</string>
+    <string name="livetv_channels_certificate_invalid">Couldn\'t load the channels: the provider\'s HTTPS certificate isn\'t valid. Your settings are kept; the provider needs a valid certificate.</string>
 </resources>

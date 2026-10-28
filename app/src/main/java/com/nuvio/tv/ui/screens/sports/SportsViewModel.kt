@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.core.util.runCatchingCancellable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.local.LibraryPreferences
@@ -391,9 +392,10 @@ class SportsViewModel @Inject constructor(
                 applyLoaded(partial, final = false)
             }
         }
+        // RCTV (RCTV-AUD-006/016): leaving the page cancels the load; that isn't a failed load.
         val result = try {
             withContext(Dispatchers.IO) {
-                runCatching { loadAll(favoriteTeamIds) { arrived += it } }
+                runCatchingCancellable { loadAll(favoriteTeamIds) { arrived += it } }
             }
         } finally {
             progress?.cancel()
@@ -456,7 +458,7 @@ class SportsViewModel @Inject constructor(
         val state = _uiState.value
         val firstLeagues = (state.favoriteLeagues.map { it.id } + state.favoriteTeams.mapNotNull { it.leagueId }).toSet()
         // The marquee teams and the leagues' games, meanwhile.
-        val picks = async(Dispatchers.IO) { runCatching { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList()) }
+        val picks = async(Dispatchers.IO) { runCatchingCancellable { client.fetchHomeTeamRowPicks() }.getOrDefault(emptyList()) }
         val results = withContext(Dispatchers.IO) {
             client.fetchAllFixtures(rangeDays = ROWS_DAYS, firstLeagueIds = firstLeagues, onResult = onResult)
         }

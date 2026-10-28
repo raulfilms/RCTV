@@ -117,8 +117,11 @@ class TraktAuthService @Inject constructor(
         return BuildConfig.TRAKT_REDIRECT_URI.ifBlank { "urn:ietf:wg:oauth:2.0:oob" }
     }
 
+    /** RCTV (SEC-01): token requests direct to Trakt, or through the server set at build time. */
+    private val oauthRoute = TraktOAuthRoute(BuildConfig.TRAKT_OAUTH_PROXY_URL, BuildConfig.TRAKT_CLIENT_SECRET)
+
     fun hasRequiredCredentials(): Boolean {
-        return BuildConfig.TRAKT_CLIENT_ID.isNotBlank() && BuildConfig.TRAKT_CLIENT_SECRET.isNotBlank()
+        return oauthRoute.hasCredentials(BuildConfig.TRAKT_CLIENT_ID)
     }
 
     suspend fun getCurrentAuthState(): TraktAuthState = traktAuthDataStore.getCurrentState()
@@ -209,13 +212,13 @@ class TraktAuthService @Inject constructor(
         }
 
         val response = try {
-            traktApi.requestDeviceToken(
-                TraktDeviceTokenRequestDto(
-                    code = deviceCode,
-                    clientId = BuildConfig.TRAKT_CLIENT_ID,
-                    clientSecret = BuildConfig.TRAKT_CLIENT_SECRET
-                )
+            val body = TraktDeviceTokenRequestDto(
+                code = deviceCode,
+                clientId = BuildConfig.TRAKT_CLIENT_ID,
+                clientSecret = oauthRoute.secretForRequest()
             )
+            oauthRoute.urlFor("oauth/device/token")?.let { traktApi.requestDeviceTokenAt(it, body) }
+                ?: traktApi.requestDeviceToken(body)
         } catch (e: IOException) {
             return TraktTokenPollResult.Failed(context.getString(R.string.trakt_error_network_will_retry))
         }
@@ -272,14 +275,14 @@ class TraktAuthService @Inject constructor(
 
             trace("refreshTokenIfNeeded: refreshing token (force=$force)")
             val response = try {
-                traktApi.refreshToken(
-                    TraktRefreshTokenRequestDto(
-                        refreshToken = refreshToken,
-                        clientId = BuildConfig.TRAKT_CLIENT_ID,
-                        clientSecret = BuildConfig.TRAKT_CLIENT_SECRET,
-                        redirectUri = traktRedirectUri()
-                    )
+                val body = TraktRefreshTokenRequestDto(
+                    refreshToken = refreshToken,
+                    clientId = BuildConfig.TRAKT_CLIENT_ID,
+                    clientSecret = oauthRoute.secretForRequest(),
+                    redirectUri = traktRedirectUri()
                 )
+                oauthRoute.urlFor("oauth/token")?.let { traktApi.refreshTokenAt(it, body) }
+                    ?: traktApi.refreshToken(body)
             } catch (e: IOException) {
                 Log.w("TraktAuthService", "Network error while refreshing token", e)
                 return@withLock false
@@ -307,13 +310,13 @@ class TraktAuthService @Inject constructor(
         if (hasRequiredCredentials()) {
             state.accessToken?.let { accessToken ->
                 runCatching {
-                    traktApi.revokeToken(
-                        TraktRevokeRequestDto(
-                            token = accessToken,
-                            clientId = BuildConfig.TRAKT_CLIENT_ID,
-                            clientSecret = BuildConfig.TRAKT_CLIENT_SECRET
-                        )
+                    val body = TraktRevokeRequestDto(
+                        token = accessToken,
+                        clientId = BuildConfig.TRAKT_CLIENT_ID,
+                        clientSecret = oauthRoute.secretForRequest()
                     )
+                    oauthRoute.urlFor("oauth/revoke")?.let { traktApi.revokeTokenAt(it, body) }
+                        ?: traktApi.revokeToken(body)
                 }
             }
         }

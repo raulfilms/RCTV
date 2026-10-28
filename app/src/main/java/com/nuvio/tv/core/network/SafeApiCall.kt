@@ -21,6 +21,11 @@ suspend fun <T> safeApiCall(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        NetworkResult.Error(e.message ?: context.getString(R.string.network_error_unknown))
+        // RCTV (RCTV-AUD-021): a certificate that doesn't check out is said so, not as a generic error.
+        if (e.isTlsCertificateFailure()) {
+            NetworkResult.Error(context.getString(R.string.network_error_invalid_certificate))
+        } else {
+            NetworkResult.Error(e.message ?: context.getString(R.string.network_error_unknown))
+        }
     }
 }

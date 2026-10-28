@@ -475,7 +475,7 @@ class LayoutSettingsViewModel @Inject constructor(
             _streamBadgeUiState.update { it.copy(serverError = context.getString(R.string.error_server_ports_unavailable)) }
             return
         }
-        val url = "http://$ip:${server.listeningPort}"
+        val url = server.access.shareUrl("http://$ip:${server.listeningPort}")
         _streamBadgeUiState.update {
             it.copy(
                 isQrModeActive = true,
@@ -884,7 +884,7 @@ class LayoutSettingsViewModel @Inject constructor(
             _customPosterQrState.update { it.copy(serverError = context.getString(com.nuvio.tv.R.string.error_server_ports_unavailable)) }
             return
         }
-        val url = "http://$ip:${server.listeningPort}"
+        val url = server.access.shareUrl("http://$ip:${server.listeningPort}")
         _customPosterQrState.update {
             it.copy(
                 isActive = true,

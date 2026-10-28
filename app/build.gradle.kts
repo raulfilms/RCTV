@@ -115,6 +115,9 @@ android {
         buildConfigField("String", "IMDB_TAPFRAME_API_BASE_URL", "\"${localProperties.getProperty("IMDB_TAPFRAME_API_BASE_URL", "")}\"")
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"${localProperties.getProperty("TRAKT_CLIENT_ID", "")}\"")
         buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"${localProperties.getProperty("TRAKT_CLIENT_SECRET", "")}\"")
+        // RCTV (SEC-01): with this set, Trakt's token requests go through a server that adds the client
+        // secret, and TRAKT_CLIENT_SECRET can be left out of the APK. Empty (default): unchanged.
+        buildConfigField("String", "TRAKT_OAUTH_PROXY_URL", buildConfigString(localProperties.getProperty("TRAKT_OAUTH_PROXY_URL", "")))
         buildConfigField("String", "TRAKT_API_URL", "\"${localProperties.getProperty("TRAKT_API_URL", "https://api.trakt.tv/")}\"")
         buildConfigField("String", "TRAKT_REDIRECT_URI", "\"${localProperties.getProperty("TRAKT_REDIRECT_URI", "urn:ietf:wg:oauth:2.0:oob")}\"")
         buildConfigField("String", "SIMKL_CLIENT_ID", buildConfigString(resolveProperty(devProperties, localProperties, "SIMKL_CLIENT_ID")))
@@ -149,9 +152,10 @@ android {
         buildConfigField("String", "SPONSOR_NAMES", buildConfigString(sponsorNames))
         buildConfigField("String", "SENTRY_DSN", buildConfigString(sentryDsn))
 
-        // In-app updater (GitHub Releases)
-        buildConfigField("String", "GITHUB_OWNER", "\"NuvioMedia\"")
-        buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
+        // In-app updater (GitHub Releases). RCTV (SEC-06): this app's own releases, not the upstream
+        // project's; UPDATE_GITHUB_OWNER / UPDATE_GITHUB_REPO in local.properties override them.
+        buildConfigField("String", "GITHUB_OWNER", buildConfigString(localProperties.getProperty("UPDATE_GITHUB_OWNER", "raulfilms")))
+        buildConfigField("String", "GITHUB_REPO", buildConfigString(localProperties.getProperty("UPDATE_GITHUB_REPO", "RCTV")))
     }
 
     flavorDimensions += "distribution"

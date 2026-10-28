@@ -25,6 +25,9 @@ class MDBListSettingsDataStore @Inject constructor(
 
     private val enabledKey = booleanPreferencesKey("mdblist_enabled")
     private val apiKeyKey = stringPreferencesKey("mdblist_api_key")
+
+    /** RCTV (SEC-03): the MDBList API key, kept sealed. */
+    private val secrets = SecretPreferences(FEATURE, listOf(apiKeyKey))
     private val showTraktKey = booleanPreferencesKey("mdblist_show_trakt")
     private val showImdbKey = booleanPreferencesKey("mdblist_show_imdb")
     private val showTmdbKey = booleanPreferencesKey("mdblist_show_tmdb")
@@ -36,9 +39,10 @@ class MDBListSettingsDataStore @Inject constructor(
 
     val settings: Flow<MDBListSettings> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs ->
+            secrets.sealInBackground(pid, prefs) { factory.get(pid, FEATURE) }
             MDBListSettings(
                 enabled = prefs[enabledKey] ?: false,
-                apiKey = prefs[apiKeyKey] ?: "",
+                apiKey = secrets.read(prefs, apiKeyKey).orEmpty(),
                 showTrakt = prefs[showTraktKey] ?: true,
                 showImdb = prefs[showImdbKey] ?: true,
                 showTmdb = prefs[showTmdbKey] ?: true,
@@ -56,7 +60,7 @@ class MDBListSettingsDataStore @Inject constructor(
     }
 
     suspend fun setApiKey(apiKey: String) {
-        store().edit { it[apiKeyKey] = apiKey.trim() }
+        store().edit { it[apiKeyKey] = secrets.seal(apiKeyKey, apiKey.trim()) }
     }
 
     suspend fun setShowTrakt(enabled: Boolean) {

@@ -59,8 +59,12 @@ class DebridSettingsDataStore @Inject constructor(
     private val streamNameTemplateKey = stringPreferencesKey("debrid_stream_name_template")
     private val streamDescriptionTemplateKey = stringPreferencesKey("debrid_stream_description_template")
 
+    /** RCTV (SEC-03): the providers' API keys, kept sealed. */
+    private val secrets = SecretPreferences(FEATURE, listOf(torboxApiKeyKey, premiumizeApiKeyKey, realDebridApiKeyKey))
+
     val settings: Flow<DebridSettings> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs ->
+            secrets.sealInBackground(pid, prefs) { factory.get(pid, FEATURE) }
             val storedStreamSortMode = enumValueOrDefault(
                 prefs[streamSortModeKey],
                 DebridStreamSortMode.DEFAULT
@@ -78,14 +82,14 @@ class DebridSettingsDataStore @Inject constructor(
             DebridSettings(
                 enabled = prefs[enabledKey] ?: false,
                 cloudLibraryEnabled = prefs[cloudLibraryEnabledKey] ?: true,
-                torboxApiKey = prefs[torboxApiKeyKey] ?: "",
-                premiumizeApiKey = prefs[premiumizeApiKeyKey] ?: "",
-                realDebridApiKey = prefs[realDebridApiKeyKey] ?: "",
+                torboxApiKey = secrets.read(prefs, torboxApiKeyKey).orEmpty(),
+                premiumizeApiKey = secrets.read(prefs, premiumizeApiKeyKey).orEmpty(),
+                realDebridApiKey = secrets.read(prefs, realDebridApiKeyKey).orEmpty(),
                 preferredResolverProviderId = preferredResolverProviderId(
                     stored = prefs[preferredResolverProviderIdKey],
-                    torboxApiKey = prefs[torboxApiKeyKey] ?: "",
-                    premiumizeApiKey = prefs[premiumizeApiKeyKey] ?: "",
-                    realDebridApiKey = prefs[realDebridApiKeyKey] ?: ""
+                    torboxApiKey = secrets.read(prefs, torboxApiKeyKey).orEmpty(),
+                    premiumizeApiKey = secrets.read(prefs, premiumizeApiKeyKey).orEmpty(),
+                    realDebridApiKey = secrets.read(prefs, realDebridApiKeyKey).orEmpty()
                 ),
                 instantPlaybackPreparationLimit = normalizeDebridInstantPlaybackPreparationLimit(
                     prefs[instantPlaybackPreparationLimitKey] ?: 0
@@ -134,15 +138,15 @@ class DebridSettingsDataStore @Inject constructor(
         val provider = DebridProviders.byId(providerId) ?: return
         val normalized = apiKey.trim()
         store().edit { prefs ->
-            providerKey(provider.id)?.let { key -> prefs[key] = normalized }
+            providerKey(provider.id)?.let { key -> prefs[key] = secrets.seal(key, normalized) }
             if (normalized.isBlank() && !hasAnyVisibleApiKeyAfter(prefs, provider.id)) {
                 prefs[enabledKey] = false
             }
             val preferred = preferredResolverProviderId(
                 stored = prefs[preferredResolverProviderIdKey],
-                torboxApiKey = prefs[torboxApiKeyKey] ?: "",
-                premiumizeApiKey = prefs[premiumizeApiKeyKey] ?: "",
-                realDebridApiKey = prefs[realDebridApiKeyKey] ?: ""
+                torboxApiKey = secrets.read(prefs, torboxApiKeyKey).orEmpty(),
+                premiumizeApiKey = secrets.read(prefs, premiumizeApiKeyKey).orEmpty(),
+                realDebridApiKey = secrets.read(prefs, realDebridApiKeyKey).orEmpty()
             )
             prefs[preferredResolverProviderIdKey] = preferred
         }

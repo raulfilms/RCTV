@@ -17,7 +17,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLException
 
 private fun OkHttpClient.Builder.subtitleDownloadDefaults(): OkHttpClient.Builder = this
     // Sidecar and auto-sync downloads use these clients; keep timeouts generous for flaky hosts.
@@ -29,17 +28,11 @@ private fun OkHttpClient.Builder.subtitleDownloadDefaults(): OkHttpClient.Builde
     .followSslRedirects(true)
     .addNetworkInterceptor(ForwardedStreamHeaderGuard)
 
-// Validating client. Interceptors are cleared so playbackHttpClient's trust-all SSL fallback can't
-// resend stream credentials; executeSubtitleRequest handles the fallback instead.
+// Validating client: the playback client's certificate and hostname checks, with no fallback around
+// them (RCTV-AUD-002).
 internal val subtitleHttpClient: OkHttpClient by lazy {
     PlayerPlaybackNetworking.playbackHttpClient.newBuilder()
         .apply { interceptors().clear() }
-        .subtitleDownloadDefaults()
-        .build()
-}
-
-internal val subtitleUnvalidatedTlsHttpClient: OkHttpClient by lazy {
-    PlayerPlaybackNetworking.trustAllPlaybackHttpClient.newBuilder()
         .subtitleDownloadDefaults()
         .build()
 }
@@ -324,13 +317,6 @@ internal object ForwardedStreamHeaderGuard : Interceptor {
     }
 }
 
-/** Removes the host-scoped stream and subtitle headers, for the permissive TLS retry. */
-internal fun Request.withoutCredentialHeaders(): Request =
-    withoutHeaders(
-        tag(ForwardedStreamHeaders::class.java)?.names.orEmpty() +
-            tag(SubtitleOwnHeaders::class.java)?.names.orEmpty()
-    )
-
 private fun Request.withoutHeaders(names: Set<String>): Request =
     if (names.isEmpty()) this else newBuilder().apply { names.forEach { removeHeader(it) } }.build()
 
@@ -393,19 +379,13 @@ internal fun buildSubtitleRequest(
 }
 
 /**
- * Tries [validated] first. On any SSLException, reruns the whole redirect chain on [permissive] without
- * host-scoped stream or subtitle headers, so self-signed hosts still work.
+ * Runs [request] on [validated]. RCTV (RCTV-AUD-002): a TLS failure is the request's failure; it is no
+ * longer retried on a client that skips certificate and hostname checks.
  */
 internal fun executeSubtitleRequest(
     request: Request,
-    validated: OkHttpClient = subtitleHttpClient,
-    permissive: OkHttpClient = subtitleUnvalidatedTlsHttpClient
-): okhttp3.Response =
-    try {
-        validated.newCall(request).execute()
-    } catch (e: SSLException) {
-        permissive.newCall(request.withoutCredentialHeaders()).execute()
-    }
+    validated: OkHttpClient = subtitleHttpClient
+): okhttp3.Response = validated.newCall(request).execute()
 
 private fun PlayerRuntimeController.executeSubtitleDownload(
     url: String,

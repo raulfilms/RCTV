@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.search
 
+import com.nuvio.tv.core.util.runCatchingCancellable
 import android.content.Context
 import android.util.Log
 import com.nuvio.tv.data.remote.espn.EspnSportsClient
@@ -157,10 +158,10 @@ class SportsSearchIndex @Inject constructor(
 
     // ------------------------------------------------------------------ Games
 
-    private fun loadGames() {
+    private suspend fun loadGames() {
         val games = LinkedHashMap<String, SearchableGame>()
         var lastPublishMs = 0L
-        val results = runCatching {
+        val results = runCatchingCancellable {
             client.fetchAllFixtures(rangeDays = GAMES_DAYS_AHEAD, daysBack = 1, onResult = { result ->
                 synchronized(games) {
                     result.events.forEach { event -> if (!games.containsKey(event.id)) games[event.id] = SearchableGame(event) }

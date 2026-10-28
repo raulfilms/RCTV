@@ -1001,6 +1001,8 @@ class TraktProgressService @Inject constructor(
     private fun refreshTicker(): Flow<Unit> = flow {
         while (true) {
             delay(refreshIntervalMs)
+            // RCTV (PERF-02): no Trakt polling while the app is in the background; once back, at once.
+            com.nuvio.tv.core.runtime.AppForeground.awaitForeground()
             emit(Unit)
         }
     }

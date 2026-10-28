@@ -586,6 +586,8 @@ class PlayerRuntimeController(
     internal var mpvView: NuvioMpvSurfaceView? = null
     internal var mpvInitializationInProgress: Boolean = false
     internal var mpvMediaLoadPrepared: Boolean = false
+    /** RCTV (RCTV-AUD-009): the local proxy mpv plays a credential-bearing stream through, if any. */
+    @Volatile internal var mpvCredentialProxy: MpvCredentialProxy? = null
     internal var mpvTrackRefreshJob: Job? = null
     internal var mpvTrackRefreshInProgress: Boolean = false
     internal var pendingMpvHardRestartOnNextAttach: Boolean = false

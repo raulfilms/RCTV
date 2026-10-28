@@ -1,15 +1,11 @@
 package com.nuvio.tv.ui.screens.player
 
-import okhttp3.Interceptor
-import okhttp3.Request
-import okhttp3.Response
+import okhttp3.internal.tls.OkHostnameVerifier
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLException
 
 class PlaybackNetworkingSslVerificationTest {
 
@@ -17,13 +13,8 @@ class PlaybackNetworkingSslVerificationTest {
     fun `verifyPrimaryClientUsesSystemSslAndPreservesSni()`() {
         val primaryClient = PlayerPlaybackNetworking.playbackHttpClient
 
-        // Standard OkHttpClient uses system default SSLSocketFactory
-        // rather than an overridden custom SSLContext that breaks SNI and TLS 1.3 on public CDNs.
-        assertNotEquals(
-            "Primary client must not use custom trust-all HostnameVerifier as default",
-            PlayerPlaybackNetworking.trustAllPlaybackHttpClient.hostnameVerifier,
-            primaryClient.hostnameVerifier
-        )
+        // OkHttp's own hostname verifier, not one that accepts every host (RCTV-AUD-002).
+        assertSame(OkHostnameVerifier, primaryClient.hostnameVerifier)
 
         // Connection timeouts and retry policies are properly configured
         assertEquals(15_000, primaryClient.connectTimeoutMillis.toLong())
@@ -45,61 +36,12 @@ class PlaybackNetworkingSslVerificationTest {
     }
 
     @Test
-    fun `verifyTrustAllClientIsConfiguredForUntrustedLocalFallback()`() {
-        val trustAllClient = PlayerPlaybackNetworking.trustAllPlaybackHttpClient
-
-        assertNotNull("Trust-all fallback client must be initialized", trustAllClient)
-        assertNotNull("Trust-all client must have custom SSLSocketFactory", trustAllClient.sslSocketFactory)
-        assertNotNull("Trust-all client must have custom HostnameVerifier", trustAllClient.hostnameVerifier)
-
-        // Timeouts and retry policies match primary client
-        assertEquals(15_000, trustAllClient.connectTimeoutMillis.toLong())
-        assertEquals(15_000, trustAllClient.readTimeoutMillis.toLong())
-        assertTrue(trustAllClient.retryOnConnectionFailure)
-    }
-
-    @Test
-    fun `verifySSLExceptionTriggersAutomaticFallbackToTrustAllClient()`() {
-        val primaryClient = PlayerPlaybackNetworking.playbackHttpClient
-
-        var primaryAttempted = false
-        var fallbackAttempted = false
-
-        // Mock interceptor chain that simulates SSLException (e.g. self-signed local WebDAV server)
-        val mockChain = object : Interceptor.Chain {
-            private val req = Request.Builder().url("https://local-webdav.server:8443/movie.mp4").build()
-
-            override fun request(): Request = req
-
-            override fun proceed(request: Request): Response {
-                primaryAttempted = true
-                throw SSLException("CertificateNotTrusted: Local self-signed certificate")
-            }
-
-            override fun connection(): okhttp3.Connection? = null
-            override fun call(): okhttp3.Call = error("Not implemented")
-            override fun connectTimeoutMillis(): Int = 15000
-            override fun readTimeoutMillis(): Int = 15000
-            override fun writeTimeoutMillis(): Int = 15000
-            override fun withConnectTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): Interceptor.Chain = this
-            override fun withReadTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): Interceptor.Chain = this
-            override fun withWriteTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit): Interceptor.Chain = this
-        }
-
-        // Find the fallback interceptor in primaryClient
-        val fallbackInterceptor = primaryClient.interceptors.firstOrNull()
-        assertNotNull("Primary client must contain the SSLException fallback interceptor", fallbackInterceptor)
-
-        var caughtThrowable: Throwable? = null
-        try {
-            fallbackInterceptor!!.intercept(mockChain)
-        } catch (t: Throwable) {
-            caughtThrowable = t
-            // Interceptor caught SSLException from primary chain and attempted fallback to trustAllClient
-            fallbackAttempted = true
-        }
-
-        assertTrue("Primary chain must have been attempted", primaryAttempted)
-        assertTrue("Fallback mechanism must be triggered upon SSLException", fallbackAttempted)
+    fun `no client retries a TLS failure around certificate checks`() {
+        // The old SSLException fallback was the primary client's only application interceptor.
+        assertTrue(PlayerPlaybackNetworking.playbackHttpClient.interceptors.isEmpty())
+        val streamClient = PlayerPlaybackNetworking.createHttpClient(mapOf("Authorization" to "Bearer t"))
+        assertTrue(streamClient.interceptors.isEmpty())
+        assertSame(OkHostnameVerifier, streamClient.hostnameVerifier)
+        assertSame(OkHostnameVerifier, subtitleHttpClient.hostnameVerifier)
     }
 }

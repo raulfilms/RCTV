@@ -70,8 +70,10 @@ class LiveEventLibrary @Inject constructor(
         return fixturesLock.withLock {
             val missing = feeds.filter { fresh(keyOf(it)) == null }
             if (missing.isNotEmpty()) {
-                withContext(Dispatchers.IO) {
-                    // Kept even when the program that asked was closed meanwhile (the next one needs it).
+                // Kept even when the program that asked was closed meanwhile (the next one needs it):
+                // RCTV (RCTV-AUD-006) the leagues' load is cancellable now, so this one is kept on
+                // on purpose, as it was.
+                withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
                     val now = System.currentTimeMillis()
                     val loaded = espnClient.fetchFixturesAround(timeMs, missing)
                     loaded.forEach { result ->

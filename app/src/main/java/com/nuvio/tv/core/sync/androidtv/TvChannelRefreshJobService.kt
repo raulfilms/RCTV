@@ -79,6 +79,15 @@ class TvChannelRefreshJobService : JobService() {
     }
 
     companion object {
+        /** Cancels the periodic and the one-off refresh (a device without launcher channels). */
+        fun cancelScheduled(context: Context) {
+            val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler ?: return
+            runCatching {
+                scheduler.cancel(JOB_ID_PERIODIC)
+                scheduler.cancel(JOB_ID_IMMEDIATE)
+            }
+        }
+
         fun schedulePeriodic(context: Context) {
             val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
             if (scheduler.allPendingJobs.any { it.id == JOB_ID_PERIODIC }) return

@@ -26,7 +26,8 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
         view.applyHi10pGnextSoftwareFallback(shouldUseMpvHi10pGnextSoftwareFallback())
         view.applyHardwareDecodeMode(mpvHardwareDecodeModeSetting)
         view.applyLiveStreamTuning(isLiveTvPlayback)
-        view.setMedia(currentStreamUrl, currentHeaders)
+        val (mpvUrl, mpvHeaders) = mpvMediaFor(currentStreamUrl, currentHeaders)
+        view.setMedia(mpvUrl, mpvHeaders)
         view.setPlaybackSpeed(_uiState.value.playbackSpeed)
         view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb)
         view.applyAudioLanguagePreferences(mpvPreferredAudioLanguages)
@@ -130,7 +131,8 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
             ?: (_uiState.value.pendingSeekPosition?.coerceAtLeast(0L) ?: 0L)
         playbackAnalyticsDiagnostics.setStartupStartPosition(initialResumePosition)
         view.applyLiveStreamTuning(isLiveTvPlayback)
-        view.setMedia(url, headers, initialResumePosition)
+        val (mpvUrl, mpvHeaders) = mpvMediaFor(url, headers)
+        view.setMedia(mpvUrl, mpvHeaders, initialResumePosition)
         playbackAnalyticsDiagnostics.recordRawEventLine(
             "PLAYER_INIT: engine=MPV host=${url.safeMpvTraceHost()} " +
                 "playbackSpeed=${_uiState.value.playbackSpeed} resumePositionMs=$initialResumePosition"
@@ -203,6 +205,33 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
 
 internal fun PlayerRuntimeController.releaseMpvPlayer() {
     runCatching { mpvView?.releasePlayer() }
+    closeMpvCredentialProxy()
+}
+
+/**
+ * What mpv opens for [url] with [headers] (RCTV-AUD-009). A stream whose headers hold anything a
+ * foreign host may not get plays through [MpvCredentialProxy], and mpv itself gets only the headers
+ * any host may receive; the same stream again (a reattach, a live reconnect) keeps its proxy. If no
+ * proxy can be opened, mpv still gets no credentials: playback may fail, they never leak.
+ */
+internal fun PlayerRuntimeController.mpvMediaFor(
+    url: String,
+    headers: Map<String, String>
+): Pair<String, Map<String, String>> {
+    mpvCredentialProxy?.takeIf { it.serves(url, headers) }?.let { proxy ->
+        return proxy.localUrl to MpvCredentialProxy.headersForMpv(headers)
+    }
+    closeMpvCredentialProxy()
+    if (!MpvCredentialProxy.isNeeded(url, headers)) return url to headers
+    val proxy = MpvCredentialProxy.start(url, headers)
+        ?: return url to MpvCredentialProxy.headersForMpv(headers)
+    mpvCredentialProxy = proxy
+    return proxy.localUrl to MpvCredentialProxy.headersForMpv(headers)
+}
+
+internal fun PlayerRuntimeController.closeMpvCredentialProxy() {
+    mpvCredentialProxy?.let { runCatching { it.close() } }
+    mpvCredentialProxy = null
 }
 
 private fun String.safeMpvTraceHost(): String {

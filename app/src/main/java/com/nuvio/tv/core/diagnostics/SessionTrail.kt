@@ -47,6 +47,29 @@ object SessionTrail {
     private var screenImages = 0
     private var screenImageBytes = 0L
     private val biggestImages = ArrayList<Pair<Long, String>>()
+
+    // RCTV (RCTV-AUD-001): the process's memory by kind, as `dumpsys meminfo` shows it, so a close
+    // for memory says what held it: software images and other native allocations count under
+    // "native", GPU textures and buffers under "graphics". Reading it takes a moment (the process's
+    // memory map is read), so it's read every few notes, on a new screen and when the system asks
+    // for memory, never on the screen's thread.
+    @Volatile private var memoryKinds = ""
+    @Volatile private var memoryKindsWanted = true
+    private var notesSinceKinds = 0
+
+    // RCTV (RCTV-AUD-001): native memory when the system last asked for memory and 2 s later (the app
+    // frees images and runs a collection then): a big drop says garbage was waiting to be collected,
+    // none says something holds it.
+    @Volatile private var afterAsk = ""
+
+    /** Each screen's openings with native memory at the first and latest (RCTV-AUD-001). */
+    private val visits = ScreenVisits()
+
+    /** Writes to the notes file one at a time (the notes thread, and an exit on the screen's thread). */
+    private val fileLock = Any()
+
+    /** The images' memory cache, used and most (bytes), from the app's image loader. */
+    @Volatile var imageCacheProbe: (() -> Pair<Long, Long>?)? = null
     /** Notes are written here, off the screen's thread. */
     private val writer: ScheduledExecutorService by lazy {
         Executors.newSingleThreadScheduledExecutor { task ->
@@ -121,6 +144,8 @@ object SessionTrail {
         }
         screen = name
         screenSinceMs = System.currentTimeMillis()
+        visits.record(name, nativeMb())
+        memoryKindsWanted = true
         if (state == RUNNING) writeSoon()
     }
 
@@ -156,7 +181,7 @@ object SessionTrail {
     /** The app is being closed on purpose (exit, restart): not an unexpected close (written at once). */
     fun markClosedOnPurpose() {
         state = CLOSED_ON_PURPOSE
-        write()
+        write(readKinds = false)
     }
 
     /** How the last session ended, once, when it ended with the app on screen and not on purpose. */
@@ -170,6 +195,16 @@ object SessionTrail {
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         // The latest few, newest last.
         memoryAsks = (memoryAsks.split(", ").filter { it.isNotBlank() } + "$level $time").takeLast(4).joinToString(", ")
+        memoryKindsWanted = true
+        if (level != "MODERATE") {
+            val before = nativeMb()
+            runCatching {
+                writer.schedule({
+                    afterAsk = "$level $time: native $before → ${nativeMb()} MB 2 s later"
+                    if (state == RUNNING) write()
+                }, AFTER_ASK_MS, TimeUnit.MILLISECONDS)
+            }
+        }
         if (state == RUNNING) writeSoon()
     }
 
@@ -177,8 +212,12 @@ object SessionTrail {
         runCatching { writer.execute { write() } }
     }
 
-    @Synchronized
-    private fun write() {
+    /**
+     * The notes, written to the file. RCTV (RCTV-AUD-001): what takes time (the memory by kind reads
+     * the process's memory map, the image cache, the file itself) is done outside the lock that
+     * [noteImage] and [setScreen] take on the screen's thread, so they never wait on it.
+     */
+    private fun write(readKinds: Boolean = true) {
         val context = appContext ?: return
         runCatching {
             val runtime = Runtime.getRuntime()
@@ -189,9 +228,18 @@ object SessionTrail {
             val device = ActivityManager.MemoryInfo().also { info ->
                 (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.getMemoryInfo(info)
             }
+            if (readKinds && (memoryKindsWanted || ++notesSinceKinds >= KINDS_EVERY_NOTES)) {
+                memoryKinds = runCatching {
+                    memoryKindsLine(Debug.MemoryInfo().also { Debug.getMemoryInfo(it) }.memoryStats)
+                }.getOrDefault("")
+                memoryKindsWanted = false
+                notesSinceKinds = 0
+            }
+            val imageCache = runCatching { imageCacheProbe?.invoke() }.getOrNull()
+            val threads = threadCount()
             val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
             val onScreenFor = (System.currentTimeMillis() - screenSinceMs) / 1000
-            val text = buildString {
+            val text = synchronized(this) { buildString {
                 append("state=").append(state).append('\n')
                 append("time=").append(time).append('\n')
                 append("screen=").append(screen).append(" (").append(onScreenFor).append(" s)\n")
@@ -199,7 +247,14 @@ object SessionTrail {
                 append("tv=").append(device.availMem / MB).append(" MB free of ").append(device.totalMem / MB)
                     .append(" MB (low: ").append(if (device.lowMemory) "yes" else "no").append(")\n")
                 append("asks=").append(memoryAsks.ifBlank { "none" }).append('\n')
+                if (memoryKinds.isNotBlank()) append("kinds=").append(memoryKinds).append('\n')
+                if (afterAsk.isNotBlank()) append("afterask=").append(afterAsk).append('\n')
+                threads?.let { append("threads=").append(it).append('\n') }
+                imageCache?.let { (used, most) ->
+                    append("imagecache=").append(used / MB).append(" of ").append(most / MB).append(" MB\n")
+                }
                 append("path=").append((path + "$screen $nativeMb").joinToString(" → ")).append(" (native MB)\n")
+                visits.line().takeIf { it.isNotBlank() }?.let { append("visits=").append(it).append('\n') }
                 append("images=").append(screenImages).append(" on this screen (")
                     .append(screenImageBytes / MB).append(" MB)")
                 if (biggestImages.isNotEmpty()) {
@@ -208,8 +263,8 @@ object SessionTrail {
                 append('\n')
                 append("device=Android ").append(Build.VERSION.RELEASE).append(" · ").append(Build.MANUFACTURER)
                     .append(' ').append(Build.MODEL).append('\n')
-            }
-            File(context.filesDir, FILE_NAME).writeText(text)
+            } }
+            synchronized(fileLock) { File(context.filesDir, FILE_NAME).writeText(text) }
         }
     }
 
@@ -228,11 +283,48 @@ object SessionTrail {
             append("app memory: ").append(values["app"].orEmpty()).append('\n')
             append("TV memory: ").append(values["tv"].orEmpty()).append('\n')
             append("asked to free memory: ").append(values["asks"].orEmpty()).append('\n')
+            values["kinds"]?.let { append("memory by kind: ").append(it).append('\n') }
+            values["afterask"]?.let { append("after a memory ask: ").append(it).append('\n') }
+            values["threads"]?.let { append("threads: ").append(it).append('\n') }
+            values["imagecache"]?.let { append("image cache: ").append(it).append('\n') }
             values["path"]?.let { append("screens: ").append(it).append('\n') }
+            values["visits"]?.let { append("visits (native MB, first → latest): ").append(it).append('\n') }
             values["images"]?.let { append("images: ").append(it).append('\n') }
             append(values["device"].orEmpty())
         }
     }
+
+    /**
+     * "total 1520 · native 1300 · graphics 80 · java 40 · code 60 · other 40 MB" from
+     * [Debug.MemoryInfo.getMemoryStats] (values in kB); blank when none is there.
+     */
+    internal fun memoryKindsLine(stats: Map<String, String>): String {
+        val parts = MEMORY_KINDS.mapNotNull { (key, label) ->
+            stats[key]?.trim()?.toLongOrNull()?.let { kb -> "$label ${kb / 1024}" }
+        }
+        return if (parts.isEmpty()) "" else parts.joinToString(" · ") + " MB"
+    }
+
+    private val MEMORY_KINDS = listOf(
+        "summary.total-pss" to "total",
+        "summary.native-heap" to "native",
+        "summary.graphics" to "graphics",
+        "summary.java-heap" to "java",
+        "summary.code" to "code",
+        "summary.private-other" to "other"
+    )
+
+    /** The process's thread count (each thread's stack is native memory), from /proc/self/status. */
+    private fun threadCount(): Int? = runCatching { threadsFrom(File("/proc/self/status").readText()) }.getOrNull()
+
+    /** "Threads:\t87" in a /proc status text: 87. */
+    internal fun threadsFrom(status: String): Int? =
+        status.lineSequence().firstOrNull { it.startsWith("Threads:") }?.substringAfter(':')?.trim()?.toIntOrNull()
+
+    private const val AFTER_ASK_MS = 2_000L
+
+    /** Memory by kind is read every this many notes (12 s), besides a new screen and a memory ask. */
+    private const val KINDS_EVERY_NOTES = 3
 
     private const val MB = 1024L * 1024L
     private const val PATH_KEPT = 6

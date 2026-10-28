@@ -73,9 +73,15 @@ class LiveTvDataStore @Inject constructor(
     private val legacyStalkerPortalKey = stringPreferencesKey("live_tv_stalker_portal_url")
     private val legacyStalkerMacKey = stringPreferencesKey("live_tv_stalker_mac_address")
 
+    /** RCTV (SEC-03): the sources (IPTV logins, portal MACs, playlist addresses), kept sealed. */
+    private val secrets = SecretPreferences(FEATURE, listOf(sourcesJsonKey, legacyXtreamPassKey))
+
     /** Every configured source (enabled or not), newest multi-source format first, falling back to a migrated legacy single connection. */
     val sources: StateFlow<List<LiveTvSource>> = profileManager.activeProfileId.flatMapLatest { pid ->
-        factory.get(pid, FEATURE).data.map { prefs -> sourcesFromPrefs(prefs) }
+        factory.get(pid, FEATURE).data.map { prefs ->
+            secrets.sealInBackground(pid, prefs) { factory.get(pid, FEATURE) }
+            sourcesFromPrefs(prefs)
+        }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     /** The first enabled source's connection, or null - kept for callers built before multi-source support. */
@@ -179,7 +185,7 @@ class LiveTvDataStore @Inject constructor(
     }
 
     private fun sourcesFromPrefs(prefs: Preferences): List<LiveTvSource> =
-        parseSources(prefs[sourcesJsonKey]) ?: legacySource(prefs)?.let { listOf(it) } ?: emptyList()
+        parseSources(secrets.read(prefs, sourcesJsonKey)) ?: legacySource(prefs)?.let { listOf(it) } ?: emptyList()
 
     suspend fun setM3uConnection(playlistUrl: String, epgUrl: String?) {
         replaceWithSingleSource(
@@ -204,7 +210,7 @@ class LiveTvDataStore @Inject constructor(
 
     private suspend fun replaceWithSingleSource(connection: LiveTvConnection) {
         val source = LiveTvSource(id = DEFAULT_SOURCE_ID, name = "Default", connection = connection, enabled = true)
-        store().edit { prefs -> prefs[sourcesJsonKey] = encodeSources(listOf(source)) }
+        store().edit { prefs -> prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(listOf(source))) }
     }
 
     suspend fun clearConnection() {
@@ -227,7 +233,7 @@ class LiveTvDataStore @Inject constructor(
     suspend fun addSource(source: LiveTvSource) {
         store().edit { prefs ->
             val current = sourcesFromPrefs(prefs)
-            prefs[sourcesJsonKey] = encodeSources(current.filterNot { it.id == source.id } + source)
+            prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(current.filterNot { it.id == source.id } + source))
         }
     }
 
@@ -237,14 +243,14 @@ class LiveTvDataStore @Inject constructor(
     suspend fun removeSource(id: String) {
         store().edit { prefs ->
             val current = sourcesFromPrefs(prefs)
-            prefs[sourcesJsonKey] = encodeSources(current.filterNot { it.id == id })
+            prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(current.filterNot { it.id == id }))
         }
     }
 
     suspend fun setSourceEnabled(id: String, enabled: Boolean) {
         store().edit { prefs ->
             val current = sourcesFromPrefs(prefs)
-            prefs[sourcesJsonKey] = encodeSources(current.map { if (it.id == id) it.copy(enabled = enabled) else it })
+            prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(current.map { if (it.id == id) it.copy(enabled = enabled) else it }))
         }
     }
 
@@ -331,7 +337,7 @@ class LiveTvDataStore @Inject constructor(
             "xtream" -> {
                 val server = prefs[legacyXtreamServerKey]
                 val user = prefs[legacyXtreamUserKey]
-                val pass = prefs[legacyXtreamPassKey]
+                val pass = secrets.read(prefs, legacyXtreamPassKey)
                 if (!server.isNullOrBlank() && !user.isNullOrBlank() && !pass.isNullOrBlank()) {
                     LiveTvConnection.Xtream(serverUrl = server, username = user, password = pass)
                 } else null

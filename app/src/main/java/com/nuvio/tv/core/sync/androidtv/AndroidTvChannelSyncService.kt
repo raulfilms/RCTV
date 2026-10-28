@@ -69,6 +69,8 @@ class AndroidTvChannelSyncService @Inject constructor(
     fun start() {
         if (!manager.isSupported()) {
             Log.d(TAG, "Non-leanback device; channel sync skipped")
+            // RCTV (PERF-04): a refresh job left scheduled (an earlier install) doesn't keep waking the app.
+            TvChannelRefreshJobService.cancelScheduled(context)
             return
         }
         TvChannelRefreshJobService.schedulePeriodic(context)

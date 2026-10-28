@@ -42,10 +42,10 @@ class ConnectionMonitor @Inject constructor(
      * The download speed now (Mbps): measured again when the last measurement is old (a few MB,
      * ~3 s at most), else the last one. Null when it can't be measured.
      */
-    suspend fun measure(force: Boolean = false): Double? = withContext(Dispatchers.IO) {
-        freshTest()?.takeIf { !force }?.let { return@withContext it }
+    suspend fun measure(force: Boolean = false, maxAgeMs: Long = TEST_MAX_AGE_MS): Double? = withContext(Dispatchers.IO) {
+        freshTest(maxAgeMs)?.takeIf { !force }?.let { return@withContext it }
         testMutex.withLock {
-            freshTest()?.takeIf { !force }?.let { return@withLock it }
+            freshTest(maxAgeMs)?.takeIf { !force }?.let { return@withLock it }
             val mbps = runCatching { speedTest() }
                 .onFailure { Log.w(TAG, "Speed test failed: ${it.message}") }
                 .getOrNull()
@@ -57,9 +57,9 @@ class ConnectionMonitor @Inject constructor(
         }
     }
 
-    private fun freshTest(): Double? {
+    private fun freshTest(maxAgeMs: Long = TEST_MAX_AGE_MS): Double? {
         val tested = prefs.getFloat(KEY_TESTED, 0f).toDouble()
-        return tested.takeIf { it > 0 && System.currentTimeMillis() - prefs.getLong(KEY_TESTED_AT, 0L) < TEST_MAX_AGE_MS }
+        return tested.takeIf { it > 0 && System.currentTimeMillis() - prefs.getLong(KEY_TESTED_AT, 0L) < maxAgeMs }
     }
 
     /** Downloads up to [TEST_MAX_BYTES] for up to [TEST_MAX_NANOS] and times it from the first byte. */
@@ -162,6 +162,13 @@ class ConnectionMonitor @Inject constructor(
         const val TEST_MIN_BYTES = 256L * 1024
         const val TEST_MAX_NANOS = 2_500_000_000L
         const val TEST_MAX_AGE_MS = 15L * 60 * 1000
+
+        /**
+         * RCTV (PERF-05): the measurement made when the app starts is skipped when there's one from the
+         * last 6 h (it downloaded up to 12 MB at nearly every start). Before an automatic Play it's
+         * still measured when older than [TEST_MAX_AGE_MS], alongside the addons (no extra wait).
+         */
+        const val STARTUP_TEST_MAX_AGE_MS = 6L * 60 * 60 * 1000
         const val KEY_TESTED = "tested_mbps"
         const val KEY_TESTED_AT = "tested_at"
         const val KEY_MEASURED = "measured_mbps"

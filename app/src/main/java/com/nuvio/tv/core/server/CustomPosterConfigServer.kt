@@ -12,7 +12,12 @@ class CustomPosterConfigServer(
     port: Int = 8092
 ) : NanoHTTPD(port) {
 
-    override fun serve(session: IHTTPSession): Response {
+    /** RCTV (SEC-04): only the phone that opened the TV's address (its key) gets an answer. */
+    val access = LanConfigAccess()
+
+    override fun serve(session: IHTTPSession): Response = access.guard(session, this::route)
+
+    private fun route(session: IHTTPSession): Response {
         return when {
             session.method == Method.GET && session.uri == "/" -> serveWebPage()
             session.method == Method.GET && session.uri == "/api/pattern" -> serveCurrentPattern()
