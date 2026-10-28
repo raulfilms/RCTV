@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
 import android.graphics.Bitmap
+import android.os.Build
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PorterDuff
@@ -89,13 +90,22 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
         // RCTV: no bigger than the space it's shown in (a 500-px logo decoded for a 180-px tile,
         // hundreds of them on Sports' pages, took more memory than a 2 GB TV has).
         val input = runCatching { fittedTo(source, size) }.getOrDefault(source)
+        // RCTV (MEM-01): a bitmap replaced here is freed at once. Coil keeps neither the decoded
+        // logo nor what a transformation returns in between (only the final result), so nothing else
+        // uses it; left to the garbage collector, hundreds of them piled up in the native memory of
+        // a Mi Box 4 (over 1 GB on Sports, half of it freed only by the next collection) and the
+        // system closed the app.
+        if (input !== source) source.recycle()
         val backgroundRgb = Triple(red * 255 / QUANT_STEPS, green * 255 / QUANT_STEPS, blue * 255 / QUANT_STEPS)
         val backgroundLuma = (0.2126f * backgroundRgb.first + 0.7152f * backgroundRgb.second + 0.0722f * backgroundRgb.third) / 255f
-        val visibleShare = runCatching { visibleShareOf(input, backgroundRgb, backgroundLuma) }.getOrNull() ?: return input
+        val visibleShare = runCatching { visibleShareOf(input, backgroundRgb, backgroundLuma) }.getOrNull()
+            ?: return forDisplay(input)
         // Enough of it shows: as it is.
-        if (visibleShare >= VISIBLE_SHARE_TO_KEEP) return input
+        if (visibleShare >= VISIBLE_SHARE_TO_KEEP) return forDisplay(input)
         val outlineColor = if (backgroundLuma >= LIGHT_TILE_LUMA) LOGO_DARK else android.graphics.Color.WHITE
-        return runCatching { outlined(input, outlineColor) }.getOrDefault(input)
+        val withOutline = runCatching { outlined(input, outlineColor) }.getOrNull() ?: return forDisplay(input)
+        input.recycle()
+        return forDisplay(withOutline)
     }
 
     override fun equals(other: Any?): Boolean = other is LogoContrastTransformation && other.cacheKey == cacheKey
@@ -106,6 +116,20 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
         val LOGO_DARK: Int = 0xFF1C1C1E.toInt()
         fun quantize(channel: Float): Int = (channel.coerceIn(0f, 1f) * QUANT_STEPS).roundToInt()
     }
+}
+
+/**
+ * RCTV (MEM-01): the finished logo as a hardware bitmap (Android 9 and later): its pixels live in
+ * graphics memory, not in the app's own native memory, which a 32-bit app on a 2 GB TV runs out of
+ * first. Other images already are (Coil does it for any image without a transformation; a
+ * transformation needs the pixels, so logos were the ones left in native memory). If the copy
+ * can't be made, the logo stays as it is.
+ */
+private fun forDisplay(bitmap: Bitmap): Bitmap {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || bitmap.config == Bitmap.Config.HARDWARE) return bitmap
+    val hardware = runCatching { bitmap.copy(Bitmap.Config.HARDWARE, false) }.getOrNull() ?: return bitmap
+    bitmap.recycle()
+    return hardware
 }
 
 /** The biggest a logo is kept when its space isn't known. */
