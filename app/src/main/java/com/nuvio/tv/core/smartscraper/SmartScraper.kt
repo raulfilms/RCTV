@@ -35,7 +35,7 @@ class SmartScraper @Inject constructor(
         // The internet's speed ready for the first Play (once the app has settled).
         scope.launch {
             delay(STARTUP_MEASURE_DELAY_MS)
-            if (settings.config.value.connectionAware) connection.measure(maxAgeMs = ConnectionMonitor.STARTUP_TEST_MAX_AGE_MS)
+            if (settings.config.value.connectionAware) connection.measure(maxAgeMs = STARTUP_TEST_MAX_AGE_MS)
         }
     }
 
@@ -189,6 +189,13 @@ class SmartScraper @Inject constructor(
         const val TAG = "SmartScraper"
         const val MAX_CACHED = 4_000
         const val STARTUP_MEASURE_DELAY_MS = 8_000L
+
+        /**
+         * RCTV (PERF-05): the measurement made when the app starts is skipped when there's one from the
+         * last 6 h (it downloaded up to 12 MB at nearly every start). Before an automatic Play it's
+         * still measured when older than 15 min, alongside the addons (no extra wait).
+         */
+        const val STARTUP_TEST_MAX_AGE_MS = 6L * 60 * 60 * 1000
     }
 }
 
