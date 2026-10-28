@@ -1730,7 +1730,11 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                     videoId = nextVideo.id,
                     current = prepared.original,
                     candidates = prepared.fallbacks,
-                    config = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.config.autoStream
+                    config = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.config.autoStream,
+                    wantedLanguages = com.nuvio.tv.core.smartscraper.AutoStreamEngine.wantedAudioLanguages(
+                        contentLanguage,
+                        nextEpisodeSmartRequest(nextVideo, playerSettings).preferredLanguage
+                    )
                 )
                 switchToEpisodeStream(
                     stream = prepared.playable,
@@ -1939,7 +1943,11 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                         videoId = nextVideo.id,
                         current = chosen,
                         candidates = autoStreamChain,
-                        config = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.config.autoStream
+                        config = com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.config.autoStream,
+                        wantedLanguages = com.nuvio.tv.core.smartscraper.AutoStreamEngine.wantedAudioLanguages(
+                            contentLanguage,
+                            nextEpisodeRequest.preferredLanguage
+                        )
                     )
                 } else {
                     com.nuvio.tv.core.smartscraper.AutoStreamSession.end()

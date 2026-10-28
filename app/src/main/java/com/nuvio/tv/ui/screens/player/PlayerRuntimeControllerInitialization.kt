@@ -1411,6 +1411,8 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                     override fun onTracksChanged(tracks: Tracks) {
                         updateAvailableTracks(tracks)
+                        // RCTV Auto Stream (§8.3): checked as soon as the tracks are known.
+                        checkAutoStreamTracks()
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {

@@ -114,7 +114,8 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
             videoId = currentVideoId ?: videoId,
             current = target,
             candidates = chain.drop(1),
-            config = SmartScraperEnvironment.config.autoStream
+            config = SmartScraperEnvironment.config.autoStream,
+            wantedLanguages = setOf(language.code)
         )
         switchToSourceStream(target)
         _uiState.update {

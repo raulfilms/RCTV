@@ -55,7 +55,7 @@ class SmartScraperSettingsStore @Inject constructor(
             autoStream = defaults.autoStream.copy(
                 maxFileSizeGb = prefs.getFloat(KEY_AUTO_MAX_SIZE, defaults.autoStream.maxFileSizeGb.toFloat()).toDouble(),
                 allowUnverifiedAudio = prefs.getBoolean(KEY_AUTO_UNVERIFIED_AUDIO, defaults.autoStream.allowUnverifiedAudio),
-                collectSeconds = prefs.getInt(KEY_AUTO_COLLECT, defaults.autoStream.collectSeconds)
+                providerTimeoutSeconds = prefs.getFloat(KEY_AUTO_PROVIDER_TIMEOUT, defaults.autoStream.providerTimeoutSeconds.toFloat()).toDouble()
             )
         )
     }
@@ -76,7 +76,7 @@ class SmartScraperSettingsStore @Inject constructor(
             .putBoolean(KEY_DEBUG, config.debug)
             .putFloat(KEY_AUTO_MAX_SIZE, config.autoStream.maxFileSizeGb.toFloat())
             .putBoolean(KEY_AUTO_UNVERIFIED_AUDIO, config.autoStream.allowUnverifiedAudio)
-            .putInt(KEY_AUTO_COLLECT, config.autoStream.collectSeconds)
+            .putFloat(KEY_AUTO_PROVIDER_TIMEOUT, config.autoStream.providerTimeoutSeconds.toFloat())
             .apply()
     }
 
@@ -133,7 +133,8 @@ class SmartScraperSettingsStore @Inject constructor(
          */
         const val KEY_AUTO_MAX_SIZE = "auto_stream_max_file_size_gb_v2"
         const val KEY_AUTO_UNVERIFIED_AUDIO = "auto_stream_unverified_audio"
-        const val KEY_AUTO_COLLECT = "auto_stream_collect_seconds"
+        /** v2.0: the search time is the addons' timeout (4 s by default; it was 5 s of gathering). */
+        const val KEY_AUTO_PROVIDER_TIMEOUT = "auto_stream_provider_timeout_s"
         const val KEY_VIEW_MANUAL = "view_manual"
         const val KEY_VIEW_SORT = "view_sort"
         const val KEY_F_RES = "filter_resolution"

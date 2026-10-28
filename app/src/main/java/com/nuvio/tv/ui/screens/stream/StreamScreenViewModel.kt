@@ -19,6 +19,7 @@ import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.player.StreamAutoPlaySelector
 import com.nuvio.tv.core.imdb.EpisodeOrderRegistry
 import com.nuvio.tv.core.smartscraper.AutoStreamEngine
+import com.nuvio.tv.core.smartscraper.AutoStreamResolver
 import com.nuvio.tv.core.smartscraper.AutoStreamSession
 import com.nuvio.tv.core.smartscraper.ScoredSource
 import com.nuvio.tv.core.smartscraper.SmartScoreEngine
@@ -80,8 +81,8 @@ import javax.inject.Inject
 private const val TAG = "StreamScreenViewModel"
 private const val DIRECT_AUTOPLAY_HARD_TIMEOUT_MS = 60_000L
 private const val STREAM_FILTER_PAGE_SIZE = 100
-/** From Play, Auto Stream may start the ideal stream this soon (else it waits for more addons). */
-private const val AUTO_STREAM_EARLY_DECISION_MS = 1_500L
+/** Auto Stream's log lines (stage timings, why a source was skipped; never a link). */
+private const val AUTO_STREAM_TAG = "AutoStream"
 /** When a source won't start, at most this many more are tried. */
 private const val MAX_SMART_FALLBACK_ATTEMPTS = 3
 
@@ -163,6 +164,8 @@ class StreamScreenViewModel @Inject constructor(
 
     /** Auto Stream's order for this title, once it chose (what to play, then fall back on). */
     private var autoStreamChain: List<Stream> = emptyList()
+    /** When Play was pressed for the Auto Stream now loading: its startup deadline counts from then (§8). */
+    private var autoStreamStartedAtMs: Long = 0L
 
     /** Every source the Smart Scraper laid out (the shown ones are its first page). */
     private var sourceItemsFull: List<SmartSourceItem> = emptyList()
@@ -380,18 +383,18 @@ class StreamScreenViewModel @Inject constructor(
         streamLoadJob = newScope.launch {
             streamLoadCompleted = false
             val playerSettings = playerSettingsDataStore.playerSettings.first()
-            // RCTV Auto Stream: its own rules and timing (answers gathered ~5 s, nothing valid by
-            // ~8 s means the sources are shown), never on a screen opened to choose by hand.
+            // RCTV Auto Stream v2.0 (§8): its own rules and timing, never on a screen opened to choose
+            // by hand. The choice is made when every addon has answered or after the search time (4 s);
+            // nothing valid by the startup deadline (10 s from Play) means the sources are shown. No
+            // speed test at Play (§5): the connection is what plays and the app's last test have shown.
             preferredAudioLanguageSetting = playerSettings.preferredAudioLanguage
             val autoStreamMode = playerSettings.streamAutoPlayMode == StreamAutoPlayMode.AUTO_STREAM && !manualSelection
             val autoStreamConfig = smartScraper.config.autoStream
             val loadStartedAtMs = System.currentTimeMillis()
-            val autoStreamGiveUpAtMs = loadStartedAtMs +
-                (autoStreamConfig.budgetSeconds - 2).coerceAtLeast(autoStreamConfig.collectSeconds) * 1_000L
+            autoStreamStartedAtMs = loadStartedAtMs
+            val autoStreamGiveUpAtMs = loadStartedAtMs + (autoStreamConfig.startupDeadlineSeconds * 1_000).toLong()
             fun autoStreamStillWaiting(): Boolean = autoStreamMode && System.currentTimeMillis() < autoStreamGiveUpAtMs
             autoStreamChain = emptyList()
-            // The internet's speed, measured while the addons are asked (it adds no wait).
-            val speedTestJob = if (autoStreamMode) newScope.launch { smartScraper.measureConnection() } else null
             if (manualSelection) {
                 directAutoPlayModeInitializedForSession = true
                 directAutoPlayFlowEnabledForSession = false
@@ -549,7 +552,14 @@ class StreamScreenViewModel @Inject constructor(
                 // picks from whatever is available.
                 val shouldAutoSelect = !autoPlayHandledForSession && !resolvedAutoPlayTarget && isAllLoaded
                 val autoStreamResult = if (shouldAutoSelect && autoStreamMode) {
-                    smartScraper.autoStreamRank(allStreams, smartRequest())
+                    val rankStartedAtMs = System.currentTimeMillis()
+                    smartScraper.autoStreamRank(allStreams, smartRequest(), canVerifySize = true).also { result ->
+                        Log.i(
+                            AUTO_STREAM_TAG,
+                            "Chose among ${result.candidates.size} valid of ${allStreams.size} at " +
+                                "${rankStartedAtMs - loadStartedAtMs} ms (ranking ${System.currentTimeMillis() - rankStartedAtMs} ms)"
+                        )
+                    }
                 } else {
                     null
                 }
@@ -573,6 +583,15 @@ class StreamScreenViewModel @Inject constructor(
                 if (selectedAutoPlayStream != null) {
                     resolvedAutoPlayTarget = true
                     autoStreamResult?.let { autoStreamChain = it.chain }
+                } else if (autoStreamMode && resolvedAutoPlayTarget && autoStreamChain.isNotEmpty()) {
+                    // §8.2: what arrives after the choice is only kept to fall back on.
+                    val late = smartScraper.autoStreamRank(allStreams, smartRequest(), canVerifySize = true).chain
+                        .filterNot { stream -> autoStreamChain.any { it.isSameSource(stream) } }
+                    if (late.isNotEmpty()) {
+                        autoStreamChain = autoStreamChain + late
+                        val added = AutoStreamSession.appendLate(videoId, late)
+                        Log.i(AUTO_STREAM_TAG, "${late.size} later source(s) kept to fall back on ($added for the player)")
+                    }
                 }
                 // Auto Stream: what it's about to play ("4K · 5.7 GB · 5.1"), never where from.
                 val autoStreamSummary = if (selectedAutoPlayStream != null && autoStreamResult != null &&
@@ -749,10 +768,10 @@ class StreamScreenViewModel @Inject constructor(
                             // here (its resolution, ready at once): it starts now, like Netflix or
                             // Disney+, without waiting for the slower addons.
                             if (autoStreamMode && directFlowActive && !autoSelectTriggered && !resolvedAutoPlayTarget &&
-                                !autoPlayHandledForSession && speedTestJob?.isCompleted != false &&
-                                System.currentTimeMillis() - loadStartedAtMs >= AUTO_STREAM_EARLY_DECISION_MS
+                                !autoPlayHandledForSession &&
+                                System.currentTimeMillis() - loadStartedAtMs >= (autoStreamConfig.earlyDecisionSeconds * 1_000).toLong()
                             ) {
-                                val early = smartScraper.autoStreamRank(result.data.flatMap { it.streams }, smartRequest())
+                                val early = smartScraper.autoStreamRank(result.data.flatMap { it.streams }, smartRequest(), canVerifySize = true)
                                 if (early.bestIsIdeal(smartScraper.rankingContext())) {
                                     applySuccess(result.data, isAllLoaded = true)
                                     if (resolvedAutoPlayTarget) autoSelectTriggered = true
@@ -800,7 +819,7 @@ class StreamScreenViewModel @Inject constructor(
                                 )
                                 val allStreams = orderedStreams.flatMap { it.streams }
                                 val earlyAutoStream = if (autoStreamMode) {
-                                    smartScraper.autoStreamRank(allStreams, smartRequest())
+                                    smartScraper.autoStreamRank(allStreams, smartRequest(), canVerifySize = true)
                                 } else {
                                     null
                                 }
@@ -893,7 +912,7 @@ class StreamScreenViewModel @Inject constructor(
             //   is found use it immediately; otherwise keep waiting until all
             //   addons finish or the hard timeout (60s) forces a fallback.
             val timeoutMs = if (autoStreamMode) {
-                autoStreamConfig.collectSeconds * 1_000L
+                (autoStreamConfig.providerTimeoutSeconds * 1_000).toLong()
             } else {
                 playerSettings.streamAutoPlayTimeoutSeconds * 1_000L
             }
@@ -1377,33 +1396,23 @@ class StreamScreenViewModel @Inject constructor(
      * smart sources are tried, a few at most, never another title or episode.
      */
     suspend fun resolveSmartStreamForPlayback(stream: Stream, auto: Boolean = false): StreamPlaybackInfo? {
-        // Auto Stream's pick: each source gets a few seconds to give its link, then the next valid
-        // one is tried; the player keeps the rest to move on to if one won't start.
         val autoChain = autoStreamChain.takeIf { auto && it.isNotEmpty() }
-        if (autoChain == null) AutoStreamSession.end()
-        val resolveTimeoutMs = smartScraper.config.autoStream.resolveTimeoutSeconds * 1_000L
-        suspend fun attempt(candidate: Stream): StreamPlaybackInfo? =
-            if (autoChain != null) withTimeoutOrNull(resolveTimeoutMs) { resolveStreamForPlayback(candidate) }
-            else resolveStreamForPlayback(candidate)
+        if (autoChain != null) return resolveAutoStream(stream, autoChain)
+        AutoStreamSession.end()
 
-        attempt(stream)?.let { info ->
-            autoChain?.let { beginAutoStreamSession(stream, it) }
-            return info
-        }
+        resolveStreamForPlayback(stream)?.let { return it }
         smartScraper.recordPlayback(stream, ok = false)
-        if (autoChain == null && !smartScraper.config.autoFallback) return null
-        val chain = autoChain ?: _uiState.value.smartFallbackChain
-        val maxAttempts = if (autoChain != null) smartScraper.config.autoStream.maxFallbacks else MAX_SMART_FALLBACK_ATTEMPTS
+        if (!smartScraper.config.autoFallback) return null
+        val chain = _uiState.value.smartFallbackChain
         val index = chain.indexOfFirst { it.isSameSource(stream) }
         val next = (if (index >= 0) chain.drop(index + 1) else chain)
             .filterNot { it.isSameSource(stream) }
-            .take(maxAttempts)
+            .take(MAX_SMART_FALLBACK_ATTEMPTS)
         for (candidate in next) {
             Log.i(TAG, "Fallback: the source didn't start, trying the next one")
-            val info = attempt(candidate)
+            val info = resolveStreamForPlayback(candidate)
             if (info != null) {
                 updateUiStateIfChanged { it.copy(playbackErrorMessage = null) }
-                autoChain?.let { beginAutoStreamSession(candidate, it) }
                 return info
             }
             smartScraper.recordPlayback(candidate, ok = false)
@@ -1411,14 +1420,93 @@ class StreamScreenViewModel @Inject constructor(
         return null
     }
 
-    /** The player may move on to [chain]'s next sources after [current] if it won't start. */
-    private fun beginAutoStreamSession(current: Stream, chain: List<Stream>) {
-        val index = chain.indexOfFirst { it.isSameSource(current) }
+    /**
+     * Auto Stream v2.0 (§8): its pick, then its next sources in order, each resolved and its link's
+     * first bytes checked (an answer, a size within the limit) within the resolve time; a provider
+     * that fails sends its other sources after the rest; none is started past the startup deadline.
+     * Nothing playable: the sources are shown, saying so (§8.4). The player keeps the rest to move
+     * on to if the one chosen won't start.
+     */
+    private suspend fun resolveAutoStream(first: Stream, chain: List<Stream>): StreamPlaybackInfo? {
+        val config = smartScraper.config.autoStream
+        val index = chain.indexOfFirst { it.isSameSource(first) }
+        val candidates = listOf(first) + (if (index >= 0) chain.drop(index + 1) else chain).filterNot { it.isSameSource(first) }
+        val startedAtMs = autoStreamStartedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
+        val failed = ArrayList<Stream>()
+        val request = smartRequest()
+        val found = AutoStreamResolver.firstPlayable(
+            candidates = candidates,
+            deadlineAtMs = startedAtMs + (config.startupDeadlineSeconds * 1_000).toLong(),
+            attemptTimeoutMs = (config.resolveVerifyTimeoutSeconds * 1_000).toLong(),
+            maxAttempts = 1 + config.maxFallbacks,
+            providerOf = AutoStreamResolver::providerOf,
+            onFailure = { candidate, failure ->
+                failed += candidate
+                smartScraper.recordPlayback(candidate, ok = false)
+                Log.i(AUTO_STREAM_TAG, "A source failed its check: ${failure.reason}" + if (failure.providerLevel) " (its provider's)" else "")
+            }
+        ) { candidate -> resolveAndVerify(candidate, request, config) }
+        if (found == null) {
+            Log.w(AUTO_STREAM_TAG, "Nothing playable by ${System.currentTimeMillis() - startedAtMs} ms: the sources are shown")
+            AutoStreamSession.end()
+            updateUiStateIfChanged {
+                it.copy(
+                    isLoading = false,
+                    isDirectAutoPlayFlow = false,
+                    showDirectAutoPlayOverlay = false,
+                    directAutoPlayMessage = null,
+                    playbackErrorMessage = context.getString(R.string.auto_stream_nothing_found)
+                )
+            }
+            return null
+        }
+        Log.i(AUTO_STREAM_TAG, "Link ready at ${System.currentTimeMillis() - startedAtMs} ms (try ${found.tried})")
+        updateUiStateIfChanged { it.copy(playbackErrorMessage = null) }
+        // The rest stay to fall back on, in their order (then any that came later, §8.2); the ones
+        // that failed don't.
+        val later = autoStreamChain.drop(chain.size)
+        beginAutoStreamSession(found.stream, (candidates + later).filterNot { candidate -> failed.any { it.isSameSource(candidate) } })
+        return found.value
+    }
+
+    /** One Auto Stream source: its link (resolved on the debrid service when needed), then its first bytes. */
+    private suspend fun resolveAndVerify(
+        candidate: Stream,
+        request: SmartSourceRequest,
+        config: com.nuvio.tv.core.smartscraper.AutoStreamConfig
+    ): AutoStreamResolver.Attempt<StreamPlaybackInfo> {
+        val info = resolveStreamForPlayback(candidate)
+            ?: return AutoStreamResolver.Attempt.Failed("no link", providerLevel = true)
+        val url = info.url ?: return AutoStreamResolver.Attempt.Failed("no link", providerLevel = true)
+        val release = smartScraper.normalize(candidate).release
+        val knownSize = release.sizeBytes?.takeIf { !(release.sizeIsPack && request.isSeries) }
+        val check = com.nuvio.tv.ui.screens.player.AutoStreamLinkVerifier.verify(
+            url = url,
+            headers = info.headers.orEmpty(),
+            knownSizeBytes = knownSize,
+            maxBytes = config.maxFileSizeBytes,
+            timeoutMs = (config.resolveVerifyTimeoutSeconds * 1_000).toLong()
+        )
+        return if (check.ok) {
+            AutoStreamResolver.Attempt.Ok(info)
+        } else {
+            AutoStreamResolver.Attempt.Failed(
+                "${check.outcome.description}${check.httpCode?.let { " (HTTP $it)" }.orEmpty()}",
+                providerLevel = check.providerLevel
+            )
+        }
+    }
+
+    /** The player may move on to [next] (in order) if [current] won't start or breaks. */
+    private fun beginAutoStreamSession(current: Stream, next: List<Stream>) {
+        val request = smartRequest()
         AutoStreamSession.begin(
             videoId = videoId,
             current = current,
-            candidates = if (index >= 0) chain.drop(index + 1) else chain,
-            config = smartScraper.config.autoStream
+            candidates = next.filterNot { it.isSameSource(current) },
+            config = smartScraper.config.autoStream,
+            startedAtMs = autoStreamStartedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+            wantedLanguages = AutoStreamEngine.wantedAudioLanguages(contentLanguage, request.preferredLanguage)
         )
     }
 

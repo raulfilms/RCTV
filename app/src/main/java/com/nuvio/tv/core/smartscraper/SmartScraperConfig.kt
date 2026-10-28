@@ -80,7 +80,7 @@ data class SmartScraperConfig(
  * smart sources: at most 8.00 GB (8.00 GB itself plays), 5.1 or 2.0 only (never 7.1), 2160p → 1440p
  * → 1080p → 720p → 480p (480p last, 360p never), English or the title's own audio, ready on the
  * debrid service. Every threshold of the spec's §13 is here (its name in capitals): nothing else
- * hard-codes them. The ones marked "Phase 2/3/4" are used once that phase is delivered.
+ * hard-codes them. The ones marked "Phase 3/4" are used once that phase is delivered.
  */
 data class AutoStreamConfig(
     // ------------------------------------------------------------------ Rules (§3)
@@ -118,16 +118,21 @@ data class AutoStreamConfig(
     val typicalMovieMinutes: Int = 110,
     val typicalEpisodeMinutes: Int = 45,
 
-    // ------------------------------------------------------------------ Pipeline (§8; Phase 2, Phase 4)
-    /** STARTUP_DEADLINE_S: from Play to the first picture. */
+    // ------------------------------------------------------------------ Pipeline (§8)
+    /** STARTUP_DEADLINE_S: from Play to the first picture; past it no other source is started. */
     val startupDeadlineSeconds: Double = 10.0,
-    /** PROVIDER_TIMEOUT_S: each addon's answer is waited for this long. */
+    /**
+     * PROVIDER_TIMEOUT_S: the choice is made when every addon has answered or this long after Play
+     * (the "Search time" setting); later answers are only fallbacks.
+     */
     val providerTimeoutSeconds: Double = 4.0,
     /** EARLY_DECISION_S / EARLY_DECISION_MIN_RELIABILITY (§8.1). */
     val earlyDecisionSeconds: Double = 2.5,
     val earlyDecisionMinReliability: Double = 0.90,
-    /** RESOLVE_TIMEOUT_S: following the link and its first-bytes check (§8, Phase 2). */
+    /** RESOLVE_TIMEOUT_S: each source's link resolved and its first bytes checked within this. */
     val resolveVerifyTimeoutSeconds: Double = 2.5,
+    /** §8.3: the longest the first picture waits for the player to say its tracks (then it plays unchecked). */
+    val prePlayCheckTimeoutSeconds: Double = 4.0,
 
     // ------------------------------------------------------------------ Dual-language engine (§6, §7; Phase 3)
     /** PREFERRED_AUDIO_LANGUAGE: "en" or "es". */
@@ -159,14 +164,8 @@ data class AutoStreamConfig(
     val reliabilityHalfLifeDays: Int = 14,
     val resultCacheTtlMinutes: Int = 30,
 
-    // ------------------------------------------------------------------ Today's flow (until Phase 2 replaces it)
-    /** Addons' answers are gathered this long (sooner when they've all answered) before choosing. */
-    val collectSeconds: Int = 5,
-    /** From Play to playing: past this, nothing valid found means the sources are shown. */
-    val budgetSeconds: Int = 10,
-    /** Each source gets this long to give its link before the next is tried. */
-    val resolveTimeoutSeconds: Int = 4,
-    /** Each source gets this long to show its first picture before the next is tried. */
+    // ------------------------------------------------------------------ Fallback (§8.4)
+    /** A source whose link checked out gets this long to show its first picture before the next is tried. */
     val startupTimeoutSeconds: Int = 12,
     /** At most this many sources are tried after the first. */
     val maxFallbacks: Int = 4,

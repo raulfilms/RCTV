@@ -83,14 +83,19 @@ class SmartScraper @Inject constructor(
         return result
     }
 
-    /** Auto Stream's choice for a title's streams: what it may play, best first, and what to fall back on. */
+    /**
+     * Auto Stream's choice for a title's streams: what it may play, best first, and what to fall
+     * back on. [canVerifySize]: each source's link is checked before it plays (a size not given may
+     * then be confirmed by it, §3.1).
+     */
     fun autoStreamRank(
         streams: List<Stream>,
         request: SmartSourceRequest,
-        context: SmartRankingContext = rankingContext()
+        context: SmartRankingContext = rankingContext(),
+        canVerifySize: Boolean = false
     ): AutoStreamResult {
         if (streams.isEmpty()) return AutoStreamResult.EMPTY
-        val result = AutoStreamEngine.rank(streams.map(::normalize), request, context)
+        val result = AutoStreamEngine.rank(streams.map(::normalize), request, context, canVerifySize)
         if (context.config.debug) logAutoStream(result, request, context)
         return result
     }
@@ -217,9 +222,9 @@ object SmartScraperEnvironment {
         scraper?.rank(streams, request)
             ?: SmartScoreEngine.rank(streams.map(SourceProviderAdapters::normalize), request)
 
-    fun autoStreamRank(streams: List<Stream>, request: SmartSourceRequest): AutoStreamResult =
-        scraper?.autoStreamRank(streams, request)
-            ?: AutoStreamEngine.rank(streams.map(SourceProviderAdapters::normalize), request)
+    fun autoStreamRank(streams: List<Stream>, request: SmartSourceRequest, canVerifySize: Boolean = false): AutoStreamResult =
+        scraper?.let { it.autoStreamRank(streams, request, canVerifySize = canVerifySize) }
+            ?: AutoStreamEngine.rank(streams.map(SourceProviderAdapters::normalize), request, canVerifySize = canVerifySize)
 
     fun normalize(stream: Stream): NormalizedSource =
         scraper?.normalize(stream) ?: SourceProviderAdapters.normalize(stream)

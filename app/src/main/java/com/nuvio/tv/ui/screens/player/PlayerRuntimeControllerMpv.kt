@@ -40,7 +40,8 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
         view.applyBluetoothAudioRoute(currentAudioOutputRoute?.isBluetooth == true)
         view.setAudioDelayMs(_uiState.value.audioDelayMs)
         view.applyAspectMode(_uiState.value.aspectMode)
-        view.setPaused(false)
+        // RCTV Auto Stream (§8.3): paused until its tracks are checked.
+        view.setPaused(holdMpvStartForAutoStreamCheck())
         applyPendingMpvSeekIfNeeded(view)
         hasRenderedFirstFrame = false
         endDetectionArmed = false
@@ -154,7 +155,8 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
         view.applyBluetoothAudioRoute(currentAudioOutputRoute?.isBluetooth == true)
         view.setAudioDelayMs(_uiState.value.audioDelayMs)
         view.applyAspectMode(_uiState.value.aspectMode)
-        view.setPaused(false)
+        // RCTV Auto Stream (§8.3): paused until its tracks are checked.
+        view.setPaused(holdMpvStartForAutoStreamCheck())
         applyPendingMpvSeekIfNeeded(view)
 
         hasRenderedFirstFrame = false
@@ -322,6 +324,7 @@ internal fun PlayerRuntimeController.updateMpvAvailableTracks() {
             val snapshot = view.readTrackSnapshot()
             if (!isUsingMpvEngine() || mpvView !== view || currentStreamUrl != streamUrlAtRefresh) return@launch
             applyMpvTrackSnapshot(snapshot)
+            checkAutoStreamTracks()
             tryAutoSelectPreferredSubtitleFromAvailableTracks()
         } catch (error: CancellationException) {
             throw error

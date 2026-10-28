@@ -4354,6 +4354,7 @@
     <string name="auto_stream_unverified_audio_sub">Tried last, only when no 5.1 or stereo file fits</string>
     <string name="auto_stream_trying_next">That source didn\'t start: trying the next one…</string>
     <string name="auto_stream_nothing_found">No automatic stream found</string>
+    <string name="auto_stream_switched_source">Playback problem: continuing with another source</string>
     <string name="audio_language_searching">Looking for %1$s audio…</string>
     <string name="audio_language_searching_short">Looking for it…</string>
     <string name="audio_language_not_found">No %1$s audio for this title in your sources</string>

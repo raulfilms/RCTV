@@ -175,6 +175,17 @@ object AutoStreamEngine {
         return rankJudged(sources.map { SmartScoreEngine.judge(it, request, context) }, request, context, pool, canVerifySize)
     }
 
+    /**
+     * §8.3: the audio languages the video must have one of, checked with its tracks before the first
+     * picture: English, the title's own ([originalLanguageCode], any form), and Spanish when it's the
+     * language chosen (RCTV, until Phase 3: a Spanish stream may play then).
+     */
+    fun wantedAudioLanguages(originalLanguageCode: String?, preferred: AudioLanguage?): Set<String> = buildSet {
+        add(AudioLanguage.ENGLISH.code)
+        originalLanguageCode?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
+        if (preferred == AudioLanguage.SPANISH) add(AudioLanguage.SPANISH.code)
+    }
+
     /** RCTV (until Phase 3): Spanish is the language chosen and the title's own isn't. */
     fun spanishFirst(request: SmartSourceRequest): Boolean =
         request.preferredLanguage == AudioLanguage.SPANISH && request.originalLanguage != AudioLanguage.SPANISH

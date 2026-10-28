@@ -181,6 +181,14 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         mpv.setPropertyBoolean("pause", paused)
     }
 
+    /** RCTV Auto Stream: the picture's size as decoded (null until known). */
+    fun videoSizeNow(): Pair<Int, Int>? {
+        if (!initialized) return null
+        val width = runCatching { mpv.getPropertyInt("video-params/w") }.getOrNull() ?: return null
+        val height = runCatching { mpv.getPropertyInt("video-params/h") }.getOrNull() ?: return null
+        return if (width > 0 && height > 0) width to height else null
+    }
+
     fun isPlayingNow(): Boolean {
         if (!initialized) return false
         return mpv.getPropertyBoolean("pause") == false

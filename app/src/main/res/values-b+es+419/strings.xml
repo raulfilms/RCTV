@@ -3822,6 +3822,7 @@
     <string name="auto_stream_unverified_audio_sub">Se prueban al final, solo si no hay ninguno 5.1 o estéreo que sirva</string>
     <string name="auto_stream_trying_next">Esa fuente no arrancó: probando la siguiente…</string>
     <string name="auto_stream_nothing_found">No se encontró un stream automático</string>
+    <string name="auto_stream_switched_source">Hubo un problema: seguimos con otra fuente</string>
     <string name="audio_language_searching">Buscando audio en %1$s…</string>
     <string name="audio_language_searching_short">Buscando…</string>
     <string name="audio_language_not_found">No hay audio en %1$s para este título en tus fuentes</string>

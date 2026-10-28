@@ -81,9 +81,9 @@ internal fun LazyListScope.autoStreamSettingsItems(
         NavigationSettingsItem(
             icon = Icons.Default.Timer,
             title = stringResource(R.string.auto_stream_collect),
-            subtitle = "${config.autoStream.collectSeconds} s · ${stringResource(R.string.auto_stream_collect_sub)}",
+            subtitle = "${formatSeconds(config.autoStream.providerTimeoutSeconds)} · ${stringResource(R.string.auto_stream_collect_sub)}",
             onClick = {
-                onUpdate { it.copy(autoStream = it.autoStream.copy(collectSeconds = nextOf(it.autoStream.collectSeconds, AUTO_STREAM_COLLECT))) }
+                onUpdate { it.copy(autoStream = it.autoStream.copy(providerTimeoutSeconds = nextOf(it.autoStream.providerTimeoutSeconds, AUTO_STREAM_SEARCH_SECONDS))) }
             },
             onFocused = onItemFocused
         )
@@ -101,7 +101,9 @@ internal fun LazyListScope.autoStreamSettingsItems(
 private fun formatGb(gb: Double): String = if (gb % 1.0 == 0.0) "${gb.toInt()} GB" else "$gb GB"
 
 private val AUTO_STREAM_SIZES = listOf(8.0, 6.0, 5.0, 4.0)
-private val AUTO_STREAM_COLLECT = listOf(5, 3, 7)
+private fun formatSeconds(seconds: Double): String = if (seconds % 1.0 == 0.0) "${seconds.toInt()} s" else "$seconds s"
+
+private val AUTO_STREAM_SEARCH_SECONDS = listOf(4.0, 3.0, 5.0)
 
 /** Each choice steps to the next on every press (no dialog); its value is shown before what it does. */
 internal fun LazyListScope.smartScraperSettingsItems(
