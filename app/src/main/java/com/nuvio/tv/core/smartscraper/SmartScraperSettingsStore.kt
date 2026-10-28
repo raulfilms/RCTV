@@ -127,7 +127,11 @@ class SmartScraperSettingsStore @Inject constructor(
         const val KEY_GROUPING = "duplicate_grouping"
         const val KEY_LEARN = "learn_from_playback"
         const val KEY_DEBUG = "debug"
-        const val KEY_AUTO_MAX_SIZE = "auto_stream_max_file_size_gb"
+        /**
+         * Auto Stream v2.0: the limit is inclusive and 8 GB now (it was "under 6 GB"); a new key, so the
+         * old value saved with every other setting doesn't keep it at 6.
+         */
+        const val KEY_AUTO_MAX_SIZE = "auto_stream_max_file_size_gb_v2"
         const val KEY_AUTO_UNVERIFIED_AUDIO = "auto_stream_unverified_audio"
         const val KEY_AUTO_COLLECT = "auto_stream_collect_seconds"
         const val KEY_VIEW_MANUAL = "view_manual"

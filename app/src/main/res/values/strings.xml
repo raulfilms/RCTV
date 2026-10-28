@@ -4347,13 +4347,13 @@
     <string name="auto_stream_sub">Play starts the best stream on its own: the app reads your TV and your internet; nobody chooses anything</string>
     <string name="settings_auto_stream_desc">One-click playback: the best your TV and internet allow, starts in seconds</string>
     <string name="auto_stream_max_size">Maximum file size</string>
-    <string name="auto_stream_max_size_sub">Files this size or bigger are never chosen</string>
+    <string name="auto_stream_max_size_sub">Files bigger than this are never chosen</string>
     <string name="auto_stream_collect">Search time</string>
     <string name="auto_stream_collect_sub">How long sources\' answers are gathered before choosing (sooner when all have answered)</string>
     <string name="auto_stream_unverified_audio">Files that don\'t say their audio</string>
     <string name="auto_stream_unverified_audio_sub">Tried last, only when no 5.1 or stereo file fits</string>
     <string name="auto_stream_trying_next">That source didn\'t start: trying the next one…</string>
-    <string name="auto_stream_nothing_found">No stream of this title can play right now: choose one</string>
+    <string name="auto_stream_nothing_found">No automatic stream found</string>
     <string name="audio_language_searching">Looking for %1$s audio…</string>
     <string name="audio_language_searching_short">Looking for it…</string>
     <string name="audio_language_not_found">No %1$s audio for this title in your sources</string>

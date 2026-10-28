@@ -76,19 +76,90 @@ data class SmartScraperConfig(
 }
 
 /**
- * Auto Stream: Play starts a stream on its own. Stricter than the smart sources: under 6 GB (never
- * at or over it), 5.1 or stereo only (never 7.1), 4K → 2K → 1080p → 720p → 480p, the highest the
- * connection plays smoothly, chosen within seconds; a source that fails is skipped for the next.
+ * Auto Stream v2.0: Play starts the right title's best practical stream on its own. Stricter than the
+ * smart sources: at most 8.00 GB (8.00 GB itself plays), 5.1 or 2.0 only (never 7.1), 2160p → 1440p
+ * → 1080p → 720p → 480p (480p last, 360p never), English or the title's own audio, ready on the
+ * debrid service. Every threshold of the spec's §13 is here (its name in capitals): nothing else
+ * hard-codes them. The ones marked "Phase 2/3/4" are used once that phase is delivered.
  */
 data class AutoStreamConfig(
-    /** Files must be smaller than this (6.0 GB itself isn't allowed). */
-    val maxFileSizeGb: Double = 6.0,
-    /** The lowest resolution allowed (480p, then 360p, are the last resorts). */
-    val minResolution: VideoResolution = VideoResolution.LOW,
-    /** Only these audio layouts (never 7.1 or more). */
+    // ------------------------------------------------------------------ Rules (§3)
+    /** AUTO_STREAM_MAX_SIZE_GB, inclusive: 8.00 GB plays, 8.01 GB doesn't. */
+    val maxFileSizeGb: Double = 8.0,
+    /**
+     * SIZE_UNIT_BYTES_PER_GB: 1024³, the one unit of the app (the parser's and the summary's), so
+     * the size shown and the size the rule checks always agree.
+     */
+    val bytesPerGb: Long = ParsedRelease.BYTES_PER_GB.toLong(),
+    /** AUTO_STREAM_RESOLUTIONS, best first: 480p is the last resort; anything lower never plays. */
+    val resolutions: List<VideoResolution> = listOf(
+        VideoResolution.UHD_2160,
+        VideoResolution.QHD_1440,
+        VideoResolution.FHD_1080,
+        VideoResolution.HD_720,
+        VideoResolution.SD
+    ),
+    /** AUTO_STREAM_ALLOWED_CHANNELS: by layout, not tags (DD+ 5.1 Atmos is 5.1; 7.1 never). */
     val allowedChannels: Set<AudioChannels> = setOf(AudioChannels.CH_5_1, AudioChannels.CH_2_0),
-    /** A file whose audio isn't said is tried only after every one whose audio is 5.1 or stereo. */
+    /** REQUIRE_CACHED: only what its addon marks ready on the debrid service ([RD+], ⚡...). */
+    val requireCached: Boolean = true,
+    /** §3.1: a file whose layout isn't said may play, after every one said to be 5.1 or 2.0. */
     val allowUnverifiedAudio: Boolean = true,
+
+    // ------------------------------------------------------------------ Ranking, connection (§4, §5)
+    /** COMPARABLE_BITRATE_MARGIN: bitrates this close (share of the higher) are the same picture. */
+    val comparableBitrateMargin: Double = 0.15,
+    /** BITRATE_HEADROOM: a file needs its average bitrate times this from the connection (VBR peaks). */
+    val bitrateHeadroom: Double = 1.5,
+    /** When the connection's speed isn't measured, what a medium / slow one is taken to keep up with (Mbps). */
+    val mediumConnectionMaxMbps: Double = 15.0,
+    val slowConnectionMaxMbps: Double = 6.0,
+    /** A movie's / an episode's length when the title's isn't known (a bitrate from a size). */
+    val typicalMovieMinutes: Int = 110,
+    val typicalEpisodeMinutes: Int = 45,
+
+    // ------------------------------------------------------------------ Pipeline (§8; Phase 2, Phase 4)
+    /** STARTUP_DEADLINE_S: from Play to the first picture. */
+    val startupDeadlineSeconds: Double = 10.0,
+    /** PROVIDER_TIMEOUT_S: each addon's answer is waited for this long. */
+    val providerTimeoutSeconds: Double = 4.0,
+    /** EARLY_DECISION_S / EARLY_DECISION_MIN_RELIABILITY (§8.1). */
+    val earlyDecisionSeconds: Double = 2.5,
+    val earlyDecisionMinReliability: Double = 0.90,
+    /** RESOLVE_TIMEOUT_S: following the link and its first-bytes check (§8, Phase 2). */
+    val resolveVerifyTimeoutSeconds: Double = 2.5,
+
+    // ------------------------------------------------------------------ Dual-language engine (§6, §7; Phase 3)
+    /** PREFERRED_AUDIO_LANGUAGE: "en" or "es". */
+    val preferredAudioLanguage: String = "en",
+    /** SPANISH_VARIANT_ORDER: Latin American first, Castilian after. */
+    val spanishVariantOrder: List<String> = listOf("es-419", "es-ES"),
+    /** SPANISH_POOL. */
+    val spanishPool: List<String> = listOf("LatinoDebrid", "Addon LATAM", "AIO Stream (Spanish)"),
+    /** DONOR_PROBE_COUNT / DONOR_PROBE_TIMEOUT_S / DONOR_DURATION_TOLERANCE_S / DONOR_IDLE_BUFFER_S. */
+    val donorProbeCount: Int = 3,
+    val donorProbeTimeoutSeconds: Double = 4.0,
+    val donorDurationToleranceSeconds: Double = 1.0,
+    val donorIdleBufferSeconds: Int = 20,
+    /** AUTO_SWITCH_WHEN_SPANISH_READY. */
+    val autoSwitchWhenSpanishReady: Boolean = true,
+    /** AUDIO_SWITCH_MAX_GAP_MS / SYNC_TARGET_MS / DRIFT_CHECK_INTERVAL_MS / DRIFT_HARD_SEEK_MS. */
+    val audioSwitchMaxGapMs: Int = 300,
+    val syncTargetMs: Int = 40,
+    val driftCheckIntervalMs: Int = 250,
+    val driftHardSeekMs: Int = 250,
+    /** MANUAL_OFFSET_STEP_MS / MANUAL_OFFSET_RANGE_MS. */
+    val manualOffsetStepMs: Int = 50,
+    val manualOffsetRangeMs: Int = 5000,
+    /** AUTO_OFFSET_DETECTION (Phase 4). */
+    val autoOffsetDetection: Boolean = false,
+
+    // ------------------------------------------------------------------ Learning, caching (§10; Phase 4)
+    /** RELIABILITY_HALF_LIFE_DAYS / RESULT_CACHE_TTL_MIN. */
+    val reliabilityHalfLifeDays: Int = 14,
+    val resultCacheTtlMinutes: Int = 30,
+
+    // ------------------------------------------------------------------ Today's flow (until Phase 2 replaces it)
     /** Addons' answers are gathered this long (sooner when they've all answered) before choosing. */
     val collectSeconds: Int = 5,
     /** From Play to playing: past this, nothing valid found means the sources are shown. */
@@ -98,9 +169,15 @@ data class AutoStreamConfig(
     /** Each source gets this long to show its first picture before the next is tried. */
     val startupTimeoutSeconds: Int = 12,
     /** At most this many sources are tried after the first. */
-    val maxFallbacks: Int = 4
+    val maxFallbacks: Int = 4,
+    /** At most this many sources are lined up after the first. */
+    val maxChain: Int = 15
 ) {
-    val maxFileSizeBytes: Long get() = (maxFileSizeGb * ParsedRelease.BYTES_PER_GB).toLong()
+    /** The limit in bytes (a file of exactly this many bytes plays). */
+    val maxFileSizeBytes: Long get() = (maxFileSizeGb * bytesPerGb).toLong()
+
+    /** The lowest resolution allowed (480p by default). */
+    val minResolution: VideoResolution get() = resolutions.minByOrNull { it.level } ?: VideoResolution.SD
 }
 
 /** How fast and steady the connection is now. */
@@ -135,7 +212,13 @@ data class DeviceProfile(
     val hasHardwareAv1: Boolean = false,
     val hasHardwareHevc: Boolean = true,
     /** Unknown device: nothing is ranked down for it. */
-    val isKnown: Boolean = false
+    val isKnown: Boolean = false,
+    /**
+     * The audio formats this box can play: decoded (its own decoders, the app's FFmpeg one) or
+     * passed through to the receiver over HDMI. Null: not known (no audio format is ranked down).
+     * Only Auto Stream reads it.
+     */
+    val audioOutputs: Set<AudioCodec>? = null
 ) {
     companion object {
         val UNKNOWN = DeviceProfile()

@@ -171,8 +171,11 @@ class SmartScraper @Inject constructor(
         result.candidates.forEachIndexed { index, candidate ->
             Log.d(
                 TAG,
-                "#$id AUTO ${index + 1}: score=${candidate.score} verified=${candidate.verified} " +
-                    "fits=${candidate.fitsConnection} copies=${1 + candidate.copies.size} " +
+                "#$id AUTO ${index + 1}: pool=${candidate.pool} tier=${candidate.tier} allowed=${candidate.tierAllowed} " +
+                    "layout=${candidate.layout} audio=${candidate.audioCodecRank} " +
+                    "bitrate=${candidate.bitrateMbps?.let { f(it.toFloat()) } ?: "?"} video=${candidate.videoPoints} " +
+                    "spanish=${candidate.embeddedSpanish} reliability=${f(candidate.reliability.toFloat())} " +
+                    "fits=${candidate.fitsConnection} check=${candidate.needsVerification} copies=${1 + candidate.copies.size} " +
                     "${AutoStreamEngine.summary(candidate.release)} " +
                     "provider=${candidate.scored.source.provider.family}/${candidate.scored.source.provider.debrid} " +
                     "RAW=${candidate.release.releaseName}"

@@ -86,8 +86,8 @@ object StreamAutoPlaySelector {
         }
         if (candidateStreams.isEmpty()) return null
 
-        // RCTV Auto Stream: only what its rules allow (right title and episode, under 6 GB, 5.1 or
-        // stereo, 480p to 4K), in its order; the binge group kept from the last episode is
+        // RCTV Auto Stream: only what its rules allow (right title and episode, at most 8 GB, 5.1 or
+        // 2.0, 480p to 4K, ready on the debrid service), in its order; the binge group kept from the last episode is
         // preferred among those, never over them.
         if (mode == StreamAutoPlayMode.AUTO_STREAM) {
             val candidates = candidateStreams.toHashSet()

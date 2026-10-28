@@ -70,7 +70,7 @@ internal fun LazyListScope.autoStreamSettingsItems(
         NavigationSettingsItem(
             icon = Icons.Default.Storage,
             title = stringResource(R.string.auto_stream_max_size),
-            subtitle = "< ${formatGb(config.autoStream.maxFileSizeGb)} · ${stringResource(R.string.auto_stream_max_size_sub)}",
+            subtitle = "≤ ${formatGb(config.autoStream.maxFileSizeGb)} · ${stringResource(R.string.auto_stream_max_size_sub)}",
             onClick = {
                 onUpdate { it.copy(autoStream = it.autoStream.copy(maxFileSizeGb = nextOf(it.autoStream.maxFileSizeGb, AUTO_STREAM_SIZES))) }
             },
@@ -100,7 +100,7 @@ internal fun LazyListScope.autoStreamSettingsItems(
 
 private fun formatGb(gb: Double): String = if (gb % 1.0 == 0.0) "${gb.toInt()} GB" else "$gb GB"
 
-private val AUTO_STREAM_SIZES = listOf(6.0, 5.0, 4.0, 8.0)
+private val AUTO_STREAM_SIZES = listOf(8.0, 6.0, 5.0, 4.0)
 private val AUTO_STREAM_COLLECT = listOf(5, 3, 7)
 
 /** Each choice steps to the next on every press (no dialog); its value is shown before what it does. */
