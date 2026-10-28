@@ -76,3 +76,64 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 7
+
+      # RCTV: the same build for one processor type only (a quarter of the native libraries of the
+      # universal APK), so it installs on TVs with little free space. armeabi-v7a: Xiaomi Mi Box and
+      # other 32-bit ARM TVs (it also runs on 64-bit ARM); arm64-v8a: 64-bit ARM TVs.
+      - name: Upload fullDebug APK (armeabi-v7a, Mi Box)
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/apk/full/debug/app-full-armeabi-v7a-debug.apk
+          archive: false
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload fullDebug APK (arm64-v8a)
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/apk/full/debug/app-full-arm64-v8a-debug.apk
+          archive: false
+          if-no-files-found: warn
+          retention-days: 7
+
+      # RCTV: the remediation tests (TLS, credentials across redirects, ESPN loads, diagnostics), and the
+      # existing tests of the code they changed (Sports, addons, meta, streams, player), on a
+      # real Gradle build. Report only for now: a failure here doesn't stop the APK above; it shows on
+      # the run and in the uploaded reports. Make it a gate once it has passed here.
+      - name: Run remediation tests (report only)
+        id: remediation_tests
+        continue-on-error: true
+        run: >-
+          ./gradlew :app:testFullDebugUnitTest
+          --tests 'com.nuvio.tv.ui.screens.player.PlaybackTlsAndRedirectTest'
+          --tests 'com.nuvio.tv.ui.screens.player.PlaybackNetworkingSslVerificationTest'
+          --tests 'com.nuvio.tv.ui.screens.player.SubtitleCredentialScopeTest'
+          --tests 'com.nuvio.tv.ui.screens.player.MpvCredentialProxyTest'
+          --tests 'com.nuvio.tv.core.network.AddonHttpClientTest'
+          --tests 'com.nuvio.tv.core.network.LogSafeUrlTest'
+          --tests 'com.nuvio.tv.core.diagnostics.SessionTrailTest'
+          --tests 'com.nuvio.tv.core.diagnostics.ScreenVisitsTest'
+          --tests 'com.nuvio.tv.core.util.CancellableCatchingTest'
+          --tests 'com.nuvio.tv.data.remote.espn.EspnFeedLoadsTest'
+          --tests 'com.nuvio.tv.data.remote.espn.EspnTeamsJsonTest'
+          --tests 'com.nuvio.tv.data.remote.espn.SharedResultsTest'
+          --tests 'com.nuvio.tv.data.remote.espn.EspnRegressionTest'
+          --tests 'com.nuvio.tv.core.player.FrameRateUtils*'
+          --tests 'com.nuvio.tv.data.repository.AddonManifestPlaceholderTest'
+          --tests 'com.nuvio.tv.data.repository.MetaRepository*'
+          --tests 'com.nuvio.tv.data.repository.StreamRepositoryPluginIsolationTest'
+          --tests 'com.nuvio.tv.ui.screens.home.HomeEnrichmentRepositoryBoundaryTest'
+          --tests 'com.nuvio.tv.ui.screens.player.AfrPreflightPolicyTest'
+          --tests 'com.nuvio.tv.ui.screens.player.PlayerFrameRateHeuristicsTest'
+          --tests 'com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactoryTest'
+          --tests 'com.nuvio.tv.ui.screens.player.VodCacheAutoSizeTest'
+          --stacktrace
+
+      - name: Upload remediation test reports
+        if: always() && steps.remediation_tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: remediation-test-reports
+          path: app/build/reports/tests/testFullDebugUnitTest
+          if-no-files-found: warn
+          retention-days: 7
