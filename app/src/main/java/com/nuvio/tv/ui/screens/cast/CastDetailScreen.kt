@@ -5,12 +5,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -27,15 +22,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -67,6 +67,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.nuvio.tv.ui.util.contentTextDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -199,6 +200,20 @@ private fun CastDetailContent(
     val firstPosterFocusRequester = remember { FocusRequester() }
     var isBiographyTruncated by rememberSaveable(person.tmdbId) { mutableStateOf(false) }
 
+    // RCTV: Back from down the filmography goes all the way up first (the page's top, its first
+    // title); from there, Back leaves the page (the outer handler).
+    val filmographyGridState = rememberLazyGridState()
+    var focusedCreditRow by rememberSaveable(person.tmdbId) { mutableIntStateOf(-1) }
+    val pageScrolledDown by remember { derivedStateOf { filmographyGridState.firstVisibleItemIndex > 0 } }
+    val backScope = rememberCoroutineScope()
+    BackHandler(enabled = !isBiographyExpanded && allCredits.isNotEmpty() && (focusedCreditRow > 0 || pageScrolledDown)) {
+        backScope.launch {
+            filmographyGridState.scrollToItem(0)
+            focusedCreditRow = 0
+            firstPosterFocusRequester.requestFocusAfterFrames()
+        }
+    }
+
     // Focus restoration state for filmography row
     var pendingRestoreItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var restoreFocusToken by rememberSaveable { mutableIntStateOf(0) }
@@ -241,51 +256,65 @@ private fun CastDetailContent(
             visible = true,
             enter = fadeIn()
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                HeroSection(
-                    person = person,
-                    isBiographyExpanded = isBiographyExpanded,
-                    isBiographyTruncated = isBiographyTruncated,
-                    onBiographyTruncationChanged = { isBiographyTruncated = it },
-                    onPortraitClick = {
-                        if (isBiographyExpanded || isBiographyTruncated) {
-                            onBiographyExpandedChange(!isBiographyExpanded)
-                        }
+            if (isBiographyExpanded || allCredits.isEmpty()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    HeroSection(
+                        person = person,
+                        isBiographyExpanded = isBiographyExpanded,
+                        isBiographyTruncated = isBiographyTruncated,
+                        onBiographyTruncationChanged = { isBiographyTruncated = it },
+                        onPortraitClick = {
+                            if (isBiographyExpanded || isBiographyTruncated) {
+                                onBiographyExpandedChange(!isBiographyExpanded)
+                            }
+                        },
+                        modifier = if (isBiographyExpanded) Modifier.weight(1f) else Modifier
+                    )
+                }
+            } else {
+                // RCTV: the filmography as a grid going down (four across), the page scrolling
+                // with it, instead of one row going right.
+                FilmographyGrid(
+                    gridState = filmographyGridState,
+                    credits = allCredits,
+                    posterCardStyle = filmographyPosterStyle,
+                    firstItemFocusRequester = firstPosterFocusRequester,
+                    restoreItemId = pendingRestoreItemId,
+                    restoreFocusToken = restoreFocusToken,
+                    onRestoreFocusHandled = { pendingRestoreItemId = null },
+                    onItemClick = { item ->
+                        pendingRestoreItemId = item.id
+                        onNavigateToDetail(item.id, item.apiType, null)
                     },
-                    modifier = if (isBiographyExpanded) Modifier.weight(1f) else Modifier
-                )
-
-                AnimatedVisibility(
-                    visible = allCredits.isNotEmpty() && !isBiographyExpanded,
-                    enter = fadeIn() +
-                        expandVertically(expandFrom = Alignment.Top) +
-                        slideInVertically(initialOffsetY = { it / 2 }),
-                    exit = fadeOut() +
-                        shrinkVertically(shrinkTowards = Alignment.Top) +
-                        slideOutVertically(targetOffsetY = { it })
-                ) {
-                    Column {
-                        SectionHeader(
-                            title = stringResource(R.string.cast_detail_filmography),
-                            count = allCredits.size
-                        )
-                        FilmographyRow(
-                            credits = allCredits,
-                            posterCardStyle = filmographyPosterStyle,
-                            firstItemFocusRequester = firstPosterFocusRequester,
-                            restoreItemId = pendingRestoreItemId,
-                            restoreFocusToken = restoreFocusToken,
-                            onRestoreFocusHandled = { pendingRestoreItemId = null },
-                            onItemClick = { item ->
-                                pendingRestoreItemId = item.id
-                                onNavigateToDetail(item.id, item.apiType, null)
-                            },
-                            onItemLongPress = { item ->
-                                posterOptions.show(item, null)
-                            },
-                            isItemWatched = isItemWatched
-                        )
+                    onItemLongPress = { item ->
+                        posterOptions.show(item, null)
+                    },
+                    isItemWatched = isItemWatched,
+                    onFocusedRowChanged = { row ->
+                        focusedCreditRow = row
+                        // Up again on the first row: the page all the way up (the photo and biography too).
+                        if (row == 0 && (filmographyGridState.firstVisibleItemIndex > 0 ||
+                                filmographyGridState.firstVisibleItemScrollOffset > 0)
+                        ) {
+                            backScope.launch { filmographyGridState.animateScrollToItem(0) }
+                        }
                     }
+                ) {
+                    HeroSection(
+                        person = person,
+                        isBiographyExpanded = false,
+                        isBiographyTruncated = isBiographyTruncated,
+                        onBiographyTruncationChanged = { isBiographyTruncated = it },
+                        onPortraitClick = {
+                            if (isBiographyTruncated) onBiographyExpandedChange(true)
+                        },
+                        horizontalPadding = 0.dp
+                    )
+                    SectionHeader(
+                        title = stringResource(R.string.cast_detail_filmography),
+                        count = allCredits.size,
+                        horizontalPadding = 0.dp
+                    )
                 }
             }
         }
@@ -308,7 +337,8 @@ private fun HeroSection(
     isBiographyTruncated: Boolean,
     onBiographyTruncationChanged: (Boolean) -> Unit,
     onPortraitClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    horizontalPadding: Dp = NuvioTheme.spacing.xxxl
 ) {
     val portraitFocusRequester = remember { FocusRequester() }
     val biographyScrollState = rememberScrollState()
@@ -324,7 +354,7 @@ private fun HeroSection(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, top = NuvioTheme.spacing.xxl, bottom = NuvioTheme.spacing.sm),
+            .padding(start = horizontalPadding, end = horizontalPadding, top = NuvioTheme.spacing.xxl, bottom = NuvioTheme.spacing.sm),
         verticalAlignment = Alignment.Top
     ) {
         // Avatar / Profile Photo
@@ -522,11 +552,11 @@ private fun HeroSection(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SectionHeader(title: String, count: Int) {
+private fun SectionHeader(title: String, count: Int, horizontalPadding: Dp = NuvioTheme.spacing.xxxl) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl, top = NuvioTheme.spacing.md, bottom = NuvioTheme.spacing.sm),
+            .padding(start = horizontalPadding, end = horizontalPadding, top = NuvioTheme.spacing.md, bottom = NuvioTheme.spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -551,9 +581,18 @@ private fun SectionHeader(title: String, count: Int) {
     }
 }
 
+/** Across, the filmography's wide cards (the page's four columns, like every grid of them). */
+private const val FILMOGRAPHY_COLUMNS = 4
+
+/**
+ * RCTV: the person's page as one grid going down: [header] (the photo, the biography, the
+ * "Filmography" title) across the top, then the titles four across (vertical posters: as many as
+ * fit), row after row; Down goes to the next row and the page scrolls with it.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun FilmographyRow(
+private fun FilmographyGrid(
+    gridState: LazyGridState,
     credits: List<MetaPreview>,
     posterCardStyle: PosterCardStyle,
     firstItemFocusRequester: FocusRequester,
@@ -562,12 +601,13 @@ private fun FilmographyRow(
     onRestoreFocusHandled: () -> Unit = {},
     onItemClick: (MetaPreview) -> Unit,
     onItemLongPress: (MetaPreview) -> Unit = {},
-    isItemWatched: (MetaPreview) -> Boolean = { false }
+    isItemWatched: (MetaPreview) -> Boolean = { false },
+    onFocusedRowChanged: (Int) -> Unit = {},
+    header: @Composable () -> Unit
 ) {
     val hasRequestedInitialFocus = remember(credits) { mutableStateOf(false) }
     val restoreFocusRequester = remember { FocusRequester() }
     var restorePending by remember { mutableStateOf(false) }
-    val lazyListState = rememberLazyListState()
     // Horizontal cards unless the website sets the cast page ("cast") to vertical posters.
     val verticalCards = com.nuvio.tv.ui.components.isPageVertical(com.nuvio.tv.ui.components.RowLayoutPages.CAST)
 
@@ -585,66 +625,93 @@ private fun FilmographyRow(
         restoreFocusRequester.requestFocusAfterFrames()
     }
 
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .focusRestorer { if (restorePending) restoreFocusRequester else firstItemFocusRequester },
-        state = lazyListState,
-        contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = NuvioTheme.spacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-    ) {
-        itemsIndexed(
-            items = credits,
-            key = { _, item -> item.id + item.name }
-        ) { index, item ->
-            val isRestoreTarget = item.id == restoreItemId
-            val isFirstItem = index == 0
-            val itemFocusRequester = when {
-                isRestoreTarget -> restoreFocusRequester
-                isFirstItem -> firstItemFocusRequester
-                else -> null
-            }
+    val sidePadding = NuvioTheme.spacing.xxxl
+    val gap = NuvioTheme.spacing.md
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val available = maxWidth - sidePadding * 2
+        val columns = if (verticalCards) {
+            ((available + gap) / (posterCardStyle.width + gap)).toInt().coerceAtLeast(1)
+        } else {
+            FILMOGRAPHY_COLUMNS
+        }
+        val cardWidth = (available - gap * (columns - 1)) / columns
+        val cellPosterStyle = remember(posterCardStyle, cardWidth) {
+            posterCardStyle.copy(width = cardWidth, height = cardWidth * 1.5f)
+        }
 
-            val cardModifier = if (isFirstItem) {
-                Modifier.onGloballyPositioned {
-                    if (!hasRequestedInitialFocus.value) {
-                        hasRequestedInitialFocus.value = true
-                        runCatching { firstItemFocusRequester.requestFocus() }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            state = gridState,
+            modifier = Modifier
+                .fillMaxSize()
+                .focusRestorer { if (restorePending) restoreFocusRequester else firstItemFocusRequester },
+            contentPadding = PaddingValues(start = sidePadding, end = sidePadding, bottom = NuvioTheme.spacing.xxl),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+        ) {
+            item(key = "person_header", span = { GridItemSpan(maxLineSpan) }) {
+                Column(
+                    modifier = Modifier.onFocusChanged { if (it.hasFocus) onFocusedRowChanged(-1) }
+                ) {
+                    header()
+                }
+            }
+            itemsIndexed(
+                items = credits,
+                key = { _, item -> item.id + item.name }
+            ) { index, item ->
+                val isRestoreTarget = item.id == restoreItemId
+                val isFirstItem = index == 0
+                val itemFocusRequester = when {
+                    isRestoreTarget -> restoreFocusRequester
+                    isFirstItem -> firstItemFocusRequester
+                    else -> null
+                }
+
+                val cardModifier = if (isFirstItem) {
+                    Modifier.onGloballyPositioned {
+                        if (!hasRequestedInitialFocus.value) {
+                            hasRequestedInitialFocus.value = true
+                            runCatching { firstItemFocusRequester.requestFocus() }
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+                val onCardFocused: () -> Unit = {
+                    onFocusedRowChanged(index / columns)
+                    if (isRestoreTarget && restoreFocusToken > 0) {
+                        onRestoreFocusHandled()
+                        restorePending = false
                     }
                 }
-            } else {
-                Modifier
-            }
-            val onCardFocused: () -> Unit = {
-                if (isRestoreTarget && restoreFocusToken > 0) {
-                    onRestoreFocusHandled()
-                    restorePending = false
+                if (verticalCards) {
+                    GridContentCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = { onItemLongPress(item) },
+                        isWatched = isItemWatched(item),
+                        modifier = cardModifier,
+                        posterCardStyle = cellPosterStyle,
+                        showLabel = true,
+                        focusRequester = itemFocusRequester,
+                        onFocused = onCardFocused
+                    )
+                } else {
+                    // Horizontal 16:9 cards with the title on the picture, like every page.
+                    com.nuvio.tv.ui.components.AppleLandscapeCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = { onItemLongPress(item) },
+                        isWatched = isItemWatched(item),
+                        modifier = cardModifier,
+                        width = cardWidth,
+                        height = cardWidth * (9f / 16f),
+                        cornerRadius = posterCardStyle.cornerRadius,
+                        focusRequester = itemFocusRequester,
+                        onFocus = { onCardFocused() }
+                    )
                 }
-            }
-            if (verticalCards) {
-                GridContentCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = { onItemLongPress(item) },
-                    isWatched = isItemWatched(item),
-                    modifier = cardModifier,
-                    posterCardStyle = posterCardStyle,
-                    showLabel = true,
-                    focusRequester = itemFocusRequester,
-                    onFocused = onCardFocused
-                )
-            } else {
-                // Horizontal 16:9 cards with the title on the picture, like every page.
-                com.nuvio.tv.ui.components.AppleLandscapeCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = { onItemLongPress(item) },
-                    isWatched = isItemWatched(item),
-                    modifier = cardModifier,
-                    cornerRadius = posterCardStyle.cornerRadius,
-                    focusRequester = itemFocusRequester,
-                    onFocus = { onCardFocused() }
-                )
             }
         }
     }
