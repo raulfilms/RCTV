@@ -15,6 +15,8 @@ data class AddonManagerUiState(
     val isQrModeActive: Boolean = false,
     val qrCodeBitmap: Bitmap? = null,
     val serverUrl: String? = null,
+    /** RCTV: the QR shown is the servers' setup page (not the addon manager's). */
+    val isServersQr: Boolean = false,
     // Pending change from phone
     val pendingChange: PendingChangeInfo? = null
 )

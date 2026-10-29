@@ -412,6 +412,16 @@ fun AddonManagerScreen(
                 )
             }
 
+            if (!viewModel.isReadOnly) {
+                item {
+                    ManageFromPhoneCard(
+                        title = stringResource(R.string.addon_servers_title),
+                        subtitle = stringResource(R.string.addon_servers_subtitle),
+                        onClick = viewModel::startServersQrMode
+                    )
+                }
+            }
+
             if (!viewModel.isReadOnly && !isEssential && hasHomeVisibleCatalogs) {
                 item {
                     CatalogOrderEntryCard(onClick = onNavigateToCatalogOrder)
@@ -503,7 +513,11 @@ fun AddonManagerScreen(
                 QrCodeOverlay(
                     qrBitmap = uiState.qrCodeBitmap,
                     serverUrl = uiState.serverUrl,
-                    instruction = qrInstruction,
+                    instruction = if (uiState.isServersQr) {
+                        stringResource(R.string.addon_servers_qr_instruction)
+                    } else {
+                        qrInstruction
+                    },
                     onClose = viewModel::stopQrMode,
                     hasPendingChange = uiState.pendingChange != null
                 )
@@ -612,6 +626,7 @@ internal fun AddonMessageOverlay(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ManageFromPhoneCard(
+    title: String = stringResource(R.string.addon_manage_from_phone_title),
     subtitle: String,
     onClick: () -> Unit
 ) {
@@ -652,7 +667,7 @@ private fun ManageFromPhoneCard(
                 Spacer(modifier = Modifier.width(NuvioTheme.spacing.lg))
                 Column {
                     Text(
-                        text = stringResource(R.string.addon_manage_from_phone_title),
+                        text = title,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = NuvioTheme.colors.TextPrimary
                     )

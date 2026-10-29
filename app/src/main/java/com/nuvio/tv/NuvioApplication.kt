@@ -48,6 +48,8 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     @Inject lateinit var simklAnimeIdPreferenceHolder: SimklAnimeIdPreferenceHolder
     /** RCTV: created at start so every part of the app (the player's next episode too) ranks with it. */
     @Inject lateinit var smartScraper: com.nuvio.tv.core.smartscraper.SmartScraper
+    // RCTV: which addon is which server (set up from the phone), for the engine from the start.
+    @Inject lateinit var addonRoleStore: com.nuvio.tv.data.local.AddonRoleStore
 
     companion object {
         /**

@@ -27,11 +27,29 @@ object SourceProviderAdapters {
         PluginStreamAdapter, AioStreamsAdapter, TorrentioAdapter, LatamAdapter, LatinoDebridAdapter, GenericStreamAdapter
     )
 
-    fun normalize(stream: Stream): NormalizedSource =
-        adapters.first { it.handles(stream) }.normalize(stream)
+    /** RCTV: an addon set up as one of the servers is read as that server, whatever its name says. */
+    private fun roleOf(stream: Stream): AddonRole? =
+        if (stream.pluginRepository != null) null else AddonRoles.roleOf(stream.addonName)
 
-    fun identify(stream: Stream): ProviderIdentity =
-        adapters.first { it.handles(stream) }.identify(stream)
+    private fun adapterFor(stream: Stream, role: AddonRole?): SourceProviderAdapter = when (role?.family) {
+        ProviderFamily.AIOSTREAMS -> AioStreamsAdapter
+        ProviderFamily.TORRENTIO -> TorrentioAdapter
+        ProviderFamily.LATINODEBRID -> LatinoDebridAdapter
+        ProviderFamily.LATAM -> LatamAdapter
+        else -> adapters.first { it.handles(stream) }
+    }
+
+    fun normalize(stream: Stream): NormalizedSource {
+        val role = roleOf(stream)
+        val source = adapterFor(stream, role).normalize(stream)
+        return if (role == null) source else source.copy(provider = role.applyTo(source.provider))
+    }
+
+    fun identify(stream: Stream): ProviderIdentity {
+        val role = roleOf(stream)
+        val identity = adapterFor(stream, role).identify(stream)
+        return role?.applyTo(identity) ?: identity
+    }
 
     /**
      * A key for the file itself, the same whichever addon/service offers it (its torrent's hash and

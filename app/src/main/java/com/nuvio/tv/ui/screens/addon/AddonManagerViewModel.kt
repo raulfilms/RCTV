@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,6 +75,8 @@ class AddonManagerViewModel @Inject constructor(
     private val profileManager: ProfileManager,
     private val tmdbCollectionSourceResolver: TmdbCollectionSourceResolver,
     private val traktPublicListSourceResolver: TraktPublicListSourceResolver,
+    private val addonRoleStore: com.nuvio.tv.data.local.AddonRoleStore,
+    private val pluginManager: com.nuvio.tv.core.plugin.PluginManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -94,6 +97,7 @@ class AddonManagerViewModel @Inject constructor(
     }
 
     private var server: AddonConfigServer? = null
+    private var rolesServer: com.nuvio.tv.core.server.AddonRolesServer? = null
     private var logoBytes: ByteArray? = null
     private var homeCatalogOrderKeys: List<String> = emptyList()
     private var disabledHomeCatalogKeys: Set<String> = emptySet()
@@ -384,9 +388,134 @@ class AddonManagerViewModel @Inject constructor(
                 isQrModeActive = false,
                 qrCodeBitmap = null,
                 serverUrl = null,
+                isServersQr = false,
                 pendingChange = null
             )
         }
+    }
+
+    /**
+     * RCTV: the QR of the servers' setup page: each server's addon link pasted on the phone is
+     * installed and known as that server (AIO Stream Main, Torrentio TorBox...); plugins by their
+     * repository link. The links never leave the TV again and are never logged.
+     */
+    fun startServersQrMode() {
+        val ip = DeviceIpAddress.get(context)
+        if (ip == null) {
+            _uiState.update { it.copy(error = context.getString(R.string.error_network_required)) }
+            return
+        }
+        stopServerInternal()
+        rolesServer = com.nuvio.tv.core.server.AddonRolesServer.startOnAvailablePort(
+            status = ::rolesStatus,
+            save = ::saveRole,
+            clear = ::clearRole,
+            addPlugin = ::addPluginRepository,
+            context = context
+        )
+        val active = rolesServer
+        if (active == null) {
+            _uiState.update { it.copy(error = context.getString(R.string.error_server_ports_unavailable)) }
+            return
+        }
+        val url = active.access.shareUrl("http://$ip:${active.listeningPort}")
+        _uiState.update {
+            it.copy(
+                isQrModeActive = true,
+                qrCodeBitmap = QrCodeGenerator.generate(url, 512),
+                serverUrl = url,
+                isServersQr = true,
+                error = null
+            )
+        }
+    }
+
+    private fun texts(): Context = com.nuvio.tv.core.server.ImdbLinkWebPage.localized(context)
+
+    private fun installedAddonsNow(): List<com.nuvio.tv.domain.model.Addon> =
+        kotlinx.coroutines.runBlocking { addonRepository.getInstalledAddons().first() }
+
+    private fun rolesStatus(): com.nuvio.tv.core.server.AddonRolesStatus {
+        val addons = runCatching { installedAddonsNow() }.getOrDefault(emptyList())
+        val slots = com.nuvio.tv.core.smartscraper.AddonRole.entries.map { role ->
+            val url = addonRoleStore.urlOf(role)
+            val addon = url?.let { link -> addons.firstOrNull { com.nuvio.tv.core.smartscraper.AddonRoles.sameAddon(it.baseUrl, link) } }
+            com.nuvio.tv.core.server.AddonRoleSlot(
+                key = role.key,
+                label = role.label,
+                addonName = addon?.displayName,
+                host = addon?.let { runCatching { java.net.URI(it.baseUrl).host }.getOrNull() }
+            )
+        }
+        val plugins = runCatching {
+            kotlinx.coroutines.runBlocking { pluginManager.repositories.first() }.map { it.name }
+        }.getOrDefault(emptyList())
+        return com.nuvio.tv.core.server.AddonRolesStatus(slots, plugins)
+    }
+
+    private fun rolesReply(ok: Boolean, message: String) =
+        com.nuvio.tv.core.server.AddonRolesReply(ok, message, rolesStatus())
+
+    /** The installed addon at [url] goes, unless another server still uses it. */
+    private suspend fun removeIfUnused(url: String, except: com.nuvio.tv.core.smartscraper.AddonRole) {
+        val stillUsed = addonRoleStore.assignments.value.any { (role, other) ->
+            role != except && com.nuvio.tv.core.smartscraper.AddonRoles.sameAddon(other, url)
+        }
+        if (stillUsed) return
+        addonRepository.getInstalledAddons().first()
+            .firstOrNull { com.nuvio.tv.core.smartscraper.AddonRoles.sameAddon(it.baseUrl, url) }
+            ?.let { addonRepository.removeAddon(it.baseUrl) }
+    }
+
+    private fun saveRole(key: String, input: String): com.nuvio.tv.core.server.AddonRolesReply {
+        val texts = texts()
+        val role = com.nuvio.tv.core.smartscraper.AddonRole.ofKey(key)
+            ?: return rolesReply(false, texts.getString(R.string.addon_roles_invalid))
+        val url = com.nuvio.tv.core.smartscraper.AddonRoles.normalizeUrl(input)
+            ?: return rolesReply(false, texts.getString(R.string.addon_roles_invalid))
+        val name = kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(45_000L) {
+                when (val result = addonRepository.fetchAddon(url)) {
+                    is NetworkResult.Success -> {
+                        val installed = addonRepository.getInstalledAddons().first()
+                        if (installed.none { com.nuvio.tv.core.smartscraper.AddonRoles.sameAddon(it.baseUrl, url) }) {
+                            addonRepository.addAddon(url)
+                        }
+                        // A server's new addon replaces its old one.
+                        addonRoleStore.urlOf(role)
+                            ?.takeIf { !com.nuvio.tv.core.smartscraper.AddonRoles.sameAddon(it, url) }
+                            ?.let { removeIfUnused(it, except = role) }
+                        addonRoleStore.set(role, url)
+                        result.data.displayName.ifBlank { result.data.name }
+                    }
+                    else -> null
+                }
+            }
+        } ?: return rolesReply(false, texts.getString(R.string.addon_roles_failed))
+        return rolesReply(true, texts.getString(R.string.addon_roles_saved, name, role.label))
+    }
+
+    private fun clearRole(key: String): com.nuvio.tv.core.server.AddonRolesReply {
+        val texts = texts()
+        val role = com.nuvio.tv.core.smartscraper.AddonRole.ofKey(key)
+            ?: return rolesReply(false, texts.getString(R.string.addon_roles_invalid))
+        val url = addonRoleStore.urlOf(role)
+        addonRoleStore.clear(role)
+        if (url != null) kotlinx.coroutines.runBlocking { removeIfUnused(url, except = role) }
+        return rolesReply(true, texts.getString(R.string.addon_roles_removed, role.label))
+    }
+
+    private fun addPluginRepository(input: String): com.nuvio.tv.core.server.AddonRolesReply {
+        val texts = texts()
+        val url = input.trim()
+        if (!url.startsWith("https://", ignoreCase = true) && !url.startsWith("http://", ignoreCase = true)) {
+            return rolesReply(false, texts.getString(R.string.addon_roles_plugin_failed))
+        }
+        val result = kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(45_000L) { pluginManager.addRepository(url) }
+        }
+        val repo = result?.getOrNull() ?: return rolesReply(false, texts.getString(R.string.addon_roles_plugin_failed))
+        return rolesReply(true, texts.getString(R.string.plugin_repo_added_with_providers, repo.name, repo.scraperCount))
     }
 
     private suspend fun fetchAddonInfo(url: String): AddonInfo? {
@@ -413,6 +542,8 @@ class AddonManagerViewModel @Inject constructor(
     private fun stopServerInternal() {
         server?.stop()
         server = null
+        rolesServer?.stop()
+        rolesServer = null
     }
 
     private fun fetchTmdbSourceMetadata(request: TmdbSourceMetadataRequest): TmdbSourceMetadataInfo? {

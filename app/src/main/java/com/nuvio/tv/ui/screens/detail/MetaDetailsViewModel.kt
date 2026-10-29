@@ -1237,9 +1237,13 @@ class MetaDetailsViewModel @Inject constructor(
                 .onFailure { if (it is CancellationException) throw it }
                 .getOrDefault(emptyList())
                 .filter { addon ->
-                    addon.enabled && extendedAddonWords.any { word ->
-                        addon.displayName.contains(word, ignoreCase = true) || addon.name.contains(word, ignoreCase = true)
-                    } && addon.supportsStreamResource(meta.apiType, meta.id)
+                    addon.enabled && (
+                        com.nuvio.tv.core.smartscraper.AddonRoles.roleOf(addon.displayName) ==
+                            com.nuvio.tv.core.smartscraper.AddonRole.AIO_EXTENDED ||
+                            extendedAddonWords.any { word ->
+                                addon.displayName.contains(word, ignoreCase = true) || addon.name.contains(word, ignoreCase = true)
+                            }
+                        ) && addon.supportsStreamResource(meta.apiType, meta.id)
                 }
             if (addons.isEmpty()) return@launch
             val streams = coroutineScope {
