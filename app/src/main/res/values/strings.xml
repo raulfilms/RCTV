@@ -2973,13 +2973,13 @@
     <string name="cd_open_external_player">Open in external player</string>
     <string name="cd_stream_info">Stream info</string>
     <string name="cd_more_actions">More actions</string>
+    <string name="player_audio_settings">Audio settings</string>
+    <string name="player_subtitle_settings">Subtitle settings</string>
     <string name="cd_rewind_15">Back 15 seconds</string>
     <string name="cd_forward_15">Forward 15 seconds</string>
     <string name="cd_audio_and_subtitles">Audio &amp; subtitles</string>
     <string name="cd_add_to_watchlist">Add to watchlist</string>
     <string name="cd_remove_from_watchlist">Remove from watchlist</string>
-    <string name="player_audio_subtitles_title">Audio &amp; Subtitles</string>
-    <string name="player_more_subtitle_options">More subtitle options</string>
     <string name="cd_close_more_actions">Close more actions</string>
     <string name="cd_back">Back</string>
     <string name="cd_next_episode_thumbnail">Next episode thumbnail</string>

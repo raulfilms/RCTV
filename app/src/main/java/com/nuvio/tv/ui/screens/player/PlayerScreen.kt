@@ -193,6 +193,8 @@ fun PlayerScreen(
     var externalHandoffInProgress by remember { mutableStateOf(false) }
     // RCTV movie controls: their Settings dialog; the movie is in the watchlist.
     var showMovieSettings by remember { mutableStateOf(false) }
+    // The full audio screen (timing, boost) was opened from Settings, not the page.
+    var audioSettingsOpen by remember { mutableStateOf(false) }
     val movieInWatchlist by viewModel.isInWatchlist.collectAsState()
     // RCTV Live TV: Left (a channel can't go back) offers "Watch From Beginning" in the middle of
     // the screen, when what's on is a movie or an episode the sources have.
@@ -553,6 +555,9 @@ fun PlayerScreen(
     }
     LaunchedEffect(uiState.showSubtitleDelayOverlay) {
         subtitleDelayFocusTarget = SubtitleDelayFocusTarget.SLIDER
+    }
+    LaunchedEffect(uiState.showAudioOverlay) {
+        if (!uiState.showAudioOverlay) audioSettingsOpen = false
     }
     LaunchedEffect(uiState.showSubtitleTimingDialog) {
         if (!uiState.showSubtitleTimingDialog) {
@@ -1409,7 +1414,10 @@ fun PlayerScreen(
                     onPlayNextEpisode = { viewModel.onEvent(PlayerEvent.OnPlayNextEpisode) },
                     onShowEpisodesPanel = { viewModel.onEvent(PlayerEvent.OnShowEpisodesPanel) },
                     onSeekBy = { viewModel.onEvent(PlayerEvent.OnSeekBy(it)) },
-                    onShowAudioAndSubtitles = { viewModel.onEvent(PlayerEvent.OnShowAudioOverlay) },
+                    onShowAudioAndSubtitles = {
+                        audioSettingsOpen = false
+                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+                    },
                     onShowDetails = { viewModel.onEvent(PlayerEvent.OnShowDetails) },
                     onToggleWatchlist = { viewModel.toggleWatchlist() },
                     onShowSourcesPanel = { viewModel.onEvent(PlayerEvent.OnShowSourcesPanel) },
@@ -1732,9 +1740,9 @@ fun PlayerScreen(
             }
         }
 
-        // Audio track dialog
+        // Audio track dialog (RCTV: a movie's or an episode's only from Settings' "Audio settings")
         AudioSelectionOverlay(
-            visible = uiState.showAudioOverlay,
+            visible = uiState.showAudioOverlay && (!uiState.usesTitleControls || audioSettingsOpen),
             tracks = uiState.audioTracks,
             selectedIndex = uiState.selectedAudioTrackIndex,
             audioDelayMs = uiState.audioDelayMs,
@@ -1758,31 +1766,35 @@ fun PlayerScreen(
             onDismiss = { viewModel.onEvent(PlayerEvent.OnDismissTransientOverlay) },
             modifier = Modifier
                 .fillMaxSize()
-                .zIndex(2.6f),
-            // RCTV title controls: audio and subtitles on one screen (choosing a subtitle keeps it open).
-            subtitles = if (uiState.usesTitleControls) {
-                AudioScreenSubtitles(
-                    internalTracks = uiState.subtitleTracks,
-                    selectedInternalIndex = uiState.selectedSubtitleTrackIndex,
-                    addonSubtitles = uiState.addonSubtitles,
-                    selectedAddonSubtitle = uiState.selectedAddonSubtitle,
-                    onInternalSelected = {
-                        viewModel.onEvent(PlayerEvent.OnSelectSubtitleTrack(it))
-                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
-                    },
-                    onAddonSelected = {
-                        viewModel.onEvent(PlayerEvent.OnSelectAddonSubtitle(it))
-                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
-                    },
-                    onDisable = {
-                        viewModel.onEvent(PlayerEvent.OnDisableSubtitles)
-                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
-                    },
-                    onMoreOptions = { viewModel.onEvent(PlayerEvent.OnShowSubtitleOverlay) }
-                )
-            } else {
-                null
-            }
+                .zIndex(2.6f)
+        )
+
+        // RCTV title controls: the Audio & Subtitles page (choosing a subtitle keeps it open).
+        AudioSubtitlesPage(
+            visible = uiState.showAudioOverlay && uiState.usesTitleControls && !audioSettingsOpen,
+            currentLanguage = uiState.currentAudioLanguage,
+            switchingLanguage = uiState.audioLanguageSwitching,
+            onLanguageSelected = { viewModel.onEvent(PlayerEvent.OnSelectAudioLanguage(it)) },
+            internalTracks = uiState.subtitleTracks,
+            selectedInternalIndex = uiState.selectedSubtitleTrackIndex,
+            addonSubtitles = uiState.addonSubtitles,
+            selectedAddonSubtitle = uiState.selectedAddonSubtitle,
+            onInternalSubtitleSelected = {
+                viewModel.onEvent(PlayerEvent.OnSelectSubtitleTrack(it))
+                viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+            },
+            onAddonSubtitleSelected = {
+                viewModel.onEvent(PlayerEvent.OnSelectAddonSubtitle(it))
+                viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+            },
+            onDisableSubtitles = {
+                viewModel.onEvent(PlayerEvent.OnDisableSubtitles)
+                viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+            },
+            onDismiss = { viewModel.onEvent(PlayerEvent.OnDismissTransientOverlay) },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(2.6f)
         )
 
         SubtitleSelectionOverlay(
@@ -1846,6 +1858,11 @@ fun PlayerScreen(
         if (showMovieSettings) {
             MoviePlayerSettingsDialog(
                 reportEnabled = uiState.playbackIssueReportsEnabled,
+                onAudioSettings = {
+                    audioSettingsOpen = true
+                    viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+                },
+                onSubtitleSettings = { viewModel.onEvent(PlayerEvent.OnShowSubtitleOverlay) },
                 onToggleAspectRatio = { viewModel.onEvent(PlayerEvent.OnToggleAspectRatio) },
                 onSwitchPlayerEngine = { viewModel.onEvent(PlayerEvent.OnSwitchInternalPlayerEngine) },
                 onOpenInExternalPlayer = openInExternalPlayer,

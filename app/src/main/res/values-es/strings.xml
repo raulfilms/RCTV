@@ -1665,13 +1665,13 @@
     <!-- RCTV (RCTV-AUD-021): a server whose HTTPS certificate does not check out. -->
     <string name="network_error_invalid_certificate">No se pudo conectar de forma segura: el certificado HTTPS del servidor no es válido (vencido, autofirmado o emitido para otra dirección).</string>
     <string name="livetv_channels_certificate_invalid">No se pudieron cargar los canales: el certificado HTTPS del proveedor no es válido. Tu configuración se mantiene; el proveedor necesita un certificado válido.</string>
+    <string name="player_audio_settings">Ajustes de audio</string>
+    <string name="player_subtitle_settings">Ajustes de subtítulos</string>
     <string name="cd_rewind_15">Atrás 15 segundos</string>
     <string name="cd_forward_15">Adelante 15 segundos</string>
     <string name="cd_audio_and_subtitles">Audio y subtítulos</string>
     <string name="cd_add_to_watchlist">Añadir a la lista</string>
     <string name="cd_remove_from_watchlist">Quitar de la lista</string>
-    <string name="player_audio_subtitles_title">Audio y subtítulos</string>
-    <string name="player_more_subtitle_options">Más opciones de subtítulos</string>
     <string name="cd_switch_player_engine">Cambiar motor de reproducción</string>
     <string name="cd_stream_info">Información del stream</string>
     <string name="player_report_issue">Reportar problema</string>

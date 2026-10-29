@@ -556,12 +556,15 @@ private fun movieDetailsIcon(): ImageVector = ImageVector.Builder(
 }.build()
 
 /**
- * RCTV: the movie controls' Settings: what isn't in the row (aspect ratio, the player engine, an
- * external player, the stream's info, reporting a problem).
+ * RCTV: the title controls' Settings: what isn't in the row (the audio's and the subtitles' own
+ * settings, aspect ratio, the player engine, an external player, the stream's info, reporting a
+ * problem).
  */
 @Composable
 internal fun MoviePlayerSettingsDialog(
     reportEnabled: Boolean,
+    onAudioSettings: () -> Unit,
+    onSubtitleSettings: () -> Unit,
     onToggleAspectRatio: () -> Unit,
     onSwitchPlayerEngine: () -> Unit,
     onOpenInExternalPlayer: () -> Unit,
@@ -588,8 +591,16 @@ internal fun MoviePlayerSettingsDialog(
                     modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
                 )
                 MovieSettingsItem(
-                    text = stringResource(R.string.player_more_aspect_ratio),
+                    text = stringResource(R.string.player_audio_settings),
                     focusRequester = firstFocusRequester,
+                    onClick = { onDismiss(); onAudioSettings() }
+                )
+                MovieSettingsItem(
+                    text = stringResource(R.string.player_subtitle_settings),
+                    onClick = { onDismiss(); onSubtitleSettings() }
+                )
+                MovieSettingsItem(
+                    text = stringResource(R.string.player_more_aspect_ratio),
                     onClick = { onDismiss(); onToggleAspectRatio() }
                 )
                 MovieSettingsItem(
