@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.Settings
@@ -80,22 +82,33 @@ import com.nuvio.tv.R
 import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
 
-/** RCTV: a movie gets the movie controls (a show and a TV channel keep theirs for now). */
+/** RCTV: a movie gets the movie controls. */
 internal val PlayerUiState.usesMovieControls: Boolean
     get() = contentType.equals("movie", ignoreCase = true) && currentSeason == null && currentEpisode == null
+
+/** RCTV: a show's episode. */
+internal val PlayerUiState.isEpisodeContent: Boolean
+    get() = (contentType.equals("series", ignoreCase = true) || contentType.equals("tv", ignoreCase = true)) &&
+        currentSeason != null && currentEpisode != null
+
+/** RCTV: a movie or an episode gets the designed controls (a TV channel and the rest keep theirs). */
+internal val PlayerUiState.usesTitleControls: Boolean
+    get() = usesMovieControls || isEpisodeContent
 
 /** RCTV: the seek of the movie controls' ⟲15 and 15⟳. */
 internal const val MOVIE_SKIP_MS = 15_000L
 
 /**
- * RCTV: the player's controls for a movie, as designed: the title's logo at the top left and
- * Settings at the top right; at the bottom the timeline (watched in white), the time, ⟲15 / play /
- * 15⟳ in the middle, and the row: Audio & subtitles, Details, Watchlist, then (opened with the
- * arrow) Sources and Playback speed; the picture's quality at the bottom right. Everything white;
- * a focused button turns into a white circle.
+ * RCTV: the player's controls for a movie or an episode, as designed: the title's logo at the top
+ * left and Settings at the top right; at the bottom the timeline (watched in white), the time,
+ * ⟲15 / play / 15⟳ in the middle, and the row: (an episode: Next episode, All episodes,) Audio &
+ * subtitles, Details, Watchlist, then (opened with the arrow) Sources and Playback speed; the
+ * picture's quality at the bottom right. Everything white; a focused button turns into a white
+ * circle. An episode's longer row, opened, takes the middle's place: ⟲15 / play / 15⟳ go away
+ * until it's closed (with the arrow or Back).
  */
 @Composable
-internal fun MoviePlayerControlsOverlay(
+internal fun TitlePlayerControlsOverlay(
     uiState: PlayerUiState,
     viewModel: PlayerViewModel,
     playPauseFocusRequester: FocusRequester,
@@ -104,6 +117,8 @@ internal fun MoviePlayerControlsOverlay(
     isInWatchlist: Boolean,
     videoQuality: String?,
     onPlayPause: () -> Unit,
+    onPlayNextEpisode: () -> Unit,
+    onShowEpisodesPanel: () -> Unit,
     onSeekBy: (Long) -> Unit,
     onShowAudioAndSubtitles: () -> Unit,
     onShowDetails: () -> Unit,
@@ -120,8 +135,16 @@ internal fun MoviePlayerControlsOverlay(
     val subtitlePainter = rememberRawSvgPainter(R.raw.ic_player_subtitles)
     val sourcePainter = rememberRawSvgPainter(R.raw.ic_player_source)
     val settingsFocusRequester = remember { FocusRequester() }
-    val audioSubtitlesFocusRequester = remember { FocusRequester() }
     val detailsIcon = remember { movieDetailsIcon() }
+    val episodesIcon = remember { allEpisodesIcon() }
+    val isEpisode = uiState.isEpisodeContent
+    val showNextEpisodeButton = isEpisode && uiState.nextEpisode?.hasAired == true &&
+        (uiState.postPlayMode as? PostPlayMode.AutoPlay)?.let { !it.searching && it.countdownSec == null } != false
+    // An episode's row, opened, reaches the middle: ⟲15 / play / 15⟳ step aside until it closes.
+    // Play's focus then goes to the arrow (what the screen focuses when the controls show).
+    val middleHidden = isEpisode && uiState.showMoreDialog
+    val rowUpFocusRequester = if (middleHidden) progressBarFocusRequester else playPauseFocusRequester
+    val rowFirstFocusRequester = remember { FocusRequester() }
     // A focused icon sits in a 48 dp circle: the row and the gear are moved by the circle's margin
     // so the icons themselves line up with the timeline's ends.
     val iconInset = 12.dp
@@ -152,7 +175,10 @@ internal fun MoviePlayerControlsOverlay(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    MovieTitleLogo(title = uiState.title, logo = uiState.logo)
+                    MovieTitleLogo(
+                        title = if (isEpisode) uiState.contentName?.takeIf { it.isNotBlank() } ?: uiState.title else uiState.title,
+                        logo = uiState.logo
+                    )
                 }
                 ControlButton(
                     icon = Icons.Outlined.Settings,
@@ -184,41 +210,45 @@ internal fun MoviePlayerControlsOverlay(
 
                 Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
 
-                // The time at the left; ⟲15, play, 15⟳ in the middle.
-                Box(modifier = Modifier.fillMaxWidth()) {
+                // The time at the left; ⟲15, play, 15⟳ in the middle (its room kept while it's away).
+                Box(modifier = Modifier.fillMaxWidth().heightIn(min = NuvioTheme.spacing.xxxl)) {
                     Box(modifier = Modifier.align(Alignment.TopStart)) {
                         PlayerControlsTimeTextHost(viewModel = viewModel, color = Color.White)
                     }
-                    Row(
-                        modifier = Modifier.align(Alignment.TopCenter),
-                        verticalAlignment = Alignment.CenterVertically
+                    AnimatedVisibility(
+                        visible = !middleHidden,
+                        enter = fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
+                        exit = fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
+                        modifier = Modifier.align(Alignment.TopCenter)
                     ) {
-                        SkipFifteenButton(
-                            forward = false,
-                            contentDescription = stringResource(R.string.cd_rewind_15),
-                            onClick = { onSeekBy(-MOVIE_SKIP_MS) },
-                            upFocusRequester = progressBarFocusRequester,
-                            downFocusRequester = audioSubtitlesFocusRequester,
-                            onFocused = onResetHideTimer
-                        )
-                        ControlButton(
-                            icon = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            iconPainter = if (uiState.isPlaying) pausePainter else playPainter,
-                            contentDescription = if (uiState.isPlaying) stringResource(R.string.cd_pause) else stringResource(R.string.cd_play),
-                            onClick = onPlayPause,
-                            focusRequester = playPauseFocusRequester,
-                            upFocusRequester = progressBarFocusRequester,
-                            onDownKey = { runCatching { audioSubtitlesFocusRequester.requestFocus() } },
-                            onFocused = onResetHideTimer
-                        )
-                        SkipFifteenButton(
-                            forward = true,
-                            contentDescription = stringResource(R.string.cd_forward_15),
-                            onClick = { onSeekBy(MOVIE_SKIP_MS) },
-                            upFocusRequester = progressBarFocusRequester,
-                            downFocusRequester = audioSubtitlesFocusRequester,
-                            onFocused = onResetHideTimer
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SkipFifteenButton(
+                                forward = false,
+                                contentDescription = stringResource(R.string.cd_rewind_15),
+                                onClick = { onSeekBy(-MOVIE_SKIP_MS) },
+                                upFocusRequester = progressBarFocusRequester,
+                                downFocusRequester = rowFirstFocusRequester,
+                                onFocused = onResetHideTimer
+                            )
+                            ControlButton(
+                                icon = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                iconPainter = if (uiState.isPlaying) pausePainter else playPainter,
+                                contentDescription = if (uiState.isPlaying) stringResource(R.string.cd_pause) else stringResource(R.string.cd_play),
+                                onClick = onPlayPause,
+                                focusRequester = playPauseFocusRequester,
+                                upFocusRequester = progressBarFocusRequester,
+                                onDownKey = { runCatching { rowFirstFocusRequester.requestFocus() } },
+                                onFocused = onResetHideTimer
+                            )
+                            SkipFifteenButton(
+                                forward = true,
+                                contentDescription = stringResource(R.string.cd_forward_15),
+                                onClick = { onSeekBy(MOVIE_SKIP_MS) },
+                                upFocusRequester = progressBarFocusRequester,
+                                downFocusRequester = rowFirstFocusRequester,
+                                onFocused = onResetHideTimer
+                            )
+                        }
                     }
                 }
 
@@ -235,13 +265,35 @@ internal fun MoviePlayerControlsOverlay(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (showNextEpisodeButton) {
+                            ControlButton(
+                                icon = Icons.Default.SkipNext,
+                                contentDescription = stringResource(R.string.next_episode_label),
+                                onClick = onPlayNextEpisode,
+                                focusRequester = rowFirstFocusRequester,
+                                upFocusRequester = rowUpFocusRequester,
+                                onDownKey = onHideControls,
+                                onFocused = onResetHideTimer
+                            )
+                        }
+                        if (isEpisode) {
+                            ControlButton(
+                                icon = episodesIcon,
+                                contentDescription = stringResource(R.string.cd_episodes),
+                                onClick = onShowEpisodesPanel,
+                                focusRequester = if (showNextEpisodeButton) null else rowFirstFocusRequester,
+                                upFocusRequester = rowUpFocusRequester,
+                                onDownKey = onHideControls,
+                                onFocused = onResetHideTimer
+                            )
+                        }
                         ControlButton(
                             icon = Icons.Default.ClosedCaption,
                             iconPainter = subtitlePainter,
                             contentDescription = stringResource(R.string.cd_audio_and_subtitles),
                             onClick = onShowAudioAndSubtitles,
-                            focusRequester = audioSubtitlesFocusRequester,
-                            upFocusRequester = playPauseFocusRequester,
+                            focusRequester = if (isEpisode) null else rowFirstFocusRequester,
+                            upFocusRequester = rowUpFocusRequester,
                             onDownKey = onHideControls,
                             onFocused = onResetHideTimer
                         )
@@ -249,7 +301,7 @@ internal fun MoviePlayerControlsOverlay(
                             icon = detailsIcon,
                             contentDescription = stringResource(R.string.detail_tab_details),
                             onClick = onShowDetails,
-                            upFocusRequester = playPauseFocusRequester,
+                            upFocusRequester = rowUpFocusRequester,
                             onDownKey = onHideControls,
                             onFocused = onResetHideTimer
                         )
@@ -259,7 +311,7 @@ internal fun MoviePlayerControlsOverlay(
                                 if (isInWatchlist) R.string.cd_remove_from_watchlist else R.string.cd_add_to_watchlist
                             ),
                             onClick = onToggleWatchlist,
-                            upFocusRequester = playPauseFocusRequester,
+                            upFocusRequester = rowUpFocusRequester,
                             onDownKey = onHideControls,
                             onFocused = onResetHideTimer
                         )
@@ -284,7 +336,7 @@ internal fun MoviePlayerControlsOverlay(
                                     iconPainter = sourcePainter,
                                     contentDescription = stringResource(R.string.cd_sources),
                                     onClick = onShowSourcesPanel,
-                                    upFocusRequester = playPauseFocusRequester,
+                                    upFocusRequester = rowUpFocusRequester,
                                     onDownKey = onHideControls,
                                     onFocused = onResetHideTimer
                                 )
@@ -292,7 +344,7 @@ internal fun MoviePlayerControlsOverlay(
                                     icon = Icons.Default.Speed,
                                     contentDescription = stringResource(R.string.cd_playback_speed),
                                     onClick = onShowSpeedDialog,
-                                    upFocusRequester = playPauseFocusRequester,
+                                    upFocusRequester = rowUpFocusRequester,
                                     onDownKey = onHideControls,
                                     onFocused = onResetHideTimer
                                 )
@@ -311,7 +363,8 @@ internal fun MoviePlayerControlsOverlay(
                                 stringResource(R.string.cd_more_actions)
                             },
                             onClick = onToggleMoreActions,
-                            upFocusRequester = playPauseFocusRequester,
+                            focusRequester = if (middleHidden) playPauseFocusRequester else null,
+                            upFocusRequester = rowUpFocusRequester,
                             onDownKey = onHideControls,
                             onFocused = onResetHideTimer
                         )
@@ -444,6 +497,27 @@ internal fun videoQualityLabel(width: Int?, height: Int?): String? {
         else -> "SD"
     }
 }
+
+/** All episodes: a card in front of two others. */
+private fun allEpisodesIcon(): ImageVector = ImageVector.Builder(
+    name = "AllEpisodes",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(stroke = SolidColor(Color.White), strokeLineWidth = 1.7f) {
+        moveTo(9f, 3.2f); lineTo(21.3f, 3.2f); quadTo(22.2f, 3.2f, 22.2f, 4.1f); lineTo(22.2f, 13.3f)
+    }
+    path(stroke = SolidColor(Color.White), strokeLineWidth = 1.7f) {
+        moveTo(6f, 6.4f); lineTo(18.3f, 6.4f); quadTo(19.2f, 6.4f, 19.2f, 7.3f); lineTo(19.2f, 16.5f)
+    }
+    path(fill = SolidColor(Color.White)) {
+        moveTo(3.2f, 9.6f); lineTo(15.2f, 9.6f); quadTo(16.4f, 9.6f, 16.4f, 10.8f); lineTo(16.4f, 19f)
+        quadTo(16.4f, 20.2f, 15.2f, 20.2f); lineTo(3.2f, 20.2f); quadTo(2f, 20.2f, 2f, 19f); lineTo(2f, 10.8f)
+        quadTo(2f, 9.6f, 3.2f, 9.6f); close()
+    }
+}.build()
 
 /** Details: a screen with a list on it (the movie's page, over the player). */
 private fun movieDetailsIcon(): ImageVector = ImageVector.Builder(

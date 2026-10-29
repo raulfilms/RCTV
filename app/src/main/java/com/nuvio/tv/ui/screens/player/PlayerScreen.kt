@@ -1326,7 +1326,7 @@ fun PlayerScreen(
 
         val showClockOverlay = uiState.showControls &&
             uiState.osdClockEnabled &&
-            !uiState.usesMovieControls &&
+            !uiState.usesTitleControls &&
             uiState.error == null &&
             !uiState.showLoadingOverlay &&
             !uiState.showPauseOverlay &&
@@ -1389,9 +1389,9 @@ fun PlayerScreen(
                     onOpenTitle = openLiveTitle,
                     onOpenEpisode = openLiveEpisode
                 )
-            } else if (uiState.usesMovieControls) {
-                // RCTV: a movie's controls, as designed (a show keeps the row below for now).
-                MoviePlayerControlsOverlay(
+            } else if (uiState.usesTitleControls) {
+                // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).
+                TitlePlayerControlsOverlay(
                     uiState = uiState,
                     viewModel = viewModel,
                     playPauseFocusRequester = playPauseFocusRequester,
@@ -1406,6 +1406,8 @@ fun PlayerScreen(
                         viewModel.videoQualityLabel()
                     },
                     onPlayPause = { viewModel.onEvent(PlayerEvent.OnPlayPause) },
+                    onPlayNextEpisode = { viewModel.onEvent(PlayerEvent.OnPlayNextEpisode) },
+                    onShowEpisodesPanel = { viewModel.onEvent(PlayerEvent.OnShowEpisodesPanel) },
                     onSeekBy = { viewModel.onEvent(PlayerEvent.OnSeekBy(it)) },
                     onShowAudioAndSubtitles = { viewModel.onEvent(PlayerEvent.OnShowAudioOverlay) },
                     onShowDetails = { viewModel.onEvent(PlayerEvent.OnShowDetails) },
@@ -1757,8 +1759,8 @@ fun PlayerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2.6f),
-            // RCTV movie controls: audio and subtitles on one screen (choosing a subtitle keeps it open).
-            subtitles = if (uiState.usesMovieControls) {
+            // RCTV title controls: audio and subtitles on one screen (choosing a subtitle keeps it open).
+            subtitles = if (uiState.usesTitleControls) {
                 AudioScreenSubtitles(
                     internalTracks = uiState.subtitleTracks,
                     selectedInternalIndex = uiState.selectedSubtitleTrackIndex,
