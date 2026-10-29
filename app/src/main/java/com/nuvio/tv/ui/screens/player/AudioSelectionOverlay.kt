@@ -76,9 +76,12 @@ internal fun AudioSelectionOverlay(
     onCenterMixLevelChange: (Int) -> Unit,
     onPersistAmplificationChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** RCTV movie controls: the subtitles beside the audio (one screen for both); null: audio only. */
+    subtitles: AudioScreenSubtitles? = null
 ) {
     val tracksFocusRequester = remember { FocusRequester() }
+    val subtitlesFocusRequester = remember { FocusRequester() }
     val delayMinusFocusRequester = remember { FocusRequester() }
     val delayPlusFocusRequester = remember { FocusRequester() }
     val ampMinusFocusRequester = remember { FocusRequester() }
@@ -148,13 +151,13 @@ internal fun AudioSelectionOverlay(
     ) {
         Column(
             modifier = Modifier
-                .width(724.dp)
+                .width(if (subtitles != null) 872.dp else 724.dp)
                 .align(Alignment.BottomStart)
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.Bottom
         ) {
             Text(
-                text = stringResource(R.string.audio_dialog_title),
+                text = stringResource(if (subtitles != null) R.string.player_audio_subtitles_title else R.string.audio_dialog_title),
                 style = MaterialTheme.typography.headlineMedium,
                 color = Color.White,
                 modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
@@ -165,23 +168,42 @@ internal fun AudioSelectionOverlay(
                 verticalAlignment = Alignment.Top,
                 modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
             ) {
-                Column(modifier = Modifier.width(444.dp)) {
+                val controlsFocusRequester = when {
+                    canDecreaseDelay -> delayMinusFocusRequester
+                    canIncreaseDelay -> delayPlusFocusRequester
+                    canDecreaseAmp -> ampMinusFocusRequester
+                    canIncreaseAmp -> ampPlusFocusRequester
+                    canDecreaseCenterMix -> centerMinusFocusRequester
+                    canIncreaseCenterMix -> centerPlusFocusRequester
+                    else -> persistFocusRequester
+                }
+                Column(modifier = Modifier.width(if (subtitles != null) 260.dp else 444.dp)) {
+                    if (subtitles != null) {
+                        Text(
+                            text = stringResource(R.string.audio_dialog_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White.copy(alpha = 0.72f),
+                            modifier = Modifier.padding(top = NuvioTheme.spacing.xs)
+                        )
+                    }
                     // RCTV: English, then Español; only the audio changes.
                     AudioLanguagesContent(
                         currentLanguage = currentLanguage,
                         switchingLanguage = switchingLanguage,
                         initialFocusRequester = tracksFocusRequester,
-                        rightFocusRequester = when {
-                            canDecreaseDelay -> delayMinusFocusRequester
-                            canIncreaseDelay -> delayPlusFocusRequester
-                            canDecreaseAmp -> ampMinusFocusRequester
-                            canIncreaseAmp -> ampPlusFocusRequester
-                            canDecreaseCenterMix -> centerMinusFocusRequester
-                            canIncreaseCenterMix -> centerPlusFocusRequester
-                            else -> persistFocusRequester
-                        },
+                        rightFocusRequester = if (subtitles != null) subtitlesFocusRequester else controlsFocusRequester,
                         onLanguageSelected = onLanguageSelected
                     )
+                }
+                if (subtitles != null) {
+                    Column(modifier = Modifier.width(300.dp)) {
+                        AudioScreenSubtitlesColumn(
+                            subtitles = subtitles,
+                            firstFocusRequester = subtitlesFocusRequester,
+                            leftFocusRequester = tracksFocusRequester,
+                            rightFocusRequester = controlsFocusRequester
+                        )
+                    }
                 }
                 Column(modifier = Modifier.width(268.dp)) {
                     AudioControlsContent(
@@ -198,7 +220,7 @@ internal fun AudioSelectionOverlay(
                         centerMinusFocusRequester = centerMinusFocusRequester,
                         centerPlusFocusRequester = centerPlusFocusRequester,
                         persistFocusRequester = persistFocusRequester,
-                        leftFocusRequester = tracksFocusRequester,
+                        leftFocusRequester = if (subtitles != null) subtitlesFocusRequester else tracksFocusRequester,
                         onAudioDelayChange = onAudioDelayChange,
                         onAmplificationChange = { nextDb, focusTarget ->
                             pendingControlFocusTarget = focusTarget
@@ -839,5 +861,164 @@ private fun formatAudioDelay(delayMs: Int): String {
         String.format(Locale.US, "%.3fs", 0f)
     } else {
         String.format(Locale.US, "%+.3fs", delayMs / 1000f)
+    }
+}
+
+/**
+ * RCTV movie controls: the subtitles on the audio's screen (one screen for both): Off, the video's
+ * own subtitles, the addons' languages, and the full subtitles screen for the rest (style, timing,
+ * every file).
+ */
+internal data class AudioScreenSubtitles(
+    val internalTracks: List<TrackInfo>,
+    val selectedInternalIndex: Int,
+    val addonSubtitles: List<com.nuvio.tv.domain.model.Subtitle>,
+    val selectedAddonSubtitle: com.nuvio.tv.domain.model.Subtitle?,
+    val onInternalSelected: (Int) -> Unit,
+    val onAddonSelected: (com.nuvio.tv.domain.model.Subtitle) -> Unit,
+    val onDisable: () -> Unit,
+    val onMoreOptions: () -> Unit
+)
+
+private data class SubtitleChoice(
+    val key: String,
+    val label: String,
+    val detail: String?,
+    val selected: Boolean,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun AudioScreenSubtitlesColumn(
+    subtitles: AudioScreenSubtitles,
+    firstFocusRequester: FocusRequester,
+    leftFocusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester
+) {
+    val offLabel = stringResource(R.string.subtitle_off)
+    val moreLabel = stringResource(R.string.player_more_subtitle_options)
+    val choices = remember(subtitles, offLabel, moreLabel) {
+        val noneSelected = subtitles.selectedInternalIndex < 0 && subtitles.selectedAddonSubtitle == null
+        buildList {
+            add(SubtitleChoice("off", offLabel, null, noneSelected, subtitles.onDisable))
+            subtitles.internalTracks.forEach { track ->
+                val language = track.language?.takeIf { it.isNotBlank() }?.let(::languageCodeToName)?.takeIf { it.isNotBlank() }
+                val label = language ?: track.name.ifBlank { offLabel }
+                val detail = track.name.takeIf { it.isNotBlank() && !it.equals(label, ignoreCase = true) }
+                add(
+                    SubtitleChoice(
+                        key = "internal:${track.index}",
+                        label = label,
+                        detail = detail,
+                        selected = subtitles.selectedAddonSubtitle == null && track.index == subtitles.selectedInternalIndex,
+                        onClick = { subtitles.onInternalSelected(track.index) }
+                    )
+                )
+            }
+            // One per language from the addons (the full screen has every file).
+            subtitles.addonSubtitles
+                .distinctBy { it.lang.trim().lowercase(Locale.ROOT) }
+                .take(12)
+                .forEach { subtitle ->
+                    add(
+                        SubtitleChoice(
+                            key = "addon:${subtitle.lang.lowercase(Locale.ROOT)}",
+                            label = subtitle.getDisplayLanguage(),
+                            detail = null,
+                            selected = subtitles.selectedAddonSubtitle?.lang.equals(subtitle.lang, ignoreCase = true),
+                            onClick = { subtitles.onAddonSelected(subtitle) }
+                        )
+                    )
+                }
+            add(SubtitleChoice("more", moreLabel, null, false, subtitles.onMoreOptions))
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.subtitle_dialog_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White.copy(alpha = 0.72f),
+            modifier = Modifier.padding(top = NuvioTheme.spacing.xs)
+        )
+        LazyColumn(
+            modifier = Modifier
+                .padding(top = NuvioTheme.spacing.sm, bottom = NuvioTheme.spacing.sm)
+                .heightIn(max = 300.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(choices, key = { it.key }) { choice ->
+                SubtitleChoiceCard(
+                    choice = choice,
+                    focusRequester = if (choice.key == choices.first().key) firstFocusRequester else null,
+                    leftFocusRequester = leftFocusRequester,
+                    rightFocusRequester = rightFocusRequester
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubtitleChoiceCard(
+    choice: SubtitleChoice,
+    focusRequester: FocusRequester?,
+    leftFocusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester
+) {
+    Card(
+        onClick = choice.onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusProperties {
+                left = leftFocusRequester
+                right = rightFocusRequester
+            },
+        colors = CardDefaults.colors(
+            containerColor = if (choice.selected) NuvioTheme.colors.Secondary else Color.Transparent,
+            focusedContainerColor = if (choice.selected) NuvioTheme.colors.Secondary else Color.Transparent
+        ),
+        shape = CardDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
+        border = CardDefaults.border(
+            border = Border(
+                border = BorderStroke(NuvioTheme.spacing.xxs, Color.Transparent),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            ),
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = RoundedCornerShape(NuvioTheme.radii.md)
+            )
+        ),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.sm),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = choice.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (choice.selected) NuvioTheme.colors.OnSecondary else Color.White
+                )
+                if (choice.detail != null) {
+                    Text(
+                        text = choice.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (choice.selected) NuvioTheme.colors.OnSecondary.copy(alpha = 0.82f) else Color.White.copy(alpha = 0.72f)
+                    )
+                }
+            }
+            if (choice.selected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = NuvioTheme.colors.OnSecondary
+                )
+            }
+        }
     }
 }

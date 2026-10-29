@@ -40,7 +40,12 @@ import com.nuvio.tv.data.repository.TraktRelatedService
 import com.nuvio.tv.data.trailer.TrailerService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -93,6 +98,7 @@ class PlayerViewModel @Inject constructor(
     private val externalPlaybackTracker: com.nuvio.tv.core.player.ExternalPlaybackTracker,
     private val subtitleFileCache: com.nuvio.tv.core.player.SubtitleFileCache,
     private val tvRecommendationManager: com.nuvio.tv.core.recommendations.TvRecommendationManager,
+    private val libraryRepository: com.nuvio.tv.domain.repository.LibraryRepository,
     profileManager: com.nuvio.tv.core.profile.ProfileManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -227,6 +233,56 @@ class PlayerViewModel @Inject constructor(
 
     fun hideControls() {
         controller.hideControls()
+    }
+
+    /** RCTV movie controls: the movie playing is in the watchlist (or the library). */
+    val isInWatchlist: StateFlow<Boolean> = run {
+        val id = controller.contentId?.takeIf { it.isNotBlank() }
+        val type = controller.contentType?.takeIf { it.isNotBlank() }
+        if (id == null || type == null) {
+            MutableStateFlow(false)
+        } else {
+            combine(
+                libraryRepository.isInWatchlist(id, type),
+                libraryRepository.isInLibrary(id, type)
+            ) { watchlist, library -> watchlist || library }
+                .catch { emit(false) }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+        }
+    }
+
+    /** RCTV movie controls' bookmark: adds the movie to the watchlist, or takes it out. */
+    fun toggleWatchlist() {
+        val id = controller.contentId?.takeIf { it.isNotBlank() } ?: return
+        val type = controller.contentType?.takeIf { it.isNotBlank() } ?: return
+        val state = controller.uiState.value
+        val ids = com.nuvio.tv.data.repository.parseContentIds(id)
+        val input = com.nuvio.tv.domain.model.LibraryEntryInput(
+            itemId = id,
+            itemType = type,
+            title = controller.contentName?.takeIf { it.isNotBlank() } ?: state.title.ifBlank { controller.title },
+            year = controller.year?.let { Regex("(\\d{4})").find(it)?.value?.toIntOrNull() },
+            traktId = ids.trakt,
+            imdbId = ids.imdb,
+            tmdbId = ids.tmdb,
+            poster = controller.poster,
+            background = controller.backdrop,
+            logo = state.logo ?: controller.logo,
+            description = state.description
+        )
+        viewModelScope.launch {
+            runCatching { libraryRepository.toggleDefault(input) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+        }
+    }
+
+    /** RCTV movie controls' badge: "4K", "HD" or "SD" for the picture playing; null while not known. */
+    fun videoQualityLabel(): String? {
+        val size = if (controller.isUsingMpvEngine()) controller.mpvView?.videoSizeNow() else null
+        return com.nuvio.tv.ui.screens.player.videoQualityLabel(
+            size?.first ?: controller.currentVideoWidth,
+            size?.second ?: controller.currentVideoHeight
+        )
     }
 
     fun attachHostActivity(activity: android.app.Activity?) {

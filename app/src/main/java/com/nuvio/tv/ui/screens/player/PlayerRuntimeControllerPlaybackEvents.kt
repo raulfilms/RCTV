@@ -1681,6 +1681,20 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
         PlayerEvent.OnDismissPauseOverlay -> {
             cancelPauseOverlay()
         }
+        PlayerEvent.OnShowDetails -> {
+            // The details are the pause screen's (logo, year, rating, length, description), shown
+            // at once; the movie pauses under them and plays again with Play.
+            if (isPlaybackCurrentlyPlaying()) onEvent(PlayerEvent.OnPlayPause)
+            pauseOverlayJob?.cancel()
+            pauseOverlayJob = null
+            _uiState.update {
+                it.copy(
+                    showPauseOverlay = true,
+                    showControls = false,
+                    showMoreDialog = false
+                )
+            }
+        }
         PlayerEvent.OnSkipIntro -> {
             skipActiveInterval()
         }

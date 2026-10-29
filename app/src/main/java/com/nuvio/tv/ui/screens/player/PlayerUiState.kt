@@ -347,6 +347,8 @@ sealed class PlayerEvent {
     data class OnShowDisplayModeInfo(val info: DisplayModeInfo) : PlayerEvent()
     data object OnHideDisplayModeInfo : PlayerEvent()
     data object OnDismissPauseOverlay : PlayerEvent()
+    /** RCTV movie controls' Details: the movie's details over the player (it pauses). */
+    data object OnShowDetails : PlayerEvent()
     data object OnSkipIntro : PlayerEvent()
     data object OnDismissSkipIntro : PlayerEvent()
     data object OnPlayNextEpisode : PlayerEvent()

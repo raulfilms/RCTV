@@ -191,6 +191,9 @@ fun PlayerScreen(
     var reportCodeVisible by remember { mutableStateOf(false) }
     var exitDispatched by remember { mutableStateOf(false) }
     var externalHandoffInProgress by remember { mutableStateOf(false) }
+    // RCTV movie controls: their Settings dialog; the movie is in the watchlist.
+    var showMovieSettings by remember { mutableStateOf(false) }
+    val movieInWatchlist by viewModel.isInWatchlist.collectAsState()
     // RCTV Live TV: Left (a channel can't go back) offers "Watch From Beginning" in the middle of
     // the screen, when what's on is a movie or an episode the sources have.
     val isLiveTvChannel = uiState.contentType.equals("live", ignoreCase = true)
@@ -578,6 +581,29 @@ fun PlayerScreen(
 
     val transparentLetterbox = LetterboxRenderPolicy.defaultTransparentLetterbox() &&
         uiState.internalPlayerEngine != InternalPlayerEngine.MVP_PLAYER
+    // The external-player handoff (the old row and the movie controls' Settings share it).
+    val openInExternalPlayer: () -> Unit = {
+        if (!externalHandoffInProgress) {
+            externalHandoffInProgress = true
+            val timeline = viewModel.playbackTimeline.value
+            val completed = !timeline.isLive &&
+                timeline.duration > 0L &&
+                (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD
+            viewModel.launchInExternalPlayer(context, timeline.currentPosition) { launched ->
+                externalHandoffInProgress = false
+                if (launched && !exitDispatched) {
+                    exitDispatched = true
+                    currentOnBackPress(
+                        uiState.currentVideoId,
+                        uiState.currentSeason,
+                        uiState.currentEpisode,
+                        uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL,
+                        completed
+                    )
+                }
+            }
+        }
+    }
     DisposableEffect(transparentLetterbox) {
         if (!transparentLetterbox) {
             return@DisposableEffect onDispose {}
@@ -1300,6 +1326,7 @@ fun PlayerScreen(
 
         val showClockOverlay = uiState.showControls &&
             uiState.osdClockEnabled &&
+            !uiState.usesMovieControls &&
             uiState.error == null &&
             !uiState.showLoadingOverlay &&
             !uiState.showPauseOverlay &&
@@ -1362,6 +1389,43 @@ fun PlayerScreen(
                     onOpenTitle = openLiveTitle,
                     onOpenEpisode = openLiveEpisode
                 )
+            } else if (uiState.usesMovieControls) {
+                // RCTV: a movie's controls, as designed (a show keeps the row below for now).
+                MoviePlayerControlsOverlay(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    playPauseFocusRequester = playPauseFocusRequester,
+                    progressBarFocusRequester = progressBarFocusRequester,
+                    progressBarUpFocusRequester = when {
+                        skipButtonActuallyVisible -> skipIntroFocusRequester
+                        uiState.postPlayMode is PostPlayMode.AutoPlay -> nextEpisodeFocusRequester
+                        else -> null
+                    },
+                    isInWatchlist = movieInWatchlist,
+                    videoQuality = remember(uiState.showControls, uiState.isPlaying, uiState.isBuffering) {
+                        viewModel.videoQualityLabel()
+                    },
+                    onPlayPause = { viewModel.onEvent(PlayerEvent.OnPlayPause) },
+                    onSeekBy = { viewModel.onEvent(PlayerEvent.OnSeekBy(it)) },
+                    onShowAudioAndSubtitles = { viewModel.onEvent(PlayerEvent.OnShowAudioOverlay) },
+                    onShowDetails = { viewModel.onEvent(PlayerEvent.OnShowDetails) },
+                    onToggleWatchlist = { viewModel.toggleWatchlist() },
+                    onShowSourcesPanel = { viewModel.onEvent(PlayerEvent.OnShowSourcesPanel) },
+                    onShowSpeedDialog = { viewModel.onEvent(PlayerEvent.OnShowSpeedDialog) },
+                    onToggleMoreActions = {
+                        if (uiState.showMoreDialog) {
+                            viewModel.onEvent(PlayerEvent.OnDismissMoreDialog)
+                        } else {
+                            viewModel.onEvent(PlayerEvent.OnShowMoreDialog)
+                        }
+                    },
+                    onOpenSettings = { showMovieSettings = true },
+                    onResetHideTimer = {
+                        viewModel.scheduleHideControls()
+                        viewModel.onUserInteraction()
+                    },
+                    onHideControls = { viewModel.hideControls() }
+                )
             } else PlayerControlsOverlay(
                 uiState = uiState,
                 viewModel = viewModel,
@@ -1397,28 +1461,7 @@ fun PlayerScreen(
                         viewModel.onEvent(PlayerEvent.OnShowMoreDialog)
                     }
                 },
-                onOpenInExternalPlayer = {
-                    if (!externalHandoffInProgress) {
-                        externalHandoffInProgress = true
-                        val timeline = viewModel.playbackTimeline.value
-                        val completed = !timeline.isLive &&
-                            timeline.duration > 0L &&
-                            (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD
-                        viewModel.launchInExternalPlayer(context, timeline.currentPosition) { launched ->
-                            externalHandoffInProgress = false
-                            if (launched && !exitDispatched) {
-                                exitDispatched = true
-                                currentOnBackPress(
-                                    uiState.currentVideoId,
-                                    uiState.currentSeason,
-                                    uiState.currentEpisode,
-                                    uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL,
-                                    completed
-                                )
-                            }
-                        }
-                    }
-                },
+                onOpenInExternalPlayer = openInExternalPlayer,
                 onShowStreamInfo = {
                     restoreStreamInfoFocus = true
                     viewModel.onEvent(PlayerEvent.OnShowStreamInfo)
@@ -1713,7 +1756,31 @@ fun PlayerScreen(
             onDismiss = { viewModel.onEvent(PlayerEvent.OnDismissTransientOverlay) },
             modifier = Modifier
                 .fillMaxSize()
-                .zIndex(2.6f)
+                .zIndex(2.6f),
+            // RCTV movie controls: audio and subtitles on one screen (choosing a subtitle keeps it open).
+            subtitles = if (uiState.usesMovieControls) {
+                AudioScreenSubtitles(
+                    internalTracks = uiState.subtitleTracks,
+                    selectedInternalIndex = uiState.selectedSubtitleTrackIndex,
+                    addonSubtitles = uiState.addonSubtitles,
+                    selectedAddonSubtitle = uiState.selectedAddonSubtitle,
+                    onInternalSelected = {
+                        viewModel.onEvent(PlayerEvent.OnSelectSubtitleTrack(it))
+                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+                    },
+                    onAddonSelected = {
+                        viewModel.onEvent(PlayerEvent.OnSelectAddonSubtitle(it))
+                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+                    },
+                    onDisable = {
+                        viewModel.onEvent(PlayerEvent.OnDisableSubtitles)
+                        viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+                    },
+                    onMoreOptions = { viewModel.onEvent(PlayerEvent.OnShowSubtitleOverlay) }
+                )
+            } else {
+                null
+            }
         )
 
         SubtitleSelectionOverlay(
@@ -1771,6 +1838,18 @@ fun PlayerScreen(
                 onCueSelected = { cue ->
                     viewModel.onEvent(PlayerEvent.OnApplySubtitleAutoSyncCue(cue.startTimeMs))
                 }
+            )
+        }
+
+        if (showMovieSettings) {
+            MoviePlayerSettingsDialog(
+                reportEnabled = uiState.playbackIssueReportsEnabled,
+                onToggleAspectRatio = { viewModel.onEvent(PlayerEvent.OnToggleAspectRatio) },
+                onSwitchPlayerEngine = { viewModel.onEvent(PlayerEvent.OnSwitchInternalPlayerEngine) },
+                onOpenInExternalPlayer = openInExternalPlayer,
+                onShowStreamInfo = { viewModel.onEvent(PlayerEvent.OnShowStreamInfo) },
+                onReportPlaybackIssue = { viewModel.onEvent(PlayerEvent.OnReportPlaybackIssue) },
+                onDismiss = { showMovieSettings = false }
             )
         }
 
@@ -2529,17 +2608,19 @@ private fun PlayerControlsOverlay(
 }
 
 @Composable
-private fun PlayerControlsProgressBarHost(
+internal fun PlayerControlsProgressBarHost(
     viewModel: PlayerViewModel,
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null,
     onUpKey: (() -> Unit)? = null,
-    onFocused: (() -> Unit)? = null
+    onFocused: (() -> Unit)? = null,
+    whiteStyle: Boolean = false
 ) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
 
     ProgressBar(
+        whiteStyle = whiteStyle,
         currentPosition = playbackTimeline.currentPosition,
         duration = playbackTimeline.duration,
         onSeekPreview = { delta ->
@@ -2558,7 +2639,7 @@ private fun PlayerControlsProgressBarHost(
 }
 
 @Composable
-private fun PlayerControlsTimeTextHost(viewModel: PlayerViewModel) {
+internal fun PlayerControlsTimeTextHost(viewModel: PlayerViewModel, color: Color = Color.White.copy(alpha = 0.9f)) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
     val timeText = if (playbackTimeline.isLive) {
         stringResource(R.string.player_live_watched, formatTime(playbackTimeline.watchedDurationMs))
@@ -2569,7 +2650,7 @@ private fun PlayerControlsTimeTextHost(viewModel: PlayerViewModel) {
     Text(
         text = timeText,
         style = MaterialTheme.typography.bodyMedium,
-        color = Color.White.copy(alpha = 0.9f)
+        color = color
     )
 }
 
@@ -2615,7 +2696,7 @@ private fun ReportControlButton(
 }
 
 @Composable
-private fun ControlButton(
+internal fun ControlButton(
     icon: ImageVector,
     iconPainter: Painter? = null,
     contentDescription: String,
@@ -2705,7 +2786,12 @@ private fun ProgressBar(
     onUpKey: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
     /** Position (ms) up to which content is buffered. Pass 0 to skip the overlay. */
-    bufferedPosition: Long = 0L
+    bufferedPosition: Long = 0L,
+    /**
+     * RCTV (movie controls): what's been watched in white, the rest in see-through white, a white
+     * dot where it plays; no buffered overlay.
+     */
+    whiteStyle: Boolean = false
 ) {
     val accentBrush = NuvioTheme.palette.accentBrush()
     val progress = if (duration > 0) {
@@ -2728,10 +2814,8 @@ private fun ProgressBar(
     )
     var isFocused by remember { mutableStateOf(false) }
 
-    BoxWithConstraints(
-        modifier = Modifier
+    val interaction = Modifier
             .fillMaxWidth()
-            .height(if (isFocused) NuvioTheme.spacing.md else NuvioTheme.spacing.sm)
             .then(
                 if (focusRequester != null) Modifier.focusRequester(focusRequester)
                 else Modifier
@@ -2815,6 +2899,44 @@ private fun ProgressBar(
                     false
                 }
             }
+
+    if (whiteStyle) {
+        val trackHeight = if (isFocused) 6.dp else 4.dp
+        val thumbSize = if (isFocused) 18.dp else 14.dp
+        BoxWithConstraints(
+            modifier = interaction.height(18.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            val trackWidth = maxWidth
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(trackHeight)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(alpha = 0.45f))
+            )
+            Box(
+                modifier = Modifier
+                    .width(trackWidth * animatedProgress)
+                    .height(trackHeight)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White)
+            )
+            val maxThumbX = (trackWidth - thumbSize).coerceAtLeast(0.dp)
+            Box(
+                modifier = Modifier
+                    .offset(x = (trackWidth * animatedProgress - thumbSize / 2).coerceIn(0.dp, maxThumbX))
+                    .size(thumbSize)
+                    .clip(CircleShape)
+                    .background(Color.White)
+            )
+        }
+        return
+    }
+
+    BoxWithConstraints(
+        modifier = interaction
+            .height(if (isFocused) NuvioTheme.spacing.md else NuvioTheme.spacing.sm)
             .clip(RoundedCornerShape(3.dp))
             .background(
                 if (isFocused) Color.White.copy(alpha = 0.45f)
@@ -3272,7 +3394,7 @@ private fun SubtitleDelayOverlay(
 }
 
 @Composable
-private fun rememberRawSvgPainter(@RawRes iconRes: Int): Painter {
+internal fun rememberRawSvgPainter(@RawRes iconRes: Int): Painter {
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val sizePx = with(density) { NuvioTheme.spacing.xl.roundToPx() }
