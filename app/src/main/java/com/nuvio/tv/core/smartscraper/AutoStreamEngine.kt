@@ -362,12 +362,20 @@ object AutoStreamEngine {
         return allowed + capped
     }
 
-    /** One resolution's files, best first (see [AutoStreamEngine]). */
-    private fun withinResolution(members: List<AutoStreamCandidate>, config: AutoStreamConfig): List<AutoStreamCandidate> {
+    /**
+     * One resolution's files, best first (see [AutoStreamEngine]). [readyFirst]: the ones that play at
+     * once (ready on the debrid service, or a direct link) before the ones still to be fetched.
+     */
+    private fun withinResolution(
+        members: List<AutoStreamCandidate>,
+        config: AutoStreamConfig,
+        readyFirst: Boolean = false
+    ): List<AutoStreamCandidate> {
+        fun waits(candidate: AutoStreamCandidate): Boolean = readyFirst && !playsAtOnce(candidate.scored.source)
         // Comparable files (§4): the same layout and audio format, bitrates within the margin of the
         // group's highest. A file whose bitrate isn't known comes after the ones whose is.
         val group = IdentityHashMap<AutoStreamCandidate, Int>()
-        members.groupBy { listOf(it.tvCompatible, it.recentlyFailed, it.layout, it.audioCodecRank) }.values.forEach { part ->
+        members.groupBy { listOf(it.tvCompatible, waits(it), it.recentlyFailed, it.layout, it.audioCodecRank) }.values.forEach { part ->
             var head = 0.0
             var index = -1
             part.filter { it.bitrateMbps != null }.sortedByDescending { it.bitrateMbps }.forEach { candidate ->
@@ -382,6 +390,7 @@ object AutoStreamEngine {
         }
         return members.sortedWith(
             compareBy<AutoStreamCandidate> { if (it.tvCompatible) 0 else 1 }
+                .thenBy { if (waits(it)) 1 else 0 }
                 .thenBy { if (it.recentlyFailed) 1 else 0 }
                 .thenByDescending { it.layout }
                 .thenByDescending { it.audioCodecRank }
@@ -393,6 +402,51 @@ object AutoStreamEngine {
                 .thenByDescending { it.bitrateMbps ?: -1.0 }
         )
     }
+
+    /** Plays at once: ready on the debrid service, or a direct link (not a torrent to fetch). */
+    private fun playsAtOnce(source: NormalizedSource): Boolean = when (source.cache) {
+        CacheState.CACHED -> true
+        CacheState.UNCACHED -> false
+        CacheState.UNKNOWN -> source.isPlayable && !source.isPeerToPeer && source.stream.getStreamUrl() != null
+    }
+
+    // ==================================================================== The player's source list
+
+    /**
+     * RCTV: the player's list of sources (its cloud button), for choosing another one: the title's
+     * right sources (the wrong title, year, season or episode are left out, as the Smart Scraper's
+     * list leaves them out) at most [AutoStreamConfig.maxFileSizeBytes] (never a bigger file), only
+     * the ones the connection keeps up with (all of them within the size when none does), in quality
+     * order: the resolution first, the ones that play at once before the ones to be fetched, then
+     * Auto Stream's order (5.1, the audio format, the picture, reliability). A file whose size isn't
+     * given comes after every one whose size is (in the same order), but never a remux (always far
+     * bigger than the limit).
+     */
+    fun panelSources(
+        sources: List<NormalizedSource>,
+        request: SmartSourceRequest,
+        context: SmartRankingContext = SmartRankingContext.DEFAULT
+    ): List<ScoredSource> {
+        if (sources.isEmpty()) return emptyList()
+        val config = context.config.autoStream
+        val candidates = sources
+            .map { SmartScoreEngine.judge(it, request, context) }
+            .filter { it.rejection?.removesFromAll != true }
+            .filter { scored ->
+                val size = fileSize(scored.release, request)
+                if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytes
+            }
+            .map { candidate(it, request, context, AutoStreamPool.MAIN) }
+        val shown = candidates.filter { it.fitsConnection }.ifEmpty { candidates }
+        val (sized, unsized) = shown.partition { it.sizeKnown }
+        return (inQualityOrder(sized, config) + inQualityOrder(unsized, config)).map { it.scored }
+    }
+
+    private fun inQualityOrder(candidates: List<AutoStreamCandidate>, config: AutoStreamConfig): List<AutoStreamCandidate> =
+        candidates.groupBy { it.tier }
+            .toSortedMap(compareByDescending { it })
+            .values
+            .flatMap { withinResolution(it, config, readyFirst = true) }
 
     /**
      * Its place in the resolution order for [device] (higher first): up to the TV's own resolution

@@ -1,7 +1,6 @@
 package com.nuvio.tv.core.smartscraper
 
-import java.text.Normalizer
-import java.util.Locale
+import com.nuvio.tv.core.util.FastText
 
 /**
  * Whether a release's title is the one asked for: the same words ("The Batman"), the same once
@@ -29,15 +28,15 @@ object TitleMatcher {
         return TitleMatch.MISMATCH
     }
 
-    /** "Squidward's  Tiki-Land!" → "squidwards tiki land"; "Amélie & Co" → "amelie and co". */
+    /**
+     * "Squidward's  Tiki-Land!" → "squidwards tiki land"; "Amélie & Co" → "amelie and co". RCTV
+     * (MEM-07): without regular expressions (it runs for every source, each time the list changes;
+     * see [FastText]), the same as
+     * `NFD.replace("\p{Mn}+", "").lowercase().replace("&", " and ").replace("['’`´]", "")
+     * .replace("[^\p{L}\p{N}]+", " ").replace("\s+", " ").trim()`.
+     */
     fun normalize(text: String): String =
-        Normalizer.normalize(text, Normalizer.Form.NFD).replace(MARKS, "")
-            .lowercase(Locale.ROOT)
-            .replace("&", " and ")
-            .replace(APOSTROPHES, "")
-            .replace(NOT_ALPHANUMERIC, " ")
-            .replace(SPACES, " ")
-            .trim()
+        FastText.letterDigitWords(text.replace("&", " and ").filterNot { it in APOSTROPHES })
 
     /** [normalize]d, without articles and "and", numbers as digits ("the matrix part ii" → "matrix part 2"). */
     fun loose(text: String): String =
@@ -52,10 +51,7 @@ object TitleMatcher {
         return " $outer ".contains(" $inner ")
     }
 
-    private val MARKS = Regex("\\p{Mn}+")
-    private val APOSTROPHES = Regex("['’`´]")
-    private val NOT_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}]+")
-    private val SPACES = Regex("\\s+")
+    private const val APOSTROPHES = "'’`´"
     private val ARTICLES = setOf("the", "a", "an", "el", "la", "los", "las", "le", "les", "der", "die", "das", "il", "lo", "o", "os", "as")
     private val ROMAN = mapOf("ii" to "2", "iii" to "3", "iv" to "4", "vi" to "6", "vii" to "7", "viii" to "8", "ix" to "9")
     private val NUMBER_WORDS = mapOf(

@@ -6,6 +6,10 @@
 package com.nuvio.tv.ui.screens.player
 
 import androidx.compose.animation.AnimatedVisibility
+import com.nuvio.tv.core.smartscraper.SmartScraperEnvironment
+import com.nuvio.tv.core.smartscraper.SmartSourceRequest
+import com.nuvio.tv.core.smartscraper.SourceTitleLine
+import com.nuvio.tv.ui.util.SourcePrivacy
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
@@ -78,6 +82,13 @@ internal fun StreamSourcesSidePanel(
     val scope = rememberCoroutineScope()
     var focusJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val closeButtonFocusRequester = remember { FocusRequester() }
+    // RCTV: what plays, for each source's "The Batman (2022)" line.
+    val isEpisode = uiState.contentType in listOf("series", "tv") &&
+        uiState.currentSeason != null && uiState.currentEpisode != null
+    val titleName = uiState.contentName?.takeIf { it.isNotBlank() } ?: uiState.title
+    val titleYear = remember(uiState.releaseYear) { SmartSourceRequest.yearOf(uiState.releaseYear) }
+    val titleSeason = if (isEpisode) uiState.currentSeason else null
+    val titleEpisode = if (isEpisode) uiState.currentEpisode else null
 
     // RCTV: the addons are never named: only "Refresh" and "All" above the streams.
     val orderedAddonNames = remember { emptyList<String>() }
@@ -427,7 +438,11 @@ internal fun StreamSourcesSidePanel(
                         itemsIndexed(uiState.sourceFilteredStreams, key = { index, _ ->
                             streamKeys[index]
                         }) { index, stream ->
+                            val contentLine = remember(stream, titleName, titleYear, titleSeason, titleEpisode) {
+                                sourceTitleLine(stream, titleName, titleYear, titleSeason, titleEpisode)
+                            }
                             StreamItem(
+                                contentLine = contentLine,
                                 stream = stream,
                                 focusRequester = streamFocusRequesters.getValue(streamKeys[index]),
                                 isCurrentStream = index == currentStreamIndex,
@@ -498,3 +513,10 @@ private fun findCurrentStreamIndex(
 
     return -1
 }
+
+/** "The Batman (2022)": the title [stream]'s file is of (see [SourceTitleLine]), with no source's name in it. */
+private fun sourceTitleLine(stream: Stream, name: String?, year: Int?, season: Int?, episode: Int?): String? =
+    runCatching {
+        val release = SmartScraperEnvironment.normalize(stream).release
+        SourceTitleLine.of(release, name, year, season, episode, clean = SourcePrivacy::scrubText)
+    }.getOrNull()?.takeIf { it.isNotBlank() }

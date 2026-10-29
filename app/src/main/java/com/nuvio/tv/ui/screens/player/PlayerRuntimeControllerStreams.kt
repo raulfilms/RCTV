@@ -7,6 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import com.nuvio.tv.core.debrid.DirectDebridPlayableResult
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.player.StreamAutoPlaySelector
+import com.nuvio.tv.core.smartscraper.SmartScraperEnvironment
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.data.local.StreamAutoPlaySource
@@ -231,14 +232,28 @@ internal fun PlayerRuntimeController.loadSourceStreams(forceRefresh: Boolean) {
                 is NetworkResult.Success -> {
                     val addonStreams = StreamAutoPlaySelector.orderAddonStreams(result.data, installedAddonOrder)
                     val allStreams = addonStreams.flatMap { it.streams }
-                    val availableAddons = addonStreams.map { it.addonName }
+                    // On resume, merge fresh results with any previously cached streams
+                    val cachedStreams = _uiState.value.sourceAllStreams
+                    val mergedStreams = if (isResume && cachedStreams.isNotEmpty()) {
+                        mergeSourceStreams(cachedStreams, allStreams)
+                    } else {
+                        allStreams
+                    }
+                    // RCTV: only this title's sources up to Auto Stream's size limit (8 GB) that the
+                    // connection keeps up with, best quality first (see AutoStreamEngine.panelSources).
+                    val request = currentSourceRequest(language = null)
+                    val shownStreams = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        runCatching { SmartScraperEnvironment.panelSources(mergedStreams, request) }
+                            .onFailure { error -> if (error is CancellationException) throw error }
+                            .getOrElse { error ->
+                                Log.w(PlayerRuntimeController.TAG, "Couldn't rank the sources: ${error.javaClass.simpleName}")
+                                mergedStreams
+                            }
+                    }
+                    val shownAddons = shownStreams.mapTo(HashSet()) { it.addonName }
+                    val availableAddons = addonStreams.map { it.addonName }.filter { it in shownAddons }
                     _uiState.update {
-                        // On resume, merge fresh results with any previously cached streams
-                        val mergedAllStreams = if (isResume && it.sourceAllStreams.isNotEmpty()) {
-                            mergeSourceStreams(it.sourceAllStreams, allStreams)
-                        } else {
-                            allStreams
-                        }
+                        val mergedAllStreams = shownStreams
                         // Preserve badges already computed by prior badge jobs
                         val existingBadged = it.sourceAllStreams
                             .filter { s -> s.badges.isNotEmpty() }
@@ -252,7 +267,7 @@ internal fun PlayerRuntimeController.loadSourceStreams(forceRefresh: Boolean) {
                             }
                         }
                         val mergedAvailableAddons = if (isResume && it.sourceAvailableAddons.isNotEmpty()) {
-                            (it.sourceAvailableAddons + availableAddons).distinct()
+                            (it.sourceAvailableAddons + availableAddons).distinct().filter { name -> name in shownAddons }
                         } else {
                             availableAddons
                         }

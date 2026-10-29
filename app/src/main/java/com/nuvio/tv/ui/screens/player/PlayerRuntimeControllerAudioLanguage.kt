@@ -194,9 +194,27 @@ internal suspend fun PlayerRuntimeController.languageChain(language: AudioLangua
     val type = contentType ?: "movie"
     val videoId = (if (isEpisode) currentVideoId ?: contentId else contentId) ?: return null
     val streams = titleStreams(type, videoId, if (isEpisode) currentSeason else null, if (isEpisode) currentEpisode else null)
-    val original = AudioLanguage.ofCode(contentLanguage)
+    val request = currentSourceRequest(language)
+    val playing = currentStreamUrl
+    val auto = SmartScraperEnvironment.autoStreamRank(streams, request)
+    var chain = auto.candidates
+        .filter { it.languageMatch }
+        .flatMap { candidate -> listOf(candidate.stream) + candidate.copies.map { it.stream } }
+    if (chain.isEmpty()) {
+        // Beyond Auto Stream's limits (bigger, 7.1...): any right source in that language.
+        chain = SmartScraperEnvironment.rank(streams, request).all
+            .filter { language in it.audioLanguages && it.rejection !in UNUSABLE }
+            .map { it.stream }
+    }
+    chain = chain.filterNot { it.getStreamUrl() != null && it.getStreamUrl() == playing }
+    return preferredProviders(chain, language).ifEmpty { null }
+}
+
+/** What plays (the movie, or the episode), as the Smart Scraper looks for its sources; [language]: the audio wanted. */
+internal fun PlayerRuntimeController.currentSourceRequest(language: AudioLanguage?): SmartSourceRequest {
+    val isEpisode = contentType in listOf("series", "tv") && currentSeason != null && currentEpisode != null
     val durationMinutes = (_exoPlayer?.duration ?: 0L).takeIf { it > 0 }?.let { (it / 60_000L).toInt() }
-    val request = SmartSourceRequest(
+    return SmartSourceRequest(
         title = contentName ?: title,
         alternateTitles = listOfNotNull(title.takeIf { it.isNotBlank() && it != contentName }),
         year = SmartSourceRequest.yearOf(year),
@@ -211,21 +229,8 @@ internal suspend fun PlayerRuntimeController.languageChain(language: AudioLangua
             emptySet()
         },
         preferredLanguage = language,
-        originalLanguage = original
+        originalLanguage = AudioLanguage.ofCode(contentLanguage)
     )
-    val playing = currentStreamUrl
-    val auto = SmartScraperEnvironment.autoStreamRank(streams, request)
-    var chain = auto.candidates
-        .filter { it.languageMatch }
-        .flatMap { candidate -> listOf(candidate.stream) + candidate.copies.map { it.stream } }
-    if (chain.isEmpty()) {
-        // Beyond Auto Stream's limits (bigger, 7.1...): any right source in that language.
-        chain = SmartScraperEnvironment.rank(streams, request).all
-            .filter { language in it.audioLanguages && it.rejection !in UNUSABLE }
-            .map { it.stream }
-    }
-    chain = chain.filterNot { it.getStreamUrl() != null && it.getStreamUrl() == playing }
-    return preferredProviders(chain, language).ifEmpty { null }
 }
 
 /** [chain] with the providers meant for [language] first (in their order), the others after. */

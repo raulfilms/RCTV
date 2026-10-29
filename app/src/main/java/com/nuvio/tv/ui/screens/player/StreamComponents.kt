@@ -84,7 +84,9 @@ internal fun StreamItem(
     badgePlacement: StreamBadgePlacement = StreamBadgePlacement.BOTTOM,
     onClick: () -> Unit,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onUpKey: (() -> Unit)? = null
+    onUpKey: (() -> Unit)? = null,
+    // RCTV: the title the file is of ("The Batman (2022)"), under its quality; none when null.
+    contentLine: String? = null
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -192,6 +194,19 @@ internal fun StreamItem(
                             color = NuvioTheme.extendedColors.textSecondary
                         )
                     }
+                }
+
+                contentLine?.takeIf { it.isNotBlank() }?.let { line ->
+                    Text(
+                        text = line,
+                        modifier = Modifier.align(line.contentTextDirection().toAbsoluteAlignment()),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDirection = line.contentTextDirection()
+                        ),
+                        color = NuvioTheme.extendedColors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
                 if (hasBadges && badgePlacement == StreamBadgePlacement.BOTTOM) {

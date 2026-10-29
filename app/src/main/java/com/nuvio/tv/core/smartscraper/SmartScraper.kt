@@ -100,6 +100,16 @@ class SmartScraper @Inject constructor(
         return result
     }
 
+    /** The player's source list for a title's streams: see [AutoStreamEngine.panelSources]. */
+    fun panelSources(
+        streams: List<Stream>,
+        request: SmartSourceRequest,
+        context: SmartRankingContext = rankingContext()
+    ): List<Stream> {
+        if (streams.isEmpty()) return emptyList()
+        return AutoStreamEngine.panelSources(streams.map(::normalize), request, context).map { it.stream }
+    }
+
     /** An addon answered for a title after [responseMs] (or failed, or timed out). */
     fun recordProviderResponse(provider: String, responseMs: Long?, ok: Boolean) {
         if (!config.learnFromPlayback) return
@@ -228,6 +238,11 @@ object SmartScraperEnvironment {
 
     fun normalize(stream: Stream): NormalizedSource =
         scraper?.normalize(stream) ?: SourceProviderAdapters.normalize(stream)
+
+    /** The player's source list: see [AutoStreamEngine.panelSources]. */
+    fun panelSources(streams: List<Stream>, request: SmartSourceRequest): List<Stream> =
+        scraper?.panelSources(streams, request)
+            ?: AutoStreamEngine.panelSources(streams.map(SourceProviderAdapters::normalize), request).map { it.stream }
 
     fun recordPlayback(stream: Stream, ok: Boolean) {
         scraper?.recordPlayback(stream, ok)
