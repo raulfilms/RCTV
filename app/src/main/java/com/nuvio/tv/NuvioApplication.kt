@@ -101,6 +101,10 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         SentryInitializer.start(this, sentrySettingsDataStore)
         // RCTV: a crash's error is kept and shown the next time the app opens.
         com.nuvio.tv.core.diagnostics.CrashLog.install(this)
+        // RCTV (MEM-08): native garbage is collected as soon as it grows fast, never left to pile
+        // up until the system closes the app (Sports, Teams and Search on the Mi Box 4).
+        com.nuvio.tv.core.diagnostics.NativeMemoryGuard.start()
+        com.nuvio.tv.core.diagnostics.SessionTrail.memoryGuardProbe = com.nuvio.tv.core.diagnostics.NativeMemoryGuard::summary
         // RCTV (RCTV-AUD-001): how full the images' memory cache is, in the session notes.
         com.nuvio.tv.core.diagnostics.SessionTrail.imageCacheProbe = {
             SingletonImageLoader.get(this).memoryCache?.let { it.size to it.maxSize }

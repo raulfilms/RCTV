@@ -68,6 +68,12 @@ object SessionTrail {
     /** Writes to the notes file one at a time (the notes thread, and an exit on the screen's thread). */
     private val fileLock = Any()
 
+    /** RCTV (MEM-08): the memory guard's cleanups so far ([NativeMemoryGuard.summary]). */
+    @Volatile var memoryGuardProbe: (() -> String?)? = null
+
+    /** The screen on now, as the notes name it ("sports_teams"). */
+    fun screenName(): String = screen
+
     /** The images' memory cache, used and most (bytes), from the app's image loader. */
     @Volatile var imageCacheProbe: (() -> Pair<Long, Long>?)? = null
     /** Notes are written here, off the screen's thread. */
@@ -250,6 +256,7 @@ object SessionTrail {
                 if (memoryKinds.isNotBlank()) append("kinds=").append(memoryKinds).append('\n')
                 if (afterAsk.isNotBlank()) append("afterask=").append(afterAsk).append('\n')
                 threads?.let { append("threads=").append(it).append('\n') }
+                runCatching { memoryGuardProbe?.invoke() }.getOrNull()?.let { append("guard=").append(it).append('\n') }
                 imageCache?.let { (used, most) ->
                     append("imagecache=").append(used / MB).append(" of ").append(most / MB).append(" MB\n")
                 }
@@ -287,6 +294,7 @@ object SessionTrail {
             values["afterask"]?.let { append("after a memory ask: ").append(it).append('\n') }
             values["threads"]?.let { append("threads: ").append(it).append('\n') }
             values["imagecache"]?.let { append("image cache: ").append(it).append('\n') }
+            values["guard"]?.let { append("memory cleanups: ").append(it).append('\n') }
             values["path"]?.let { append("screens: ").append(it).append('\n') }
             values["visits"]?.let { append("visits (native MB, first → latest): ").append(it).append('\n') }
             values["images"]?.let { append("images: ").append(it).append('\n') }
