@@ -276,7 +276,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** RCTV movie controls' badge: "4K", "HD" or "SD" for the picture playing; null while not known. */
+    /** RCTV title controls' quality indicator: "4K", "Full HD" or "HD" for the picture playing; null: none. */
     fun videoQualityLabel(): String? {
         val size = if (controller.isUsingMpvEngine()) controller.mpvView?.videoSizeNow() else null
         return com.nuvio.tv.ui.screens.player.videoQualityLabel(

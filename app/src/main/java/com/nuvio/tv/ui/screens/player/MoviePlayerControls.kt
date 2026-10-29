@@ -468,7 +468,10 @@ private fun SkipFifteenButton(
     }
 }
 
-/** The playing picture's quality ("4K", "HD", "SD") in a white outline. */
+/**
+ * The quality indicator: the playing picture's quality ("4K", "Full HD", "HD") in a white outline.
+ * It only tells: it's never focused and does nothing when pressed.
+ */
 @Composable
 private fun QualityBadge(label: String) {
     Box(
@@ -485,7 +488,11 @@ private fun QualityBadge(label: String) {
     }
 }
 
-/** "4K", "HD" or "SD" from the decoded picture's size (a wide film counts by its width); null: not known. */
+/**
+ * "4K" (2160p), "Full HD" (1080p) or "HD" (720p) from the decoded picture's size, a wide film
+ * counted by its width (3840×1600 is 4K, 1920×800 Full HD); null below 720p or while not known
+ * (no indicator then).
+ */
 internal fun videoQualityLabel(width: Int?, height: Int?): String? {
     val w = width?.takeIf { it > 0 } ?: 0
     val h = height?.takeIf { it > 0 } ?: 0
@@ -493,8 +500,9 @@ internal fun videoQualityLabel(width: Int?, height: Int?): String? {
     val lines = maxOf(h, w * 9 / 16)
     return when {
         lines >= 2000 -> "4K"
+        lines >= 1000 -> "Full HD"
         lines >= 700 -> "HD"
-        else -> "SD"
+        else -> null
     }
 }
 
