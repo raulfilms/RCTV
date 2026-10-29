@@ -215,7 +215,8 @@ internal fun TitlePlayerControlsOverlay(
                     Box(modifier = Modifier.align(Alignment.TopStart)) {
                         PlayerControlsTimeTextHost(viewModel = viewModel, color = Color.White)
                     }
-                    AnimatedVisibility(
+                    // Not the Column's own AnimatedVisibility: this one sits in the Box.
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = !middleHidden,
                         enter = fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
                         exit = fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.fast)),
