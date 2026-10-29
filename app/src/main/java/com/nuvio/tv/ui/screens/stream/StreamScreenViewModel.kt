@@ -399,6 +399,9 @@ class StreamScreenViewModel @Inject constructor(
             val autoStreamGiveUpAtMs = loadStartedAtMs + (autoStreamConfig.startupDeadlineSeconds * 1_000).toLong()
             fun autoStreamStillWaiting(): Boolean = autoStreamMode && System.currentTimeMillis() < autoStreamGiveUpAtMs
             autoStreamChain = emptyList()
+            // RCTV: every addon has answered, or the startup deadline came: nothing passing Auto
+            // Stream's rules then, the best right source plays anyway (the sources aren't shown).
+            var autoStreamLastCall = false
             if (manualSelection) {
                 directAutoPlayModeInitializedForSession = true
                 directAutoPlayFlowEnabledForSession = false
@@ -581,12 +584,21 @@ class StreamScreenViewModel @Inject constructor(
                         preferredBingeGroup = persistedBingeGroup,
                         preferBingeGroupInSelection = persistedBingeGroup != null,
                         smartRequest = smartRequest(),
-                        smartRanking = autoStreamResult?.chain ?: smartResult.fallbackChain
+                        smartRanking = autoStreamResult?.chain ?: smartResult.fallbackChain,
+                        lastResortRanking = smartResult.fallbackChain.takeIf { autoStreamMode && autoStreamLastCall }
                     )
                 }
                 if (selectedAutoPlayStream != null) {
                     resolvedAutoPlayTarget = true
-                    autoStreamResult?.let { autoStreamChain = it.chain }
+                    autoStreamResult?.let { result ->
+                        // The last call's pick may be outside Auto Stream's rules: what to try next
+                        // when it fails is then every right source after its own.
+                        autoStreamChain = if (autoStreamLastCall) {
+                            result.chain + smartResult.fallbackChain.filterNot { s -> result.chain.any { it.isSameSource(s) } }
+                        } else {
+                            result.chain
+                        }
+                    }
                 } else if (autoStreamMode && resolvedAutoPlayTarget && autoStreamChain.isNotEmpty()) {
                     // §8.2: what arrives after the choice is only kept to fall back on.
                     val late = smartScraper.autoStreamRank(allStreams, smartRequest(), canVerifySize = true).chain
@@ -889,6 +901,11 @@ class StreamScreenViewModel @Inject constructor(
                 }
                 markRemainingSourceChipsAsError()
                 if (autoStreamMode && directAutoPlayFlowEnabledForSession && !resolvedAutoPlayTarget) {
+                    // Every addon has answered: the best right source, even outside the rules.
+                    autoStreamLastCall = true
+                    lastSuccessData?.let { applySuccess(it, isAllLoaded = true) }
+                }
+                if (autoStreamMode && directAutoPlayFlowEnabledForSession && !resolvedAutoPlayTarget) {
                     autoStreamGaveUp()
                 } else if (directAutoPlayFlowEnabledForSession && !resolvedAutoPlayTarget) {
                     directAutoPlayFlowEnabledForSession = false
@@ -925,6 +942,7 @@ class StreamScreenViewModel @Inject constructor(
                 launch {
                     delay((autoStreamGiveUpAtMs - System.currentTimeMillis()).coerceAtLeast(0L))
                     if (!directAutoPlayFlowEnabledForSession || resolvedAutoPlayTarget) return@launch
+                    autoStreamLastCall = true
                     lastSuccessData?.let { applySuccess(it, isAllLoaded = true) }
                     if (resolvedAutoPlayTarget) {
                         autoSelectTriggered = true

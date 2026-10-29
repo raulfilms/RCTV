@@ -61,7 +61,12 @@ object StreamAutoPlaySelector {
         /** AUTO_STREAM: the title asked for (its streams are checked against it). */
         smartRequest: SmartSourceRequest? = null,
         /** AUTO_STREAM: Auto Stream's order already worked out (else it's worked out here). */
-        smartRanking: List<Stream>? = null
+        smartRanking: List<Stream>? = null,
+        /**
+         * AUTO_STREAM, RCTV: what to play when none passes Auto Stream's rules (every source of the
+         * right title, in Smart order), so a title always starts and the sources aren't shown.
+         */
+        lastResortRanking: List<Stream>? = null
     ): Stream? {
         if (streams.isEmpty()) return null
 
@@ -100,6 +105,7 @@ object StreamAutoPlaySelector {
             }
             if (bingeGroupOnly) return null
             return ranking.firstOrNull()
+                ?: lastResortRanking?.firstOrNull { it in candidates && isPlayable(it) }
         }
 
         // Binge group matching takes priority over mode — even in MANUAL mode,

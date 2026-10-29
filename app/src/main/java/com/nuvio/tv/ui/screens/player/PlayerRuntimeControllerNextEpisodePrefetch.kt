@@ -120,6 +120,8 @@ private suspend fun PlayerRuntimeController.prefetchNextEpisode(next: Video) {
 
     val request = nextEpisodeSmartRequest(next, playerSettings)
     val ranked = SmartScraperEnvironment.autoStreamRank(streams, request)
+    // RCTV: none passing Auto Stream's rules, the best right source still plays (never the list).
+    val lastResort = if (ranked.chain.isEmpty()) SmartScraperEnvironment.rank(streams, request).fallbackChain else emptyList()
     val preferredGroup = currentStreamBingeGroup?.takeIf { playerSettings.streamAutoPlayPreferBingeGroupForNextEpisode }
     val first = StreamAutoPlaySelector.selectAutoPlayStream(
         streams = streams,
@@ -133,9 +135,10 @@ private suspend fun PlayerRuntimeController.prefetchNextEpisode(next: Video) {
         preferBingeGroupInSelection = playerSettings.streamAutoPlayPreferBingeGroupForNextEpisode,
         bingeGroupOnly = bingeGroupOnly,
         smartRequest = request,
-        smartRanking = ranked.chain
+        smartRanking = ranked.chain,
+        lastResortRanking = lastResort
     ) ?: return
-    val chain = listOf(first) + ranked.chain.filterNot { it == first }
+    val chain = listOf(first) + (ranked.chain + lastResort).filterNot { it == first }.distinct()
 
     // Its link from the debrid service, opened: the first one that answers is the one.
     chain.take(MAX_TRIES).forEachIndexed { index, candidate ->

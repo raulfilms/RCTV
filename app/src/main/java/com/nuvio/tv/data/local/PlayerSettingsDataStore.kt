@@ -270,7 +270,8 @@ data class PlayerSettings(
     val centerMixLevelDb: Int = 0,
     val persistAudioAmplification: Boolean = false,
     val rememberAudioDelayPerDevice: Boolean = true,
-    val preferredAudioLanguage: String = AudioLanguageOption.DEVICE,
+    // RCTV: English, the app's main language: every title starts in English.
+    val preferredAudioLanguage: String = "en",
     val secondaryPreferredAudioLanguage: String? = null,
     val loadingOverlayEnabled: Boolean = true,
     val showPlayerLoadingStatus: Boolean = true,
@@ -655,6 +656,8 @@ class PlayerSettingsDataStore @Inject constructor(
     private val migrationAllowLargeTargetBufferOffDoneKey = booleanPreferencesKey("migration_allow_large_target_buffer_off_done")
     private val migrationBufferBudgetManagedExoDoneKey = booleanPreferencesKey("migration_buffer_budget_managed_exo_done")
     private val migrationVodCacheBackBufferZeroedDoneKey = booleanPreferencesKey("migration_vod_cache_back_buffer_zeroed_done")
+    /** RCTV: the audio language set to English once (a Spanish choice in the player used to be kept). */
+    private val migrationAudioEnglishDoneKey = booleanPreferencesKey("migration_rctv_audio_english_done")
     init {
         ioScope.launch {
             profileManager.activeProfileId.collect { pid ->
@@ -811,6 +814,12 @@ class PlayerSettingsDataStore @Inject constructor(
                     prefs[migrationVodCacheBackBufferZeroedDoneKey] = true
                 }
 
+                // RCTV: every title starts in English, the app's main language.
+                if (prefs[migrationAudioEnglishDoneKey] != true) {
+                    prefs[preferredAudioLanguageKey] = "en"
+                    prefs[migrationAudioEnglishDoneKey] = true
+                }
+
                 val min = prefs[minBufferMsKey]
                 val max = prefs[maxBufferMsKey]
                 if (min != null && max != null && max < min) prefs[maxBufferMsKey] = min
@@ -927,7 +936,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 persistAudioAmplification = prefs[persistAudioAmplificationKey] ?: false,
                 rememberAudioDelayPerDevice = prefs[rememberAudioDelayPerDeviceKey] ?: true,
                 preferredAudioLanguage = normalizeSelectableLanguageCode(
-                    prefs[preferredAudioLanguageKey] ?: AudioLanguageOption.DEVICE
+                    prefs[preferredAudioLanguageKey] ?: "en"
                 ),
                 secondaryPreferredAudioLanguage = prefs[secondaryPreferredAudioLanguageKey]
                     ?.let(::normalizeSecondaryAudioLanguageCode),

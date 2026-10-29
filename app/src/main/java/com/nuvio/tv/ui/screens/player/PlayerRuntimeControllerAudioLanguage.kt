@@ -22,7 +22,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * RCTV: the audio menu has two languages, English then Español, like Disney+: choosing one changes
  * only the audio. A file that has it switches its track; one that doesn't is swapped, at the same
  * moment, for the title's best source in that language (LatinoDebrid's for Spanish, say), the
- * movie or episode never changing. The choice is kept: the next title starts in it.
+ * movie or episode never changing. The choice is for this title only: every title starts in
+ * English, the app's main language.
  */
 
 private const val TAG = "AudioLanguage"
@@ -58,8 +59,6 @@ internal fun PlayerRuntimeController.currentFileAudioLanguages(): Set<AudioLangu
 
 internal fun PlayerRuntimeController.selectAudioLanguage(language: AudioLanguage) {
     _uiState.update { it.copy(showAudioOverlay = false) }
-    // Kept for what plays next (Auto Stream and the tracks of files with several languages).
-    scope.launch { playerSettingsDataStore.setPreferredAudioLanguage(language.code) }
 
     // This file has it: only its track changes.
     val tracks = _uiState.value.audioTracks
