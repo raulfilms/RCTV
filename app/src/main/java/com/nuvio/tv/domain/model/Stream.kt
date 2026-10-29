@@ -25,7 +25,9 @@ data class Stream(
     val clientResolve: StreamClientResolve? = null,
     val debridCacheStatus: StreamDebridCacheStatus? = null,
     val badges: List<StreamBadge> = emptyList(),
-    val subtitles: List<Subtitle> = emptyList()
+    val subtitles: List<Subtitle> = emptyList(),
+    /** RCTV: the plugin repository a local plugin's stream came from ("All-in-One-Nuvio"); null for an addon's. Never shown. */
+    val pluginRepository: String? = null
 ) {
     /**
      * Returns the primary stream source URL

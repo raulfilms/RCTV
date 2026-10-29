@@ -498,6 +498,25 @@ private fun PlaybackNavHost(
                                 contentLanguage = contentLanguage
                             )
                         )
+                    },
+                    // RCTV: a movie's Extended or Director's Cut, from its Extras, through Auto Stream.
+                    onPlayEditionClick = { videoId, contentType, contentId, title, poster, backdrop, logo, genres, year, contentLanguage, edition ->
+                        navController.navigate(
+                            Screen.Stream.createRoute(
+                                videoId = videoId,
+                                contentType = contentType,
+                                title = title,
+                                poster = poster,
+                                backdrop = backdrop,
+                                logo = logo,
+                                genres = genres,
+                                year = year,
+                                contentId = contentId,
+                                contentName = title,
+                                contentLanguage = contentLanguage,
+                                edition = edition
+                            )
+                        )
                     }
                 )
             }
@@ -590,6 +609,11 @@ private fun PlaybackNavHost(
                     defaultValue = null
                 },
                 navArgument("profileId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("edition") {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null

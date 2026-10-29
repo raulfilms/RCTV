@@ -229,21 +229,24 @@ internal fun PlayerRuntimeController.currentSourceRequest(language: AudioLanguag
             emptySet()
         },
         preferredLanguage = language,
-        originalLanguage = AudioLanguage.ofCode(contentLanguage)
+        originalLanguage = AudioLanguage.ofCode(contentLanguage),
+        // RCTV: the version chosen in the movie's Extras stays (its scenes, its times).
+        edition = AutoStreamSession.current(currentVideoId)?.edition
     )
 }
 
-/** [chain] with the providers meant for [language] first (in their order), the others after. */
+/**
+ * [chain] with the providers meant for [language] first (in their order: the chain is already in
+ * the servers' order, AIO Stream Dubbed, LatinoDebrid, Addon LATAM for Spanish), the others after.
+ */
 private fun preferredProviders(chain: List<Stream>, language: AudioLanguage): List<Stream> {
     val (preferred, others) = chain.partition { stream ->
         val provider = runCatching { SmartScraperEnvironment.normalize(stream).provider }.getOrNull()
             ?: return@partition false
-        if (language == AudioLanguage.SPANISH) {
-            provider.family == ProviderFamily.LATINODEBRID ||
-                (provider.family == ProviderFamily.AIOSTREAMS && provider.variant == ProviderVariant.DUBBED)
-        } else {
-            provider.family != ProviderFamily.LATINODEBRID
-        }
+        val spanishServer = provider.family == ProviderFamily.LATINODEBRID ||
+            provider.family == ProviderFamily.LATAM ||
+            (provider.family == ProviderFamily.AIOSTREAMS && provider.variant == ProviderVariant.DUBBED)
+        if (language == AudioLanguage.SPANISH) spanishServer else !spanishServer
     }
     return preferred + others
 }

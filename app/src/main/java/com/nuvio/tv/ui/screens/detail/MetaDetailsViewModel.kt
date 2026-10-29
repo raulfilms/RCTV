@@ -31,6 +31,8 @@ import com.nuvio.tv.domain.model.ListMembershipChanges
 import com.nuvio.tv.core.tracking.TrackingMembershipRemovalConfirmation
 import com.nuvio.tv.core.tracking.toggleTrackingMembershipSelection
 import com.nuvio.tv.domain.model.Meta
+import com.nuvio.tv.domain.model.resolveContentLanguage
+import com.nuvio.tv.core.streams.supportsStreamResource
 import com.nuvio.tv.domain.model.MetaTrailer
 import com.nuvio.tv.domain.model.NextToWatch
 import com.nuvio.tv.domain.model.TmdbSettings
@@ -107,6 +109,8 @@ class MetaDetailsViewModel @Inject constructor(
     private val profileManager: ProfileManager,
     private val metaDetailsSessionState: MetaDetailsSessionState,
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
+    private val addonRepository: com.nuvio.tv.domain.repository.AddonRepository,
+    private val streamRepository: com.nuvio.tv.domain.repository.StreamRepository,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -129,6 +133,7 @@ class MetaDetailsViewModel @Inject constructor(
     private var idleTimerJob: Job? = null
     private var trailerFetchJob: Job? = null
     private var moreLikeThisJob: Job? = null
+    private var editionsJob: Job? = null
     private var collectionJob: Job? = null
 
     val lastFocusedEpisodeIdBySeason = androidx.compose.runtime.mutableStateMapOf<Int, String>()
@@ -944,6 +949,7 @@ class MetaDetailsViewModel @Inject constructor(
 
         // Start fetching trailer after meta is loaded
         fetchTrailerUrl()
+        loadEditionsAsync(meta)
 
         if (traktCommentsEnabled && traktAuthenticated && supportsComments(meta)) {
             loadComments(meta)
@@ -1213,6 +1219,58 @@ class MetaDetailsViewModel @Inject constructor(
     private fun cancelCommentsRequests() {
         commentsJob?.cancel()
         commentsLoadMoreJob?.cancel()
+    }
+
+    /**
+     * RCTV: a movie's other versions (Extended, Director's Cut) for its Extras, from the AIO Stream
+     * Extended addon (its name says "Extended"): only the ones Auto Stream can play. None when that
+     * addon isn't installed, or has nothing for this movie.
+     */
+    private fun loadEditionsAsync(meta: Meta) {
+        editionsJob?.cancel()
+        if (_uiState.value.editions.isNotEmpty()) _uiState.update { it.copy(editions = emptyList()) }
+        if (!meta.apiType.equals("movie", ignoreCase = true)) return
+        editionsJob = viewModelScope.launch {
+            // The words the AIO Stream Extended addon's name has.
+            val extendedAddonWords = listOf("extended", "extend")
+            val addons = runCatching { addonRepository.getInstalledAddons().first() }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrDefault(emptyList())
+                .filter { addon ->
+                    addon.enabled && extendedAddonWords.any { word ->
+                        addon.displayName.contains(word, ignoreCase = true) || addon.name.contains(word, ignoreCase = true)
+                    } && addon.supportsStreamResource(meta.apiType, meta.id)
+                }
+            if (addons.isEmpty()) return@launch
+            val streams = coroutineScope {
+                addons.map { addon ->
+                    async {
+                        val result = runCatching { streamRepository.getStreamsFromAddon(addon, meta.apiType, meta.id) }
+                            .onFailure { if (it is CancellationException) throw it }
+                            .getOrNull()
+                        when (result) {
+                            is NetworkResult.Success -> result.data
+                            else -> emptyList()
+                        }
+                    }
+                }.map { it.await() }.flatten()
+            }
+            if (streams.isEmpty()) return@launch
+            val request = com.nuvio.tv.core.smartscraper.SmartSourceRequest(
+                title = meta.name,
+                year = com.nuvio.tv.core.smartscraper.SmartSourceRequest.yearOf(meta.releaseInfo),
+                isSeries = false,
+                imdbId = meta.id.substringBefore(':').takeIf { it.startsWith("tt") },
+                tmdbId = meta.id.takeIf { it.startsWith("tmdb:") }?.removePrefix("tmdb:")?.substringBefore(':'),
+                originalLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(meta.resolveContentLanguage())
+            )
+            val editions = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                runCatching { com.nuvio.tv.core.smartscraper.SmartScraperEnvironment.editions(streams, request) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrDefault(emptyList())
+            }
+            if (_uiState.value.meta?.id == meta.id) _uiState.update { it.copy(editions = editions) }
+        }
     }
 
     private fun loadMoreLikeThisAsync(meta: Meta) {

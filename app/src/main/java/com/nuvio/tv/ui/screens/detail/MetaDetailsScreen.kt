@@ -118,6 +118,8 @@ import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaCastMember
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.MetaTrailer
+import com.nuvio.tv.core.smartscraper.AutoStreamEdition
+import com.nuvio.tv.core.smartscraper.ReleaseEdition
 import com.nuvio.tv.domain.model.resolveContentLanguage
 import com.nuvio.tv.domain.model.MDBListRatings
 import com.nuvio.tv.domain.model.NextToWatch
@@ -442,7 +444,21 @@ fun MetaDetailsScreen(
         year: String?,
         runtime: Int?,
         contentLanguage: String?
-    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+    // RCTV: a movie's other version (Extended, Director's Cut) from its Extras; [edition] is its key.
+    onPlayEditionClick: (
+        videoId: String,
+        contentType: String,
+        contentId: String,
+        title: String,
+        poster: String?,
+        backdrop: String?,
+        logo: String?,
+        genres: String?,
+        year: String?,
+        contentLanguage: String?,
+        edition: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _ -> }
 ) {
     val playbackAvailability = LocalPlaybackAvailability.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -738,6 +754,25 @@ fun MetaDetailsScreen(
                         meta.resolveContentLanguage()
                     )
                 }
+                val playEdition: (ReleaseEdition) -> Unit = playEdition@{ edition ->
+                    if (!playbackAvailability.canStream(meta.apiType, meta.id, meta.id)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@playEdition
+                    }
+                    onPlayEditionClick(
+                        meta.id,
+                        meta.apiType,
+                        meta.id,
+                        meta.name,
+                        meta.poster,
+                        meta.backdropUrl,
+                        meta.logo,
+                        genresString,
+                        yearString,
+                        meta.resolveContentLanguage(),
+                        edition.key
+                    )
+                }
                 val playTitleManually: (String) -> Unit = playTitleManually@{ videoId ->
                     if (!playbackAvailability.canStream(meta.apiType, videoId, meta.id)) {
                         Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
@@ -846,6 +881,8 @@ fun MetaDetailsScreen(
                     posterCardCornerRadiusDp = posterCardCornerRadiusDp,
                     collection = uiState.collection,
                     collectionName = uiState.collectionName,
+                    editions = uiState.editions,
+                    onEditionClick = playEdition,
                     relatedWatchedStatus = uiState.relatedWatchedStatus,
                     episodeImdbRatings = uiState.episodeImdbRatings,
                     isEpisodeRatingsLoading = uiState.isEpisodeRatingsLoading,
@@ -1165,6 +1202,9 @@ private fun MetaDetailsContent(
     posterCardCornerRadiusDp: Int = 12,
     collection: List<MetaPreview>,
     collectionName: String?,
+    // RCTV: the movie's other versions (Extended, Director's Cut), first in Extras.
+    editions: List<AutoStreamEdition> = emptyList(),
+    onEditionClick: (ReleaseEdition) -> Unit = {},
     relatedWatchedStatus: Map<String, Boolean> = emptyMap(),
     episodeImdbRatings: Map<Pair<Int, Int>, Double>,
     isEpisodeRatingsLoading: Boolean,
@@ -1301,6 +1341,7 @@ private fun MetaDetailsContent(
     val moreLikeSectionFocusRequester = remember { FocusRequester() }
     val trailerSectionFocusRequester = remember { FocusRequester() }
     val collectionSectionFocusRequester = remember { FocusRequester() }
+    val editionsSectionFocusRequester = remember { FocusRequester() }
     val commentsTitleModeFocusRequester = remember { FocusRequester() }
     val commentsEpisodeModeFocusRequester = remember { FocusRequester() }
     var pendingRestoreType by rememberSaveable { mutableStateOf<RestoreTarget?>(null) }
@@ -1759,7 +1800,8 @@ private fun MetaDetailsContent(
     val strTabDetails = stringResource(R.string.detail_tab_details)
     val strTabCollection = stringResource(R.string.tmdb_collections_title)
     val hasCompaniesSection = meta.productionCompanies.isNotEmpty() || meta.networks.isNotEmpty()
-    val hasExtrasSection = hasTrailerSection || collection.isNotEmpty()
+    val hasEditionsSection = editions.isNotEmpty()
+    val hasExtrasSection = hasEditionsSection || hasTrailerSection || collection.isNotEmpty()
     val hasDetailsSection = hasCastSection || hasCompaniesSection
     val moreLikeThisSourceLabel = when (moreLikeThisSource) {
         MoreLikeThisSource.TMDB -> stringResource(R.string.detail_more_like_this_powered_by_tmdb)
@@ -1875,8 +1917,12 @@ private fun MetaDetailsContent(
         hasVisiblePeopleSection -> when (activePeopleTab) {
             PeopleSectionTab.EPISODES -> seasonDownFocusRequester ?: heroPlayFocusRequester
             PeopleSectionTab.SUGGESTED -> moreLikeSectionFocusRequester
-            // The tab's last row: its collection, else its videos.
-            PeopleSectionTab.EXTRAS -> if (collection.isNotEmpty()) collectionSectionFocusRequester else trailerSectionFocusRequester
+            // The tab's last row: its collection, else its videos, else its versions.
+            PeopleSectionTab.EXTRAS -> when {
+                collection.isNotEmpty() -> collectionSectionFocusRequester
+                hasTrailerSection -> trailerSectionFocusRequester
+                else -> editionsSectionFocusRequester
+            }
             // The company rows have no section requester: up from the comments finds them on its own.
             PeopleSectionTab.DETAILS -> if (hasCompaniesSection) null else castSectionFocusRequester
             PeopleSectionTab.RATINGS -> ratingsGridFocusRequester
@@ -2442,15 +2488,26 @@ private fun MetaDetailsContent(
                                 )
                             }
 
-                            // Extras: every YouTube video of the title (trailers, teasers, clips,
-                            // featurettes, behind the scenes...), then its collection.
+                            // Extras: RCTV, the movie's other versions (Extended, Director's Cut); then
+                            // every YouTube video of the title (trailers, teasers, clips, featurettes,
+                            // behind the scenes...), then its collection.
                             PeopleSectionTab.EXTRAS -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {
+                                    if (hasEditionsSection) {
+                                        EditionsSection(
+                                            editions = editions,
+                                            image = meta.backdropUrl ?: meta.poster,
+                                            posterCardCornerRadius = posterCardCornerRadiusDp.dp,
+                                            upFocusRequester = trailerTabFocusRequester,
+                                            sectionFocusRequester = editionsSectionFocusRequester,
+                                            onEditionClick = onEditionClick
+                                        )
+                                    }
                                     if (hasTrailerSection) {
                                         TrailerSection(
                                             trailers = meta.trailers,
                                             posterCardCornerRadius = posterCardCornerRadiusDp.dp,
-                                            upFocusRequester = trailerTabFocusRequester,
+                                            upFocusRequester = if (hasEditionsSection) editionsSectionFocusRequester else trailerTabFocusRequester,
                                             sectionFocusRequester = trailerSectionFocusRequester,
                                             restoreTrailerId = if (restoreSharedTrailerFocusToken > 0) selectedSharedTrailer?.ytId else null,
                                             restoreFocusToken = restoreSharedTrailerFocusToken,
@@ -2466,7 +2523,11 @@ private fun MetaDetailsContent(
                                             listState = collectionListState,
                                             title = collectionName ?: strTabCollection,
                                             posterCardCornerRadius = posterCardCornerRadiusDp.dp,
-                                            upFocusRequester = if (hasTrailerSection) trailerSectionFocusRequester else trailerTabFocusRequester,
+                                            upFocusRequester = when {
+                                                hasTrailerSection -> trailerSectionFocusRequester
+                                                hasEditionsSection -> editionsSectionFocusRequester
+                                                else -> trailerTabFocusRequester
+                                            },
                                             downFocusRequester = commentsDownFocusRequester,
                                             sectionFocusRequester = collectionSectionFocusRequester,
                                             restoreItemId = if (pendingRestoreType == RestoreTarget.COLLECTION) pendingRestoreCollectionItemId else null,

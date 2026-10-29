@@ -70,6 +70,8 @@ data class MetaDetailsUiState(
     val moreLikeThisSource: MoreLikeThisSource? = null,
     val collection: List<MetaPreview> = emptyList(),
     val collectionName: String? = null,
+    /** RCTV: the movie's other versions (Extended, Director's Cut) Auto Stream can play, first in Extras. */
+    val editions: List<com.nuvio.tv.core.smartscraper.AutoStreamEdition> = emptyList(),
     val relatedWatchedStatus: Map<String, Boolean> = emptyMap(),
     val episodeImdbRatings: Map<Pair<Int, Int>, Double> = emptyMap(),
     val isEpisodeRatingsLoading: Boolean = false,

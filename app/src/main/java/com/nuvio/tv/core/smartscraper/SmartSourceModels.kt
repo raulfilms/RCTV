@@ -162,7 +162,9 @@ data class ParsedRelease(
     val languages: List<String> = emptyList(),
     /** The audio languages the release says it has (its words, its flags); empty when it says none. */
     val audioLanguages: Set<AudioLanguage> = emptySet(),
-    val confidence: FieldConfidence = FieldConfidence()
+    val confidence: FieldConfidence = FieldConfidence(),
+    /** RCTV: an Extended or Director's Cut version (it plays from the movie's Extras); NONE: the regular one. */
+    val edition: ReleaseEdition = ReleaseEdition.NONE
 ) {
     val hasEpisodeInfo: Boolean get() = seasons.isNotEmpty() || episodes.isNotEmpty()
     val sizeGb: Double? get() = sizeBytes?.let { it / BYTES_PER_GB }
@@ -172,8 +174,12 @@ data class ParsedRelease(
     }
 }
 
-/** Which addon family a stream came from (only to rank, group and learn; never shown). */
-enum class ProviderFamily { AIOSTREAMS, TORRENTIO, LATINODEBRID, OTHER }
+/**
+ * Which addon family a stream came from (only to rank, group and learn; never shown). RCTV: AIO
+ * Stream (Main, IMAX, Extended, Dubbed), Torrentio (one per debrid service), LatinoDebrid and Addon
+ * LATAM (Spanish), a local plugin (All-in-One-Nuvio), anything else.
+ */
+enum class ProviderFamily { AIOSTREAMS, TORRENTIO, LATINODEBRID, LATAM, PLUGIN, OTHER }
 
 /** The AIOStreams setups the person runs (each its own addon). */
 enum class ProviderVariant { MAIN, IMAX, EXTENDED, DUBBED, NONE }
@@ -217,6 +223,30 @@ data class NormalizedSource(
     }
 }
 
+/** RCTV: a movie's version beyond the regular one. [key]: how it travels between screens. */
+enum class ReleaseEdition(val key: String) {
+    NONE("none"),
+    EXTENDED("extended"),
+    DIRECTORS_CUT("directors_cut");
+
+    companion object {
+        /** The version [key] names; null for none or the regular one. */
+        fun ofKey(key: String?): ReleaseEdition? =
+            entries.firstOrNull { it.key == key?.trim() }?.takeIf { it != NONE }
+    }
+}
+
+/**
+ * RCTV: the version this file is of [request]'s movie: its [ParsedRelease.edition], unless that word
+ * is the movie's own title's ("Extended Family" is the regular version of itself).
+ */
+fun ParsedRelease.editionFor(request: SmartSourceRequest): ReleaseEdition {
+    if (edition == ReleaseEdition.NONE) return ReleaseEdition.NONE
+    val title = TitleMatcher.normalize(request.title.orEmpty())
+    val word = if (edition == ReleaseEdition.EXTENDED) "extend" else "director"
+    return if (word in title) ReleaseEdition.NONE else edition
+}
+
 /** The title the person asked for, as the app knows it (TMDB/IMDb metadata). */
 data class SmartSourceRequest(
     val title: String?,
@@ -237,7 +267,12 @@ data class SmartSourceRequest(
     /** The audio wanted (the language chosen in the player last); null: no preference. */
     val preferredLanguage: AudioLanguage? = null,
     /** The title's own language, when it's English or Spanish. */
-    val originalLanguage: AudioLanguage? = null
+    val originalLanguage: AudioLanguage? = null,
+    /**
+     * RCTV: only this version of the movie (chosen in its Extras); null: the regular one first, an
+     * Extended or Director's Cut only when there's no other.
+     */
+    val edition: ReleaseEdition? = null
 ) {
     val isEpisode: Boolean get() = isSeries && season != null && episode != null
 
@@ -276,6 +311,8 @@ enum class RejectReason(val removesFromAll: Boolean, val description: String) {
     SEASON_PACK_TOO_LARGE(false, "Season pack, not an episode source"),
     NOT_PLAYABLE(false, "Not playable here"),
     NOT_CACHED(false, "Not cached on the debrid service"),
+    /** RCTV: not the version chosen (Extended, Director's Cut) in the movie's Extras. */
+    WRONG_EDITION(true, "Another version of the movie"),
     FILTERED(false, "Outside the chosen filters")
 }
 

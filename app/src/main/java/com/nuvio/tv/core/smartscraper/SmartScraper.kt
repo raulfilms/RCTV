@@ -110,6 +110,12 @@ class SmartScraper @Inject constructor(
         return AutoStreamEngine.panelSources(streams.map(::normalize), request, context).map { it.stream }
     }
 
+    /** The movie's other versions (Extended, Director's Cut) in [streams]: see [AutoStreamEngine.editions]. */
+    fun editions(streams: List<Stream>, request: SmartSourceRequest): List<AutoStreamEdition> {
+        if (streams.isEmpty()) return emptyList()
+        return AutoStreamEngine.editions(streams.map(::normalize), request, rankingContext())
+    }
+
     /** An addon answered for a title after [responseMs] (or failed, or timed out). */
     fun recordProviderResponse(provider: String, responseMs: Long?, ok: Boolean) {
         if (!config.learnFromPlayback) return
@@ -238,6 +244,11 @@ object SmartScraperEnvironment {
 
     fun normalize(stream: Stream): NormalizedSource =
         scraper?.normalize(stream) ?: SourceProviderAdapters.normalize(stream)
+
+    /** A movie's other versions: see [AutoStreamEngine.editions]. */
+    fun editions(streams: List<Stream>, request: SmartSourceRequest): List<AutoStreamEdition> =
+        scraper?.editions(streams, request)
+            ?: AutoStreamEngine.editions(streams.map(SourceProviderAdapters::normalize), request)
 
     /** The player's source list: see [AutoStreamEngine.panelSources]. */
     fun panelSources(streams: List<Stream>, request: SmartSourceRequest): List<Stream> =

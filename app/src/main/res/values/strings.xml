@@ -236,6 +236,8 @@
     <string name="detail_tab_episodes">Episodes</string>
     <string name="detail_tab_suggested">Suggested</string>
     <string name="detail_tab_extras">Extras</string>
+    <string name="detail_edition_extended">Extended Edition</string>
+    <string name="detail_edition_directors_cut">Director\'s Cut</string>
     <string name="detail_tab_details">Details</string>
     <string name="detail_more_like_this_powered_by_tmdb">Powered by TMDB</string>
     <string name="detail_more_like_this_powered_by_trakt">Powered by Trakt</string>

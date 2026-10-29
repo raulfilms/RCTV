@@ -18,8 +18,14 @@ interface SourceProviderAdapter {
 
 object SourceProviderAdapters {
 
-    /** Tried in order; the last one reads any addon. */
-    val adapters: List<SourceProviderAdapter> = listOf(LatinoDebridAdapter, TorrentioAdapter, AioStreamsAdapter, GenericStreamAdapter)
+    /**
+     * Tried in order; the last one reads any addon. RCTV: a local plugin's stream first (its scraper
+     * may have any name), then AIO Stream by its addon's name (its streams may name Torrentio, Latino),
+     * Torrentio, Addon LATAM, LatinoDebrid.
+     */
+    val adapters: List<SourceProviderAdapter> = listOf(
+        PluginStreamAdapter, AioStreamsAdapter, TorrentioAdapter, LatamAdapter, LatinoDebridAdapter, GenericStreamAdapter
+    )
 
     fun normalize(stream: Stream): NormalizedSource =
         adapters.first { it.handles(stream) }.normalize(stream)
@@ -107,6 +113,9 @@ internal abstract class BaseStreamAdapter : SourceProviderAdapter {
         }
     }
 
+    /** [debridIn], for the adapters outside this class. */
+    fun debridOf(text: String): DebridService = debridIn(text)
+
     protected fun debridIn(text: String): DebridService {
         val lower = text.lowercase(Locale.ROOT)
         return when {
@@ -192,17 +201,46 @@ internal object AioStreamsAdapter : BaseStreamAdapter() {
 internal object LatinoDebridAdapter : BaseStreamAdapter() {
     override fun handles(stream: Stream): Boolean = LATINO.containsMatchIn(stream.addonName)
 
-    override fun identify(stream: Stream): ProviderIdentity {
-        val debrid = debridIn(listOfNotNull(stream.name, stream.description).joinToString(" "))
-            .takeIf { it != DebridService.NONE }
-            ?: stream.clientResolve?.service?.let { debridIn(it) }
-            ?: DebridService.NONE
-        return ProviderIdentity(key = stream.addonName, family = ProviderFamily.LATINODEBRID, debrid = debrid)
-    }
+    override fun identify(stream: Stream): ProviderIdentity =
+        ProviderIdentity(key = stream.addonName, family = ProviderFamily.LATINODEBRID, debrid = spanishAddonDebrid(stream))
 
     override fun providerLanguages(stream: Stream): Set<AudioLanguage> = setOf(AudioLanguage.SPANISH)
 
-    private val LATINO = Regex("(?<![a-z])(latino|latam)", RegexOption.IGNORE_CASE)
+    private val LATINO = Regex("(?<![a-z])latino", RegexOption.IGNORE_CASE)
+}
+
+/**
+ * RCTV: Addon LATAM (its name says "LATAM"): Spanish audio, and the Mexican and Colombian telenovelas
+ * the other servers often don't have.
+ */
+internal object LatamAdapter : BaseStreamAdapter() {
+    override fun handles(stream: Stream): Boolean = LATAM.containsMatchIn(stream.addonName)
+
+    override fun identify(stream: Stream): ProviderIdentity =
+        ProviderIdentity(key = stream.addonName, family = ProviderFamily.LATAM, debrid = spanishAddonDebrid(stream))
+
+    override fun providerLanguages(stream: Stream): Set<AudioLanguage> = setOf(AudioLanguage.SPANISH)
+
+    private val LATAM = Regex("(?<![a-z])latam", RegexOption.IGNORE_CASE)
+}
+
+/** The debrid service a Spanish addon's stream plays through, as its text or its link says. */
+private fun BaseStreamAdapter.spanishAddonDebrid(stream: Stream): DebridService =
+    debridOf(listOfNotNull(stream.name, stream.description).joinToString(" "))
+        .takeIf { it != DebridService.NONE }
+        ?: stream.clientResolve?.service?.let { debridOf(it) }
+        ?: DebridService.NONE
+
+/**
+ * RCTV: a local plugin's stream (All-in-One-Nuvio's scrapers): its repository is the provider, its
+ * scraper's own words are read like any addon's.
+ */
+internal object PluginStreamAdapter : BaseStreamAdapter() {
+    override fun handles(stream: Stream): Boolean = stream.pluginRepository != null
+
+    override fun identify(stream: Stream): ProviderIdentity =
+        // Its links are its scrapers' own (no debrid service of the person's).
+        ProviderIdentity(key = stream.pluginRepository ?: stream.addonName, family = ProviderFamily.PLUGIN)
 }
 
 /** Any other addon: the file's name where it's given, else its release-like lines. */

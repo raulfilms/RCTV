@@ -26,7 +26,9 @@ object AutoStreamSession {
         /** The video must have one of these audio languages (ISO codes); empty: not checked. */
         val wantedLanguages: Set<String>,
         /** The longest the first picture waits for the player to say its tracks. */
-        val prePlayCheckTimeoutMs: Long
+        val prePlayCheckTimeoutMs: Long,
+        /** RCTV: the movie's version chosen in its Extras (Extended, Director's Cut); null: the regular one. */
+        val edition: ReleaseEdition? = null
     ) {
         @Volatile var current: Stream = current
             internal set
@@ -75,7 +77,8 @@ object AutoStreamSession {
         candidates: List<Stream>,
         config: AutoStreamConfig,
         startedAtMs: Long = System.currentTimeMillis(),
-        wantedLanguages: Set<String> = emptySet()
+        wantedLanguages: Set<String> = emptySet(),
+        edition: ReleaseEdition? = null
     ) {
         session = Session(
             videoId = videoId,
@@ -86,7 +89,8 @@ object AutoStreamSession {
             startedAtMs = startedAtMs,
             deadlineAtMs = startedAtMs + (config.startupDeadlineSeconds * 1_000).toLong(),
             wantedLanguages = wantedLanguages,
-            prePlayCheckTimeoutMs = (config.prePlayCheckTimeoutSeconds * 1_000).toLong()
+            prePlayCheckTimeoutMs = (config.prePlayCheckTimeoutSeconds * 1_000).toLong(),
+            edition = edition
         )
     }
 

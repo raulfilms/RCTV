@@ -140,7 +140,7 @@ data class AutoStreamConfig(
     /** SPANISH_VARIANT_ORDER: Latin American first, Castilian after. */
     val spanishVariantOrder: List<String> = listOf("es-419", "es-ES"),
     /** SPANISH_POOL. */
-    val spanishPool: List<String> = listOf("LatinoDebrid", "Addon LATAM", "AIO Stream (Spanish)"),
+    val spanishPool: List<String> = listOf("AIO Stream (Spanish)", "LatinoDebrid", "Addon LATAM"),
     /** DONOR_PROBE_COUNT / DONOR_PROBE_TIMEOUT_S / DONOR_DURATION_TOLERANCE_S / DONOR_IDLE_BUFFER_S. */
     val donorProbeCount: Int = 3,
     val donorProbeTimeoutSeconds: Double = 4.0,
@@ -170,10 +170,29 @@ data class AutoStreamConfig(
     /** At most this many sources are tried after the first. */
     val maxFallbacks: Int = 4,
     /** At most this many sources are lined up after the first. */
-    val maxChain: Int = 15
+    val maxChain: Int = 15,
+
+    // ------------------------------------------------------------------ Servers (RCTV)
+    /**
+     * The servers' order, within a resolution, among files with the same sound (5.1 or 2.0 and its
+     * format): AIO Stream, Torrentio, LatinoDebrid, Addon LATAM, a plugin (All-in-One-Nuvio), the rest.
+     */
+    val serverOrder: List<ProviderFamily> = listOf(
+        ProviderFamily.AIOSTREAMS, ProviderFamily.TORRENTIO, ProviderFamily.LATINODEBRID,
+        ProviderFamily.LATAM, ProviderFamily.PLUGIN, ProviderFamily.OTHER
+    ),
+    /** Within a server, the debrid services' order: TorBox, Real-Debrid, Premiumize, the rest. */
+    val debridOrder: List<DebridService> = listOf(DebridService.TORBOX, DebridService.REAL_DEBRID, DebridService.PREMIUMIZE)
 ) {
     /** The limit in bytes (a file of exactly this many bytes plays). */
     val maxFileSizeBytes: Long get() = (maxFileSizeGb * bytesPerGb).toLong()
+
+    /** [provider]'s place in [serverOrder] and [debridOrder] (lower first). */
+    fun serverRank(provider: ProviderIdentity): Int {
+        val family = serverOrder.indexOf(provider.family).let { if (it < 0) serverOrder.size else it }
+        val debrid = debridOrder.indexOf(provider.debrid).let { if (it < 0) debridOrder.size else it }
+        return family * (debridOrder.size + 1) + debrid
+    }
 
     /** The lowest resolution allowed (480p by default). */
     val minResolution: VideoResolution get() = resolutions.minByOrNull { it.level } ?: VideoResolution.SD

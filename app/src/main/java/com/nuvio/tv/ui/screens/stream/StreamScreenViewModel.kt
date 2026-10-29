@@ -151,12 +151,16 @@ class StreamScreenViewModel @Inject constructor(
     private val contentId: String? = savedStateHandle.getOptionalString("contentId")
     private val contentName: String? = savedStateHandle.getOptionalString("contentName")
     private val contentLanguage: String? = savedStateHandle.getOptionalString("contentLanguage")
+    /** RCTV: the movie's version chosen in its Extras (Extended, Director's Cut); null: the regular one. */
+    private val edition: com.nuvio.tv.core.smartscraper.ReleaseEdition? =
+        com.nuvio.tv.core.smartscraper.ReleaseEdition.ofKey(savedStateHandle.getOptionalString("edition"))
     private val playbackProfileId: Int = savedStateHandle.get<String>("profileId")?.toIntOrNull()
         ?: profileManager.activeProfileId.value
     private val manualSelection: Boolean = savedStateHandle.get<String>("manualSelection")
         ?.toBooleanStrictOrNull()
         ?: false
-    private val streamCacheKey: String = "${contentType.lowercase()}|$videoId"
+    // RCTV: a version from the movie's Extras keeps its own last link (never the regular one's).
+    private val streamCacheKey: String = "${contentType.lowercase()}|$videoId" + (edition?.let { "|${it.key}" } ?: "")
 
     // RCTV Smart Scraper (declared before init: it may lay sources out right away).
     /** The audio language chosen last in the player ("en", "es"; anything else: none). */
@@ -1319,7 +1323,8 @@ class StreamScreenViewModel @Inject constructor(
             // The language chosen in the player last, else the title's own.
             preferredLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(preferredAudioLanguageSetting)
                 ?: com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage),
-            originalLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage)
+            originalLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage),
+            edition = edition
         )
     }
 
@@ -1506,7 +1511,8 @@ class StreamScreenViewModel @Inject constructor(
             candidates = next.filterNot { it.isSameSource(current) },
             config = smartScraper.config.autoStream,
             startedAtMs = autoStreamStartedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
-            wantedLanguages = AutoStreamEngine.wantedAudioLanguages(contentLanguage, request.preferredLanguage)
+            wantedLanguages = AutoStreamEngine.wantedAudioLanguages(contentLanguage, request.preferredLanguage),
+            edition = request.edition
         )
     }
 

@@ -3386,6 +3386,8 @@
         <string name="detail_tab_episodes">Episodios</string>
     <string name="detail_tab_suggested">Sugerencias</string>
     <string name="detail_tab_extras">Extras</string>
+    <string name="detail_edition_extended">Versión extendida</string>
+    <string name="detail_edition_directors_cut">Versión del director</string>
     <string name="detail_tab_details">Detalles</string>
     <string name="home_rows_page_title">Inicio</string>
     <string name="home_row_trending_now">Tendencias</string>

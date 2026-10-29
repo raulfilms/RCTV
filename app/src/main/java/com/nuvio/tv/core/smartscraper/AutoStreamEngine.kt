@@ -34,6 +34,9 @@ enum class AutoStreamPool {
     SPANISH
 }
 
+/** RCTV: a version of a movie beyond the regular one, and its best file Auto Stream would play. */
+data class AutoStreamEdition(val edition: ReleaseEdition, val best: ParsedRelease)
+
 /** A release Auto Stream can play, its copies from other addons/services kept to fall back on. */
 data class AutoStreamCandidate(
     val scored: ScoredSource,
@@ -63,6 +66,8 @@ data class AutoStreamCandidate(
     val reliability: Double = 0.5,
     /** Its provider's average answer time (ms), when known. */
     val responseMs: Double? = null,
+    /** RCTV: its server's place in [AutoStreamConfig.serverOrder] (lower first): AIO Stream, Torrentio... */
+    val serverRank: Int = 0,
     /** This very file failed to play lately. */
     val recentlyFailed: Boolean = false,
     /** Its size is known (else it may play only once its link's size is checked: ranked after). */
@@ -120,15 +125,18 @@ data class AutoStreamResult(
  * Hard rules (§3), any failed and the stream is out: the right title, year, season and episode;
  * playable; never CAM/TS/TC/SCR; at most 8.00 GB (the episode's file, never a whole season's); 2160p
  * to 480p; 5.1 or 2.0 (one whose layout isn't said may play, after the rest); English or the title's
- * own audio (a Spanish-only file is never the video); marked ready on the debrid service. Nothing is
- * ever relaxed: when nothing passes, there's no automatic stream.
+ * own audio (a Spanish-only file is never the video); marked ready on the debrid service (RCTV: or
+ * a link that plays as it is, see [readyLink]). Nothing is ever relaxed: when nothing passes,
+ * there's no automatic stream.
  *
  * Ranking (§4, §5): the resolution first (a resolution whose best file the connection can't keep up
  * with, or the TV can't show as meant, steps down to the next); then 5.1 over 2.0; then the audio
  * format (E-AC-3 > DTS > AC-3 > AAC, one this box can't play last); then the picture: bitrate (files
  * within [AutoStreamConfig.comparableBitrateMargin] of each other are the same picture), release
  * type, HDR, codec, IMAX; then among comparable files one that already has Spanish, then the most
- * reliable source, then the fastest. Never the largest or the smallest for being so: the size is a
+ * reliable source, then the fastest. RCTV: with the same sound, the server comes before the picture
+ * ([AutoStreamConfig.serverOrder]: AIO Stream, Torrentio by TorBox, Real-Debrid, Premiumize,
+ * LatinoDebrid, Addon LATAM, All-in-One-Nuvio); so does a copy of the same file. Never the largest or the smallest for being so: the size is a
  * ceiling and a sign of the bitrate only.
  */
 object AutoStreamEngine {
@@ -208,9 +216,10 @@ object AutoStreamEngine {
                 candidate(scored, request, context, pool)
             }
         }
-        val ordered = order(valid, config)
-        // §9: the same file from several addons/services is one choice; its most reliable, fastest
-        // copy first (the order already put it first), the others to fall back on.
+        val ordered = regularFirst(order(valid, config), request)
+        // §9: the same file from several addons/services is one choice; its copy from the first
+        // server (RCTV's order), then the most reliable, fastest, first (the order already put it
+        // first), the others to fall back on.
         val groups = LinkedHashMap<String, MutableList<AutoStreamCandidate>>()
         ordered.forEach { groups.getOrPut(SourceProviderAdapters.releaseKey(it.scored.source)) { mutableListOf() }.add(it) }
         val candidates = groups.values.map { members -> members.first().copy(copies = members.drop(1).map { it.scored }) }
@@ -261,9 +270,26 @@ object AutoStreamEngine {
             CacheState.UNCACHED -> return AutoStreamReject.NOT_CACHED
             // RCTV: the Spanish streams keep v1's rule (only a file said not to be ready is out) until
             // the dual-language engine checks them itself (Phase 3).
-            CacheState.UNKNOWN -> if (config.requireCached && pool == AutoStreamPool.MAIN) return AutoStreamReject.NOT_CACHED
+            CacheState.UNKNOWN -> if (config.requireCached && pool == AutoStreamPool.MAIN && !readyLink(source, request)) {
+                return AutoStreamReject.NOT_CACHED
+            }
         }
         return null
+    }
+
+    /**
+     * RCTV: a link that plays as it is though no debrid service says it's ready (its first bytes are
+     * checked before it plays): a plugin's (All-in-One-Nuvio's links are its own, never the
+     * person's debrid services), and, for a title in Spanish (a Mexican or Colombian telenovela the
+     * other servers often don't have), LatinoDebrid's and Addon LATAM's.
+     */
+    private fun readyLink(source: NormalizedSource, request: SmartSourceRequest): Boolean {
+        if (source.isPeerToPeer || source.stream.getStreamUrl() == null) return false
+        return when (source.provider.family) {
+            ProviderFamily.PLUGIN -> true
+            ProviderFamily.LATINODEBRID, ProviderFamily.LATAM -> request.originalLanguage == AudioLanguage.SPANISH
+            else -> false
+        }
     }
 
     /**
@@ -332,6 +358,7 @@ object AutoStreamEngine {
             embeddedSpanish = AudioLanguage.SPANISH in said,
             reliability = if (failed) 0.0 else stats?.successRate ?: ProviderStats.NONE.successRate,
             responseMs = stats?.averageResponseMs,
+            serverRank = config.serverRank(source.provider),
             recentlyFailed = failed,
             sizeKnown = fileSize(release, request) != null,
             originalAudioConfirmed = AudioLanguage.ENGLISH in said || (original != null && original in said),
@@ -375,7 +402,7 @@ object AutoStreamEngine {
         // Comparable files (§4): the same layout and audio format, bitrates within the margin of the
         // group's highest. A file whose bitrate isn't known comes after the ones whose is.
         val group = IdentityHashMap<AutoStreamCandidate, Int>()
-        members.groupBy { listOf(it.tvCompatible, waits(it), it.recentlyFailed, it.layout, it.audioCodecRank) }.values.forEach { part ->
+        members.groupBy { listOf(it.tvCompatible, waits(it), it.recentlyFailed, it.layout, it.audioCodecRank, it.serverRank) }.values.forEach { part ->
             var head = 0.0
             var index = -1
             part.filter { it.bitrateMbps != null }.sortedByDescending { it.bitrateMbps }.forEach { candidate ->
@@ -394,6 +421,8 @@ object AutoStreamEngine {
                 .thenBy { if (it.recentlyFailed) 1 else 0 }
                 .thenByDescending { it.layout }
                 .thenByDescending { it.audioCodecRank }
+                // RCTV: the same sound, the server first (AIO Stream, Torrentio, LatinoDebrid, LATAM...).
+                .thenBy { it.serverRank }
                 .thenBy { group.getValue(it) }
                 .thenByDescending { it.videoPoints }
                 .thenByDescending { it.embeddedSpanish }
@@ -439,7 +468,38 @@ object AutoStreamEngine {
             .map { candidate(it, request, context, AutoStreamPool.MAIN) }
         val shown = candidates.filter { it.fitsConnection }.ifEmpty { candidates }
         val (sized, unsized) = shown.partition { it.sizeKnown }
-        return (inQualityOrder(sized, config) + inQualityOrder(unsized, config)).map { it.scored }
+        return regularFirst(inQualityOrder(sized, config) + inQualityOrder(unsized, config), request).map { it.scored }
+    }
+
+    /**
+     * RCTV: the versions beyond the regular one (Extended, Director's Cut) Auto Stream can play from
+     * [sources] (a movie's Extras), each with its best file; the ones with none that passes its rules
+     * aren't there. A size not given is checked from the link before it plays.
+     */
+    fun editions(
+        sources: List<NormalizedSource>,
+        request: SmartSourceRequest,
+        context: SmartRankingContext = SmartRankingContext.DEFAULT
+    ): List<AutoStreamEdition> {
+        if (request.isSeries || sources.isEmpty()) return emptyList()
+        val judged = HashMap<ReleaseEdition, AutoStreamEdition>()
+        for (edition in listOf(ReleaseEdition.EXTENDED, ReleaseEdition.DIRECTORS_CUT)) {
+            val own = sources.filter { it.release.editionFor(request) == edition }
+            if (own.isEmpty()) continue
+            val best = rank(own, request.copy(edition = edition), context, canVerifySize = true).best ?: continue
+            judged[edition] = AutoStreamEdition(edition, best.release)
+        }
+        return listOf(ReleaseEdition.EXTENDED, ReleaseEdition.DIRECTORS_CUT).mapNotNull { judged[it] }
+    }
+
+    /**
+     * RCTV: with no version asked for, the regular one's files first; an Extended or Director's Cut
+     * (they play from the movie's Extras) only after them, in the same order.
+     */
+    private fun regularFirst(ordered: List<AutoStreamCandidate>, request: SmartSourceRequest): List<AutoStreamCandidate> {
+        if (request.edition != null) return ordered
+        val (regular, editions) = ordered.partition { it.release.editionFor(request) == ReleaseEdition.NONE }
+        return regular + editions
     }
 
     private fun inQualityOrder(candidates: List<AutoStreamCandidate>, config: AutoStreamConfig): List<AutoStreamCandidate> =
@@ -626,7 +686,8 @@ object AutoStreamEngine {
         RejectReason.WRONG_YEAR,
         RejectReason.WRONG_TYPE,
         RejectReason.WRONG_SEASON,
-        RejectReason.WRONG_EPISODE
+        RejectReason.WRONG_EPISODE,
+        RejectReason.WRONG_EDITION
     )
 
     /** The parser's word for "Dual" / "Multi" audio. */

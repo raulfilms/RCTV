@@ -470,11 +470,8 @@ class StreamRepositoryImpl @Inject constructor(
 
         try {
             val groupByRepository = pluginManager.groupStreamsByRepository.first()
-            val repositoriesById = if (groupByRepository) {
-                pluginManager.repositories.first().associateBy { it.id }
-            } else {
-                emptyMap()
-            }
+            // RCTV: always read, so each stream knows its repository (Auto Stream orders by it).
+            val repositoriesById = pluginManager.repositories.first().associateBy { it.id }
 
             // Collect streaming results from each scraper
             pluginManager.executeScrapersStreaming(
@@ -488,7 +485,10 @@ class StreamRepositoryImpl @Inject constructor(
                     val addonStreams = AddonStreams(
                         addonName = addonName,
                         addonLogo = null,
-                        streams = results.map { result -> result.toPluginStream(scraper, addonName) }
+                        streams = results.map { result ->
+                            result.toPluginStream(scraper, addonName)
+                                .copy(pluginRepository = repositoriesById[scraper.repositoryId]?.name?.takeIf { it.isNotBlank() } ?: scraper.name)
+                        }
                     )
                     resultChannel.send(addonStreams)
                     Log.d(TAG, "Streamed ${results.size} results from ${scraper.name}")

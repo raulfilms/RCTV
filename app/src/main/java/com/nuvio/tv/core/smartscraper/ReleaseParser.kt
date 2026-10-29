@@ -89,6 +89,7 @@ object ReleaseParser {
             channels = channels.first,
             atmos = atmos,
             imax = IMAX.containsMatchIn(all),
+            edition = editionIn(namesLower) ?: editionIn(textLower) ?: ReleaseEdition.NONE,
             is3d = THREE_D.containsMatchIn(namesLower),
             tenBit = TEN_BIT.containsMatchIn(all),
             sizeBytes = size.first,
@@ -469,6 +470,20 @@ object ReleaseParser {
     private val MONO = rx("${B}mono$E")
 
     private val IMAX = rx("${B}imax$E")
+    /** "Director's Cut", "Directors.Cut", "Versión del director" (before Extended: "Extended Director's Cut" is the director's). */
+    private val DIRECTORS_CUT = rx("$B(director'?s?'? ?-?cut|version del director|versión del director|montaje del director|corte del director)$E")
+    /** "Extended", "Extended Cut/Edition", "Versión extendida". */
+    private val EXTENDED = rx("$B(extended|extendida|extendido)$E")
+
+    /** The version a release is (RCTV: Extended or Director's Cut, never the theatrical one); null: none said. */
+    private fun editionIn(text: String): ReleaseEdition? {
+        val spaced = text.replace('.', ' ').replace('_', ' ')
+        return when {
+            DIRECTORS_CUT.containsMatchIn(spaced) -> ReleaseEdition.DIRECTORS_CUT
+            EXTENDED.containsMatchIn(spaced) -> ReleaseEdition.EXTENDED
+            else -> null
+        }
+    }
     private val THREE_D = rx("$B(3d|half ?-?sbs|h ?-?sbs|h ?-?ou|sbs)$E")
     private val SIZE = rx("(\\d+(?:[.,]\\d+)?)\\s?(tib|tb|gib|gb|mib|mb)(?![a-z])")
     /** A flag: two regional-indicator letters. */

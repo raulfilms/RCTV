@@ -37,7 +37,9 @@ object SmartScoreEngine {
         val metadata = checkMetadata(release, titleMatch, request, config)
         val bitrate = bitrateOf(release, request)
         val required = (bitrate ?: defaultMbps(release.resolution)) * HEADROOM
-        val rejection = metadata.rejection ?: qualityRejection(source, request, config)
+        val rejection = metadata.rejection
+            ?: RejectReason.WRONG_EDITION.takeIf { request.edition != null && release.editionFor(request) != request.edition }
+            ?: qualityRejection(source, request, config)
         val breakdown = ScoreBreakdown(
             metadata = metadata.score,
             video = videoScore(release, bitrate, context),

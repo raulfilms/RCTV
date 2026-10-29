@@ -325,7 +325,7 @@ class AutoStreamEngineTest {
     }
 
     @Test
-    fun `the same file from several services is one choice, its most reliable copy first`() {
+    fun `the same file from several services is one choice, its copy in the servers' order first`() {
         val context = SmartRankingContext(
             providerStats = mapOf(
                 "Torrentio TB" to ProviderStats(successes = 2.0, failures = 2.0),
@@ -339,8 +339,9 @@ class AutoStreamEngineTest {
             context = context
         )
         assertEquals(1, result.candidates.size)
-        assertEquals("Torrentio PM", result.best!!.stream.addonName)
-        assertEquals(listOf("Torrentio TB"), result.best!!.copies.map { it.stream.addonName })
+        // RCTV: TorBox, then Real-Debrid (not ready here), then Premiumize, whatever their reliability.
+        assertEquals("Torrentio TB", result.best!!.stream.addonName)
+        assertEquals(listOf("Torrentio PM"), result.best!!.copies.map { it.stream.addonName })
         assertEquals(2, result.chain.size)
     }
 
@@ -377,7 +378,8 @@ class AutoStreamEngineTest {
         assertEquals(1.5, c.bitrateHeadroom, 0.0)
         assertEquals("en", c.preferredAudioLanguage)
         assertEquals(listOf("es-419", "es-ES"), c.spanishVariantOrder)
-        assertEquals(listOf("LatinoDebrid", "Addon LATAM", "AIO Stream (Spanish)"), c.spanishPool)
+        // RCTV: the servers' order (AIO Stream first).
+        assertEquals(listOf("AIO Stream (Spanish)", "LatinoDebrid", "Addon LATAM"), c.spanishPool)
         assertEquals(3, c.donorProbeCount)
         assertEquals(4.0, c.donorProbeTimeoutSeconds, 0.0)
         assertEquals(1.0, c.donorDurationToleranceSeconds, 0.0)
