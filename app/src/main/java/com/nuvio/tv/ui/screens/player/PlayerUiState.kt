@@ -75,6 +75,13 @@ data class PlayerUiState(
     val logo: String? = null,
     val description: String? = null,
     val castMembers: List<MetaCastMember> = emptyList(),
+    // RCTV pause screen: the streaming service it's on (the app's own logo) or, else, its network
+    // (a show) or studio (a movie) logo; its age rating and length ("PG-13", "162" minutes).
+    @androidx.annotation.DrawableRes val brandLogoRes: Int? = null,
+    val brandLogoUrl: String? = null,
+    val brandName: String? = null,
+    val ageRating: String? = null,
+    val runtime: String? = null,
     val showControls: Boolean = true,
     val showSeekOverlay: Boolean = false,
     val pendingPreviewSeekPosition: Long? = null,

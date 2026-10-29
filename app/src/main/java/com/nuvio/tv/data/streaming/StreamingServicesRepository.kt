@@ -42,36 +42,7 @@ class StreamingServicesRepository @Inject constructor(
         val altCompanyNames: List<String> = emptyList()
     )
 
-    private val entries = listOf(
-        Entry(StreamingService("netflix", "Netflix", R.drawable.streaming_logo_netflix, appHub = "netflix"),
-            providerIds = listOf(8), providerNames = listOf("Netflix")),
-        Entry(StreamingService("prime", "Prime Video", R.drawable.streaming_logo_prime, appHub = "prime"),
-            providerIds = listOf(9, 119), providerNames = listOf("Amazon Prime Video", "Prime Video")),
-        Entry(StreamingService("hbomax", "HBO Max", R.drawable.streaming_logo_hbomax, darkTile = true, appHub = "hbomax"),
-            providerIds = listOf(1899, 384), providerNames = listOf("HBO Max", "Max")),
-        Entry(StreamingService("appletv", "Apple TV+", R.drawable.streaming_logo_appletv, appHub = "appletv"),
-            providerIds = listOf(350), providerNames = listOf("Apple TV Plus", "Apple TV+", "Apple TV")),
-        Entry(StreamingService("disney", "Disney+", R.drawable.streaming_logo_disney, appHub = "main"),
-            providerIds = listOf(337), providerNames = listOf("Disney Plus", "Disney+")),
-        Entry(StreamingService("paramount", "Paramount+", R.drawable.streaming_logo_paramount, appHub = "paramount"),
-            providerIds = listOf(531, 2303), providerNames = listOf("Paramount Plus", "Paramount+", "Paramount Plus Premium")),
-        Entry(StreamingService("peacock", "Peacock", R.drawable.streaming_logo_peacock, appHub = "peacock"),
-            providerIds = listOf(386, 387), providerNames = listOf("Peacock Premium", "Peacock", "Peacock Premium Plus")),
-        Entry(StreamingService("discovery", "Discovery+", R.drawable.streaming_logo_discovery, appHub = "discovery"),
-            providerIds = listOf(520), providerNames = listOf("Discovery+", "Discovery Plus")),
-        Entry(StreamingService("a24", "A24", R.drawable.streaming_logo_a24, appHub = "a24"),
-            companyId = 41077, companyName = "A24"),
-        Entry(StreamingService("angel", "Angel Studios", R.drawable.streaming_logo_angel, appHub = "angel"),
-            providerNames = listOf("Angel Studios"), companyName = "Angel Studios"),
-        Entry(StreamingService("blumhouse", "Blumhouse", R.drawable.streaming_logo_blumhouse, appHub = "blumhouse"),
-            companyName = "Blumhouse Productions"),
-        // Opens a page of independent studios (see [groups]).
-        Entry(StreamingService("ifc", "Independent Film Company", R.drawable.streaming_logo_ifc, group = "ifc")),
-        Entry(StreamingService("shudder", "Shudder", R.drawable.streaming_logo_shudder, appHub = "shudder"),
-            providerIds = listOf(99), providerNames = listOf("Shudder"), companyName = "Shudder"),
-        Entry(StreamingService("foxnation", "Fox Nation", R.drawable.streaming_logo_foxnation, appHub = "foxnation"),
-            providerNames = listOf("Fox Nation"), companyName = "Fox Nation")
-    )
+    private val entries: List<Entry> get() = ENTRIES
 
     /**
      * Pages of studio tiles opened from a Home tile, by its [StreamingService.group] key. "ifc"
@@ -195,5 +166,48 @@ class StreamingServicesRepository @Inject constructor(
     } catch (e: Exception) {
         Log.w(TAG, "Company lookup failed for $name: ${e.message}")
         null
+    }
+
+    companion object {
+        private val ENTRIES = listOf(
+            Entry(StreamingService("netflix", "Netflix", R.drawable.streaming_logo_netflix, appHub = "netflix"),
+                providerIds = listOf(8), providerNames = listOf("Netflix")),
+            Entry(StreamingService("prime", "Prime Video", R.drawable.streaming_logo_prime, appHub = "prime"),
+                providerIds = listOf(9, 119), providerNames = listOf("Amazon Prime Video", "Prime Video")),
+            Entry(StreamingService("hbomax", "HBO Max", R.drawable.streaming_logo_hbomax, darkTile = true, appHub = "hbomax"),
+                providerIds = listOf(1899, 384), providerNames = listOf("HBO Max", "Max")),
+            Entry(StreamingService("appletv", "Apple TV+", R.drawable.streaming_logo_appletv, appHub = "appletv"),
+                providerIds = listOf(350), providerNames = listOf("Apple TV Plus", "Apple TV+", "Apple TV")),
+            Entry(StreamingService("disney", "Disney+", R.drawable.streaming_logo_disney, appHub = "main"),
+                providerIds = listOf(337), providerNames = listOf("Disney Plus", "Disney+")),
+            Entry(StreamingService("paramount", "Paramount+", R.drawable.streaming_logo_paramount, appHub = "paramount"),
+                providerIds = listOf(531, 2303), providerNames = listOf("Paramount Plus", "Paramount+", "Paramount Plus Premium")),
+            Entry(StreamingService("peacock", "Peacock", R.drawable.streaming_logo_peacock, appHub = "peacock"),
+                providerIds = listOf(386, 387), providerNames = listOf("Peacock Premium", "Peacock", "Peacock Premium Plus")),
+            Entry(StreamingService("discovery", "Discovery+", R.drawable.streaming_logo_discovery, appHub = "discovery"),
+                providerIds = listOf(520), providerNames = listOf("Discovery+", "Discovery Plus")),
+            Entry(StreamingService("a24", "A24", R.drawable.streaming_logo_a24, appHub = "a24"),
+                companyId = 41077, companyName = "A24"),
+            Entry(StreamingService("angel", "Angel Studios", R.drawable.streaming_logo_angel, appHub = "angel"),
+                providerNames = listOf("Angel Studios"), companyName = "Angel Studios"),
+            Entry(StreamingService("blumhouse", "Blumhouse", R.drawable.streaming_logo_blumhouse, appHub = "blumhouse"),
+                companyName = "Blumhouse Productions"),
+            // Opens a page of independent studios (see [groups]).
+            Entry(StreamingService("ifc", "Independent Film Company", R.drawable.streaming_logo_ifc, group = "ifc")),
+            Entry(StreamingService("shudder", "Shudder", R.drawable.streaming_logo_shudder, appHub = "shudder"),
+                providerIds = listOf(99), providerNames = listOf("Shudder"), companyName = "Shudder"),
+            Entry(StreamingService("foxnation", "Fox Nation", R.drawable.streaming_logo_foxnation, appHub = "foxnation"),
+                providerNames = listOf("Fox Nation"), companyName = "Fox Nation")
+        )
+
+        /**
+         * RCTV: the app's own logo for a TMDB watch provider (a service a title streams on: Disney+,
+         * Netflix...), when it's one of the Home row's services; null otherwise.
+         */
+        fun logoForProvider(providerId: Int, providerName: String?): Int? =
+            ENTRIES.firstOrNull { entry ->
+                providerId in entry.providerIds ||
+                    (providerName != null && entry.providerNames.any { it.equals(providerName, ignoreCase = true) })
+            }?.service?.logoRes
     }
 }

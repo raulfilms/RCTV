@@ -2,21 +2,14 @@ package com.nuvio.tv.ui.screens.player
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,25 +18,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.tv.material3.Card
-import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.Icon
+import androidx.compose.ui.res.painterResource
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import androidx.compose.ui.platform.LocalContext
-import com.nuvio.tv.domain.model.MetaCastMember
 import android.text.format.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -51,8 +39,14 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.util.contentTextDirection
+import com.nuvio.tv.ui.util.formatHeroRuntime
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 
+/**
+ * The pause screen. RCTV, as Disney+: at the bottom left, the streaming service the title is on
+ * (else its network or studio), the title's logo, for a show the episode's name, then the year, the
+ * age rating and the length, then a short description.
+ */
 @Composable
 fun PauseOverlay(
     visible: Boolean,
@@ -65,12 +59,14 @@ fun PauseOverlay(
     year: String?,
     type: String?,
     description: String?,
-    cast: List<MetaCastMember>,
     modifier: Modifier = Modifier,
+    @DrawableRes brandLogoRes: Int? = null,
+    brandLogoUrl: String? = null,
+    brandName: String? = null,
+    ageRating: String? = null,
+    runtime: String? = null,
     showClock: Boolean = true
 ) {
-    var selectedCastMember by remember { mutableStateOf<MetaCastMember?>(null) }
-
     PlayerOverlayScaffold(
         visible = visible,
         onDismiss = onClose,
@@ -93,25 +89,21 @@ fun PauseOverlay(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Bottom
         ) {
-            if (selectedCastMember != null) {
-                CastDetailView(
-                    member = selectedCastMember!!,
-                    onBack = { selectedCastMember = null }
-                )
-            } else {
-                PauseMetadataView(
-                    title = title,
-                    logo = logo,
-                    episodeTitle = episodeTitle,
-                    season = season,
-                    episode = episode,
-                    year = year,
-                    type = type,
-                    description = description,
-                    cast = cast,
-                    onCastSelected = { selectedCastMember = it }
-                )
-            }
+            PauseMetadataView(
+                title = title,
+                logo = logo,
+                episodeTitle = episodeTitle,
+                season = season,
+                episode = episode,
+                year = year,
+                type = type,
+                description = description,
+                brandLogoRes = brandLogoRes,
+                brandLogoUrl = brandLogoUrl,
+                brandName = brandName,
+                ageRating = ageRating,
+                runtime = runtime
+            )
         }
     }
 }
@@ -152,214 +144,124 @@ private fun PauseMetadataView(
     year: String?,
     type: String?,
     description: String?,
-    cast: List<MetaCastMember>,
-    onCastSelected: (MetaCastMember) -> Unit
+    @DrawableRes brandLogoRes: Int?,
+    brandLogoUrl: String?,
+    brandName: String?,
+    ageRating: String?,
+    runtime: String?
 ) {
+    val context = LocalContext.current
+    val isEpisode = type in listOf("series", "tv") && season != null && episode != null
+    val episodeLabel = if (isEpisode) stringResource(R.string.season_episode_format, season!!, episode!!) else null
+    // "2009 • PG-13 • 2h 42m"; a show's episode: "S1 E3 • 2023 • TV-MA • 52m".
+    val info = listOfNotNull(
+        episodeLabel,
+        year?.takeIf { it.isNotBlank() },
+        ageRating?.takeIf { it.isNotBlank() },
+        formatHeroRuntime(runtime)
+    ).joinToString("  •  ")
+
     Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Bottom
+        modifier = Modifier.widthIn(max = 620.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = stringResource(R.string.pause_you_are_watching),
-                style = MaterialTheme.typography.bodyLarge,
-                color = NuvioTheme.colors.TextTertiary
+        // The streaming service (the app's own logo), else the network or studio (in white).
+        when {
+            brandLogoRes != null -> Image(
+                painter = painterResource(brandLogoRes),
+                contentDescription = brandName,
+                contentScale = ContentScale.Fit,
+                alignment = Alignment.BottomStart,
+                modifier = Modifier
+                    .padding(bottom = NuvioTheme.spacing.md)
+                    .height(34.dp)
+                    .widthIn(max = 160.dp)
             )
-
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-
-            if (!logo.isNullOrBlank()) {
-                var logoFailed by remember(logo) { mutableStateOf(false) }
-                if (!logoFailed) {
+            !brandLogoUrl.isNullOrBlank() -> {
+                var brandFailed by remember(brandLogoUrl) { mutableStateOf(false) }
+                if (!brandFailed) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(logo)
-                            .memoryCacheKey(logo)
+                        model = ImageRequest.Builder(context)
+                            .data(brandLogoUrl)
+                            .memoryCacheKey(brandLogoUrl)
                             .crossfade(true)
                             .build(),
-                        contentDescription = title,
+                        contentDescription = brandName,
                         contentScale = ContentScale.Fit,
                         alignment = Alignment.BottomStart,
-                        modifier = Modifier.height(96.dp),
-                        onError = { logoFailed = true }
-                    )
-                } else {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        colorFilter = ColorFilter.tint(Color.White),
+                        modifier = Modifier
+                            .padding(bottom = NuvioTheme.spacing.md)
+                            .height(30.dp)
+                            .widthIn(max = 160.dp),
+                        onError = { brandFailed = true }
                     )
                 }
-            } else {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            if (!year.isNullOrBlank()) {
-                val episodeLabel = if (type in listOf("series", "tv") && season != null && episode != null) {
-                    " • " + stringResource(R.string.season_episode_format, season, episode)
-                } else {
-                    ""
-                }
-
-                Text(
-                    text = "$year$episodeLabel",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = NuvioTheme.colors.TextSecondary,
-                    modifier = Modifier.padding(top = NuvioTheme.spacing.sm)
-                )
-            }
-
-            if (!episodeTitle.isNullOrBlank()) {
-                val context = LocalContext.current
-                Text(
-                    text = episodeTitle.localizeEpisodeTitle(context),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = NuvioTheme.spacing.md)
-                )
-            }
-
-            if (!description.isNullOrBlank()) {
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        textDirection = description.contentTextDirection()
-                    ),
-                    color = NuvioTheme.colors.TextSecondary,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = NuvioTheme.spacing.lg)
-                )
-            }
-
-            if (cast.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Text(
-                    text = stringResource(R.string.pause_cast_label),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = NuvioTheme.colors.TextTertiary
-                )
-
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    content = {
-                        items(cast.take(8)) { member ->
-                            CastChip(member = member, onClick = { onCastSelected(member) })
-                        }
-                    }
-                )
             }
         }
-    }
-}
 
-@Composable
-private fun CastChip(
-    member: MetaCastMember,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.1f),
-            focusedContainerColor = Color.White.copy(alpha = 0.18f)
-        ),
-        shape = CardDefaults.shape(shape = RoundedCornerShape(NuvioTheme.radii.md))
-    ) {
-        Text(
-            text = member.name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun CastDetailView(
-    member: MetaCastMember,
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 28.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = stringResource(R.string.cd_back),
-                tint = NuvioTheme.colors.TextSecondary,
-                modifier = Modifier.size(NuvioTheme.spacing.xl)
+        // The title's logo (its name when it has none).
+        var logoFailed by remember(logo) { mutableStateOf(false) }
+        if (!logo.isNullOrBlank() && !logoFailed) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(logo)
+                    .memoryCacheKey(logo)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = title,
+                contentScale = ContentScale.Fit,
+                alignment = Alignment.BottomStart,
+                modifier = Modifier
+                    .height(88.dp)
+                    .widthIn(max = 420.dp),
+                onError = { logoFailed = true }
             )
-            Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
+        } else {
             Text(
-                text = stringResource(R.string.pause_back_to_details),
-                style = MaterialTheme.typography.bodyMedium,
-                color = NuvioTheme.colors.TextSecondary,
-                modifier = Modifier.clickable(onClick = onBack)
+                text = title,
+                style = MaterialTheme.typography.headlineLarge,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
-        Row(
-            verticalAlignment = Alignment.Top
-        ) {
-            if (!member.photo.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(member.photo)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = member.name,
-                    modifier = Modifier
-                        .size(width = 160.dp, height = 240.dp)
-                        .clip(RoundedCornerShape(NuvioTheme.radii.xl)),
-                    contentScale = ContentScale.Crop
-                )
+        // A show: the episode's name, right under its logo.
+        if (isEpisode && !episodeTitle.isNullOrBlank()) {
+            Text(
+                text = episodeTitle.localizeEpisodeTitle(context),
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = NuvioTheme.spacing.md)
+            )
+        }
 
-                Spacer(modifier = Modifier.width(28.dp))
-            }
+        if (info.isNotBlank()) {
+            Text(
+                text = info,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = NuvioTheme.spacing.md)
+            )
+        }
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = member.name,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (!member.character.isNullOrBlank()) {
-                    Text(
-                        text = stringResource(R.string.pause_as_character, member.character ?: ""),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = NuvioTheme.colors.TextSecondary,
-                        modifier = Modifier.padding(top = NuvioTheme.spacing.sm),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+        if (!description.isNullOrBlank()) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    textDirection = description.contentTextDirection()
+                ),
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .padding(top = NuvioTheme.spacing.sm)
+            )
         }
     }
 }

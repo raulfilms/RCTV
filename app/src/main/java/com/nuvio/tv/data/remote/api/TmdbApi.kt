@@ -190,6 +190,20 @@ interface TmdbApi {
         @Query("language") language: String? = null
     ): Response<TmdbWatchProviderListResponse>
 
+    /** RCTV: where a movie streams, by region (its "flatrate" services: Disney+, Netflix...). */
+    @GET("movie/{movie_id}/watch/providers")
+    suspend fun getMovieTitleWatchProviders(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String
+    ): Response<TmdbTitleWatchProvidersResponse>
+
+    /** RCTV: where a show streams, by region. */
+    @GET("tv/{tv_id}/watch/providers")
+    suspend fun getTvTitleWatchProviders(
+        @Path("tv_id") tvId: Int,
+        @Query("api_key") apiKey: String
+    ): Response<TmdbTitleWatchProvidersResponse>
+
     @GET("watch/providers/tv")
     suspend fun getTvWatchProviders(
         @Query("api_key") apiKey: String,
@@ -880,6 +894,20 @@ data class TmdbNetworkDetailsResponse(
     @Json(name = "homepage") val homepage: String? = null,
     @Json(name = "logo_path") val logoPath: String? = null,
     @Json(name = "origin_country") val originCountry: String? = null
+)
+
+/** RCTV: a title's watch providers, by region code ("US"). */
+@JsonClass(generateAdapter = true)
+data class TmdbTitleWatchProvidersResponse(
+    @Json(name = "results") val results: Map<String, TmdbTitleWatchProviders>? = null
+)
+
+/** RCTV: one region's: included in a subscription ([flatrate]), free with ads, free. */
+@JsonClass(generateAdapter = true)
+data class TmdbTitleWatchProviders(
+    @Json(name = "flatrate") val flatrate: List<TmdbWatchProviderEntry>? = null,
+    @Json(name = "ads") val ads: List<TmdbWatchProviderEntry>? = null,
+    @Json(name = "free") val free: List<TmdbWatchProviderEntry>? = null
 )
 
 @JsonClass(generateAdapter = true)

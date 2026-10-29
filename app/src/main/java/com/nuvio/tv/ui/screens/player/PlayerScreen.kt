@@ -1111,7 +1111,11 @@ fun PlayerScreen(
             year = uiState.releaseYear,
             type = uiState.contentType,
             description = uiState.description,
-            cast = uiState.castMembers,
+            brandLogoRes = uiState.brandLogoRes,
+            brandLogoUrl = uiState.brandLogoUrl,
+            brandName = uiState.brandName,
+            ageRating = uiState.ageRating,
+            runtime = uiState.runtime,
             showClock = !viewModel.playbackTimeline.collectAsState().value.isLive,
             modifier = Modifier
                 .fillMaxSize()

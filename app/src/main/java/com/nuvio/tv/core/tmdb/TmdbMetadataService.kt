@@ -62,9 +62,42 @@ class TmdbMetadataService(
     private val moreLikeThisCache = ConcurrentHashMap<String, List<MetaPreview>>()
     private val entityHeaderCache = ConcurrentHashMap<String, TmdbEntityHeader>()
     private val entityRailCache = ConcurrentHashMap<String, List<MetaPreview>>()
+    private val titleProvidersCache = ConcurrentHashMap<String, List<com.nuvio.tv.data.remote.api.TmdbWatchProviderEntry>>()
     /** TMDB's page count for each cached rail page (the See All goes on past page 500 with it). */
     private val entityRailTotalPagesCache = ConcurrentHashMap<String, Int>()
     private val entityBrowseCache = ConcurrentHashMap<String, TmdbEntityBrowseData>()
+
+    /**
+     * RCTV: the streaming services a title is on in [region] (subscription first, then free with
+     * ads, then free), in TMDB's order; empty when it's on none or TMDB doesn't answer.
+     */
+    suspend fun fetchTitleStreamingProviders(
+        tmdbId: String,
+        contentType: ContentType,
+        region: String = STREAMING_PROVIDER_REGION
+    ): List<com.nuvio.tv.data.remote.api.TmdbWatchProviderEntry> = withContext(ioDispatcher) {
+        val numericId = tmdbId.toIntOrNull() ?: return@withContext emptyList()
+        val isShow = contentType == ContentType.SERIES || contentType == ContentType.TV
+        val cacheKey = "${if (isShow) "tv" else "movie"}:$numericId:$region"
+        titleProvidersCache[cacheKey]?.let { return@withContext it }
+        val providers = try {
+            val response = if (isShow) {
+                tmdbApi.getTvTitleWatchProviders(numericId, TMDB_API_KEY)
+            } else {
+                tmdbApi.getMovieTitleWatchProviders(numericId, TMDB_API_KEY)
+            }
+            val regional = response.body()?.results?.get(region)
+            listOf(regional?.flatrate, regional?.ads, regional?.free)
+                .flatMap { list -> list.orEmpty().sortedBy { it.displayPriority ?: Int.MAX_VALUE } }
+                .distinctBy { it.providerId }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return@withContext emptyList()
+        }
+        titleProvidersCache[cacheKey] = providers
+        providers
+    }
 
     suspend fun fetchEnrichment(
         tmdbId: String,

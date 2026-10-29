@@ -66,13 +66,26 @@ internal fun PlayerRuntimeController.applyMetaDetails(meta: Meta) {
         contentLanguage = meta.resolveContentLanguage()
     }
     val description = resolveDescription(meta)
+    val isEpisode = contentType in listOf("series", "tv") && currentSeason != null && currentEpisode != null
+    val episodeRuntime = if (isEpisode) {
+        meta.videos.firstOrNull { it.season == currentSeason && it.episode == currentEpisode }?.runtime?.takeIf { it > 0 }
+    } else {
+        null
+    }
+    // A show's network, a movie's studio: the pause screen's logo until the streaming service is known.
+    val company = (if (isEpisode || contentType in listOf("series", "tv")) meta.networks + meta.productionCompanies else meta.productionCompanies)
+        .firstOrNull { !it.logo.isNullOrBlank() }
 
     recomputeNextEpisode(resetVisibility = false)
     _uiState.update { state ->
         state.copy(
             description = description ?: state.description,
             castMembers = if (meta.castMembers.isNotEmpty()) meta.castMembers else state.castMembers,
-            isNextEpisodeMetadataResolved = true
+            isNextEpisodeMetadataResolved = true,
+            ageRating = state.ageRating ?: meta.ageRating?.takeIf { it.isNotBlank() },
+            runtime = episodeRuntime?.toString() ?: state.runtime ?: meta.runtime?.takeIf { !isEpisode && it.isNotBlank() },
+            brandLogoUrl = state.brandLogoUrl ?: company?.logo,
+            brandName = state.brandName ?: company?.name
         )
     }
 }
@@ -90,12 +103,14 @@ internal fun PlayerRuntimeController.resolveDescription(meta: Meta): String? {
 }
 
 internal fun PlayerRuntimeController.updateEpisodeDescription() {
-    val overview = metaVideos.firstOrNull { video ->
+    val video = metaVideos.firstOrNull { video ->
         video.season == currentSeason && video.episode == currentEpisode
-    }?.overview
+    }
+    val overview = video?.overview
 
     // Always update description when switching episodes - clear stale description
-    _uiState.update { it.copy(description = overview) }
+    // (and the pause screen's length: this episode's).
+    _uiState.update { it.copy(description = overview, runtime = video?.runtime?.takeIf { minutes -> minutes > 0 }?.toString()) }
 
     // Push episode metadata to the MediaSession so Google Home shows the new episode.
     updateMediaSessionMetadata()
@@ -144,6 +159,30 @@ private suspend fun PlayerRuntimeController.enrichDescriptionFromTmdb(id: String
     val tmdbDescription = episodeEnrichment?.overview ?: enrichment.description
     if (settings.useBasicInfo && !tmdbDescription.isNullOrBlank()) {
         _uiState.update { it.copy(description = tmdbDescription) }
+    }
+
+    // RCTV pause screen: the age rating, the length (the episode's for a show), and the logo of the
+    // streaming service it's on, else its network (a show) or studio (a movie).
+    val tmdbRuntime = if (isSeries) episodeEnrichment?.runtimeMinutes else enrichment.runtimeMinutes
+    val company = (if (isSeries) enrichment.networks + enrichment.productionCompanies else enrichment.productionCompanies)
+        .firstOrNull { !it.logo.isNullOrBlank() }
+    _uiState.update { state ->
+        state.copy(
+            ageRating = enrichment.ageRating?.takeIf { it.isNotBlank() } ?: state.ageRating,
+            runtime = tmdbRuntime?.takeIf { it > 0 }?.toString() ?: state.runtime,
+            brandLogoUrl = if (state.brandLogoRes == null) company?.logo ?: state.brandLogoUrl else state.brandLogoUrl,
+            brandName = if (state.brandLogoRes == null) company?.name ?: state.brandName else state.brandName
+        )
+    }
+    val service = runCatching { tmdbMetadataService.fetchTitleStreamingProviders(tmdbId, contentType) }
+        .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+        .getOrDefault(emptyList())
+        .firstNotNullOfOrNull { provider ->
+            com.nuvio.tv.data.streaming.StreamingServicesRepository.logoForProvider(provider.providerId, provider.providerName)
+                ?.let { logo -> logo to provider.providerName }
+        }
+    if (service != null) {
+        _uiState.update { it.copy(brandLogoRes = service.first, brandName = service.second ?: it.brandName) }
     }
 
     // Enrich title from TMDB (localized).
