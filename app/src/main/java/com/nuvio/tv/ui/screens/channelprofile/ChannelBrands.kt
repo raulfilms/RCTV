@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.channelprofile
 
+import com.nuvio.tv.core.util.FastText
 import com.nuvio.tv.domain.model.LiveTvChannel
 import java.text.Normalizer
 import java.util.Locale
@@ -74,7 +75,7 @@ object ChannelBrands {
 
     /** The channel's name without feed and quality tags, for display: "ESPN2 HD (Alternate)" -> "ESPN2". */
     fun displayName(name: String): String {
-        val words = name.replace(parentheses, " ").split(Regex("""\s+""")).filter { it.isNotBlank() }
+        val words = FastText.whitespaceSplit(name.replace(parentheses, " "))
         val kept = words.filter { it.lowercase(Locale.ROOT).trim('-', '|', ':') !in noise }
         return (kept.ifEmpty { words }).joinToString(" ").trim(' ', '-', '|', ':')
     }

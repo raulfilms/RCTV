@@ -450,10 +450,13 @@ private fun TeamStatsLine(profile: SportsTeamProfile?, isSoccer: Boolean, sportP
 
 private data class Standing(val rank: Int, val group: String)
 
+/** "1st in AFC East" (compiled once, MEM-07). */
+private val STANDING = Regex("""^\s*(\d+)\D*\s+in\s+(.+?)\s*$""", RegexOption.IGNORE_CASE)
+
 /** "1st in AFC East" → 1, "AFC East"; "1st in Pacific Division" → 1, "Pacific". */
 private fun parseStanding(summary: String?): Standing? {
     if (summary.isNullOrBlank()) return null
-    val match = Regex("""^\s*(\d+)\D*\s+in\s+(.+?)\s*$""", RegexOption.IGNORE_CASE).find(summary) ?: return null
+    val match = STANDING.find(summary) ?: return null
     val rank = match.groupValues[1].toIntOrNull() ?: return null
     val group = match.groupValues[2].removeSuffix(" Division").removeSuffix(" division").trim()
     return Standing(rank, group)

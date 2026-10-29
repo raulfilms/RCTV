@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.search
 
+import com.nuvio.tv.core.util.FastText
 import androidx.compose.runtime.Immutable
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
@@ -98,8 +99,6 @@ internal object SearchExtrasFinder {
     /** How far ahead the guide's programs are looked through. */
     private const val PROGRAMS_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
 
-    /** A name or a group that says it's an adult channel. */
-    private val ADULT_WORDS = Regex("(?i)\\b(xxx|adults?|porn\\w*|erotic\\w*)\\b")
     private val ADULT_CATEGORIES = setOf("adults only", "erotic", "adult")
 
     /** A sport by name, in English and Spanish: its leagues show when it's typed ("futbol", "basketball"). */
@@ -251,7 +250,15 @@ internal object SearchExtrasFinder {
     }
 
     fun isAdult(channel: LiveTvChannel): Boolean =
-        ADULT_WORDS.containsMatchIn(channel.name) || channel.groupTitle?.let { ADULT_WORDS.containsMatchIn(it) } == true
+        hasAdultWord(channel.name) || channel.groupTitle?.let { hasAdultWord(it) } == true
+
+    /**
+     * "XXX", "Adult(s)", "Porn…", "Erotic…" as a word. RCTV (MEM-07): without a regular expression:
+     * it runs for every channel of the guide, and on Android each match leaves native memory.
+     */
+    private fun hasAdultWord(text: String): Boolean = FastText.wordsOf(text).any { word ->
+        word == "xxx" || word == "adult" || word == "adults" || word.startsWith("porn") || word.startsWith("erotic")
+    }
 
     private fun isAdult(program: EpgProgram): Boolean =
         program.categories.any { it.lowercase() in ADULT_CATEGORIES } || program.category?.lowercase() in ADULT_CATEGORIES

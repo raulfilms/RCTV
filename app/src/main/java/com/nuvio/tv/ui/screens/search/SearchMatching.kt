@@ -1,7 +1,6 @@
 package com.nuvio.tv.ui.screens.search
 
-import java.text.Normalizer
-import java.util.Locale
+import com.nuvio.tv.core.util.FastText
 
 /**
  * RCTV: how well a name (a channel, a team, a league, a program in the guide) matches what's typed
@@ -28,14 +27,14 @@ internal object SearchMatching {
     /** A match this good puts its row above the movies and series. */
     const val STRONG = WHOLE_WORDS
 
-    private val MARKS = Regex("\\p{Mn}+")
-    private val NOT_ALPHANUMERIC = Regex("[^\\p{L}\\p{N}]+")
-
-    /** "Atlético de Madrid!" → "atletico de madrid". */
-    fun normalize(text: String): String {
-        val plain = Normalizer.normalize(text, Normalizer.Form.NFD).replace(MARKS, "")
-        return plain.lowercase(Locale.ROOT).replace(NOT_ALPHANUMERIC, " ").trim()
-    }
+    /**
+     * "Atlético de Madrid!" → "atletico de madrid".
+     *
+     * RCTV (MEM-07): without regular expressions: Search runs this for every channel and every
+     * program title of the guide (tens of thousands), and on Android each match a Regex runs leaves
+     * native memory the garbage collector barely sees (over 1 GB in seconds on a Mi Box 4).
+     */
+    fun normalize(text: String): String = FastText.letterDigitWords(text)
 
     /** How [name] matches [query] (both already [normalize]d); null when it doesn't. */
     fun rank(name: String, query: String): Int? {

@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import com.nuvio.tv.R
+import com.nuvio.tv.core.util.FastText
 import com.nuvio.tv.data.local.LiveTvDataStore
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
@@ -26,8 +27,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.text.Normalizer
-import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.abs
 
@@ -149,20 +148,37 @@ internal object SportsGameChannels {
         .replace(" st ", " saint ")
         .trim()
 
-    /** "Chicago Bulls" → "chicago bulls": no accents, punctuation or case. */
+    /**
+     * "Chicago Bulls" → "chicago bulls": no accents, punctuation or case.
+     *
+     * RCTV (MEM-07): without regular expressions. This runs for every program on the guide, for
+     * every game looked for: it compiled three new ones each time (nine per program), and on
+     * Android their native memory piled up past 1 GB in seconds on a Mi Box 4 (the system closed
+     * the app on Sports). The same texts come again and again (one program, many games): the
+     * latest ones are kept.
+     */
     internal fun normalize(text: String): String {
-        val plain = Normalizer.normalize(text, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
-        return plain.lowercase(Locale.ROOT)
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        if (text.length > NORMALIZED_KEPT_MAX_LENGTH) return FastText.asciiWords(text)
+        synchronized(normalized) { normalized[text] }?.let { return it }
+        val result = FastText.asciiWords(text)
+        synchronized(normalized) { normalized[text] = result }
+        return result
     }
+
+    /** The latest texts made comparable (a program's title, its first 400 characters of description). */
+    private val normalized = object : LinkedHashMap<String, String>(NORMALIZED_KEPT, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > NORMALIZED_KEPT
+    }
+    private const val NORMALIZED_KEPT = 4_096
+    private const val NORMALIZED_KEPT_MAX_LENGTH = 600
+
+    private val CLUB_SUFFIXES = setOf("fc", "cf", "afc", "sc")
 
     /** A team's names to look for: "chicago bulls", "bulls"; "arsenal" (not "arsenal fc"). */
     private fun teamNames(name: String, aliases: List<String>): List<String> =
         (listOf(name) + aliases)
             .map { canonical(normalize(it)) }
-            .map { it.replace(Regex("\\b(fc|cf|afc|sc)\\b"), " ").replace(Regex("\\s+"), " ").trim() }
+            .map { FastText.withoutWords(it, CLUB_SUFFIXES) }
             .filter { it.length >= 3 }
             .distinct()
 

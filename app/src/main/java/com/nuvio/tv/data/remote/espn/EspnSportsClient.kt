@@ -75,6 +75,8 @@ class EspnSportsClient @Inject constructor(
     )
 
     companion object {
+        /** "specialTeam" → "special Team" (a roster group's name). */
+        private val CAMEL_CASE_BREAK = Regex("([a-z])([A-Z])")
         /** The sports/leagues surfaced throughout the Sports tab. Curated by hand - ESPN has many more, but this covers the major ones the app cares about. */
         val FEEDS = listOf(
             Feed("soccer", "eng.1", "Soccer", "⚽"),
@@ -1923,7 +1925,7 @@ class EspnSportsClient @Inject constructor(
         fun groupLabel(raw: String?): String? = raw?.takeIf { it.isNotBlank() }?.let { value ->
             when (value) {
                 "specialTeam" -> "Special Teams"
-                else -> value.replace(Regex("([a-z])([A-Z])"), "$1 $2").replaceFirstChar { it.uppercase() }
+                else -> value.replace(CAMEL_CASE_BREAK, "$1 $2").replaceFirstChar { it.uppercase() }
             }
         }
         for (i in 0 until entries.length()) {

@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.channelprofile
 
+import com.nuvio.tv.core.util.FastText
 import android.content.Context
 import android.util.Log
 import com.nuvio.tv.BuildConfig
@@ -28,7 +29,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import java.text.Normalizer
 import java.time.LocalDate
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -567,12 +567,8 @@ class ChannelProfileRepository @Inject constructor(
 
     // ------------------------------------------------------------------ helpers
 
-    private fun normalizeTitle(value: String): String =
-        Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace(Regex("\\p{M}+"), "")
-            .lowercase(Locale.US)
-            .replace("&", "and")
-            .replace(Regex("[^a-z0-9]+"), "")
+    /** RCTV (MEM-07): without regular expressions (see [FastText]). */
+    private fun normalizeTitle(value: String): String = FastText.asciiCompact(value)
 
     private fun interleave(lists: List<List<MetaPreview>>): List<MetaPreview> {
         val seen = HashSet<String>()

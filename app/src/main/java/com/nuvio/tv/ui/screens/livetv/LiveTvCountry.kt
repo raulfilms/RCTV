@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import com.nuvio.tv.core.util.GuideText
 import com.nuvio.tv.domain.model.LiveTvChannel
 import java.util.Locale
 
@@ -20,9 +21,8 @@ internal object LiveTvCountry {
         }.toMap()
     }
 
-    /** A leading 2–3 letter code followed by a separator, e.g. "US |", "|UK|", "[MX]", "USA -". */
-    private val prefixTag = Regex("""^[\s|\[(]*([A-Z]{2,3})[\s\])]*[|:\-–]""")
-    private val bracketTag = Regex("""^[\s]*[|\[(]([A-Z]{2,3})[|\])]""")
+    // A leading 2–3 letter code followed by a separator, e.g. "US |", "|UK|", "[MX]", "USA -":
+    // RCTV (MEM-07) read without regular expressions (GuideText), for every channel.
 
     /** Tags that look like country codes but aren't ("TV" is Tuvalu's code, "HD"…). */
     private val notCountries = setOf("TV", "HD", "SD", "UHD", "FHD", "VIP", "PPV", "XXX", "ALL", "NEW", "VOD")
@@ -47,8 +47,7 @@ internal object LiveTvCountry {
     fun of(channel: LiveTvChannel): String? {
         normalize(channel.country)?.let { return it }
         for (text in listOfNotNull(channel.groupTitle, channel.name)) {
-            val match = bracketTag.find(text) ?: prefixTag.find(text) ?: continue
-            val tag = match.groupValues[1]
+            val tag = GuideText.bracketCountryTag(text) ?: GuideText.leadingCountryTag(text) ?: continue
             if (tag in notCountries) continue
             normalize(tag)?.let { return it }
         }

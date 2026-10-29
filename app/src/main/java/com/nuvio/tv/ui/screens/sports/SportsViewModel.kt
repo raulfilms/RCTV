@@ -242,7 +242,8 @@ class SportsViewModel @Inject constructor(
     }
 
     private fun sameTitle(a: String?, b: String): Boolean {
-        fun norm(value: String) = value.lowercase(java.util.Locale.US).replace(Regex("[^a-z0-9]+"), "")
+        // RCTV (MEM-07): letters and digits kept without a regular expression.
+        fun norm(value: String) = value.lowercase(java.util.Locale.US).filter { it in 'a'..'z' || it in '0'..'9' }
         return a != null && norm(a) == norm(b)
     }
 

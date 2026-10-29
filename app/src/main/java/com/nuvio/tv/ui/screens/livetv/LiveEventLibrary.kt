@@ -182,8 +182,11 @@ class LiveEventLibrary @Inject constructor(
             "europa league", "nations league", "copa america", "world cup", "mundial"
         )
 
-        /** "Bulls vs. Knicks", "Real Madrid v Barcelona", "Bears @ Packers", "América contra Chivas". */
-        private val MATCHUP = Regex("""\b(vs|v|versus|contra)\b""")
+        /**
+         * "Bulls vs. Knicks", "Real Madrid v Barcelona", "Bears @ Packers", "América contra Chivas".
+         * RCTV (MEM-07): words, not a regular expression (this runs for every program of the guide).
+         */
+        private val MATCHUP_WORDS = setOf("vs", "v", "versus", "contra")
 
         private fun programEventId(channel: LiveTvChannel, program: EpgProgram): String =
             "$PROGRAM_ID_PREFIX${channel.id}:${program.startMs}"
@@ -200,7 +203,7 @@ class LiveEventLibrary @Inject constructor(
             val heading = SportsGameChannels.normalize(listOfNotNull(program.title, program.subtitle).joinToString(" "))
             val categories = SportsGameChannels.normalize((program.categories + listOfNotNull(program.category)).joinToString(" "))
             fun has(text: String, word: String) = " $text ".contains(" $word ")
-            if (MATCHUP.containsMatchIn(heading) || " @ " in program.title) return true
+            if (heading.split(' ').any { it in MATCHUP_WORDS } || " @ " in program.title) return true
             return SPORT_WORDS.any { has(categories, it) || has(heading, it) }
         }
     }

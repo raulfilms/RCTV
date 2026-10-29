@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.util
 
+import com.nuvio.tv.core.util.GuideText
 import com.nuvio.tv.domain.model.LiveTvChannel
 import java.io.Reader
 
@@ -12,11 +13,6 @@ import java.io.Reader
  */
 object M3uPlaylistParser {
 
-    private val attributeRegex = Regex("""([a-zA-Z0-9_-]+)="([^"]*)"""")
-
-    /** A provider's movie or episode file (Xtream's `/movie/` and `/series/`, or a video file). */
-    private val vodPath = Regex("""/(movie|movies|series)/""", RegexOption.IGNORE_CASE)
-    private val vodFile = Regex("""\.(mp4|mkv|avi|mov|m4v|wmv|flv|webm)(\?.*)?$""", RegexOption.IGNORE_CASE)
 
     fun parse(playlistText: String): List<LiveTvChannel> {
         if (!playlistText.contains("#EXTM3U") && !playlistText.contains("#EXTINF")) {
@@ -41,7 +37,7 @@ object M3uPlaylistParser {
      */
     internal fun isOnDemandFile(streamUrl: String): Boolean {
         val path = streamUrl.substringAfter("://").substringAfter('/', "")
-        return vodPath.containsMatchIn("/$path") || vodFile.containsMatchIn(path)
+        return GuideText.hasVodPathSegment("/$path") || GuideText.hasVodFileExtension(path)
     }
 
     private fun parseLines(lines: Sequence<String>, requireHeader: Boolean): List<LiveTvChannel> {
@@ -66,9 +62,8 @@ object M3uPlaylistParser {
                     val attributesPart = if (commaIndex >= 0) line.substring(0, commaIndex) else line
                     pendingName = (if (commaIndex >= 0) line.substring(commaIndex + 1) else "").trim()
                         .ifBlank { null }
-                    val attributes = attributeRegex.findAll(attributesPart).associate {
-                        it.groupValues[1].lowercase() to it.groupValues[2]
-                    }
+                    // RCTV (MEM-07): read without a regular expression (GuideText), for every channel.
+                    val attributes = GuideText.m3uAttributes(attributesPart)
                     pendingLogo = attributes["tvg-logo"]?.takeIf { it.isNotBlank() }
                     pendingGroup = attributes["group-title"]?.takeIf { it.isNotBlank() }
                     pendingEpgId = (attributes["tvg-id"] ?: attributes["tvg-chno"])?.takeIf { it.isNotBlank() }

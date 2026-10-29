@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import com.nuvio.tv.core.util.GuideText
+import com.nuvio.tv.core.util.FastText
 import android.content.Context
 import android.util.Log
 import java.io.BufferedInputStream
@@ -98,27 +100,26 @@ internal object ChannelLogoLibrary {
     /** Broadcast networks whose logo stands in for a local affiliate. */
     private val networks = setOf("abc", "cbs", "nbc", "fox", "pbs", "cw", "telemundo", "univision", "unimas")
     private val genericFirstWords = setOf("the", "tv", "news", "channel", "sports", "my", "home")
-    private val callSign = Regex("""(?<![A-Za-z0-9])([KW][A-Z]{2,3})(?![A-Za-z0-9])""")
-    private val separators = Regex("""[^a-z0-9]+""")
-    private val letterDigit = Regex("""(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])""")
 
     /** For dark tiles: white or light versions first, then wide ("hz") ones. */
     private fun prefer(base: String): String? = listOf(
         "$base-light-hz", "$base-white-hz", "$base-hz", "$base-light", "$base-white", base
     ).firstOrNull { it in keys }
 
-    private val accents = Regex("""\p{Mn}+""")
 
     private fun tokens(name: String): List<String> {
         // "Español" -> "espanol", like the logo file names.
-        val plain = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD).replace(accents, "")
-        val text = plain.lowercase(Locale.ROOT)
-            .replace("&", " and ")
-            .replace("+", " plus ")
-            .replace("'", "")
-            .replace("’", "")
-            .replace(Regex("""\([^)]*\)"""), " ")
-        var result = text.split(separators).filter { it.isNotEmpty() }
+        // RCTV (MEM-07): accents and parentheses off without regular expressions (this runs for
+        // every channel; on Android each match leaves native memory, see FastText).
+        val plain = FastText.stripAccents(name)
+        val text = FastText.withoutParentheses(
+            plain.lowercase(Locale.ROOT)
+                .replace("&", " and ")
+                .replace("+", " plus ")
+                .replace("'", "")
+                .replace("’", "")
+        )
+        var result: List<String> = GuideText.asciiRuns(text)
         if (result.size > 1 && result[0] == "the") result = result.drop(1)
         // FanDuel Sports Network is the renamed Bally Sports regional network.
         if (result.take(3) == listOf("fanduel", "sports", "network")) result = listOf("bally", "sports") + result.drop(3)
@@ -153,8 +154,9 @@ internal object ChannelLogoLibrary {
     private fun match(name: String, number: String?): String? {
         if (keys.isEmpty()) return null
         // A station's call sign picks its own logo.
-        callSign.findAll(name).forEach { found ->
-            val sign = found.groupValues[1].lowercase(Locale.ROOT)
+        // RCTV (MEM-07): call signs read without a regular expression (GuideText), for every channel.
+        GuideText.callSigns(name, unicodeBoundaries = false, suffixes = null).forEach { found ->
+            val sign = found.lowercase(Locale.ROOT)
             val best = keys.filter { sign in it.split('-') }.minByOrNull { it.length }
             if (best != null) return prefer(best) ?: best
         }
@@ -162,7 +164,7 @@ internal object ChannelLogoLibrary {
         val core = tokens(name).filter { it !in noise }
         matchTokens(core, isLocal)?.let { return it }
         // "ESPN2" -> espn-2, "QVC2" -> qvc-2.
-        val split = core.flatMap { token -> token.split(letterDigit).filter { it.isNotEmpty() } }
+        val split = core.flatMap { token -> GuideText.letterDigitPieces(token) }
         return if (split != core) matchTokens(split, isLocal) else null
     }
 }

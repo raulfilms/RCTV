@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import com.nuvio.tv.core.util.GuideText
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -884,13 +885,14 @@ class LiveTvViewModel @Inject constructor(
         private const val CLICK_SOURCES_WAIT_MS = 1_500L
         /** A program's details: how long TMDB is waited for its movie or episode. */
         private const val DETAILS_TMDB_WAIT_MS = 20_000L
-        private val COUNTRY_PREFIX = Regex("^([A-Z]{2,3})\\s*[-:|]\\s+")
-
-        /** "US - FOX News Detroit" -> "FOX News Detroit"; "MTV - Music Television" stays (MTV isn't a country). */
+        /**
+         * "US - FOX News Detroit" -> "FOX News Detroit"; "MTV - Music Television" stays (MTV isn't a
+         * country). RCTV (MEM-07): read without a regular expression (it runs for every channel).
+         */
         fun stripCountryTag(name: String): String {
-            val match = COUNTRY_PREFIX.find(name) ?: return name
-            if (LiveTvCountry.normalize(match.groupValues[1]) == null) return name
-            return name.substring(match.range.last + 1).trim().ifBlank { name }
+            val (code, nameStart) = GuideText.countryPrefix(name) ?: return name
+            if (LiveTvCountry.normalize(code) == null) return name
+            return name.substring(nameStart).trim().ifBlank { name }
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import com.nuvio.tv.core.util.GuideText
 import androidx.annotation.StringRes
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.EpgProgram
@@ -92,11 +93,14 @@ internal object LiveTvGuideCategories {
         GuideBrowse.GAME_SHOWS_CLASSICS, GuideBrowse.TV_SHOWS
     )
 
-    private fun words(vararg names: String) =
-        Regex("""(?<![\p{L}\p{N}])(${names.joinToString("|") { Regex.escape(it) }})(?![\p{L}\p{N}])""", RegexOption.IGNORE_CASE)
+    /**
+     * Whole words, any case. RCTV (MEM-07): looked for without regular expressions (they ran ~25
+     * times for every channel each time the guide was built; see GuideText).
+     */
+    private fun words(vararg names: String): List<String> = names.map { it.lowercase(Locale.ROOT) }
 
     // Channel name / playlist group hints.
-    private val nameHints: List<Pair<GuideBrowse, Regex>> = listOf(
+    private val nameHints: List<Pair<GuideBrowse, List<String>>> = listOf(
         GuideBrowse.SPORTS to words(
             "espn", "espn2", "espnu", "fs1", "fs2", "fox sports", "nbc sports", "cbs sports", "sportsnet",
             "sports", "sport", "fanduel", "bally", "nfl", "nba", "mlb", "nhl", "golf", "tennis", "big ten",
@@ -150,8 +154,8 @@ internal object LiveTvGuideCategories {
         GuideBrowse.LOCAL to words("local", "locals", "locales")
     )
 
-    /** US broadcast call signs: "WXYZ", "KABC-TV", "WJBK-DT". */
-    private val callSign = Regex("""(?<![\p{L}\p{N}])([KW][A-Z]{2,3})(-(TV|DT|HD|LD|CD))?(?![\p{L}\p{N}])""")
+    /** US broadcast call signs: "WXYZ", "KABC-TV", "WJBK-DT" (their optional suffixes). */
+    private val callSignSuffixes = setOf("TV", "DT", "HD", "LD", "CD")
     /** Look like call signs but are cable networks or brands. */
     private val notCallSigns = setOf("WWE", "WNBA", "WPT", "KBS", "WGN", "WEtv", "KTV")
 
@@ -204,14 +208,15 @@ internal object LiveTvGuideCategories {
         }
 
         // Name and playlist group.
-        val texts = listOfNotNull(channel.name, channel.groupTitle)
-        nameHints.forEach { (bucket, pattern) ->
-            if (texts.any { pattern.containsMatchIn(it) }) result += bucket
+        val texts = listOfNotNull(channel.name, channel.groupTitle).map { it.lowercase(Locale.ROOT) }
+        nameHints.forEach { (bucket, names) ->
+            if (texts.any { text -> names.any { GuideText.containsWord(text, it) } }) result += bucket
         }
 
         // Local stations: a broadcast sub-channel number ("7.1") or a call sign.
         val number = channel.number
-        val hasCallSign = callSign.findAll(channel.name).any { it.groupValues[1] !in notCallSigns }
+        val hasCallSign = GuideText.callSigns(channel.name, unicodeBoundaries = true, suffixes = callSignSuffixes)
+            .any { it !in notCallSigns }
         if ((number != null && number.contains('.')) || hasCallSign) {
             result += GuideBrowse.LOCAL
         }

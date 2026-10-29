@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.search
 
+import com.nuvio.tv.core.util.FastText
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -131,7 +132,6 @@ class SearchViewModel @Inject constructor(
 
         const val MAX_SUGGESTIONS = 8
         /** Splits titles and queries into words. */
-        private val WORD_SEPARATOR = Regex("[^\\p{L}\\p{N}]+")
         const val MAX_RECENT_SEARCHES = 8
     }
 
@@ -327,9 +327,10 @@ class SearchViewModel @Inject constructor(
 
         // Allow multi-word matches such as "wolf wall" -> "The Wolf of Wall Street".
         // Each query word must consume a different title word.
-        val queryWords = queryLower.split(WORD_SEPARATOR).filter { it.isNotEmpty() }
+        // RCTV (MEM-07): split without a regular expression (on Android each match leaves native memory).
+        val queryWords = FastText.letterDigitSplit(queryLower)
         if (queryWords.size < 2) return null
-        val unmatchedTitleWords = titleLower.split(WORD_SEPARATOR).filterTo(mutableListOf()) { it.isNotEmpty() }
+        val unmatchedTitleWords = FastText.letterDigitSplit(titleLower).toMutableList()
         val everyWordMatches = queryWords.all { word ->
             val index = unmatchedTitleWords.indexOfFirst { it.startsWith(word) }
             if (index >= 0) unmatchedTitleWords.removeAt(index)

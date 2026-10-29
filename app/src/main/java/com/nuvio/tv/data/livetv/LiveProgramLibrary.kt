@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.livetv
 
+import com.nuvio.tv.core.util.FastText
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.tmdb.TmdbService
@@ -32,7 +33,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.text.Normalizer
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -271,7 +271,7 @@ class LiveProgramLibrary @Inject constructor(
      */
     private suspend fun catalogInput(id: String, type: String, fallback: LibraryEntryInput): LibraryEntryInput {
         val meta = catalogMeta(id, type) ?: return fallback
-        val year = Regex("(\\d{4})").find(meta.releaseInfo ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val year = FOUR_DIGITS.find(meta.releaseInfo ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
         return LibraryEntryInput(
             itemId = id,
             itemType = type,
@@ -350,7 +350,7 @@ class LiveProgramLibrary @Inject constructor(
         itemId = id,
         itemType = type,
         title = name,
-        year = Regex("(\\d{4})").find(releaseInfo ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull(),
+        year = FOUR_DIGITS.find(releaseInfo ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull(),
         imdbId = id,
         tmdbId = tmdbId,
         poster = poster,
@@ -565,6 +565,8 @@ class LiveProgramLibrary @Inject constructor(
         private const val CATALOG_LOOKUP_TIMEOUT_MS = 8_000L
         /** A movie or series the guide saved before it used the titles' own ids. */
         private val LEGACY_TITLE_ID = Regex("""^tmdb:\d+$""")
+        /** A year in a release date ("2014-05-01"). */
+        private val FOUR_DIGITS = Regex("(\\d{4})")
         /** Seasons looked through for an episode's name. */
         private const val MAX_SEASONS = 40
         private val TRAILING_YEAR = Regex("""\s*\((\d{4})\)\s*$""")
@@ -593,12 +595,8 @@ class LiveProgramLibrary @Inject constructor(
             return withoutTags.substring(index).trim().ifBlank { raw.trim() }
         }
 
-        private fun normalize(value: String): String =
-            Normalizer.normalize(value, Normalizer.Form.NFD)
-                .replace(Regex("\\p{M}+"), "")
-                .lowercase(Locale.US)
-                .replace("&", "and")
-                .replace(Regex("[^a-z0-9]+"), "")
+        /** RCTV (MEM-07): without regular expressions (it runs for the guide's programs; see [FastText]). */
+        private fun normalize(value: String): String = FastText.asciiCompact(value)
 
         /**
          * "tmdb:1399:2:5" (an episode saved from the guide) -> the series "tmdb:1399", season 2,

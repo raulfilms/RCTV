@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.util
 
+import com.nuvio.tv.core.util.GuideText
 import android.util.Xml
 import com.nuvio.tv.domain.model.EpgProgram
 import org.xmlpull.v1.XmlPullParser
@@ -36,9 +37,8 @@ object XmltvParser {
     private val GZIP_MAGIC_1 = 0x1f
     private val GZIP_MAGIC_2 = 0x8b
 
-    private val CHANNEL_NUMBER = Regex("""\d{1,5}(\.\d{1,3})?""")
-    private val LIVE_TAG = Regex("""\[\s*live\s*]""", RegexOption.IGNORE_CASE)
-    private val NEW_TAG = Regex("""\[\s*new\s*]""", RegexOption.IGNORE_CASE)
+    // RCTV (MEM-07): a channel's number and a program's [LIVE]/[NEW] tags are read without regular
+    // expressions (GuideText): they ran for every program of the guide, leaving native memory.
 
     /** Sports categories: a new airing of one of these is a live game or live sports show. */
     private val LIVE_SPORT_CATEGORIES = setOf(
@@ -269,7 +269,7 @@ object XmltvParser {
                                 }
                             }
                         } else if (inChannel && currentTag == "display-name") {
-                            if (channelNumber == null && CHANNEL_NUMBER.matches(text)) {
+                            if (channelNumber == null && GuideText.isChannelNumber(text)) {
                                 channelNumber = text
                             } else if (channelName == null) {
                                 channelName = text
@@ -298,7 +298,7 @@ object XmltvParser {
                             val end = endMs
                             val programTitle = title
                             if (!id.isNullOrBlank() && start != null && end != null && end > start && !programTitle.isNullOrBlank()) {
-                                val isNew = markedNew || NEW_TAG.containsMatchIn(programTitle)
+                                val isNew = markedNew || GuideText.hasBracketTag(programTitle, "new")
                                 val isSportsGame = categories.any { it.lowercase(Locale.ROOT) in LIVE_SPORT_CATEGORIES }
                                 programs += EpgProgram(
                                     channelId = id,
@@ -310,7 +310,7 @@ object XmltvParser {
                                     endMs = end,
                                     subtitle = subtitle?.let(::shared),
                                     imageUrl = imageUrl?.let(::shared),
-                                    isLive = markedLive || LIVE_TAG.containsMatchIn(programTitle) || (isNew && isSportsGame),
+                                    isLive = markedLive || GuideText.hasBracketTag(programTitle, "live") || (isNew && isSportsGame),
                                     isNew = isNew,
                                     categories = categories.toList()
                                 )

@@ -189,10 +189,15 @@ internal fun sportsTeamColor(hex: String?, seed: String?): Color {
     return TilePalette[Math.floorMod((seed ?: "").hashCode(), TilePalette.size)]
 }
 
+/** "MIL @ BOS", "LAL vs BOS": a game's short name (compiled once, MEM-07). */
+private const val SHORT_MATCHUP_MAX_LENGTH = 24
+private val SHORT_MATCHUP = Regex("""^\s*([A-Za-z0-9]{2,5})\s*(@|vs\.?|VS\.?|v)\s*([A-Za-z0-9]{2,5})\s*$""")
+
 /** A team's short name: the source's ("BUF"), else from the game's short name ("MIL @ BOS"), else its first letters. */
 private fun shortTeamName(event: SportsEvent, home: Boolean): String {
     (if (home) event.homeTeamAbbreviation else event.awayTeamAbbreviation)?.let { return it }
-    val match = Regex("""^\s*([A-Za-z0-9]{2,5})\s*(@|vs\.?|VS\.?|v)\s*([A-Za-z0-9]{2,5})\s*$""").find(event.name)
+    // Only a short name can be one (no match run on a long one).
+    val match = if (event.name.length <= SHORT_MATCHUP_MAX_LENGTH) SHORT_MATCHUP.find(event.name) else null
     if (match != null) {
         val (first, separator, second) = match.destructured
         // "AWAY @ HOME"; "HOME vs AWAY".
