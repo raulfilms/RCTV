@@ -1281,7 +1281,7 @@ private fun GuidePreviewPanel(
             val channelLogo: @Composable () -> Unit = {
                 if (!channel?.logoUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = channel?.logoUrl,
+                        model = com.nuvio.tv.core.network.RctvServers.channelLogo(channel?.logoUrl),
                         contentDescription = channel?.name,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier

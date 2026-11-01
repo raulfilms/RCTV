@@ -58,7 +58,7 @@ class EspnSportsClient @Inject constructor(
     private val okHttpClient: OkHttpClient,
     @ApplicationContext private val appContext: Context
 ) {
-    class EspnException(message: String) : Exception(message)
+    open class EspnException(message: String) : Exception(message)
 
     /** One curated ESPN scoreboard feed: `{sportPath}/{leaguePath}`, e.g. "soccer/eng.1". */
     data class Feed(val sportPath: String, val leaguePath: String, val sportLabel: String, val emoji: String)
@@ -896,21 +896,42 @@ class EspnSportsClient @Inject constructor(
         return emptyList()
     }
 
-    private fun get(url: String): String {
-        val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        return executeCancellable(okHttpClient.newCall(request)) { response ->
-            if (!response.isSuccessful) throw EspnException("HTTP ${response.code}")
+    private fun get(url: String): String = viaServer(url) { address ->
+        val request = Request.Builder().url(address).header("Accept", "application/json").build()
+        executeCancellable(okHttpClient.newCall(request)) { response ->
+            if (!response.isSuccessful) throw ServerAnswer(response.code)
             boundedBody(response)
         }
     }
 
     /** [url]'s answer read as JSON as it comes in (see [boundedJson]). */
-    private fun <T> getJson(url: String, read: (com.google.gson.stream.JsonReader) -> T): T {
-        val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        return executeCancellable(okHttpClient.newCall(request)) { response ->
-            if (!response.isSuccessful) throw EspnException("HTTP ${response.code}")
+    private fun <T> getJson(url: String, read: (com.google.gson.stream.JsonReader) -> T): T = viaServer(url) { address ->
+        val request = Request.Builder().url(address).header("Accept", "application/json").build()
+        executeCancellable(okHttpClient.newCall(request)) { response ->
+            if (!response.isSuccessful) throw ServerAnswer(response.code)
             boundedJson(response, read = read)
         }
+    }
+
+    /** An answer that wasn't a success ([code]): an [EspnException] for the pages, as before. */
+    private class ServerAnswer(val code: Int) : EspnException("HTTP $code")
+
+    /**
+     * RCTV: [url] (ESPN) asked through the app's server, which sends only what the app reads, already
+     * kept for a moment (see [com.nuvio.tv.core.network.RctvServers]); when the server fails, ESPN is
+     * asked directly as before (a server that doesn't answer is left alone for a minute).
+     */
+    private fun <T> viaServer(url: String, fetch: (String) -> T): T {
+        val server = com.nuvio.tv.core.network.RctvServers.espn(url) ?: return fetch(url)
+        try {
+            return fetch(server)
+        } catch (error: Exception) {
+            // Left the page: no other request, and the server isn't to blame.
+            if (openCalls.get()?.isCancelled == true) throw error
+            // The server is down or failing (not ESPN saying a page doesn't exist): rest it.
+            if (error !is ServerAnswer || error.code >= 500) com.nuvio.tv.core.network.RctvServers.failed(server)
+        }
+        return fetch(url)
     }
 
     /**
@@ -920,6 +941,9 @@ class EspnSportsClient @Inject constructor(
     private class OpenCalls {
         private val calls = java.util.concurrent.ConcurrentLinkedQueue<okhttp3.Call>()
         @Volatile private var cancelled = false
+
+        /** The page that asked was left: its requests are being cancelled. */
+        val isCancelled: Boolean get() = cancelled
 
         fun add(call: okhttp3.Call) {
             calls += call

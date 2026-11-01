@@ -304,7 +304,7 @@ private fun SearchChannelTile(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(12.dp)
-    val url = result.channel.logoUrl?.takeIf { it.isNotBlank() }
+    val url = com.nuvio.tv.core.network.RctvServers.channelLogo(result.channel.logoUrl?.takeIf { it.isNotBlank() })
     Column(modifier = Modifier.width(ChannelTileWidth)) {
         Surface(
             onClick = onClick,

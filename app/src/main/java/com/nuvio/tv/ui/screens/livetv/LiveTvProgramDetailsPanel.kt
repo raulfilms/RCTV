@@ -304,7 +304,7 @@ private fun ProgramDetailsArt(channel: LiveTvChannel, program: EpgProgram, tmdb:
                 modifier = Modifier.fillMaxSize()
             )
             !channel.logoUrl.isNullOrBlank() && !tmdb.isLoading -> AsyncImage(
-                model = channel.logoUrl,
+                model = com.nuvio.tv.core.network.RctvServers.channelLogo(channel.logoUrl),
                 contentDescription = channel.name,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier

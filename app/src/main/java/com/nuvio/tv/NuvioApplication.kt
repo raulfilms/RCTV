@@ -150,6 +150,9 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
 
         return ImageLoader.Builder(this)
             .components {
+                // RCTV: sports and channel logos arrive the size of their tile (first, so a failure
+                // falls back to the image's own address with every other step as before).
+                add(com.nuvio.tv.core.image.ServerImageInterceptor())
                 add(CustomPosterFallbackInterceptor())
                 // Network hiccups get another try, so no tile, poster or hero stays blank.
                 add(ImageRetryInterceptor())
