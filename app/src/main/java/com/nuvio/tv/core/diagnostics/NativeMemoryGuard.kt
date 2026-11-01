@@ -2,8 +2,10 @@ package com.nuvio.tv.core.diagnostics
 
 import android.os.Debug
 import android.os.SystemClock
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * RCTV (MEM-08, approved by the owner on 29-oct as an exception to the plan's "no System.gc()"
@@ -26,7 +28,7 @@ object NativeMemoryGuard {
     private const val MB = 1024L * 1024L
     private const val SCREENS_SHOWN = 4
 
-    private val policy = NativeGrowthPolicy()
+    private val policy = NativeGrowthPolicy(growthMb = 64L, highMb = 350L, growthWhenHighMb = 32L)
     @Volatile private var started = false
 
     private var cleanups = 0
@@ -49,11 +51,11 @@ object NativeMemoryGuard {
     private fun check() {
         runCatching {
             val before = nativeMb()
+            attribute(before)
             if (!policy.shouldCollect(before, SystemClock.elapsedRealtime())) return
-            val runtime = Runtime.getRuntime()
-            runtime.gc()
-            // What's freed with the garbage (native memory) is freed by its finalizers and cleaners.
-            runtime.runFinalization()
+            // The collection only: what it frees natively is freed by the cleaners right after (not
+            // waited for here, so the checks never stop).
+            Runtime.getRuntime().gc()
             val after = nativeMb()
             policy.collected(after, SystemClock.elapsedRealtime())
             note(SessionTrail.screenName(), before, after)
@@ -79,4 +81,58 @@ object NativeMemoryGuard {
     }
 
     private fun nativeMb(): Long = Debug.getNativeHeapAllocatedSize() / MB
+
+    // ---- What the app was doing while native memory grew (RCTV, MEM-09) ----
+    //
+    // Every second the growth since the last look is added to each kind of work going on then
+    // (several at once each get it all): the work that keeps showing up while it grows is the one
+    // that takes it. Only counts and sizes, never what's in it.
+
+    private val running = ConcurrentHashMap<String, AtomicInteger>()
+    private val lastSeenMs = ConcurrentHashMap<String, Long>()
+    private val grownWhile = LinkedHashMap<String, Long>()
+    private var lastSampleMb = -1L
+
+    /** [block], noted as work of kind [label] while it runs. */
+    inline fun <T> during(label: String, block: () -> T): T {
+        begin(label)
+        try {
+            return block()
+        } finally {
+            end(label)
+        }
+    }
+
+    fun begin(label: String) {
+        running.getOrPut(label) { AtomicInteger() }.incrementAndGet()
+    }
+
+    fun end(label: String) {
+        running[label]?.decrementAndGet()
+        touch(label)
+    }
+
+    /** Work of kind [label] happened just now (quick, many times: decoding an image). */
+    fun touch(label: String) {
+        lastSeenMs[label] = SystemClock.elapsedRealtime()
+    }
+
+    private fun attribute(nowMb: Long) {
+        val previous = lastSampleMb
+        lastSampleMb = nowMb
+        if (previous < 0 || nowMb <= previous) return
+        val now = SystemClock.elapsedRealtime()
+        val labels = (running.filterValues { it.get() > 0 }.keys +
+            lastSeenMs.filterValues { now - it <= CHECK_EVERY_MS + 500 }.keys).ifEmpty { setOf("other") }
+        synchronized(this) {
+            labels.forEach { grownWhile[it] = (grownWhile[it] ?: 0L) + (nowMb - previous) }
+        }
+    }
+
+    /** "guide-epg 820, espn 300, images 120 MB": what was going on while native memory grew; null before any. */
+    @Synchronized
+    fun growthSummary(): String? {
+        if (grownWhile.isEmpty()) return null
+        return grownWhile.entries.sortedByDescending { it.value }.take(6).joinToString(", ") { "${it.key} ${it.value}" } + " MB"
+    }
 }

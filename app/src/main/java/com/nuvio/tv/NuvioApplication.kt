@@ -105,6 +105,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         // up until the system closes the app (Sports, Teams and Search on the Mi Box 4).
         com.nuvio.tv.core.diagnostics.NativeMemoryGuard.start()
         com.nuvio.tv.core.diagnostics.SessionTrail.memoryGuardProbe = com.nuvio.tv.core.diagnostics.NativeMemoryGuard::summary
+        com.nuvio.tv.core.diagnostics.SessionTrail.growthProbe = com.nuvio.tv.core.diagnostics.NativeMemoryGuard::growthSummary
         // RCTV (RCTV-AUD-001): how full the images' memory cache is, in the session notes.
         com.nuvio.tv.core.diagnostics.SessionTrail.imageCacheProbe = {
             SingletonImageLoader.get(this).memoryCache?.let { it.size to it.maxSize }
@@ -207,6 +208,15 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             // RCTV: every image shown is noted (how big it is in memory), so a close for memory says
             // which screen's images took it.
             .eventListener(object : coil3.EventListener() {
+                // RCTV (MEM-09): image work, for what was going on while native memory grew.
+                override fun decodeStart(request: coil3.request.ImageRequest, decoder: coil3.decode.Decoder, options: coil3.request.Options) {
+                    com.nuvio.tv.core.diagnostics.NativeMemoryGuard.touch("images")
+                }
+
+                override fun transformStart(request: coil3.request.ImageRequest, input: android.graphics.Bitmap) {
+                    com.nuvio.tv.core.diagnostics.NativeMemoryGuard.touch("logos")
+                }
+
                 override fun onSuccess(request: coil3.request.ImageRequest, result: coil3.request.SuccessResult) {
                     runCatching {
                         com.nuvio.tv.core.diagnostics.SessionTrail.noteImage(

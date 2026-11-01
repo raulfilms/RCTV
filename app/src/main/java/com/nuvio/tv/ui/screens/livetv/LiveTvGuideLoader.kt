@@ -86,6 +86,21 @@ class LiveTvGuideLoader @Inject constructor(
     /** The guide last loaded (or loading), for the sources in its [LiveGuideSnapshot.key]. */
     val guide: StateFlow<LiveGuideSnapshot?> = _guide.asStateFlow()
 
+    init {
+        // RCTV (MEM-09): the guide's size and state in the session notes (counts only).
+        com.nuvio.tv.core.diagnostics.SessionTrail.guideProbe = {
+            _guide.value?.let { g ->
+                val programs = g.epgByChannel.values.sumOf { it.size }
+                val state = when {
+                    g.isLoading || g.isEpgLoading -> "loading"
+                    g.loadedAtMs > 0 -> "loaded ${(System.currentTimeMillis() - g.loadedAtMs) / 60_000} min ago"
+                    else -> "not loaded"
+                }
+                "${g.channels.size} channels, $programs programs, $state"
+            }
+        }
+    }
+
     private var loadJob: Job? = null
     private var loadKey: String? = null
 
@@ -134,7 +149,7 @@ class LiveTvGuideLoader @Inject constructor(
             loadJob = scope.launch {
                 if (fromDevice) {
                     // The guide kept on the device shows at once; it's loaded again only when old.
-                    val saved = readSaved(key)
+                    val saved = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-read") { readSaved(key) }
                     if (saved != null) {
                         publish(key, saved)
                         if (!saved.isStale()) return@launch
@@ -193,13 +208,13 @@ class LiveTvGuideLoader @Inject constructor(
             okHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("HTTP ${response.code}")
                 val body = response.body ?: error("Empty response")
-                XmltvParser.parseStream(
+                com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-epg") { XmltvParser.parseStream(
                     input = body.byteStream(),
                     fromMs = nowMs - EPG_WINDOW_PAST_MS,
                     toMs = nowMs + EPG_WINDOW_AHEAD_MS,
                     includeChannels = true,
                     shouldContinue = { job?.isActive != false }
-                )
+                ) }
             }
         }
         if (job?.isActive == false) return
@@ -207,7 +222,7 @@ class LiveTvGuideLoader @Inject constructor(
             .onSuccess { guide ->
                 val snapshot = previewSnapshot(key, guide)
                 publish(key, snapshot)
-                if (snapshot.channels.isNotEmpty()) save(snapshot)
+                if (snapshot.channels.isNotEmpty()) com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-save") { save(snapshot) }
             }
             .onFailure { error ->
                 if (error is CancellationException) throw error
@@ -339,7 +354,7 @@ class LiveTvGuideLoader @Inject constructor(
             loadedAtMs = System.currentTimeMillis()
         )
         publish(key, loaded)
-        if (coroutineContext[Job]?.isActive != false) save(loaded)
+        if (coroutineContext[Job]?.isActive != false) com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-save") { save(loaded) }
     }
 
     /** One source's channels; never throws (a failing source just adds nothing). */
@@ -351,10 +366,10 @@ class LiveTvGuideLoader @Inject constructor(
                 okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) error("HTTP ${response.code}")
                     val body = response.body ?: error("Empty response")
-                    M3uPlaylistParser.parse(body.charStream())
+                    com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-channels") { M3uPlaylistParser.parse(body.charStream()) }
                 }
             }
-            is LiveTvConnection.Xtream -> xtreamClient.fetchChannels(connection)
+            is LiveTvConnection.Xtream -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-channels") { xtreamClient.fetchChannels(connection) }
             is LiveTvConnection.Stalker -> {
                 val session = stalkerSessions.getOrPut(source.id) { stalkerClient.authenticate(connection) }
                 stalkerClient.fetchChannels(session)
@@ -383,7 +398,7 @@ class LiveTvGuideLoader @Inject constructor(
         if (wantedIds.isEmpty()) return emptyMap()
         val job = coroutineContext[Job]
         val nowMs = System.currentTimeMillis()
-        val read: (java.io.InputStream) -> List<EpgProgram> = { input ->
+        val read: (java.io.InputStream) -> List<EpgProgram> = { input -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-epg") {
             XmltvParser.parseStream(
                 input = input,
                 fromMs = nowMs - EPG_WINDOW_PAST_MS,
@@ -392,7 +407,7 @@ class LiveTvGuideLoader @Inject constructor(
                 shouldContinue = { job?.isActive != false },
                 keepChannel = { it in wantedIds }
             ).programs
-        }
+        } }
         return runCatching {
             val programs: List<EpgProgram> = when (connection) {
                 is LiveTvConnection.Xtream -> xtreamClient.streamXmltv(connection, read)

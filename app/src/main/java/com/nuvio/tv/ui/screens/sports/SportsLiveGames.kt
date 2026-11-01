@@ -357,12 +357,12 @@ class SportsWatchViewModel @Inject constructor(
         guideLoader.ensure(sources)
         val now = System.currentTimeMillis()
         // On the guide as it is; else once its programs have loaded (a little while at most).
-        var airing = guideLoader.guide.value?.let { guide -> bestAiring(guide, event, now) }
+        var airing = guideLoader.guide.value?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, now) } }
         if (airing == null) {
             val loaded = withTimeoutOrNull(GUIDE_WAIT_MS) {
                 guideLoader.guide.first { guide -> guide != null && !guide.isLoading && !guide.isEpgLoading }
             } ?: guideLoader.guide.value
-            airing = loaded?.let { guide -> bestAiring(guide, event, System.currentTimeMillis()) }
+            airing = loaded?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, System.currentTimeMillis()) } }
         }
         val channel = airing?.channel ?: return null
         return channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources))

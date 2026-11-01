@@ -771,7 +771,7 @@ class SearchViewModel @Inject constructor(
                 // A moment's wait: letters typed, the guide and the leagues loading all come in bursts.
                 delay(EXTRAS_SETTLE_MS)
                 val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    runCatching { findExtras(query, guide, sports) }.getOrNull()
+                    runCatching { com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("search-guide") { findExtras(query, guide, sports) } }.getOrNull()
                 } ?: return@collectLatest
                 if (extrasQuery.value == query) _uiState.update { it.copy(extras = found) }
             }

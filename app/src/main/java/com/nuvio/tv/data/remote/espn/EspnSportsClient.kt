@@ -896,22 +896,22 @@ class EspnSportsClient @Inject constructor(
         return emptyList()
     }
 
-    private fun get(url: String): String = viaServer(url) { address ->
+    private fun get(url: String): String = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("espn") { viaServer(url) { address ->
         val request = Request.Builder().url(address).header("Accept", "application/json").build()
         executeCancellable(okHttpClient.newCall(request)) { response ->
             if (!response.isSuccessful) throw ServerAnswer(response.code)
             boundedBody(response)
         }
-    }
+    } }
 
     /** [url]'s answer read as JSON as it comes in (see [boundedJson]). */
-    private fun <T> getJson(url: String, read: (com.google.gson.stream.JsonReader) -> T): T = viaServer(url) { address ->
+    private fun <T> getJson(url: String, read: (com.google.gson.stream.JsonReader) -> T): T = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("espn") { viaServer(url) { address ->
         val request = Request.Builder().url(address).header("Accept", "application/json").build()
         executeCancellable(okHttpClient.newCall(request)) { response ->
             if (!response.isSuccessful) throw ServerAnswer(response.code)
             boundedJson(response, read = read)
         }
-    }
+    } }
 
     /** An answer that wasn't a success ([code]): an [EspnException] for the pages, as before. */
     private class ServerAnswer(val code: Int) : EspnException("HTTP $code")
