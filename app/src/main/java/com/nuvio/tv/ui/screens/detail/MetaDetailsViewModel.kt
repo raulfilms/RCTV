@@ -1230,6 +1230,12 @@ class MetaDetailsViewModel @Inject constructor(
         editionsJob?.cancel()
         if (_uiState.value.editions.isNotEmpty()) _uiState.update { it.copy(editions = emptyList()) }
         if (!meta.apiType.equals("movie", ignoreCase = true)) return
+        // RCTV (Phase 2, F5): a movie opened again shows the editions found minutes ago, without
+        // downloading and parsing every one of its streams again (each opening did).
+        EditionsMemo.get(meta.id)?.let { kept ->
+            _uiState.update { it.copy(editions = kept) }
+            return
+        }
         editionsJob = viewModelScope.launch {
             // The words the AIO Stream Extended addon's name has.
             val extendedAddonWords = listOf("extended", "extend")
@@ -1273,6 +1279,7 @@ class MetaDetailsViewModel @Inject constructor(
                     .onFailure { if (it is CancellationException) throw it }
                     .getOrDefault(emptyList())
             }
+            EditionsMemo.put(meta.id, editions)
             if (_uiState.value.meta?.id == meta.id) _uiState.update { it.copy(editions = editions) }
         }
     }
@@ -2857,7 +2864,7 @@ class MetaDetailsViewModel @Inject constructor(
     }
 
     private fun Meta.toLibraryEntryInput(): LibraryEntryInput {
-        val year = Regex("(\\d{4})").find(releaseInfo ?: "")
+        val year = DETAIL_FOUR_DIGITS.find(releaseInfo ?: "")
             ?.groupValues
             ?.getOrNull(1)
             ?.toIntOrNull()
@@ -2900,7 +2907,7 @@ class MetaDetailsViewModel @Inject constructor(
 
             val year = meta.releaseInfo?.let { info ->
                 if (info.isBlank()) null
-                else Regex("""\b(19|20)\d{2}\b""").find(info)?.value
+                else DETAIL_YEAR.find(info)?.value
             }
 
             val tmdbId = try {
@@ -3088,7 +3095,7 @@ class MetaDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             val meta = _uiState.value.meta
             val year = meta?.releaseInfo?.let { info ->
-                if (info.isBlank()) null else Regex("""\b(19|20)\d{2}\b""").find(info)?.value
+                if (info.isBlank()) null else DETAIL_YEAR.find(info)?.value
             }
             val source = trailerService.getTrailerPlaybackSourceFromYouTubeUrl(
                 youtubeUrl = "https://www.youtube.com/watch?v=$ytId",
@@ -3164,5 +3171,38 @@ class MetaDetailsViewModel @Inject constructor(
         idleTimerJob?.cancel()
         trailerFetchJob?.cancel()
         nextToWatchJob?.cancel()
+    }
+}
+
+/** RCTV (Phase 2): years in a release text, compiled once (they were compiled on every call). */
+private val DETAIL_FOUR_DIGITS = com.nuvio.tv.core.util.PooledRegex("(\\d{4})")
+private val DETAIL_YEAR = com.nuvio.tv.core.util.PooledRegex("""\b(19|20)\d{2}\b""")
+
+/**
+ * RCTV (Phase 2, F5): the editions found for the latest movies opened, for a while: the same
+ * movie opened again (Search → Detail → Back → Detail) doesn't fetch and parse its streams again.
+ * Small (a few editions per movie, the last [MAX] movies) and short-lived ([KEEP_MS]).
+ */
+internal object EditionsMemo {
+    private const val MAX = 24
+    private const val KEEP_MS = 30L * 60 * 1000
+    private class Kept(val atMs: Long, val editions: List<com.nuvio.tv.core.smartscraper.AutoStreamEdition>)
+    private val kept = object : LinkedHashMap<String, Kept>(MAX, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Kept>?): Boolean = size > MAX
+    }
+
+    @Synchronized
+    fun get(id: String, nowMs: Long = System.currentTimeMillis()): List<com.nuvio.tv.core.smartscraper.AutoStreamEdition>? {
+        val entry = kept[id] ?: return null
+        if (nowMs - entry.atMs > KEEP_MS) {
+            kept.remove(id)
+            return null
+        }
+        return entry.editions
+    }
+
+    @Synchronized
+    fun put(id: String, editions: List<com.nuvio.tv.core.smartscraper.AutoStreamEdition>, nowMs: Long = System.currentTimeMillis()) {
+        kept[id] = Kept(nowMs, editions)
     }
 }

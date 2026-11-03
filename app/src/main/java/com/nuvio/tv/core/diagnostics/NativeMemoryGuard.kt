@@ -48,17 +48,25 @@ object NativeMemoryGuard {
         }
     }
 
+    /** A collection made at the last check: (native before it, the screen then), measured at this one. */
+    private var pending: Pair<Long, String>? = null
+
     private fun check() {
         runCatching {
-            val before = nativeMb()
-            attribute(before)
-            if (!policy.shouldCollect(before, SystemClock.elapsedRealtime())) return
-            // The collection only: what it frees natively is freed by the cleaners right after (not
-            // waited for here, so the checks never stop).
+            val now = nativeMb()
+            // RCTV (Phase 2): what a collection freed is read a second later, once the cleaners
+            // that free native memory after it have run (read right after it, it was under-counted).
+            pending?.let { (before, screen) ->
+                pending = null
+                lastSampleMb = now
+                policy.collected(now, SystemClock.elapsedRealtime())
+                note(screen, before, now)
+                return
+            }
+            attribute(now)
+            if (!policy.shouldCollect(now, SystemClock.elapsedRealtime())) return
             Runtime.getRuntime().gc()
-            val after = nativeMb()
-            policy.collected(after, SystemClock.elapsedRealtime())
-            note(SessionTrail.screenName(), before, after)
+            pending = now to SessionTrail.screenName()
         }
     }
 

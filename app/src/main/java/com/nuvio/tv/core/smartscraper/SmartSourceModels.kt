@@ -1,5 +1,7 @@
 package com.nuvio.tv.core.smartscraper
 
+import com.nuvio.tv.core.util.PooledRegex
+
 import com.nuvio.tv.domain.model.Stream
 
 /*
@@ -280,7 +282,7 @@ data class SmartSourceRequest(
         /** Nothing known about the title: streams are only ranked, never checked against it. */
         val UNKNOWN = SmartSourceRequest(title = null, year = null, isSeries = false)
 
-        private val YEAR = Regex("(?:19|20)\\d{2}")
+        private val YEAR = PooledRegex("(?:19|20)\\d{2}")
 
         /** "2022", "2008-2013", "2008–" → 2008/2022 (the first year in it). */
         fun yearOf(text: String?): Int? = text?.let { YEAR.find(it)?.value?.toIntOrNull() }

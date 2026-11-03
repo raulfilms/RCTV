@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -116,6 +117,8 @@ class SearchViewModel @Inject constructor(
     private companion object {
         /** How often the guide and sports results are looked at again while a search shows (on now, scores). */
         const val EXTRAS_REFRESH_MS = 60_000L
+        /** RCTV (Phase 2): the sports index's updates are looked at, at most, this often. */
+        const val EXTRAS_SPORTS_EVERY_MS = 6_000L
         /** How long the guide and sports results wait for things to settle before they're looked for. */
         const val EXTRAS_SETTLE_MS = 150L
         /** How often a search makes sure the guide is loaded. */
@@ -749,19 +752,50 @@ class SearchViewModel @Inject constructor(
     }
 
     /** Keeps the guide and sports results up to date with what's typed, the guide and the sports loaded. */
+    /**
+     * RCTV (Phase 2, F2/F3): Search is on screen. This ViewModel stays alive in the back stack
+     * (Search → Detail, or another section from the menu); while it isn't shown, the guide and
+     * sports aren't searched again (every minute and on every sports update, over the whole guide)
+     * and the sports index stops loading. Shown again, what's typed is looked for at once.
+     */
+    private val screenVisible = MutableStateFlow(true)
+
+    fun setScreenVisible(visible: Boolean) {
+        if (screenVisible.value == visible) return
+        screenVisible.value = visible
+        if (!visible) {
+            sportsSearchIndex?.pause()
+        } else if (extrasQuery.value.isNotEmpty()) {
+            prepareExtras()
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun observeExtras() {
         val loader = guideLoader ?: return
         val sportsIndex = sportsSearchIndex ?: return
-        val ticks = kotlinx.coroutines.flow.flow {
-            while (true) {
-                emit(Unit)
-                delay(EXTRAS_REFRESH_MS)
+        // The refresh clock runs only while Search shows.
+        val ticks = screenVisible.flatMapLatest { visible ->
+            if (!visible) kotlinx.coroutines.flow.emptyFlow() else kotlinx.coroutines.flow.flow {
+                while (true) {
+                    emit(Unit)
+                    delay(EXTRAS_REFRESH_MS)
+                }
             }
         }
         viewModelScope.launch {
-            combine(extrasQuery, loader.guide, sportsIndex.state, ticks) { query, guide, sports, _ ->
-                Triple(query, guide, sports)
-            }.collectLatest { (query, guide, sports) ->
+            combine(
+                extrasQuery,
+                loader.guide,
+                // The sports index publishes every few seconds while it loads: looked at, at most,
+                // every few seconds (the latest each time).
+                sportsIndex.state.throttleLatest(EXTRAS_SPORTS_EVERY_MS),
+                ticks,
+                screenVisible
+            ) { query, guide, sports, _, visible ->
+                ExtrasInput(query, guide, sports, visible)
+            }.collectLatest { (query, guide, sports, visible) ->
+                if (!visible) return@collectLatest
                 if (query.isEmpty()) {
                     if (!_uiState.value.extras.isEmpty || _uiState.value.extras.query.isNotEmpty()) {
                         _uiState.update { it.copy(extras = SearchExtraResults()) }
@@ -1283,3 +1317,26 @@ internal fun resolveDiscoverCatalog(
     catalogs.firstOrNull { it.key == preferredKey }
         ?: catalogs.firstOrNull { it.key == currentKey }
         ?: catalogs.firstOrNull()
+
+/** RCTV (Phase 2): what the guide and sports results are worked out from. */
+private data class ExtrasInput(
+    val query: String,
+    val guide: com.nuvio.tv.ui.screens.livetv.LiveGuideSnapshot?,
+    val sports: SportsSearchIndex.Snapshot,
+    val visible: Boolean
+)
+
+/**
+ * RCTV (Phase 2): the latest value at most once per [periodMs]: the first at once, then the
+ * newest after the period (one in between is skipped, never delayed past the period).
+ */
+internal fun <T> kotlinx.coroutines.flow.Flow<T>.throttleLatest(periodMs: Long): kotlinx.coroutines.flow.Flow<T> =
+    kotlinx.coroutines.flow.channelFlow {
+        var lastMs = 0L
+        this@throttleLatest.collectLatest { value ->
+            val waitMs = lastMs + periodMs - System.currentTimeMillis()
+            if (waitMs > 0) delay(waitMs)
+            lastMs = System.currentTimeMillis()
+            send(value)
+        }
+    }

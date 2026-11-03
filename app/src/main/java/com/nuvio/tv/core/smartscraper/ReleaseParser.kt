@@ -1,5 +1,9 @@
 package com.nuvio.tv.core.smartscraper
 
+import com.nuvio.tv.core.util.PooledRegex
+import com.nuvio.tv.core.util.replace
+import com.nuvio.tv.core.util.contains
+
 import java.util.Calendar
 import java.util.Locale
 
@@ -387,21 +391,21 @@ object ReleaseParser {
 
     // ==================================================================== Patterns
 
-    private fun rx(pattern: String) = Regex(pattern, RegexOption.IGNORE_CASE)
+    private fun rx(pattern: String) = PooledRegex(pattern, RegexOption.IGNORE_CASE)
 
     /** Not a letter or digit before / after. */
     private const val B = "(?<![a-z0-9])"
     private const val E = "(?![a-z0-9])"
 
-    private val LEADING_MARKS = Regex("^[^\\p{L}\\p{N}\\[(]+")
+    private val LEADING_MARKS = PooledRegex("^[^\\p{L}\\p{N}\\[(]+")
     private val EXTENSION = rx("\\.(mkv|mp4|avi|m4v|mov|ts|m2ts|wmv|webm|iso|mpg|mpeg)$")
     private val WEBSITE_PREFIX = rx("^\\s*(?:www\\.)?[a-z0-9-]+\\.(?:com|org|net|io|to|mx|se|cc|xyz|tv|me|lol|ws|li)\\s*[-–]\\s*")
-    private val LEADING_TAG = Regex("^\\s*\\[[^\\]]{1,40}\\]\\s*")
-    private val SEPARATORS = Regex("[._]+")
-    private val BRACKET_CHARS = Regex("[\\[\\]{}()]")
-    private val SPACES = Regex("\\s+")
+    private val LEADING_TAG = PooledRegex("^\\s*\\[[^\\]]{1,40}\\]\\s*")
+    private val SEPARATORS = PooledRegex("[._]+")
+    private val BRACKET_CHARS = PooledRegex("[\\[\\]{}()]")
+    private val SPACES = PooledRegex("\\s+")
 
-    private val YEAR = Regex("(?<![0-9])(19\\d{2}|20\\d{2})(?![0-9])")
+    private val YEAR = PooledRegex("(?<![0-9])(19\\d{2}|20\\d{2})(?![0-9])")
     private val STRONG_TAG = rx(
         "$B(2160[pi]|1440p|1080[pi]|720p|576p|480p|4k|uhd|blu ?-?ray|bdrip|brrip|bdremux|web ?-?dl|webdl|webrip|web ?-?rip|hdtv|remux|x ?26[45]|h ?26[45]|hevc|xvid|hdrip|dvdrip|cam ?rip|hdcam|telesync|hdts)$E"
     )
@@ -426,10 +430,10 @@ object ReleaseParser {
     private val TELESYNC = rx("$B(telesync|hd ?ts|ts ?rip|pdvd|ts)$E")
     private val TELECINE = rx("$B(telecine|hd ?tc|tc)$E")
     private val SCREENER = rx("$B(dvd ?scr|bd ?scr|web ?scr|screener|scr)$E")
-    private val CAM_STRICT = Regex("(?<![A-Za-z0-9])(CAM|HDCAM|HQCAM|CAMRip|CamRip|[Cc]am[Rr]ip)(?![A-Za-z0-9])")
-    private val TELESYNC_STRICT = Regex("(?<![A-Za-z0-9])(TS|HDTS|TSRip|TELESYNC|[Tt]elesync)(?![A-Za-z0-9])")
-    private val TELECINE_STRICT = Regex("(?<![A-Za-z0-9])(TC|HDTC|TELECINE|[Tt]elecine)(?![A-Za-z0-9])")
-    private val SCREENER_STRICT = Regex("(?<![A-Za-z0-9])(SCR|DVDSCR|DVDScr|BDSCR|WEBSCR|SCREENER|[Ss]creener)(?![A-Za-z0-9])")
+    private val CAM_STRICT = PooledRegex("(?<![A-Za-z0-9])(CAM|HDCAM|HQCAM|CAMRip|CamRip|[Cc]am[Rr]ip)(?![A-Za-z0-9])")
+    private val TELESYNC_STRICT = PooledRegex("(?<![A-Za-z0-9])(TS|HDTS|TSRip|TELESYNC|[Tt]elesync)(?![A-Za-z0-9])")
+    private val TELECINE_STRICT = PooledRegex("(?<![A-Za-z0-9])(TC|HDTC|TELECINE|[Tt]elecine)(?![A-Za-z0-9])")
+    private val SCREENER_STRICT = PooledRegex("(?<![A-Za-z0-9])(SCR|DVDSCR|DVDScr|BDSCR|WEBSCR|SCREENER|[Ss]creener)(?![A-Za-z0-9])")
     private val REMUX = rx("$B(remux|bd ?remux)$E")
     private val BLURAY = rx("$B(blu ?-?ray|bluray|bdrip|brrip|bd ?rip|bd25|bd50|bdmv|uhd ?bd)$E")
     private val WEBRIP = rx("$B(web ?-?rip)$E")
@@ -487,7 +491,7 @@ object ReleaseParser {
     private val THREE_D = rx("$B(3d|half ?-?sbs|h ?-?sbs|h ?-?ou|sbs)$E")
     private val SIZE = rx("(\\d+(?:[.,]\\d+)?)\\s?(tib|tb|gib|gb|mib|mb)(?![a-z])")
     /** A flag: two regional-indicator letters. */
-    private val FLAG = Regex("[\\x{1F1E6}-\\x{1F1FF}]{2}")
+    private val FLAG = PooledRegex("[\\x{1F1E6}-\\x{1F1FF}]{2}")
     private val SPANISH_WORDS = rx(
         "$B(latino|lat|castellano|espa[ñn]ol|spanish|spa|esp|latam|dual[ .\\-]?lat\\w*|audio[ .]?latino|doblaje[ .]?latino)$E"
     )

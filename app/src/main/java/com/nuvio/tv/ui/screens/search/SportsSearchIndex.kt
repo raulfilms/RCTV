@@ -65,6 +65,17 @@ class SportsSearchIndex @Inject constructor(
     @Volatile private var gamesLoadedAtMs = 0L
     private val fileLock = Any()
 
+    /**
+     * RCTV (Phase 2, F2): Search is no longer shown: the loads still going stop (what they found
+     * so far stays; the rest loads again the next time something is searched).
+     */
+    fun pause() {
+        synchronized(lock) {
+            teamsJob?.cancel()
+            gamesJob?.cancel()
+        }
+    }
+
     /** Loads what's missing or old (in the background); nothing when it's all there. */
     fun ensure() {
         val now = System.currentTimeMillis()
@@ -347,5 +358,15 @@ internal object GuideSearchCache {
         val index = GuideSearchIndex.build(channels, epgByChannel, channelName)
         cached = Cached(channels, epgByChannel, index)
         return index
+    }
+
+    /**
+     * RCTV (Phase 2, F11): the guide was replaced by [channels] / [epgByChannel]: an index of the
+     * old one is let go now (it used to keep the whole previous guide in memory until the next
+     * search, next to the new one).
+     */
+    fun forgetOtherThan(channels: List<LiveTvChannel>, epgByChannel: Map<String, List<EpgProgram>>) {
+        val current = cached ?: return
+        if (current.channels !== channels || current.epgByChannel !== epgByChannel) cached = null
     }
 }

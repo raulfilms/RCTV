@@ -948,7 +948,7 @@ private fun normalizeCountryLabel(raw: String): String {
         .split(",")
         .joinToString(", ") { part ->
             val code = part.trim()
-            if (code.matches(Regex("[A-Za-z]{2}"))) {
+            if (code.length == 2 && code.all { it in 'A'..'Z' || it in 'a'..'z' }) {
                 Locale("", code).getDisplayCountry(displayLocale).takeIf { it.isNotBlank() } ?: code
             } else {
                 code
@@ -983,8 +983,8 @@ private fun formatRuntime(runtime: String): String? {
     val trimmed = runtime.trim()
     // Already in "Xh Ym" or "Xh" format
     if (trimmed.contains('h') || trimmed.contains('m')) {
-        val hours = Regex("(\\d+)\\s*h").find(trimmed)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-        val mins = Regex("(\\d+)\\s*m").find(trimmed)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val hours = RUNTIME_HOURS.find(trimmed)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val mins = RUNTIME_MINUTES.find(trimmed)?.groupValues?.get(1)?.toIntOrNull() ?: 0
         val total = hours * 60 + mins
         if (total > 0) return if (total >= 60) {
             val h = total / 60; val m = total % 60
@@ -1039,3 +1039,7 @@ private fun MetaInfoDivider() {
         color = NuvioTheme.extendedColors.textTertiary
     )
 }
+
+/** RCTV (Phase 2): runtime parts, compiled once (they were compiled on every composition). */
+private val RUNTIME_HOURS = com.nuvio.tv.core.util.PooledRegex("(\\d+)\\s*h")
+private val RUNTIME_MINUTES = com.nuvio.tv.core.util.PooledRegex("(\\d+)\\s*m")

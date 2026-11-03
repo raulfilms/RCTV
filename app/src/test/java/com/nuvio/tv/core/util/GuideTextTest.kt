@@ -101,4 +101,15 @@ class GuideTextTest {
         assertEquals(listOf("espn", "2"), GuideText.letterDigitPieces("espn2"))
         assertEquals(listOf("a", "1", "b", "22", "c"), GuideText.letterDigitPieces("a1b22c"))
     }
+
+    @Test
+    fun `withoutNewLiveTags is the guide grid's tag regex`() {
+        val regex = Regex("""\s*\[\s*(new|live)\s*]""", RegexOption.IGNORE_CASE)
+        val titles = listOf(
+            "", "News", "[NEW]", "College Football [NEW]", "🏈🎓 [NCAAF] College Football [NEW]", "[LIVE] NBA",
+            "Show  [ new ]  Tonight [live]", "[[new]]", "[newx] [ne w] [LIVE ", "a\t[New]\t[Live]b", "[ NEW ]",
+            "x [lıve] y", "end  [new]", "[new][live][new]", "  [new]  ", "Mid [ Live ] dle [newer]"
+        )
+        titles.forEach { assertEquals("\"$it\"", it.replace(regex, ""), GuideText.withoutNewLiveTags(it)) }
+    }
 }

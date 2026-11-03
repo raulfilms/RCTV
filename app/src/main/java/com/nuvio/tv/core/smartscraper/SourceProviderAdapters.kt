@@ -1,5 +1,7 @@
 package com.nuvio.tv.core.smartscraper
 
+import com.nuvio.tv.core.util.PooledRegex
+
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.domain.model.StreamDebridCacheState
 import java.util.Locale
@@ -149,15 +151,15 @@ internal abstract class BaseStreamAdapter : SourceProviderAdapter {
 
     protected companion object {
         /** "[RD+]", "[TB+]", "[RD⚡]", "⚡". */
-        val CACHED_MARK = Regex("\\[[A-Za-z]{2,3}\\s?(\\+|⚡)]|⚡")
+        val CACHED_MARK = PooledRegex("\\[[A-Za-z]{2,3}\\s?(\\+|⚡)]|⚡")
         /** "[RD download]", "[RD⏳]", "⏳". */
-        val UNCACHED_MARK = Regex("\\[[A-Za-z]{2,3}\\s?(download|⏳)]|⏳", RegexOption.IGNORE_CASE)
-        val REAL_DEBRID = Regex("real[- ]?debrid|\\[rd[\\s+⚡⏳\\]]|(?<![a-z0-9])rd(?![a-z0-9])")
-        val TORBOX = Regex("tor[- ]?box|\\[tb[\\s+⚡⏳\\]]|(?<![a-z0-9])tb(?![a-z0-9])")
-        val PREMIUMIZE = Regex("premiumize|\\[pm[\\s+⚡⏳\\]]|(?<![a-z0-9])pm(?![a-z0-9])")
-        val ALL_DEBRID = Regex("all[- ]?debrid|\\[ad[\\s+⚡⏳\\]]")
-        val DEBRID_LINK = Regex("debrid[- ]?link|\\[dl[\\s+⚡⏳\\]]")
-        val OTHER_DEBRID = Regex("easy[- ]?debrid|offcloud|put\\.io|\\[(ed|oc|pkp|pio)[\\s+⚡⏳\\]]")
+        val UNCACHED_MARK = PooledRegex("\\[[A-Za-z]{2,3}\\s?(download|⏳)]|⏳", RegexOption.IGNORE_CASE)
+        val REAL_DEBRID = PooledRegex("real[- ]?debrid|\\[rd[\\s+⚡⏳\\]]|(?<![a-z0-9])rd(?![a-z0-9])")
+        val TORBOX = PooledRegex("tor[- ]?box|\\[tb[\\s+⚡⏳\\]]|(?<![a-z0-9])tb(?![a-z0-9])")
+        val PREMIUMIZE = PooledRegex("premiumize|\\[pm[\\s+⚡⏳\\]]|(?<![a-z0-9])pm(?![a-z0-9])")
+        val ALL_DEBRID = PooledRegex("all[- ]?debrid|\\[ad[\\s+⚡⏳\\]]")
+        val DEBRID_LINK = PooledRegex("debrid[- ]?link|\\[dl[\\s+⚡⏳\\]]")
+        val OTHER_DEBRID = PooledRegex("easy[- ]?debrid|offcloud|put\\.io|\\[(ed|oc|pkp|pio)[\\s+⚡⏳\\]]")
     }
 }
 
@@ -209,7 +211,7 @@ internal object AioStreamsAdapter : BaseStreamAdapter() {
         return ProviderIdentity(key = stream.addonName, family = ProviderFamily.AIOSTREAMS, variant = variant, debrid = debrid)
     }
 
-    private val DUBBED = Regex("dub|doblad|dual|latino|castellano|multi")
+    private val DUBBED = PooledRegex("dub|doblad|dual|latino|castellano|multi")
 }
 
 /**
@@ -224,7 +226,7 @@ internal object LatinoDebridAdapter : BaseStreamAdapter() {
 
     override fun providerLanguages(stream: Stream): Set<AudioLanguage> = setOf(AudioLanguage.SPANISH)
 
-    private val LATINO = Regex("(?<![a-z])latino", RegexOption.IGNORE_CASE)
+    private val LATINO = PooledRegex("(?<![a-z])latino", RegexOption.IGNORE_CASE)
 }
 
 /**
@@ -239,7 +241,7 @@ internal object LatamAdapter : BaseStreamAdapter() {
 
     override fun providerLanguages(stream: Stream): Set<AudioLanguage> = setOf(AudioLanguage.SPANISH)
 
-    private val LATAM = Regex("(?<![a-z])latam", RegexOption.IGNORE_CASE)
+    private val LATAM = PooledRegex("(?<![a-z])latam", RegexOption.IGNORE_CASE)
 }
 
 /** The debrid service a Spanish addon's stream plays through, as its text or its link says. */

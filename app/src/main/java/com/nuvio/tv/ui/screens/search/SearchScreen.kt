@@ -554,6 +554,8 @@ fun SearchScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isScreenActive = true
+                // RCTV (Phase 2): Search's background work runs only while it shows.
+                viewModel.setScreenVisible(true)
                 if (latestPendingDiscoverRestore) {
                     restoreDiscoverFocus = true
                     pendingDiscoverRestoreOnResume = false
@@ -570,12 +572,14 @@ fun SearchScreen(
                 }
             } else if (event == Lifecycle.Event.ON_PAUSE) {
                 isScreenActive = false
+                viewModel.setScreenVisible(false)
                 keyboardController?.hide()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.setScreenVisible(false)
         }
     }
 

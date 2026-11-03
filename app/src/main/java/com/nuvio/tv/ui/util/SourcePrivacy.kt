@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.util
 
+import com.nuvio.tv.core.util.PooledRegex
+import com.nuvio.tv.core.util.replace
 import com.nuvio.tv.domain.model.Stream
 import java.util.Locale
 
@@ -63,7 +65,7 @@ object SourcePrivacy {
         base = base.replace(EXTENSION, "")
         // Bracketed tags ("[YTS.MX]", "(1080p)") and website prefixes ("www.site.org - ").
         base = base.replace(WEBSITE_PREFIX, "").replace(BRACKETS, " ")
-        val spaced = base.replace(Regex("[._]+"), " ").replace(Regex("\\s+"), " ").trim()
+        val spaced = base.replace(DOTS_UNDERSCORES, " ").replace(WHITESPACE, " ").trim()
         val episode = EPISODE.find(spaced)
         if (episode != null) {
             val show = spaced.substring(0, episode.range.first).trim(' ', '-')
@@ -89,9 +91,9 @@ object SourcePrivacy {
         var out = text.replace(URL, " ").replace(HOST, " ").replace(IP, " ")
         SERVICES.forEach { name -> out = out.replace(name, " ") }
         return out
-            .replace(Regex("""["'“”]\s*["'“”]"""), " ")
-            .replace(Regex("""\(\s*\)|\[\s*\]"""), " ")
-            .replace(Regex("""\s{2,}"""), " ")
+            .replace(EMPTY_QUOTES, " ")
+            .replace(EMPTY_BRACKETS, " ")
+            .replace(SPACE_RUNS, " ")
             .trim(' ', ':', '-', '·', ',', '|')
     }
 
@@ -105,25 +107,25 @@ object SourcePrivacy {
         out
     }
 
-    private val URL = Regex("""(https?|magnet|torrent):\S+""", RegexOption.IGNORE_CASE)
-    private val HOST = Regex(
+    private val URL = PooledRegex("""(https?|magnet|torrent):\S+""", RegexOption.IGNORE_CASE)
+    private val HOST = PooledRegex(
         """\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|tv|me|link|cc|to|xyz|club|live|pro|info|biz|fun|site|stream|cloud|eu|us|uk|de|fr|es|nl|ru|top|vip)\b(?::\d+)?""",
         RegexOption.IGNORE_CASE
     )
-    private val IP = Regex("""/?\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b""")
+    private val IP = PooledRegex("""/?\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b""")
     /** The debrid services and stream addons people run. */
     private val SERVICES = listOf(
         "real[- ]?debrid", "\\bRD\\+?(?=\\W)", "all[- ]?debrid", "premiumize", "tor[- ]?box", "debrid[- ]?link", "easy[- ]?debrid",
         "offcloud", "put\\.io", "easynews", "torrentio", "aio[- ]?streams?", "mediafusion", "comet", "jackettio", "jackett",
         "knightcrawler", "stremthru", "orion", "peerflix", "torrentsdb", "debridio", "zilean", "prowlarr"
-    ).map { Regex(it, RegexOption.IGNORE_CASE) }
+    ).map { PooledRegex(it, RegexOption.IGNORE_CASE) }
 
     private fun resolutionOf(lower: String): String? = when {
-        Regex("""\b(2160p|4k|uhd)\b""").containsMatchIn(lower) -> "4K"
-        Regex("""\b1440p\b""").containsMatchIn(lower) -> "1440p"
-        Regex("""\b(1080p|1080i|fhd)\b""").containsMatchIn(lower) -> "1080p"
-        Regex("""\b720p\b""").containsMatchIn(lower) -> "720p"
-        Regex("""\b(576p|480p|360p|sd)\b""").containsMatchIn(lower) -> "SD"
+        RES_4K.containsMatchIn(lower) -> "4K"
+        RES_1440.containsMatchIn(lower) -> "1440p"
+        RES_1080.containsMatchIn(lower) -> "1080p"
+        RES_720.containsMatchIn(lower) -> "720p"
+        RES_SD.containsMatchIn(lower) -> "SD"
         else -> null
     }
 
@@ -154,29 +156,40 @@ object SourcePrivacy {
         return (flags + words).joinToString(" ").ifBlank { null }
     }
 
-    private val DOLBY_VISION = Regex("""\b(dv|dovi|dolby[ .]?vision)\b""")
-    private val HDR10_PLUS = Regex("""hdr10(\+|plus)""")
-    private val HDR = Regex("""\bhdr(10)?\b""")
-    private val THREE_D = Regex("""\b(3d|sbs|h-?ou)\b""")
-    private val ATMOS = Regex("""\batmos\b""")
-    private val CHANNELS = Regex("""\b[257]\.[01]\b""")
-    private val HEVC = Regex("""\b(hevc|x265|h\.?265)\b""")
-    private val AV1 = Regex("""\bav1\b""")
-    private val SIZE = Regex("""(\d+(?:[.,]\d+)?)\s?(GB|GiB|MB|MiB|TB)\b""", RegexOption.IGNORE_CASE)
+    // RCTV (Phase 2): compiled once, not on every label (they were made anew on each call).
+    private val DOTS_UNDERSCORES = PooledRegex("[._]+")
+    private val WHITESPACE = PooledRegex("\\s+")
+    private val EMPTY_QUOTES = PooledRegex("""["'“”]\s*["'“”]""")
+    private val EMPTY_BRACKETS = PooledRegex("""\(\s*\)|\[\s*\]""")
+    private val SPACE_RUNS = PooledRegex("""\s{2,}""")
+    private val RES_4K = PooledRegex("""\b(2160p|4k|uhd)\b""")
+    private val RES_1440 = PooledRegex("""\b1440p\b""")
+    private val RES_1080 = PooledRegex("""\b(1080p|1080i|fhd)\b""")
+    private val RES_720 = PooledRegex("""\b720p\b""")
+    private val RES_SD = PooledRegex("""\b(576p|480p|360p|sd)\b""")
+    private val DOLBY_VISION = PooledRegex("""\b(dv|dovi|dolby[ .]?vision)\b""")
+    private val HDR10_PLUS = PooledRegex("""hdr10(\+|plus)""")
+    private val HDR = PooledRegex("""\bhdr(10)?\b""")
+    private val THREE_D = PooledRegex("""\b(3d|sbs|h-?ou)\b""")
+    private val ATMOS = PooledRegex("""\batmos\b""")
+    private val CHANNELS = PooledRegex("""\b[257]\.[01]\b""")
+    private val HEVC = PooledRegex("""\b(hevc|x265|h\.?265)\b""")
+    private val AV1 = PooledRegex("""\bav1\b""")
+    private val SIZE = PooledRegex("""(\d+(?:[.,]\d+)?)\s?(GB|GiB|MB|MiB|TB)\b""", RegexOption.IGNORE_CASE)
     /** A flag: two regional-indicator letters. */
-    private val FLAG = Regex("""[\x{1F1E6}-\x{1F1FF}]{2}""")
+    private val FLAG = PooledRegex("""[\x{1F1E6}-\x{1F1FF}]{2}""")
     private val LANGUAGE_WORDS = listOf(
-        Regex("""\blatino\b""", RegexOption.IGNORE_CASE) to "Latino",
-        Regex("""\bcastellano\b""", RegexOption.IGNORE_CASE) to "Castellano",
-        Regex("""\b(dual|multi)(\s?audio)?\b""", RegexOption.IGNORE_CASE) to "Multi"
+        PooledRegex("""\blatino\b""", RegexOption.IGNORE_CASE) to "Latino",
+        PooledRegex("""\bcastellano\b""", RegexOption.IGNORE_CASE) to "Castellano",
+        PooledRegex("""\b(dual|multi)(\s?audio)?\b""", RegexOption.IGNORE_CASE) to "Multi"
     )
 
-    private val EXTENSION = Regex("""\.(mkv|mp4|avi|m4v|mov|ts|wmv|webm|iso)$""", RegexOption.IGNORE_CASE)
-    private val WEBSITE_PREFIX = Regex("""^\s*(www\.)?[a-z0-9-]+\.(com|org|net|io|to|mx|se|cc|xyz|tv)\s*-\s*""", RegexOption.IGNORE_CASE)
-    private val BRACKETS = Regex("""\[[^\]]*\]|\{[^\}]*\}""")
-    private val EPISODE = Regex("""\bS(\d{1,2})\s?E(\d{1,3})\b""", RegexOption.IGNORE_CASE)
-    private val YEAR = Regex("""\(?\b((?:19|20)\d{2})\b\)?""")
-    private val RELEASE_TAG = Regex(
+    private val EXTENSION = PooledRegex("""\.(mkv|mp4|avi|m4v|mov|ts|wmv|webm|iso)$""", RegexOption.IGNORE_CASE)
+    private val WEBSITE_PREFIX = PooledRegex("""^\s*(www\.)?[a-z0-9-]+\.(com|org|net|io|to|mx|se|cc|xyz|tv)\s*-\s*""", RegexOption.IGNORE_CASE)
+    private val BRACKETS = PooledRegex("""\[[^\]]*\]|\{[^\}]*\}""")
+    private val EPISODE = PooledRegex("""\bS(\d{1,2})\s?E(\d{1,3})\b""", RegexOption.IGNORE_CASE)
+    private val YEAR = PooledRegex("""\(?\b((?:19|20)\d{2})\b\)?""")
+    private val RELEASE_TAG = PooledRegex(
         """\b(2160p|1080p|720p|480p|4k|uhd|web[ -]?dl|webrip|bluray|bdrip|brrip|hdtv|remux|x264|x265|hevc|h264|h265|proper|repack|complete|season)\b""",
         RegexOption.IGNORE_CASE
     )

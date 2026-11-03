@@ -32,8 +32,11 @@ private const val DEFAULT_USER_AGENT =
 private const val PREFERRED_SEPARATE_CLIENT = "visionos"
 
 private val VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
-private val API_KEY_REGEX = Regex("\"INNERTUBE_API_KEY\":\"([^\"]+)\"")
-private val VISITOR_DATA_REGEX = Regex("\"VISITOR_DATA\":\"([^\"]+)\"")
+private const val API_KEY_MARKER = "\"INNERTUBE_API_KEY\":\""
+private const val VISITOR_DATA_MARKER = "\"VISITOR_DATA\":\""
+private val NODE_PREFIX_REGEX = Regex("^rr\\d+---")
+private val NODE_NAME_REGEX = Regex("sn-[a-z0-9]+-[a-z0-9]+")
+
 private val QUALITY_LABEL_REGEX = Regex("(\\d{2,4})p")
 
 private data class YouTubeClient(
@@ -550,8 +553,10 @@ class InAppYouTubeExtractor @Inject constructor() {
     }
 
     private fun getWatchConfig(html: String): WatchConfig {
-        val apiKey = API_KEY_REGEX.find(html)?.groupValues?.getOrNull(1)
-        val visitorData = VISITOR_DATA_REGEX.find(html)?.groupValues?.getOrNull(1)
+        // RCTV (Phase 2, F6): read without regex. A watch page is often over 1 MB; each regex
+        // search over it kept a native copy of the whole page until a later collection.
+        val apiKey = com.nuvio.tv.core.util.TextScan.quotedValueAfter(html, API_KEY_MARKER)
+        val visitorData = com.nuvio.tv.core.util.TextScan.quotedValueAfter(html, VISITOR_DATA_MARKER)
         return WatchConfig(apiKey = apiKey, visitorData = visitorData)
     }
 
@@ -770,10 +775,10 @@ class InAppYouTubeExtractor @Inject constructor() {
         for (server in servers) {
             val mviIndex = servers.indexOf(server)
             val altHost = uri.host?.replaceFirst(
-                Regex("^rr\\d+---"),
+                NODE_PREFIX_REGEX,
                 "rr${mviIndex + 1}---"
             )?.replaceFirst(
-                Regex("sn-[a-z0-9]+-[a-z0-9]+"),
+                NODE_NAME_REGEX,
                 server
             ) ?: continue
             if (altHost == uri.host) continue

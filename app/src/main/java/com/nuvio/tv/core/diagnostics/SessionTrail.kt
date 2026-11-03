@@ -54,6 +54,8 @@ object SessionTrail {
     // memory map is read), so it's read every few notes, on a new screen and when the system asks
     // for memory, never on the screen's thread.
     @Volatile private var memoryKinds = ""
+    /** RCTV (Phase 2): when [memoryKinds] was read (it's older than the other lines). */
+    @Volatile private var memoryKindsAt = ""
     @Volatile private var memoryKindsWanted = true
     private var notesSinceKinds = 0
 
@@ -239,6 +241,7 @@ object SessionTrail {
                 (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.getMemoryInfo(info)
             }
             if (readKinds && (memoryKindsWanted || ++notesSinceKinds >= KINDS_EVERY_NOTES)) {
+                memoryKindsAt = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
                 memoryKinds = runCatching {
                     memoryKindsLine(Debug.MemoryInfo().also { Debug.getMemoryInfo(it) }.memoryStats)
                 }.getOrDefault("")
@@ -246,7 +249,11 @@ object SessionTrail {
                 notesSinceKinds = 0
             }
             val imageCache = runCatching { imageCacheProbe?.invoke() }.getOrNull()
-            val threads = threadCount()
+            // RCTV (Phase 2): the process's own memory from the kernel, at this note: its address
+            // space (VmSize, VmPeak: a 32-bit app runs out near 3–4 GB) and what's in RAM (VmRSS).
+            val status = runCatching { File("/proc/self/status").readText() }.getOrNull()
+            val threads = status?.let(::threadsFrom)
+            val process = status?.let(::processLine)
             val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
             val onScreenFor = (System.currentTimeMillis() - screenSinceMs) / 1000
             val text = synchronized(this) { buildString {
@@ -260,6 +267,8 @@ object SessionTrail {
                 if (memoryKinds.isNotBlank()) append("kinds=").append(memoryKinds).append('\n')
                 if (afterAsk.isNotBlank()) append("afterask=").append(afterAsk).append('\n')
                 threads?.let { append("threads=").append(it).append('\n') }
+                process?.let { append("process=").append(it).append('\n') }
+                if (memoryKindsAt.isNotBlank()) append("kindsat=").append(memoryKindsAt).append('\n')
                 runCatching { memoryGuardProbe?.invoke() }.getOrNull()?.let { append("guard=").append(it).append('\n') }
                 runCatching { growthProbe?.invoke() }.getOrNull()?.let { append("growth=").append(it).append('\n') }
                 runCatching { guideProbe?.invoke() }.getOrNull()?.let { append("guide=").append(it).append('\n') }
@@ -296,12 +305,17 @@ object SessionTrail {
             append("app memory: ").append(values["app"].orEmpty()).append('\n')
             append("TV memory: ").append(values["tv"].orEmpty()).append('\n')
             append("asked to free memory: ").append(values["asks"].orEmpty()).append('\n')
-            values["kinds"]?.let { append("memory by kind: ").append(it).append('\n') }
+            values["kinds"]?.let {
+                append("memory by kind (PSS")
+                values["kindsat"]?.let { at -> append(", read at ").append(at) }
+                append("): ").append(it).append('\n')
+            }
             values["afterask"]?.let { append("after a memory ask: ").append(it).append('\n') }
             values["threads"]?.let { append("threads: ").append(it).append('\n') }
+            values["process"]?.let { append("process: ").append(it).append('\n') }
             values["imagecache"]?.let { append("image cache: ").append(it).append('\n') }
             values["guard"]?.let { append("memory cleanups: ").append(it).append('\n') }
-            values["growth"]?.let { append("grew while: ").append(it).append('\n') }
+            values["growth"]?.let { append("grew while (overlapping, cumulative): ").append(it).append('\n') }
             values["guide"]?.let { append("TV guide: ").append(it).append('\n') }
             values["path"]?.let { append("screens: ").append(it).append('\n') }
             values["visits"]?.let { append("visits (native MB, first → latest): ").append(it).append('\n') }
@@ -331,7 +345,15 @@ object SessionTrail {
     )
 
     /** The process's thread count (each thread's stack is native memory), from /proc/self/status. */
-    private fun threadCount(): Int? = runCatching { threadsFrom(File("/proc/self/status").readText()) }.getOrNull()
+    /** "VmSize 2950 · VmPeak 3010 · VmRSS 820 MB" from a /proc status text; null when none is there. */
+    internal fun processLine(status: String): String? {
+        val parts = listOf("VmSize", "VmPeak", "VmRSS").mapNotNull { key ->
+            status.lineSequence().firstOrNull { it.startsWith("$key:") }
+                ?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()
+                ?.let { kb -> "$key ${kb / 1024}" }
+        }
+        return if (parts.isEmpty()) null else parts.joinToString(" · ") + " MB"
+    }
 
     /** "Threads:\t87" in a /proc status text: 87. */
     internal fun threadsFrom(status: String): Int? =

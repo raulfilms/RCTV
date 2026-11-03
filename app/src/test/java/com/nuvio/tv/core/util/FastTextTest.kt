@@ -43,6 +43,17 @@ class FastTextTest {
     }
 
     @Test
+    fun `asciiCompactKeepingPlus is the Disney+ network key`() {
+        fun regex(text: String): String = Normalizer.normalize(text, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9+]+"), "")
+        (samples + listOf("Discovery+", "Apple TV+", "Paramount+ Ñ", "HBO Max & +", "+++")).forEach {
+            assertEquals(it, regex(it), FastText.asciiCompactKeepingPlus(it))
+        }
+    }
+
+    @Test
     fun `letterDigitWords is Search's normalize, in any script`() {
         fun regex(text: String): String {
             val plain = Normalizer.normalize(text, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")

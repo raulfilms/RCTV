@@ -161,21 +161,20 @@ class ShowAiringsViewModel @Inject constructor(
     companion object {
         private const val MAX_AIRINGS = 20
 
-        // Built once (they run for every program of the guide that might be the show).
-        private val MARKS = Regex("\\p{Mn}+")
-        private val NOT_ALPHANUMERIC = Regex("[^a-z0-9]+")
-        private val SPACES = Regex("\\s+")
-        private val CHANNEL_TAGS = Regex("\\b(us|usa|hd|fhd|uhd|sd|4k|hevc|h265|backup|east|west)\\b")
+        // Built once (they run for every channel of the guide). RCTV (Phase 2): pooled, so no
+        // native regex state is left behind per channel.
+        private val SPACES = com.nuvio.tv.core.util.PooledRegex("\\s+")
+        private val CHANNEL_TAGS = com.nuvio.tv.core.util.PooledRegex("\\b(us|usa|hd|fhd|uhd|sd|4k|hevc|h265|backup|east|west)\\b")
 
-        /** "The Pat McAfee Show" → "pat mcafee show": no accents, punctuation, case or leading "the". */
-        internal fun normalize(title: String): String {
-            val plain = Normalizer.normalize(title, Normalizer.Form.NFD).replace(MARKS, "")
-            return plain.lowercase(Locale.ROOT)
-                .replace(NOT_ALPHANUMERIC, " ")
-                .trim()
-                .removePrefix("the ")
-                .replace(SPACES, " ")
-        }
+        /**
+         * "The Pat McAfee Show" → "pat mcafee show": no accents, punctuation, case or leading "the".
+         * RCTV (Phase 2, F4): without regex, for every program that might be the show. The same
+         * text as `NFD.replace("\\p{Mn}+", "").lowercase().replace("[^a-z0-9]+", " ").trim()`
+         * (`FastText.asciiWords`, proven by FastTextTest), then the leading "the " off; the old final
+         * `replace("\\s+", " ")` changed nothing (only single spaces are left by then).
+         */
+        internal fun normalize(title: String): String =
+            com.nuvio.tv.core.util.FastText.asciiWords(title).removePrefix("the ")
 
         /** The guide's title is the show ("First Take", "LIVE: First Take", "First Take: Hour 2"). */
         internal fun isShow(programTitle: String, show: String): Boolean {
@@ -187,10 +186,7 @@ class ShowAiringsViewModel @Inject constructor(
 
         /** A channel's name without its quality or country tags ("US: ESPN FHD" → "espn"). */
         private fun baseChannelName(name: String): String =
-            normalize(name)
-                .replace(CHANNEL_TAGS, " ")
-                .replace(SPACES, " ")
-                .trim()
+            SPACES.replace(CHANNEL_TAGS.replace(normalize(name), " "), " ").trim()
 
         internal fun findAirings(
             channels: List<LiveTvChannel>,

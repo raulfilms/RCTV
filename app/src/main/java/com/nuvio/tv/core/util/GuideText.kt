@@ -128,6 +128,51 @@ object GuideText {
         }
     }
 
+    /**
+     * [text] without its "[NEW]" / "[ live ]" tags and the spaces just before each: what
+     * `text.replace(Regex("\\s*\\[\\s*(new|live)\\s*]", IGNORE_CASE), "")` gives (RCTV Phase 2: the
+     * guide grid ran that regex for every program it drew).
+     */
+    fun withoutNewLiveTags(text: String): String {
+        var out: StringBuilder? = null
+        var copiedUpTo = 0
+        var from = 0
+        while (true) {
+            val open = text.indexOf('[', from)
+            if (open < 0) break
+            val end = newLiveTagEnd(text, open)
+            if (end < 0) {
+                from = open + 1
+                continue
+            }
+            var start = open
+            while (start > copiedUpTo && isSpace(text[start - 1])) start--
+            val builder = out ?: StringBuilder(text.length).also { out = it }
+            builder.append(text, copiedUpTo, start)
+            copiedUpTo = end
+            from = end
+        }
+        val builder = out ?: return text
+        builder.append(text, copiedUpTo, text.length)
+        return builder.toString()
+    }
+
+    /** Just past the "]" of a `[\s*(new|live)\s*]` starting at [open]; -1 when there's none there. */
+    private fun newLiveTagEnd(text: String, open: Int): Int {
+        var i = open + 1
+        while (i < text.length && isSpace(text[i])) i++
+        for (word in NEW_LIVE) {
+            if (!text.regionMatches(i, word, 0, word.length, ignoreCase = true)) continue
+            var j = i + word.length
+            while (j < text.length && isSpace(text[j])) j++
+            if (j < text.length && text[j] == ']') return j + 1
+        }
+        return -1
+    }
+
+    private val NEW_LIVE = listOf("new", "live")
+
+
     /** A guide channel number, all of [text]: `\d{1,5}(\.\d{1,3})?` matching it whole. */
     fun isChannelNumber(text: String): Boolean {
         var i = 0

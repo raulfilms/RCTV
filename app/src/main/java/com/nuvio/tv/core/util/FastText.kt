@@ -54,6 +54,17 @@ object FastText {
     }
 
     /**
+     * "Discovery+ Ñ" → "discovery+n": accents off (`\p{M}`), lowercase, only `a-z0-9` and "+" left.
+     * Stands for `NFD.replace("\p{M}+", "").lowercase().replace("[^a-z0-9+]+", "")` (RCTV Phase 2).
+     */
+    fun asciiCompactKeepingPlus(text: String): String {
+        val lower = stripAccents(text, allMarks = true).lowercase(Locale.US)
+        val out = StringBuilder(lower.length)
+        lower.forEach { c -> if (c in 'a'..'z' || c in '0'..'9' || c == '+') out.append(c) }
+        return out.toString()
+    }
+
+    /**
      * "Atlético de Madrid!" → "atletico de madrid", in any script ("東京 FC" → "東京 fc"): accents off
      * (`\p{Mn}`), lowercase, every run of anything but letters and numbers one space, trimmed.
      * Stands for `NFD.replace("\p{Mn}+", "").lowercase().replace("[^\p{L}\p{N}]+", " ").trim()`.

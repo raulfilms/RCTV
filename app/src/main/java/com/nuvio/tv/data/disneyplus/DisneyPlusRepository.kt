@@ -1085,19 +1085,12 @@ class DisneyPlusRepository @Inject constructor(
     }
 
     /** Like [normalizeTitle] but keeps "+", so "discovery+" doesn't match "Discovery". */
-    private fun networkKey(value: String): String =
-        Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace(Regex("\\p{M}+"), "")
-            .lowercase(Locale.US)
-            .replace(Regex("[^a-z0-9+]+"), "")
+    // RCTV (Phase 2, F4): without regular expressions (two were compiled on every call, in loops
+    // over search results and collections); the same keys, proven by FastTextTest.
+    private fun networkKey(value: String): String = com.nuvio.tv.core.util.FastText.asciiCompactKeepingPlus(value)
 
-    private fun normalizeTitle(value: String): String =
-        Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace(Regex("\\p{M}+"), "")
-            .lowercase(Locale.US)
-            // "Beauty & the Beast" and "Beauty and the Beast" are the same title.
-            .replace("&", "and")
-            .replace(Regex("[^a-z0-9]+"), "")
+    // "Beauty & the Beast" and "Beauty and the Beast" are the same title.
+    private fun normalizeTitle(value: String): String = com.nuvio.tv.core.util.FastText.asciiCompact(value)
 
     // ------------------------------------------------------------------ helpers
 

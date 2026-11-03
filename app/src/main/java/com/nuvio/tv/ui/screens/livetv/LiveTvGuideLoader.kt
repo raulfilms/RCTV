@@ -191,6 +191,10 @@ class LiveTvGuideLoader @Inject constructor(
         synchronized(lock) {
             if (loadKey == key) _guide.value = snapshot
         }
+        // RCTV (Phase 2, F11): Search's index of an older guide isn't kept beside this one.
+        if (snapshot.channels.isNotEmpty()) {
+            com.nuvio.tv.ui.screens.search.GuideSearchCache.forgetOtherThan(snapshot.channels, snapshot.epgByChannel)
+        }
     }
 
     // ------------------------------------------------------------------ The sample guide

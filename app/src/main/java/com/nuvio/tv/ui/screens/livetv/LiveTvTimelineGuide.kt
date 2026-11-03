@@ -150,11 +150,11 @@ private fun blockKey(channel: LiveTvChannel, program: EpgProgram?): String =
 
 private fun logoKey(channel: LiveTvChannel): String = "${channel.id}|logo"
 
-private val bracketTags = Regex("""\s*\[\s*(new|live)\s*]""", RegexOption.IGNORE_CASE)
 
 /** "🏈🎓 [NCAAF] College Football [NEW]" -> "[NCAAF] College Football": badges say new/live instead. */
 internal fun cleanProgramTitle(raw: String): String {
-    val withoutTags = raw.replace(bracketTags, "").trim()
+    // RCTV (Phase 2, F4): without a regex (it ran for every program the grid drew).
+    val withoutTags = com.nuvio.tv.core.util.GuideText.withoutNewLiveTags(raw).trim()
     var index = 0
     while (index < withoutTags.length) {
         val codePoint = withoutTags.codePointAt(index)
