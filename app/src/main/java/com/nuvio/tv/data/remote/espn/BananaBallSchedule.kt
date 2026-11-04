@@ -78,6 +78,23 @@ internal object BananaBallSchedule {
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
     )
 
+    // RCTV (MEM-01): every pattern compiled once. On Android 9 a pattern and each matcher hold native
+    // memory the collector doesn't count (a matcher keeps its own copy of the whole text), so
+    // compiling them per token, and Kotlin's findAll (a new matcher, and a new copy of the page, for
+    // every match), took the app's native memory past 1 GB on the schedule page.
+    private val IMG_TAG = Regex("<img\\b[^>]*>", RegexOption.IGNORE_CASE)
+    private val ANY_TAG = Regex("<[^>]+>")
+    private val SPACES = Regex("\\s+")
+    private val TBA = Regex("\\bTBA\\b")
+    private val SEASON = Regex("""\b(20\d\d)\s+All months""", RegexOption.IGNORE_CASE)
+    private val YEAR = Regex("20\\d\\d")
+    private val DECIMAL_ENTITY = Regex("&#(\\d+);")
+    private val HEX_ENTITY = Regex("&#[xX]([0-9a-fA-F]+);")
+    private val NETWORK_PATTERNS = NETWORKS.map { network -> network to Regex("(?<![A-Za-z])${Regex.escape(network)}(?![A-Za-z])") }
+    private val ATTRIBUTES = listOf("alt", "src", "data-src").associateWith { name ->
+        Regex("""\b$name\s*=\s*("([^"]*)"|'([^']*)')""", RegexOption.IGNORE_CASE)
+    }
+
     private sealed interface Token {
         data class Heading(val text: String) : Token
         data class Image(val alt: String, val src: String) : Token
@@ -96,8 +113,9 @@ internal object BananaBallSchedule {
      */
     fun parseSchedule(html: String, today: LocalDate): List<Game> {
         val tokens = tokensOf(html)
-        var year = seasonYearOf(tokens) ?: today.year
-        val yearGiven = seasonYearOf(tokens) != null
+        val season = seasonYearOf(tokens)
+        var year = season ?: today.year
+        val yearGiven = season != null
         var lastDate: LocalDate? = null
         var date: LocalDate? = null
         var pending: Pending? = null
@@ -111,7 +129,7 @@ internal object BananaBallSchedule {
             // A game says where and when ("Walmart Park Monterrey, Mexico · TBA"): pictures
             // without that (the page's own logos, a row of team logos) aren't one.
             val joined = current.texts.joinToString(" ")
-            if ('·' !in joined && !TIME.containsMatchIn(joined) && !Regex("\\bTBA\\b").containsMatchIn(joined)) return
+            if ('·' !in joined && !TIME.containsMatchIn(joined) && !TBA.containsMatchIn(joined)) return
             games += gameOf(day, current)
         }
 
@@ -179,7 +197,7 @@ internal object BananaBallSchedule {
     }
 
     private fun gameOf(date: LocalDate, pending: Pending): Game {
-        val joined = pending.texts.joinToString(" ").replace(Regex("\\s+"), " ").trim()
+        val joined = pending.texts.joinToString(" ").replace(SPACES, " ").trim()
         val dot = joined.indexOf('·')
         val venue = (if (dot >= 0) joined.substring(0, dot) else pending.texts.firstOrNull().orEmpty()).trim().ifBlank { null }
         val rest = if (dot >= 0) joined.substring(dot + 1) else pending.texts.drop(1).joinToString(" ")
@@ -194,7 +212,7 @@ internal object BananaBallSchedule {
             "P" -> ZoneId.of("America/Los_Angeles")
             else -> EASTERN
         }
-        val broadcast = NETWORKS.firstOrNull { network -> Regex("(?<![A-Za-z])${Regex.escape(network)}(?![A-Za-z])").containsMatchIn(rest) }
+        val broadcast = NETWORK_PATTERNS.firstOrNull { (_, pattern) -> pattern.containsMatchIn(rest) }?.first
         return Game(
             date = date,
             awayTeamId = pending.teams.getOrNull(0),
@@ -222,8 +240,8 @@ internal object BananaBallSchedule {
     private fun seasonYearOf(tokens: List<Token>): Int? {
         tokens.forEachIndexed { index, token ->
             val text = (token as? Token.Text)?.text ?: (token as? Token.Heading)?.text ?: return@forEachIndexed
-            Regex("""\b(20\d\d)\s+All months""", RegexOption.IGNORE_CASE).find(text)?.let { return it.groupValues[1].toInt() }
-            if (text.trim().matches(Regex("20\\d\\d"))) {
+            SEASON.find(text)?.let { return it.groupValues[1].toInt() }
+            if (text.trim().matches(YEAR)) {
                 val next = tokens.getOrNull(index + 1)
                 val nextText = (next as? Token.Text)?.text ?: (next as? Token.Heading)?.text
                 if (nextText?.trim()?.startsWith("All months", ignoreCase = true) == true) return text.trim().toInt()
@@ -234,20 +252,23 @@ internal object BananaBallSchedule {
 
     private fun tokensOf(html: String): List<Token> {
         val tokens = ArrayList<Token>()
-        TOKEN.findAll(html).forEach { match ->
-            val value = match.value
+        // One matcher for the whole page (see IMG_TAG above), not Kotlin's findAll.
+        val match = TOKEN.toPattern().matcher(html)
+        while (match.find()) {
+            val value = match.group()
             when {
-                match.groups[1] != null -> Unit
-                match.groups[2] != null -> {
-                    val inner = match.groupValues[2]
+                match.group(1) != null -> Unit
+                match.group(2) != null -> {
+                    val inner = match.group(2).orEmpty()
                     // A heading can hold pictures too.
-                    Regex("<img\\b[^>]*>", RegexOption.IGNORE_CASE).findAll(inner).forEach { tokens += imageOf(it.value) }
-                    val text = decode(inner.replace(Regex("<[^>]+>"), " ")).replace(Regex("\\s+"), " ").trim()
+                    val images = IMG_TAG.toPattern().matcher(inner)
+                    while (images.find()) tokens += imageOf(images.group())
+                    val text = decode(inner.replace(ANY_TAG, " ")).replace(SPACES, " ").trim()
                     if (text.isNotEmpty()) tokens += Token.Heading(text)
                 }
                 value.startsWith("<img", ignoreCase = true) -> tokens += imageOf(value)
-                match.groups[3] != null -> {
-                    val text = decode(value).replace(Regex("\\s+"), " ").trim()
+                match.group(3) != null -> {
+                    val text = decode(value).replace(SPACES, " ").trim()
                     if (text.isNotEmpty()) tokens += Token.Text(text)
                 }
             }
@@ -257,15 +278,15 @@ internal object BananaBallSchedule {
 
     private fun imageOf(tag: String): Token.Image {
         fun attribute(name: String): String =
-            Regex("""\b$name\s*=\s*("([^"]*)"|'([^']*)')""", RegexOption.IGNORE_CASE).find(tag)?.let { match ->
+            ATTRIBUTES.getValue(name).find(tag)?.let { match ->
                 match.groupValues[2].ifEmpty { match.groupValues[3] }
             }.orEmpty()
         return Token.Image(alt = decode(attribute("alt")), src = attribute("src").ifEmpty { attribute("data-src") })
     }
 
-    private fun decode(text: String): String = text
-        .replace(Regex("&#(\\d+);")) { match -> match.groupValues[1].toIntOrNull()?.let { String(Character.toChars(it)) } ?: match.value }
-        .replace(Regex("&#[xX]([0-9a-fA-F]+);")) { match -> match.groupValues[1].toIntOrNull(16)?.let { String(Character.toChars(it)) } ?: match.value }
+    private fun decode(text: String): String = (if ("&#" !in text) text else text
+        .replace(DECIMAL_ENTITY) { match -> match.groupValues[1].toIntOrNull()?.let { String(Character.toChars(it)) } ?: match.value }
+        .replace(HEX_ENTITY) { match -> match.groupValues[1].toIntOrNull(16)?.let { String(Character.toChars(it)) } ?: match.value })
         .replace("&nbsp;", " ")
         .replace("&middot;", "·")
         .replace("&amp;", "&")

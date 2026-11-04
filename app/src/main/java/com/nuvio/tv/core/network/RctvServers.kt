@@ -23,6 +23,9 @@ object RctvServers {
     const val LEAGUES = "https://rctv-ligas-362306500557.us-east1.run.app"
     const val IMAGES = "https://rctv-imagenes.raulfilmspr.workers.dev"
 
+    /** RCTV Core (Oracle): Sports' ESPN leagues prepared in one answer (see EspnSportsClient.coreScoreboards). */
+    const val CORE = "https://rctvapp.duckdns.org"
+
     /** How long a server that failed is left alone. */
     private const val DOWN_FOR_MS = 60_000L
 

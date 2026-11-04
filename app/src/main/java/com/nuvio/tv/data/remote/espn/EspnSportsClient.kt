@@ -3,6 +3,9 @@ package com.nuvio.tv.data.remote.espn
 import android.content.Context
 import com.nuvio.tv.data.remote.sportsdb.CflSource
 import com.nuvio.tv.data.remote.sportsdb.PpvEventsSource
+import com.nuvio.tv.data.remote.rctvcore.CoreScoreboards
+import com.nuvio.tv.data.remote.rctvcore.RctvCoreSportsJson
+import com.nuvio.tv.data.remote.rctvcore.RctvCoreSwitch
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsGameStat
@@ -188,6 +191,26 @@ class EspnSportsClient @Inject constructor(
 
         /** The most an answer is read: bigger means something's wrong, and reading it would take all the memory. */
         internal const val MAX_RESPONSE_BYTES = 12L * 1024 * 1024
+
+        /**
+         * RCTV Core (Oracle) for Sports' leagues: on. The server can turn it off for every TV
+         * (`/api/v1/client-config`), and any league it doesn't answer loads as before.
+         */
+        private const val RCTV_CORE_SPORTS = true
+
+        /** The leagues RCTV Core serves (rctv-core/src/sports/catalog.js); any other loads as before. */
+        private val RCTV_CORE_LEAGUES = setOf(
+            "soccer:eng.1", "soccer:esp.1", "soccer:ita.1", "soccer:ger.1", "soccer:fra.1", "soccer:uefa.champions",
+            "soccer:uefa.europa", "soccer:usa.1", "soccer:mex.1", "soccer:conmebol.libertadores",
+            "soccer:conmebol.sudamericana", "soccer:concacaf.champions", "soccer:fifa.world", "soccer:fifa.cwc",
+            "soccer:uefa.nations", "soccer:conmebol.america", "basketball:nba", "basketball:wnba", "football:nfl",
+            "football:ufl", "baseball:mlb", "baseball:world-baseball-classic", "hockey:nhl", "mma:ufc",
+            "football:college-football", "basketball:mens-college-basketball", "baseball:college-baseball",
+            "racing:f1", "racing:irl", "tennis:atp", "tennis:wta",
+            "golf:pga", "golf:champions-tour", "golf:lpga", "golf:eur", "golf:ntw", "golf:liv"
+        )
+
+        private val rctvCore = RctvCoreSwitch(enabledInBuild = RCTV_CORE_SPORTS)
 
         /**
          * The leagues' own threads: as many as load at once (and a few for the waiting), apart
@@ -913,6 +936,54 @@ class EspnSportsClient @Inject constructor(
         }
     } }
 
+    /**
+     * Short limits for RCTV Core: when it's slow, the leagues load as before instead of waiting. It
+     * answers within 8 s (the leagues it couldn't load by then are listed for the app to load).
+     */
+    private val coreHttp: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(9, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build()
+    }
+
+    /**
+     * RCTV Core's answer for [feeds] over [range], or null (off, resting, or it failed: the leagues
+     * then load as before). Blocking: run it inside [cancellableBlocking], so leaving the page stops it.
+     */
+    private fun coreScoreboards(feeds: List<Feed>, range: String): CoreScoreboards? =
+        com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("core") {
+            val now = System.currentTimeMillis()
+            if (rctvCore.shouldCheck(now)) {
+                val enabled = runCatching {
+                    val request = Request.Builder().url("${com.nuvio.tv.core.network.RctvServers.CORE}/api/v1/client-config")
+                        .header("Accept", "application/json").build()
+                    executeCancellable(coreHttp.newCall(request)) { response ->
+                        if (!response.isSuccessful) null else boundedJson(response, maxBytes = 64L * 1024) { RctvCoreSportsJson.readSportsEnabled(it) }
+                    }
+                }.getOrNull()
+                if (openCalls.get()?.isCancelled == true) return@during null
+                rctvCore.checked(enabled, now)
+            }
+            if (!rctvCore.usable(now)) return@during null
+            val leagues = feeds.joinToString(",") { "${it.sportPath}:${it.leaguePath}" }
+            val url = "${com.nuvio.tv.core.network.RctvServers.CORE}/api/v1/sports/scoreboards" +
+                "?leagues=" + java.net.URLEncoder.encode(leagues, "UTF-8") + "&dates=$range&limit=$ROWS_EVENT_LIMIT"
+            try {
+                val request = Request.Builder().url(url).header("Accept", "application/json").build()
+                executeCancellable(coreHttp.newCall(request)) { response ->
+                    if (!response.isSuccessful) throw ServerAnswer(response.code)
+                    boundedJson(response) { RctvCoreSportsJson.readScoreboards(it) }
+                }.also { rctvCore.succeeded() }
+            } catch (error: Exception) {
+                // Leaving the page isn't RCTV Core's failure.
+                if (openCalls.get()?.isCancelled != true) rctvCore.failed(System.currentTimeMillis())
+                null
+            }
+        }
+
     /** An answer that wasn't a success ([code]): an [EspnException] for the pages, as before. */
     private class ServerAnswer(val code: Int) : EspnException("HTTP $code")
 
@@ -1278,8 +1349,24 @@ class EspnSportsClient @Inject constructor(
         val permits = feedPermits
         val heavyPermit = heavyFeedPermit
         return kotlinx.coroutines.withContext(feedDispatcher) {
+            // RCTV Core (Oracle), when on: the ESPN leagues it serves in one prepared answer (tennis'
+            // first days, as below), asked while the other leagues start loading; any it doesn't
+            // answer load below as before.
+            val coreFeeds = feeds.filter { !it.isSubLeague() && "${it.sportPath}:${it.leaguePath}" in RCTV_CORE_LEAGUES }
+            val coreAnswer = if (!RCTV_CORE_SPORTS || coreFeeds.isEmpty()) null else async {
+                runCatching { cancellableBlocking { coreScoreboards(coreFeeds, range) } }.getOrNull()
+            }
+            val coreIds = coreFeeds.mapTo(HashSet()) { "${it.sportPath}:${it.leaguePath}" }
             feeds.map { feed ->
                 async {
+                    val coreId = "${feed.sportPath}:${feed.leaguePath}"
+                    if (coreAnswer != null && coreId in coreIds) {
+                        coreAnswer.await()?.results?.get(coreId)?.let { core ->
+                            val fromCore = FeedResult(feed = feed, league = core.league, events = core.events, teams = core.teams)
+                            if (onResult != null) runCatching { onResult(fromCore) }
+                            return@async fromCore
+                        }
+                    }
                     // A league of another's events (a Grand Slam, a boxing body): only its tile, its
                     // games are its tour's.
                     val result = if (feed.isSubLeague()) {

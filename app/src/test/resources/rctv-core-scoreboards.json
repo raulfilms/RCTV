@@ -1,0 +1,241 @@
+{
+ "results": [
+  {
+   "leagueId": "basketball:nba",
+   "league": {
+    "id": "basketball:nba",
+    "name": "National Basketball Association",
+    "sportName": "Basketball",
+    "badgeUrl": "https://a.espncdn.com/nba.png"
+   },
+   "events": [
+    {
+     "id": "espn:basketball:nba:401",
+     "name": "BOS @ LAL",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "homeTeamId": "13",
+     "homeTeamName": "Lakers",
+     "homeTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/LAL.png",
+     "awayTeamId": "2",
+     "awayTeamName": "Celtics",
+     "awayTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/BOS.png",
+     "homeScore": 110,
+     "awayScore": 99,
+     "startTimeMs": 1793665800000,
+     "venue": "Crypto.com Arena",
+     "status": "FINISHED",
+     "statusDetail": "Final",
+     "homeTeamAbbreviation": "LAL",
+     "awayTeamAbbreviation": "BOS",
+     "homeTeamColor": "552583",
+     "awayTeamColor": "552583",
+     "homeTeamAliases": [
+      "Los Angeles Lakers",
+      "Lakers"
+     ],
+     "awayTeamAliases": [
+      "Boston Celtics",
+      "Celtics"
+     ]
+    },
+    {
+     "id": "espn:basketball:nba:402",
+     "name": "GS @ PHI",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "homeTeamId": "20",
+     "homeTeamName": "76ers",
+     "homeTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/PHI.png",
+     "awayTeamId": "9",
+     "awayTeamName": "Warriors",
+     "awayTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/GS.png",
+     "homeScore": 50,
+     "awayScore": 48,
+     "startTimeMs": 1793746800000,
+     "venue": "Crypto.com Arena",
+     "status": "LIVE",
+     "statusDetail": "11/9 - 7:30 PM EST",
+     "homeTeamAbbreviation": "PHI",
+     "awayTeamAbbreviation": "GS",
+     "awayTeamColor": "552583",
+     "homeTeamAliases": [
+      "Philadelphia 76ers",
+      "76ers"
+     ],
+     "awayTeamAliases": [
+      "Golden State Warriors",
+      "Warriors"
+     ]
+    },
+    {
+     "id": "espn:basketball:nba:403",
+     "name": "LAL @ GS",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "homeTeamId": "9",
+     "homeTeamName": "Warriors",
+     "homeTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/GS.png",
+     "awayTeamId": "13",
+     "awayTeamName": "Lakers",
+     "awayTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/LAL.png",
+     "homeScore": 0,
+     "awayScore": 0,
+     "startTimeMs": 1793757600000,
+     "venue": "Crypto.com Arena",
+     "status": "UPCOMING",
+     "statusDetail": "11/9 - 7:30 PM EST",
+     "homeTeamAbbreviation": "GS",
+     "awayTeamAbbreviation": "LAL",
+     "homeTeamColor": "552583",
+     "awayTeamColor": "552583",
+     "homeTeamAliases": [
+      "Golden State Warriors",
+      "Warriors"
+     ],
+     "awayTeamAliases": [
+      "Los Angeles Lakers",
+      "Lakers"
+     ]
+    },
+    {
+     "id": "espn:basketball:nba:404",
+     "name": "PHI @ BOS",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "homeTeamId": "2",
+     "homeTeamName": "Celtics",
+     "homeTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/BOS.png",
+     "awayTeamId": "20",
+     "awayTeamName": "76ers",
+     "awayTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/PHI.png",
+     "venue": "Crypto.com Arena",
+     "status": "UPCOMING",
+     "statusDetail": "11/9 - 7:30 PM EST",
+     "homeTeamAbbreviation": "BOS",
+     "awayTeamAbbreviation": "PHI",
+     "homeTeamColor": "552583",
+     "homeTeamAliases": [
+      "Boston Celtics",
+      "Celtics"
+     ],
+     "awayTeamAliases": [
+      "Philadelphia 76ers",
+      "76ers"
+     ]
+    }
+   ],
+   "teams": [
+    {
+     "id": "13",
+     "name": "Lakers",
+     "shortName": "Lakers",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "badgeUrl": "https://a.espncdn.com/i/teamlogos/LAL.png",
+     "color": "552583"
+    },
+    {
+     "id": "2",
+     "name": "Celtics",
+     "shortName": "Celtics",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "badgeUrl": "https://a.espncdn.com/i/teamlogos/BOS.png",
+     "color": "552583"
+    },
+    {
+     "id": "20",
+     "name": "76ers",
+     "shortName": "76ers",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "badgeUrl": "https://a.espncdn.com/i/teamlogos/PHI.png"
+    },
+    {
+     "id": "9",
+     "name": "Warriors",
+     "shortName": "Warriors",
+     "sportName": "Basketball",
+     "leagueId": "basketball:nba",
+     "leagueName": "National Basketball Association",
+     "badgeUrl": "https://a.espncdn.com/i/teamlogos/GS.png",
+     "color": "552583"
+    }
+   ]
+  },
+  {
+   "leagueId": "soccer:eng.1",
+   "league": {
+    "id": "soccer:eng.1",
+    "name": "English Premier League",
+    "sportName": "Soccer",
+    "badgeUrl": "https://a.espncdn.com/epl.png"
+   },
+   "events": [
+    {
+     "id": "espn:soccer:eng.1:700",
+     "name": "Chelsea at Arsenal",
+     "sportName": "Soccer",
+     "leagueId": "soccer:eng.1",
+     "leagueName": "English Premier League",
+     "homeTeamId": "359",
+     "homeTeamName": "Arsenal",
+     "homeTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/ARS.png",
+     "awayTeamId": "363",
+     "awayTeamName": "Chelsea",
+     "awayTeamBadgeUrl": "https://a.espncdn.com/i/teamlogos/CHE.png",
+     "startTimeMs": 1793804400000,
+     "venue": "Crypto.com Arena",
+     "status": "UPCOMING",
+     "statusDetail": "11/9 - 7:30 PM EST",
+     "homeTeamAbbreviation": "ARS",
+     "awayTeamAbbreviation": "CHE",
+     "homeTeamColor": "552583",
+     "awayTeamColor": "552583",
+     "homeTeamAliases": [
+      "Arsenal"
+     ],
+     "awayTeamAliases": [
+      "Chelsea"
+     ]
+    }
+   ],
+   "teams": [
+    {
+     "id": "359",
+     "name": "Arsenal",
+     "shortName": "Arsenal",
+     "sportName": "Soccer",
+     "leagueId": "soccer:eng.1",
+     "leagueName": "English Premier League",
+     "badgeUrl": "https://a.espncdn.com/i/teamlogos/ARS.png",
+     "color": "552583"
+    },
+    {
+     "id": "363",
+     "name": "Chelsea",
+     "shortName": "Chelsea",
+     "sportName": "Soccer",
+     "leagueId": "soccer:eng.1",
+     "leagueName": "English Premier League",
+     "badgeUrl": "https://a.espncdn.com/i/teamlogos/CHE.png",
+     "color": "552583"
+    }
+   ]
+  }
+ ],
+ "failed": [
+  "hockey:nhl"
+ ],
+ "extraFieldTheAppDoesNotKnow": {
+  "ignored": true
+ }
+}

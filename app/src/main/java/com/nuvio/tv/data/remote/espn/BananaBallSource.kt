@@ -96,7 +96,9 @@ internal class BananaBallSource(private val okHttpClient: OkHttpClient) {
 
     private fun schedule(): List<BananaBallSchedule.Game> {
         val now = System.currentTimeMillis()
-        cached?.let { (savedAt, games) -> if (now - savedAt < CACHE_MS) return games }
+        cached?.let { (savedAt, games) ->
+            if (now - savedAt < CACHE_MS) return games.ifEmpty { throw EspnSportsClient.EspnException("No Banana Ball games found") }
+        }
         val request = Request.Builder()
             .url(SCHEDULE_URL)
             .header("User-Agent", USER_AGENT)
@@ -106,9 +108,13 @@ internal class BananaBallSource(private val okHttpClient: OkHttpClient) {
             if (!response.isSuccessful) throw EspnSportsClient.EspnException("HTTP ${response.code}")
             response.body?.string().orEmpty()
         }
-        val games = BananaBallSchedule.parseSchedule(html, LocalDate.now(BananaBallSchedule.EASTERN))
-        if (games.isEmpty()) throw EspnSportsClient.EspnException("No Banana Ball games found")
+        val games = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("banana-ball") {
+            BananaBallSchedule.parseSchedule(html, LocalDate.now(BananaBallSchedule.EASTERN))
+        }
+        // RCTV (MEM-01): a page with no games (between seasons) is kept too, so it isn't downloaded
+        // and read again on every ask (Sports, Search and the guide, and each one's retry).
         cached = now to games
+        if (games.isEmpty()) throw EspnSportsClient.EspnException("No Banana Ball games found")
         return games
     }
 
