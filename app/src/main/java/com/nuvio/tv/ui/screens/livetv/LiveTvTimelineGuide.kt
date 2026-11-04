@@ -71,6 +71,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.BitmapImage
+import com.nuvio.tv.ui.util.withReadablePixels
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.transformations
@@ -1114,11 +1115,16 @@ internal object GuideLogoWhitening : coil3.transform.Transformation() {
     override val cacheKey: String = "guide_logo_white_v1"
 
     override suspend fun transform(input: Bitmap, size: coil3.size.Size): Bitmap {
-        if (!runCatching { isDarkOneColorLogo(input) }.getOrDefault(false)) return input
+        // RCTV (MEM-01): readable pixels even if Coil ever hands a hardware bitmap.
+        val readable = input.withReadablePixels()
+        if (!runCatching { isDarkOneColorLogo(readable) }.getOrDefault(false)) {
+            if (readable !== input) readable.recycle()
+            return input
+        }
         return runCatching {
-            val output = Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888)
+            val output = Bitmap.createBitmap(readable.width, readable.height, Bitmap.Config.ARGB_8888)
             android.graphics.Canvas(output).drawBitmap(
-                input,
+                readable,
                 0f,
                 0f,
                 android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
@@ -1128,6 +1134,7 @@ internal object GuideLogoWhitening : coil3.transform.Transformation() {
                     )
                 }
             )
+            if (readable !== input) readable.recycle()
             output
         }.getOrDefault(input)
     }

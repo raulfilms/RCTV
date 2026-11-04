@@ -184,7 +184,6 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 // from rapid bitmap eviction during scrolling.
                 // Mid-range devices (≤3GB): use 0.20 for decent image caching.
                 // Normal devices (>3GB): use 0.25 for snappy image loading.
-                // - allowHardware(false) keeps bitmaps on heap instead of GPU memory
                 val cachePercent = when {
                     totalRamMb <= 2048 -> 0.15
                     totalRamMb <= 3072 -> 0.20
@@ -202,7 +201,14 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             }
             .crossfade(false)
             .precision(coil3.size.Precision.INEXACT)
-            .allowHardware(false)
+            // RCTV (MEM-01): images are hardware bitmaps (Coil's default), so their pixels live in
+            // graphics memory, not in the app's native memory. On Android 9 a software bitmap's
+            // pixels are native memory: with every image software, Sports reached 1.4 GB native and
+            // the process 2.9 GB of address space (VmSize) with 800 MB still free on the TV, the
+            // limit of a 32-bit app. Code that reads an image's pixels asks for software itself
+            // (CollectionCardGlow, ClassicFocusGradientBackdrop, TmdbEntityBrowseScreen), and Coil
+            // gives software bitmaps to transformations (sports logos, blur, guide logos) by itself.
+            .allowHardware(true)
             .allowRgb565(imagePerformancePreferences.rgb565Enabled)
             .bitmapFactoryMaxParallelism(4)
             // RCTV: every image shown is noted (how big it is in memory), so a close for memory says

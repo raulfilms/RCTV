@@ -112,6 +112,8 @@ class SearchViewModel @Inject constructor(
 
     /** RCTV: what Search looks for in the Live TV guide and in sports (trimmed; empty: nothing). */
     private val extrasQuery = MutableStateFlow("")
+    /** RCTV (Phase 2): Search is on screen (see [setScreenVisible]). Declared before `init`, which reads it. */
+    private val screenVisible = MutableStateFlow(true)
     private var extrasSourcesReadyAtMs = 0L
 
     private companion object {
@@ -757,9 +759,8 @@ class SearchViewModel @Inject constructor(
      * (Search → Detail, or another section from the menu); while it isn't shown, the guide and
      * sports aren't searched again (every minute and on every sports update, over the whole guide)
      * and the sports index stops loading. Shown again, what's typed is looked for at once.
+     * ([screenVisible] is declared near the top: `init` reads it.)
      */
-    private val screenVisible = MutableStateFlow(true)
-
     fun setScreenVisible(visible: Boolean) {
         if (screenVisible.value == visible) return
         screenVisible.value = visible

@@ -17,6 +17,7 @@ import coil3.request.ImageRequest
 import coil3.request.transformations
 import coil3.size.Dimension
 import coil3.size.Size
+import com.nuvio.tv.ui.util.withReadablePixels
 import coil3.transform.Transformation
 import kotlin.math.PI
 import kotlin.math.abs
@@ -89,13 +90,15 @@ private class LogoContrastTransformation(background: Color) : Transformation() {
     override suspend fun transform(source: Bitmap, size: Size): Bitmap {
         // RCTV: no bigger than the space it's shown in (a 500-px logo decoded for a 180-px tile,
         // hundreds of them on Sports' pages, took more memory than a 2 GB TV has).
-        val input = runCatching { fittedTo(source, size) }.getOrDefault(source)
+        val readable = source.withReadablePixels()
+        if (readable !== source) source.recycle()
+        val input = runCatching { fittedTo(readable, size) }.getOrDefault(readable)
         // RCTV (MEM-01): a bitmap replaced here is freed at once. Coil keeps neither the decoded
         // logo nor what a transformation returns in between (only the final result), so nothing else
         // uses it; left to the garbage collector, hundreds of them piled up in the native memory of
         // a Mi Box 4 (over 1 GB on Sports, half of it freed only by the next collection) and the
         // system closed the app.
-        if (input !== source) source.recycle()
+        if (input !== readable) readable.recycle()
         val backgroundRgb = Triple(red * 255 / QUANT_STEPS, green * 255 / QUANT_STEPS, blue * 255 / QUANT_STEPS)
         val backgroundLuma = (0.2126f * backgroundRgb.first + 0.7152f * backgroundRgb.second + 0.0722f * backgroundRgb.third) / 255f
         val visibleShare = runCatching { visibleShareOf(input, backgroundRgb, backgroundLuma) }.getOrNull()
