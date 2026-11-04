@@ -242,9 +242,11 @@ class SearchViewModel @Inject constructor(
             delay(150)
             if (id in metaPrefetchedIds) return@launch
             metaPrefetchedIds.add(id)
-            metaRepository.getMetaFromAllAddons(type = type, id = id)
-                .first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
-            watchProgressRepository.getAllEpisodeProgress(id.substringBefore(":")).first()
+            com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("search-prefetch") {
+                metaRepository.getMetaFromAllAddons(type = type, id = id)
+                    .first { it !is com.nuvio.tv.core.network.NetworkResult.Loading }
+                watchProgressRepository.getAllEpisodeProgress(id.substringBefore(":")).first()
+            }
         }
     }
 
@@ -850,7 +852,8 @@ class SearchViewModel @Inject constructor(
     ) {
         val supportsSkip = catalog.supportsExtra("skip")
         val skipStep = catalog.skipStep()
-        catalogRepository.getCatalog(
+        // RCTV (MEM-09): noted, so a memory report can tell the add-ons' search results apart.
+        com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("search-catalogs") { catalogRepository.getCatalog(
             addonBaseUrl = addon.baseUrl,
             addonId = addon.id,
             addonName = addon.displayName,
@@ -888,7 +891,7 @@ class SearchViewModel @Inject constructor(
                     // No-op; screen shows global loading when empty.
                 }
             }
-        }
+        } }
     }
 
     private fun isCurrentSearch(generation: Long, query: String): Boolean =

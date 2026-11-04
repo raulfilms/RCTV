@@ -29,6 +29,19 @@ class NativeGrowthPolicyTest {
     }
 
     @Test
+    fun theGuardsSettingsFollowFastGrowthEveryTwoSeconds() {
+        // NativeMemoryGuard's settings (GROWTH_MB 40, HIGH_MB 250, GROWTH_WHEN_HIGH_MB 24, MIN_GAP_MS 1000).
+        val policy = NativeGrowthPolicy(growthMb = 40L, highMb = 250L, growthWhenHighMb = 24L, minGapMs = 1_000L)
+        policy.shouldCollect(300, 0)
+        assertTrue(policy.shouldCollect(340, 1_000))  // +40 at 340 MB: due
+        policy.collected(330, 2_000)                  // read a second later, still growing
+        assertFalse(policy.shouldCollect(370, 2_500)) // too soon
+        assertTrue(policy.shouldCollect(370, 3_000))  // +40 two seconds later: due again
+        policy.collected(360, 4_000)
+        assertFalse(policy.shouldCollect(380, 5_000)) // +20: not yet
+    }
+
+    @Test
     fun baselineFollowsMemoryDown() {
         val policy = NativeGrowthPolicy()
         policy.shouldCollect(200, 0)

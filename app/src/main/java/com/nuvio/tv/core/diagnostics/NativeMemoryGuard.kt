@@ -25,10 +25,18 @@ import java.util.concurrent.atomic.AtomicInteger
 object NativeMemoryGuard {
 
     private const val CHECK_EVERY_MS = 1_000L
+    internal const val GROWTH_MB = 40L
+    internal const val HIGH_MB = 250L
+    internal const val GROWTH_WHEN_HIGH_MB = 24L
+    internal const val MIN_GAP_MS = 1_000L
     private const val MB = 1024L * 1024L
     private const val SCREENS_SHOWN = 4
 
-    private val policy = NativeGrowthPolicy(growthMb = 64L, highMb = 350L, growthWhenHighMb = 32L)
+    // RCTV (3-nov, Mi Box report at 23:49): on Search, native memory grew ~40 MB/s and the 7
+    // cleanups freed 2,761 MB (it was garbage, not memory in use), yet it still reached 1.3 GB
+    // and the process 2.9 GB of address space between them. Collections now start sooner and can
+    // follow each other every 2 s while it keeps growing.
+    private val policy = NativeGrowthPolicy(growthMb = GROWTH_MB, highMb = HIGH_MB, growthWhenHighMb = GROWTH_WHEN_HIGH_MB, minGapMs = MIN_GAP_MS)
     @Volatile private var started = false
 
     private var cleanups = 0
