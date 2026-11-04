@@ -260,7 +260,11 @@ object SessionTrail {
                 append("state=").append(state).append('\n')
                 append("time=").append(time).append('\n')
                 append("screen=").append(screen).append(" (").append(onScreenFor).append(" s)\n")
-                append("app=Java ").append(javaUsedMb).append(" of ").append(javaMaxMb).append(" MB · native ").append(nativeMb).append(" MB\n")
+                // RCTV (MEM-01): native = what's in use; heap/free = what the allocator holds and how
+                // much of it is unused. A large free with a small native means memory kept, not used.
+                append("app=Java ").append(javaUsedMb).append(" of ").append(javaMaxMb).append(" MB · native ").append(nativeMb)
+                    .append(" MB (heap ").append(Debug.getNativeHeapSize() / MB)
+                    .append(", free ").append(Debug.getNativeHeapFreeSize() / MB).append(")\n")
                 append("tv=").append(device.availMem / MB).append(" MB free of ").append(device.totalMem / MB)
                     .append(" MB (low: ").append(if (device.lowMemory) "yes" else "no").append(")\n")
                 append("asks=").append(memoryAsks.ifBlank { "none" }).append('\n')

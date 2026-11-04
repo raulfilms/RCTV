@@ -210,7 +210,15 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             // gives software bitmaps to transformations (sports logos, blur, guide logos) by itself.
             .allowHardware(true)
             .allowRgb565(imagePerformancePreferences.rgb565Enabled)
-            .bitmapFactoryMaxParallelism(4)
+            // RCTV (MEM-01): on a TV with 2 GB or less (the Mi Box 4), 2 images decode at once
+            // instead of 4. On Sports, a burst of logo and poster decodes took native memory from
+            // 215 to 528 MB in one second, faster than any cleanup could follow.
+            .bitmapFactoryMaxParallelism(
+                if (((getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
+                        ?.let { manager -> ActivityManager.MemoryInfo().also(manager::getMemoryInfo).totalMem }
+                        ?: Long.MAX_VALUE) <= 2048L * 1024 * 1024
+                ) 2 else 4
+            )
             // RCTV: every image shown is noted (how big it is in memory), so a close for memory says
             // which screen's images took it.
             .eventListener(object : coil3.EventListener() {
