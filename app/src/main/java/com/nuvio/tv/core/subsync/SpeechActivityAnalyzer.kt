@@ -5,6 +5,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import java.nio.ByteBuffer
@@ -129,22 +130,33 @@ internal object SpeechActivityAnalyzer {
 
     private class Track(val index: Int, val format: MediaFormat, val decoder: String)
 
-    /** The first audio track a decoder here can play (most files have the main one first). */
+    /**
+     * The first audio track a decoder here can play (most files have the main one first). RCTV: on
+     * Android 9 and older (the Mi Box), only with Android's own software decoders (AAC, MP3, Opus...):
+     * a TV maker's decoder (Dolby, DTS) opened beside the player's can crash and close the app.
+     */
     private fun pickTrack(extractor: MediaExtractor): Track? {
         val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS)
         for (index in 0 until extractor.trackCount) {
             val format = extractor.getTrackFormat(index)
             val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
             if (!mime.startsWith("audio/")) continue
-            val decoder = runCatching { codecs.findDecoderForFormat(format) }.getOrNull()
-                ?: codecs.codecInfos.firstOrNull { info ->
-                    !info.isEncoder && info.supportedTypes.any { it.equals(mime, ignoreCase = true) }
-                }?.name
-                ?: continue
+            val decoders = codecs.codecInfos.filter { info ->
+                !info.isEncoder && info.supportedTypes.any { it.equals(mime, ignoreCase = true) }
+            }
+            val decoder = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                decoders.firstOrNull { isAndroidsOwn(it.name) }?.name
+            } else {
+                runCatching { codecs.findDecoderForFormat(format) }.getOrNull() ?: decoders.firstOrNull()?.name
+            } ?: continue
             return Track(index, format, decoder)
         }
         return null
     }
+
+    /** One of Android's own software decoders. */
+    private fun isAndroidsOwn(decoder: String): Boolean =
+        decoder.startsWith("OMX.google.", ignoreCase = true) || decoder.startsWith("c2.android.", ignoreCase = true)
 
     private fun MediaFormat.intOr(key: String, default: Int): Int =
         if (containsKey(key)) runCatching { getInteger(key) }.getOrDefault(default) else default

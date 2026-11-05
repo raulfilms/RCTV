@@ -481,9 +481,12 @@ private fun windowsOf(durationMs: Long, fractions: List<Double>): List<LongRange
     }.filter { it.last < durationMs }
 
 /** The speech in [windows] of the stream (decoded in the background); null when its audio can't be read. */
-private suspend fun hear(url: String, headers: Map<String, String>, windows: List<LongRange>): List<SpeechWindow>? =
+/** The file's sound in [windows]; null when it can't be read here (see SpeechReadGuard). */
+private suspend fun PlayerRuntimeController.hear(url: String, headers: Map<String, String>, windows: List<LongRange>): List<SpeechWindow>? =
     withContext(Dispatchers.IO) {
-        SpeechActivityAnalyzer.analyze(url, headers, windows) { !isActive }
+        com.nuvio.tv.core.subsync.SpeechReadGuard.reading(context) {
+            SpeechActivityAnalyzer.analyze(url, headers, windows) { !isActive }
+        }
     }
 
 private suspend fun align(cues: List<CueSpan>, speech: List<SpeechWindow>): SubtitleAlignment? =
