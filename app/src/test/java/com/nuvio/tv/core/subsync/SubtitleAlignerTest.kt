@@ -155,4 +155,18 @@ class SubtitleAlignerTest {
         map.reset(-300)
         assertEquals(-300L, map.offsetAt(51L * 60 * 1000))
     }
+
+    @Test
+    fun `of the files of a language, the one made for this cut fits the movie best`() {
+        val dialogue = dialogue(51)
+        val speech = heard(dialogue, windows, 52)
+        val thisCut = SubtitleAligner.align(subtitleFor(dialogue, 800, 1.0, 53), speech)
+        // Another cut: from the middle of the movie on, its lines are 6 s later.
+        val otherCut = SubtitleAligner.align(otherCut(dialogue, 800, cutAtMs = 45L * 60 * 1000, extraMs = -6_000, seed = 54), speech)
+        assertNotNull(thisCut)
+        assertTrue(
+            "this cut ${thisCut!!.confidence}, other cut ${otherCut?.confidence}",
+            otherCut == null || thisCut.confidence >= otherCut.confidence + 1.0
+        )
+    }
 }

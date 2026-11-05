@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
@@ -38,6 +39,10 @@ import kotlin.math.roundToLong
  *    match comes from that sound too, after two or three minutes.
  * 3. When the sound goes out undecoded (passthrough to a receiver) or mpv plays: a minute read from
  *    the stream, just ahead, every few minutes, does the same.
+ *
+ * The first time a language is chosen on a stream, every file of that language the subtitle sources
+ * offer is compared with the same speech, and the one that fits the movie best is put on (a file
+ * picked by hand after that is kept).
  *
  * Only applied when the match is clear (a subtitle of another movie is left as it is), and the sync
  * stops at once when the delay is set by hand. Subtitles inside the file are made for it: left alone.
@@ -80,6 +85,56 @@ private const val AHEAD_MS = 60_000L
 private const val AHEAD_LEAD_MS = 15_000L
 private const val AHEAD_EVERY_MS = 6L * 60 * 1000
 
+/** Files of the chosen language compared at most (each a small download), each given this long. */
+private const val MAX_SIBLINGS = 10
+private const val SIBLING_TIMEOUT_MS = 15_000L
+/** Another file is put on when it stands out this much more clearly than the one chosen. */
+private const val SWITCH_MARGIN = 1.0
+
+/**
+ * RCTV: per stream, the subtitle languages whose files were compared with the movie's speech, and
+ * the file the sync picked (with its match, so it's on in place at once).
+ */
+internal class SubtitleChoiceState {
+    private var streamUrl: String? = null
+    private val compared = HashSet<String>()
+    private var picked: Pair<Subtitle, SubtitleAlignment>? = null
+
+    private fun on(url: String) {
+        if (url == streamUrl) return
+        streamUrl = url
+        compared.clear()
+        picked = null
+    }
+
+    @Synchronized
+    fun wasCompared(url: String, language: String): Boolean {
+        on(url)
+        return language in compared
+    }
+
+    @Synchronized
+    fun markCompared(url: String, language: String) {
+        on(url)
+        compared += language
+    }
+
+    @Synchronized
+    fun pick(url: String, subtitle: Subtitle, alignment: SubtitleAlignment) {
+        on(url)
+        picked = subtitle to alignment
+    }
+
+    /** The match for [subtitle] when the sync itself just put it on (once). */
+    @Synchronized
+    fun takePicked(url: String, subtitle: Subtitle): SubtitleAlignment? {
+        on(url)
+        val choice = picked?.takeIf { it.first == subtitle } ?: return null
+        picked = null
+        return choice.second
+    }
+}
+
 /** One subtitle being synced on one stream. */
 private class SubtitleSync(
     val subtitle: Subtitle,
@@ -92,6 +147,8 @@ private class SubtitleSync(
     val offsets = SubtitleOffsetMap()
     /** The delay the sync set last (another one: set by hand, and the sync stops). */
     var appliedDelayMs = 0
+    /** The other files of its language, as downloaded (null: couldn't be). */
+    val siblingCues = HashMap<String, List<CueSpan>?>()
 }
 
 /** The speech heard in the last streams (another subtitle for one of them lines up at once). */
@@ -149,6 +206,15 @@ private suspend fun PlayerRuntimeController.autoAlignSubtitle(subtitle: Subtitle
     // The sound ExoPlayer decodes is heard from now on (mpv plays its own).
     val tapSession = if (isUsingMpvEngine()) null else liveSpeechTap.start()
     try {
+        // Put on by the sync itself (the best file of its language): its match is known.
+        subtitleChoice.takePicked(streamUrl, subtitle)?.let { picked ->
+            if (applyMatch(sync, picked)) {
+                Log.i(TAG, "Subtitle picked and synced: ${sync.appliedDelayMs} ms, x${picked.scale}")
+                showSyncedNotice(sync)
+                followAlong(sync, tapSession)
+            }
+            return
+        }
         showPlayerNotice(context.getString(R.string.subtitle_auto_sync_working), NOTICE_MS)
         if (SpeechActivityAnalyzer.canAnalyze(streamUrl)) {
             val found = alignAcrossMovie(sync, durationMs)
@@ -162,6 +228,8 @@ private suspend fun PlayerRuntimeController.autoAlignSubtitle(subtitle: Subtitle
                 showSyncedNotice(sync)
             }
             if (handChanged(sync)) return
+            val speech = HeardSpeech.get(streamUrl)
+            if (speech != null && switchToBestOfLanguage(sync, speech, found)) return
         }
         followAlong(sync, tapSession)
     } finally {
@@ -234,7 +302,9 @@ private suspend fun PlayerRuntimeController.followAlong(sync: SubtitleSync, tapS
                 if (!applyMatch(sync, found)) return
                 Log.i(TAG, "Subtitle synced from the sound played: ${sync.appliedDelayMs} ms, x${found.scale}")
                 showSyncedNotice(sync)
-            } else if (heard >= FIRST_MATCH_GIVE_UP_HEARD_MS) {
+            }
+            if (switchToBestOfLanguage(sync, speech, found)) return
+            if (found == null && heard >= FIRST_MATCH_GIVE_UP_HEARD_MS) {
                 Log.i(TAG, "No clear match for the subtitle (another cut or another movie?): left as it is")
                 return
             }
@@ -300,6 +370,55 @@ private suspend fun PlayerRuntimeController.followAlong(sync: SubtitleSync, tapS
         Log.i(TAG, "Subtitle followed: ${near.offsetMs} ms from ${at / 1000} s of the movie (was $current ms)")
         if (position >= at) setSyncDelay(sync, near.offsetMs)
     }
+}
+
+/**
+ * The first time this language is chosen on this stream: every other file of it the subtitle sources
+ * offer is compared with the same [speech]; when one fits the movie clearly better than the one on
+ * ([current]: its match, null when none), that one is put on (true; its own sync then starts in
+ * place). Tried again later while nothing fits yet.
+ */
+private suspend fun PlayerRuntimeController.switchToBestOfLanguage(
+    sync: SubtitleSync,
+    speech: List<SpeechWindow>,
+    current: SubtitleAlignment?
+): Boolean {
+    val language = PlayerSubtitleUtils.normalizeLanguageCode(sync.subtitle.lang)
+    if (language.isBlank() || subtitleChoice.wasCompared(sync.streamUrl, language)) return false
+    val others = _uiState.value.addonSubtitles
+        .filter { it.url != sync.subtitle.url && PlayerSubtitleUtils.normalizeLanguageCode(it.lang) == language }
+        .distinctBy { it.url }
+        .take(MAX_SIBLINGS)
+    var best: Subtitle? = null
+    var bestFound: SubtitleAlignment? = null
+    for (other in others) {
+        if (!stillOn(sync.subtitle, sync.streamUrl) || handChanged(sync)) return false
+        val cues = if (sync.siblingCues.containsKey(other.url)) {
+            sync.siblingCues[other.url]
+        } else {
+            withTimeoutOrNull(SIBLING_TIMEOUT_MS) { subtitleCueSpans(other) }.also { sync.siblingCues[other.url] = it }
+        }
+        if (cues == null || cues.size < 20) continue
+        val found = align(cues, speech) ?: continue
+        if (bestFound == null || found.confidence > bestFound.confidence) {
+            best = other
+            bestFound = found
+        }
+    }
+    // Nothing fits yet (too little heard): compared again with more.
+    if (current == null && bestFound == null) return false
+    subtitleChoice.markCompared(sync.streamUrl, language)
+    if (best == null || bestFound == null) return false
+    if (current != null && bestFound.confidence < current.confidence + SWITCH_MARGIN) return false
+    if (!stillOn(sync.subtitle, sync.streamUrl) || handChanged(sync)) return false
+    Log.i(
+        TAG,
+        "Another $language subtitle fits this movie better (confidence " +
+            "${current?.let { "%.1f".format(it.confidence) } ?: "none"} -> ${"%.1f".format(bestFound.confidence)}): put on"
+    )
+    subtitleChoice.pick(sync.streamUrl, best, bestFound)
+    selectAddonSubtitle(best)
+    return true
 }
 
 /** [found] as the subtitle's timing for the whole movie; false when this subtitle path can't take it. */

@@ -586,6 +586,8 @@ class PlayerRuntimeController(
     internal val gainAudioProcessor = GainAudioProcessor()
     /** RCTV: what the subtitle sync hears of the movie as it plays (see PlayerRuntimeControllerSubtitleAutoAlign). */
     internal val liveSpeechTap = com.nuvio.tv.core.subsync.LiveSpeechTap()
+    /** RCTV: which subtitle files of a language were compared with the movie (see PlayerRuntimeControllerSubtitleAutoAlign). */
+    internal val subtitleChoice = SubtitleChoiceState()
     internal var loudnessEnhancer: LoudnessEnhancer? = null
     internal var trackSelector: DefaultTrackSelector? = null
     internal var currentMediaSession: MediaSession? = null
