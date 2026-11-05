@@ -27,8 +27,14 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 
 private const val TAG = "AudioLanguage"
-/** How long the title's sources are waited for when looking for another language. */
-private const val LANGUAGE_SEARCH_TIMEOUT_MS = 10_000L
+/**
+ * How long the title's sources are waited for when looking for another language (the Spanish
+ * servers can take a while to answer).
+ */
+private const val LANGUAGE_SEARCH_TIMEOUT_MS = 25_000L
+
+/** How long the language just chosen waits for the new source's tracks. */
+private const val PENDING_LANGUAGE_MS = 90_000L
 private const val NOTICE_MS = 3_000L
 
 /** The language playing now: the selected track's, else what the file says, else the title's own. */
@@ -94,7 +100,10 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
     }
     _uiState.update { it.copy(audioLanguageSwitching = language) }
     if (prepared == null) {
-        showPlayerNotice(context.getString(com.nuvio.tv.R.string.audio_language_searching, language.nativeName), NOTICE_MS * 3)
+        showPlayerNotice(
+            context.getString(com.nuvio.tv.R.string.audio_language_searching, language.nativeName),
+            LANGUAGE_SEARCH_TIMEOUT_MS + NOTICE_MS
+        )
     }
 
     audioLanguageSwitchJob = scope.launch {
@@ -116,6 +125,12 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
             config = SmartScraperEnvironment.config.autoStream,
             wantedLanguages = setOf(language.code)
         )
+        // RCTV: a new source with both languages (a "dual" file, English first) plays the one chosen,
+        // not the one it starts with, nor the English one picked before.
+        pendingAudioLanguage = language
+        pendingAudioLanguageUntilMs = System.currentTimeMillis() + PENDING_LANGUAGE_MS
+        persistedTrackPreference = persistedTrackPreference?.copy(audio = null)
+            ?.takeUnless { it.audio == null && it.subtitle == null }
         switchToSourceStream(target)
         _uiState.update {
             it.copy(
@@ -135,6 +150,43 @@ private fun PlayerRuntimeController.switchToLanguageSource(language: AudioLangua
 }
 
 private const val SUBTITLE_FOLLOW_WAIT_MS = 30_000L
+
+/**
+ * RCTV: the language just chosen ([PlayerRuntimeController.pendingAudioLanguage]) on the source
+ * swapped in for it: once its tracks show one in that language (by its code, else its name:
+ * "Latino", "Español"), that one plays and is remembered. A file whose tracks don't say is that
+ * source's language already.
+ */
+internal fun PlayerRuntimeController.applyPendingAudioLanguage(audioTracks: List<TrackInfo>) {
+    val language = pendingAudioLanguage ?: return
+    if (System.currentTimeMillis() > pendingAudioLanguageUntilMs) {
+        pendingAudioLanguage = null
+        return
+    }
+    if (audioTracks.isEmpty()) return
+    val index = audioTracks.indexOfFirst { AudioLanguage.ofCode(it.language) == language }
+        .takeIf { it >= 0 }
+        ?: audioTracks.indexOfFirst { AudioLanguage.ofCode(it.language) == null && audioLanguageOfName(it.name) == language }
+    // Not in these tracks (still the old source's, or a file that doesn't say): looked at again.
+    if (index < 0) return
+    pendingAudioLanguage = null
+    val selected = _uiState.value.selectedAudioTrackIndex
+    if (selected == index || (selected < 0 && audioTracks[index].isSelected)) return
+    Log.i(TAG, "The new source plays its ${language.nativeName} track")
+    rememberAudioSelection(index)
+    selectAudioTrack(index)
+    _uiState.update { it.copy(selectedAudioTrackIndex = index, currentAudioLanguage = language) }
+}
+
+/** A track's language from its name ("Latino", "Español 5.1", "English"). */
+private fun audioLanguageOfName(name: String?): AudioLanguage? {
+    val value = name?.lowercase() ?: return null
+    return when {
+        Regex("latino|espa[ñn]ol|castellano|spanish").containsMatchIn(value) -> AudioLanguage.SPANISH
+        Regex("english|ingl[eé]s").containsMatchIn(value) -> AudioLanguage.ENGLISH
+        else -> null
+    }
+}
 
 /**
  * RCTV: the audio changed to [language]: a subtitle that's on changes to that language too (the
@@ -202,7 +254,7 @@ internal suspend fun PlayerRuntimeController.languageChain(language: AudioLangua
     if (chain.isEmpty()) {
         // Beyond Auto Stream's limits (bigger, 7.1...): any right source in that language.
         chain = SmartScraperEnvironment.rank(streams, request).all
-            .filter { language in it.audioLanguages && it.rejection !in UNUSABLE }
+            .filter { language in it.audioLanguages && (it.rejection !in UNUSABLE || foundByIdUnderItsName(it, language)) }
             .map { it.stream }
     }
     chain = chain.filterNot { it.getStreamUrl() != null && it.getStreamUrl() == playing }
@@ -248,6 +300,17 @@ private fun preferredProviders(chain: List<Stream>, language: AudioLanguage): Li
         if (language == AudioLanguage.SPANISH) spanishServer else !spanishServer
     }
     return preferred + others
+}
+
+/**
+ * RCTV: a Spanish server's source (found by the title's id) named by its Spanish title ("Batman:
+ * El caballero de la noche" for The Dark Knight): the right movie under another name.
+ */
+private fun foundByIdUnderItsName(scored: com.nuvio.tv.core.smartscraper.ScoredSource, language: AudioLanguage): Boolean {
+    if (language != AudioLanguage.SPANISH || scored.rejection != RejectReason.WRONG_TITLE) return false
+    val source = scored.source
+    return source.isSpanishServer ||
+        (source.provider.family == ProviderFamily.AIOSTREAMS && source.provider.variant == ProviderVariant.DUBBED)
 }
 
 /** Sources that can't be played as they are. */

@@ -561,6 +561,12 @@ class PlayerRuntimeController(
     internal var mpvPreferredAudioLanguages: List<String> = emptyList()
     internal var currentStreamBingeGroup: String? = navigationArgs.bingeGroup
     internal var hasAppliedRememberedAudioSelection: Boolean = false
+    /**
+     * RCTV: the audio language just chosen that the next source (the one swapped in for it) must
+     * play: its track in that language is picked once its tracks are known, until [pendingAudioLanguageUntilMs].
+     */
+    internal var pendingAudioLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage? = null
+    internal var pendingAudioLanguageUntilMs: Long = 0L
     internal var hasInitializedAudioAmplificationForSession: Boolean = false
     internal var hasInitializedCenterMixForSession: Boolean = false
     internal var rememberAudioDelayPerDeviceEnabled: Boolean = false
