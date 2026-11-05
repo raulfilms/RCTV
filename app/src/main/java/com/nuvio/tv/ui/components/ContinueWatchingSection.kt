@@ -156,10 +156,14 @@ fun ContinueWatchingSection(
     cornerRadius: Dp = NuvioTheme.radii.md,
     posterTitleOverride: TextStyle? = null,
     /** Apple TV look: landscape artwork cards with the progress drawn on the art. */
-    appleStyle: Boolean = false
+    appleStyle: Boolean = false,
+    /** RCTV: where the title comes from, in a circle (not on a studio's own page, where it's plain). */
+    showBrandBadge: Boolean = true,
+    /** RCTV: the row's start, to line up with the page's other rows (null: the style's own). */
+    startPadding: Dp? = null
 ) {
     if (items.isEmpty()) return
-    val rowStartPadding = if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
+    val rowStartPadding = startPadding ?: if (appleStyle) AppleTvContentStart else NuvioTheme.spacing.xxxl
 
     var lastFocusedIndex by lastFocusedIndexState
     var lastRequestedFocusIndex by remember { mutableIntStateOf(-1) }
@@ -285,6 +289,7 @@ fun ContinueWatchingSection(
                         cardWidth = cardWidth,
                         cardHeight = imageHeight,
                         cornerRadius = cornerRadius,
+                        showBrand = showBrandBadge,
                         modifier = Modifier
                             .onFocusChanged { focusState ->
                                 isCardFocused = focusState.isFocused
@@ -1268,6 +1273,7 @@ private fun AppleContinueWatchingCard(
     cardWidth: Dp,
     cardHeight: Dp,
     cornerRadius: Dp,
+    showBrand: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
@@ -1315,8 +1321,8 @@ private fun AppleContinueWatchingCard(
             ).titleBrandRepository()
         }.getOrNull()
     }
-    val brand by androidx.compose.runtime.produceState<com.nuvio.tv.data.streaming.TitleBrand?>(null, contentId, contentType) {
-        value = if (contentId.isNullOrBlank() || contentType.isNullOrBlank()) null else brandRepository?.brandOf(contentId, contentType)
+    val brand by androidx.compose.runtime.produceState<com.nuvio.tv.data.streaming.TitleBrand?>(null, contentId, contentType, showBrand) {
+        value = if (!showBrand || contentId.isNullOrBlank() || contentType.isNullOrBlank()) null else brandRepository?.brandOf(contentId, contentType)
     }
     val bgCardColor = AppleTvColors.Surface1
     val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
@@ -1415,7 +1421,7 @@ private fun AppleContinueWatchingCard(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 10.dp, end = CW_BRAND_SIZE + 18.dp, bottom = CW_ABOVE_PROGRESS)
+                        .padding(start = 10.dp, end = if (showBrand) CW_BRAND_SIZE + 18.dp else 10.dp, bottom = CW_ABOVE_PROGRESS)
                 ) {
                     if (logoRequest != null && !logoFailed) {
                         AsyncImage(

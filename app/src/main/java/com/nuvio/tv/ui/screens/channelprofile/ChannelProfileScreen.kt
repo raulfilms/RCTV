@@ -146,7 +146,8 @@ private val HeroShape = RoundedCornerShape(AppleTvRadius.Panel)
 private val LiveCardWidth = AppleTvSpacing.Col4
 private val LiveCardArtHeight = AppleTvSpacing.Col4 * 9f / 16f
 private val LiveCardShape = RoundedCornerShape(10.dp)
-private val CwCardHeight = 138.dp
+// RCTV: like Home's Continue Watching (Prime Video's): the whole card a 16:9 picture.
+private val CwCardHeight = AppleTvSpacing.Col4 * (9f / 16f)
 private val RowGap = 22.dp
 /** Where a focused row's cards sit from the top of the screen (its name shows above them). */
 private val RowFocusTop = 120.dp
@@ -601,7 +602,9 @@ private fun ChannelProfileContent(
                         cardWidth = AppleTvSpacing.Col4,
                         imageHeight = CwCardHeight,
                         cornerRadius = AppleTvRadius.Poster,
-                        appleStyle = true
+                        appleStyle = true,
+                        // RCTV: no circle of where it's from: it's this channel's page.
+                        showBrandBadge = false
                     )
                 }
             }

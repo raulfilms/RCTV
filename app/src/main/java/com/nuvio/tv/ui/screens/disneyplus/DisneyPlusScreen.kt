@@ -450,7 +450,15 @@ fun DisneyPlusScreen(
                                         )
                                     }
                                 },
-                                onRemoveItem = viewModel::removeContinueWatching
+                                onRemoveItem = viewModel::removeContinueWatching,
+                                // RCTV: like Home's (Prime Video's): a 16:9 picture with the title's logo
+                                // and the progress line on it; no circle of where it's from (it's this page's).
+                                cardWidth = com.nuvio.tv.ui.components.AppleTvSpacing.Col4,
+                                imageHeight = com.nuvio.tv.ui.components.AppleTvSpacing.Col4 * (9f / 16f),
+                                cornerRadius = com.nuvio.tv.ui.components.AppleTvRadius.Poster,
+                                appleStyle = true,
+                                showBrandBadge = false,
+                                startPadding = NuvioTheme.spacing.xxxl
                             )
                         }
                     }
