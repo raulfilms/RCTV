@@ -27,18 +27,19 @@ class AutoStreamPanelTest {
     )
 
     @Test
-    fun `nothing over 8 GB, never another title, best quality first`() {
+    fun `nothing over 8 GB, never another title, the smallest 4K, 2K or 1080p first`() {
         val shown = panel(batmanStreams())
-        assertEquals(listOf("atmos", "stereo", "1080", "1080-small", "1080-uncached", "720"), shown)
+        // RCTV (owner's rule): 5.1 first, the smallest first, ready before to be fetched, 720p last.
+        assertEquals(listOf("1080-small", "1080", "atmos", "stereo", "1080-uncached", "720"), shown)
     }
 
     @Test
     fun `the connection decides how big - 8 GB when it keeps up, else 6, 4, 2`() {
         // 176 min: 7.4 GB ≈ 6.0 Mbps (× 1.5 = 9.0), 5.2 GB ≈ 4.2 (6.3), 3.9 GB ≈ 3.2 (4.7), 2 GB ≈ 1.6 (2.4).
         val fast = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.FAST, availableMbps = 100.0))
-        assertEquals(listOf("atmos", "stereo", "1080", "1080-small", "1080-uncached", "720"), panel(batmanStreams(), fast))
+        assertEquals(listOf("1080-small", "1080", "atmos", "stereo", "1080-uncached", "720"), panel(batmanStreams(), fast))
         val eight = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 8.0))
-        assertEquals(listOf("1080", "1080-small", "1080-uncached", "720"), panel(batmanStreams(), eight))
+        assertEquals(listOf("1080-small", "1080", "1080-uncached", "720"), panel(batmanStreams(), eight))
         val five = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 5.0))
         assertEquals(listOf("1080-small", "1080-uncached", "720"), panel(batmanStreams(), five))
         val three = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 3.0))
@@ -76,7 +77,7 @@ class AutoStreamPanelTest {
             ).map(SourceProviderAdapters::normalize),
             request
         ).map { it.stream.infoHash }
-        assertEquals(listOf("e3-4k", "e3"), shown)
+        assertEquals(listOf("e3", "e3-4k"), shown)
     }
 
     @Test

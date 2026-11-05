@@ -72,6 +72,8 @@ data class AutoStreamCandidate(
     val recentlyFailed: Boolean = false,
     /** Its size is known (else it may play only once its link's size is checked: ranked after). */
     val sizeKnown: Boolean = true,
+    /** Its file's size in bytes, when known (a season's pack size isn't an episode's). */
+    val sizeBytes: Long? = null,
     /** It says it has English or the title's own audio (else that's presumed, and checked before it plays). */
     val originalAudioConfirmed: Boolean = false,
     /** The language wanted is in it (or none is wanted). */
@@ -101,9 +103,10 @@ data class AutoStreamResult(
     val best: AutoStreamCandidate? get() = candidates.firstOrNull()
 
     /**
-     * §8.1: the best needn't wait for slower addons: ready on the debrid service, in the highest
-     * resolution this TV and connection allow, 5.1, everything about it said, from a source that
-     * starts at least [AutoStreamConfig.earlyDecisionMinReliability] of the time.
+     * §8.1: the best needn't wait for slower addons: ready on the debrid service, in a wanted
+     * resolution (RCTV: 4K, 2K or 1080p up to the TV's own; else the highest this TV and connection
+     * allow), 5.1, everything about it said, from a source that starts at least
+     * [AutoStreamConfig.earlyDecisionMinReliability] of the time.
      */
     fun bestIsIdeal(context: SmartRankingContext): Boolean {
         val best = best ?: return false
@@ -111,7 +114,8 @@ data class AutoStreamResult(
             best.verified && best.sizeKnown && best.scored.source.cache == CacheState.CACHED &&
             best.layout == AutoStreamEngine.LAYOUT_5_1 &&
             best.reliability >= context.config.autoStream.earlyDecisionMinReliability &&
-            best.tier >= AutoStreamEngine.highestAllowedTier(context)
+            (AutoStreamEngine.isWantedResolution(best.release.resolution, context.device, context.config.autoStream) ||
+                best.tier >= AutoStreamEngine.highestAllowedTier(context))
     }
 
     companion object {
@@ -128,6 +132,11 @@ data class AutoStreamResult(
  * own audio (a Spanish-only file is never the video); marked ready on the debrid service (RCTV: or
  * a link that plays as it is, see [readyLink]). Nothing is ever relaxed: when nothing passes,
  * there's no automatic stream.
+ *
+ * RCTV (owner's rule, 4-nov-2026), before the ranking below: the wanted resolutions (4K, 2K, 1080p,
+ * up to the TV's own) the connection and the TV take come first, 5.1 before 2.0, then the smallest
+ * file (files within [AutoStreamConfig.sameSizeMargin] are the same size: the higher resolution
+ * first), then the sound and the rest as below. 720p and lower only after them ([order]).
  *
  * Ranking (§4, §5): the resolution first (a resolution whose best file the connection can't keep up
  * with, or the TV can't show as meant, steps down to the next); then 5.1 over 2.0; then the audio
@@ -216,7 +225,7 @@ object AutoStreamEngine {
                 candidate(scored, request, context, pool)
             }
         }
-        val ordered = regularFirst(order(valid, config), request)
+        val ordered = regularFirst(order(valid, config, context.device), request)
         // §9: the same file from several addons/services is one choice; its copy from the first
         // server (RCTV's order), then the most reliable, fastest, first (the order already put it
         // first), the others to fall back on.
@@ -361,32 +370,84 @@ object AutoStreamEngine {
             serverRank = config.serverRank(source.provider),
             recentlyFailed = failed,
             sizeKnown = fileSize(release, request) != null,
+            sizeBytes = fileSize(release, request),
             originalAudioConfirmed = AudioLanguage.ENGLISH in said || (original != null && original in said),
             languageMatch = request.preferredLanguage == null || request.preferredLanguage in scored.audioLanguages
         )
     }
 
     /**
-     * Resolutions highest first. A resolution whose best file the connection can't keep up with,
-     * or the TV can't show as meant, steps down to the next (§5): its files are only a last resort,
-     * after every other; so is any file the connection or the TV can't take within one that's allowed.
+     * RCTV (owner's rule): first the wanted resolutions (4K, 2K, 1080p, up to the TV's own) the
+     * connection and the TV take, the smallest file first ([smallestFirst]); then the other files
+     * they take (720p, 480p, a 4K on a 1080p TV), resolutions highest first; last, as a last resort,
+     * every file the connection or the TV can't take (§5), resolutions highest first.
      */
-    private fun order(candidates: List<AutoStreamCandidate>, config: AutoStreamConfig): List<AutoStreamCandidate> {
-        val allowed = ArrayList<AutoStreamCandidate>(candidates.size)
-        val capped = ArrayList<AutoStreamCandidate>()
-        candidates.groupBy { it.tier }.toSortedMap(compareByDescending { it }).values.forEach { members ->
-            val sorted = withinResolution(members, config)
-            val best = sorted.first()
-            if (best.fitsConnection && best.tvCompatible) {
-                sorted.forEach { candidate ->
-                    if (candidate.fitsConnection && candidate.tvCompatible) allowed += candidate
-                    else capped += candidate.copy(tierAllowed = false)
-                }
-            } else {
-                sorted.mapTo(capped) { it.copy(tierAllowed = false) }
+    private fun order(
+        candidates: List<AutoStreamCandidate>,
+        config: AutoStreamConfig,
+        device: DeviceProfile,
+        readyFirst: Boolean = false
+    ): List<AutoStreamCandidate> {
+        val (takes, capped) = candidates.partition { it.fitsConnection && it.tvCompatible }
+        val (wanted, other) = takes.partition { isWantedResolution(it.release.resolution, device, config) }
+        return smallestFirst(wanted, config, readyFirst) +
+            byResolution(other, config, readyFirst) +
+            byResolution(capped, config, readyFirst).map { it.copy(tierAllowed = false) }
+    }
+
+    /** RCTV: 1080p up to the TV's own resolution (4K on a 4K TV). */
+    fun isWantedResolution(resolution: VideoResolution, device: DeviceProfile, config: AutoStreamConfig): Boolean =
+        resolution.isKnown && resolution.level >= config.lowestWantedResolution.level && resolution.level <= tvMaxLevel(device)
+
+    private fun byResolution(
+        candidates: List<AutoStreamCandidate>,
+        config: AutoStreamConfig,
+        readyFirst: Boolean
+    ): List<AutoStreamCandidate> =
+        candidates.groupBy { it.tier }
+            .toSortedMap(compareByDescending { it })
+            .values
+            .flatMap { withinResolution(it, config, readyFirst) }
+
+    /**
+     * RCTV (owner's rule): the wanted resolutions' files, 5.1 before 2.0 (and before a layout not
+     * said), then the smallest first: files within [AutoStreamConfig.sameSizeMargin] of the
+     * smallest of their group are the same size, and among them the higher resolution, then the
+     * audio format, the server, the picture, Spanish, the most reliable and fastest source. A file
+     * whose size isn't known comes after the ones whose is. [readyFirst]: as in [withinResolution].
+     */
+    private fun smallestFirst(
+        members: List<AutoStreamCandidate>,
+        config: AutoStreamConfig,
+        readyFirst: Boolean
+    ): List<AutoStreamCandidate> {
+        fun waits(candidate: AutoStreamCandidate): Boolean = readyFirst && !playsAtOnce(candidate.scored.source)
+        val sizeGroup = IdentityHashMap<AutoStreamCandidate, Int>()
+        var smallest = 0.0
+        var index = -1
+        members.filter { it.sizeBytes != null }.sortedBy { it.sizeBytes }.forEach { candidate ->
+            val size = candidate.sizeBytes!!.toDouble()
+            if (index < 0 || size > smallest * (1.0 + config.sameSizeMargin)) {
+                smallest = size
+                index++
             }
+            sizeGroup[candidate] = index
         }
-        return allowed + capped
+        members.filter { it.sizeBytes == null }.forEach { sizeGroup[it] = Int.MAX_VALUE }
+        return members.sortedWith(
+            compareBy<AutoStreamCandidate> { if (waits(it)) 1 else 0 }
+                .thenBy { if (it.recentlyFailed) 1 else 0 }
+                .thenByDescending { it.layout }
+                .thenBy { sizeGroup.getValue(it) }
+                .thenByDescending { it.tier }
+                .thenByDescending { it.audioCodecRank }
+                .thenBy { it.serverRank }
+                .thenByDescending { it.videoPoints }
+                .thenByDescending { it.embeddedSpanish }
+                .thenByDescending { it.reliability }
+                .thenBy { it.responseMs ?: Double.MAX_VALUE }
+                .thenBy { it.sizeBytes ?: Long.MAX_VALUE }
+        )
     }
 
     /**
@@ -468,7 +529,9 @@ object AutoStreamEngine {
             .map { candidate(it, request, context, AutoStreamPool.MAIN) }
         val shown = candidates.filter { it.fitsConnection }.ifEmpty { candidates }
         val (sized, unsized) = shown.partition { it.sizeKnown }
-        return regularFirst(inQualityOrder(sized, config) + inQualityOrder(unsized, config), request).map { it.scored }
+        val device = context.device
+        return regularFirst(order(sized, config, device, readyFirst = true) + order(unsized, config, device, readyFirst = true), request)
+            .map { it.scored }
     }
 
     /**
@@ -501,12 +564,6 @@ object AutoStreamEngine {
         val (regular, editions) = ordered.partition { it.release.editionFor(request) == ReleaseEdition.NONE }
         return regular + editions
     }
-
-    private fun inQualityOrder(candidates: List<AutoStreamCandidate>, config: AutoStreamConfig): List<AutoStreamCandidate> =
-        candidates.groupBy { it.tier }
-            .toSortedMap(compareByDescending { it })
-            .values
-            .flatMap { withinResolution(it, config, readyFirst = true) }
 
     /**
      * Its place in the resolution order for [device] (higher first): up to the TV's own resolution

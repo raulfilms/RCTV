@@ -52,14 +52,15 @@ class AutoStreamServerTest {
     }
 
     @Test
-    fun `the resolution first, then 5_1 before 2_0, and only then the server`() {
+    fun `5_1 before 2_0, then the smallest of 4K, 2K and 1080p, and only then the server`() {
         val result = rank(
             stream("aio-1080", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0, name = "[RD+] AIOStreams 1080p", addon = "AIOStreams"),
             stream("aio-4k-2.0", "Movie.2020.2160p.WEB-DL.DDP2.0.HEVC", 5.0, name = "[RD+] AIOStreams 4K", addon = "AIOStreams"),
             stream("tio-4k-5.1", RELEASE_4K, 5.0, name = "[RD+] Torrentio\n4k", addon = "Torrentio RD"),
             stream("aio-4k-5.1", RELEASE_4K, 4.8, name = "[RD+] AIOStreams 4K", addon = "AIOStreams")
         )
-        assertEquals(listOf("aio-4k-5.1", "tio-4k-5.1", "aio-4k-2.0", "aio-1080"), result.candidates.map { it.stream.addonLogo })
+        // RCTV (owner's rule): the 1080p of 4.0 GB first; the 4Ks of 4.8 and 5.0 GB are the same size, the server first.
+        assertEquals(listOf("aio-1080", "aio-4k-5.1", "tio-4k-5.1", "aio-4k-2.0"), result.candidates.map { it.stream.addonLogo })
     }
 
     @Test

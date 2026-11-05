@@ -109,6 +109,15 @@ data class AutoStreamConfig(
     // ------------------------------------------------------------------ Ranking, connection (§4, §5)
     /** COMPARABLE_BITRATE_MARGIN: bitrates this close (share of the higher) are the same picture. */
     val comparableBitrateMargin: Double = 0.15,
+    /**
+     * RCTV (owner's rule, 4-nov-2026): 4K, 2K and 1080p are what's wanted, and among them the
+     * smallest file plays first (a 1080p of 4.5 GB before a 4K of 6.5 GB). Files within this share
+     * of the smallest are the same size: then the higher resolution first (a 4K of 4.6 GB before a
+     * 1080p of 4.5 GB). 720p and lower only when there's no 4K, 2K or 1080p the connection keeps up with.
+     */
+    val sameSizeMargin: Double = 0.10,
+    /** The lowest of the wanted resolutions (above it: up to the TV's own). */
+    val lowestWantedResolution: VideoResolution = VideoResolution.FHD_1080,
     /** BITRATE_HEADROOM: a file needs its average bitrate times this from the connection (VBR peaks). */
     val bitrateHeadroom: Double = 1.5,
     /** When the connection's speed isn't measured, what a medium / slow one is taken to keep up with (Mbps). */

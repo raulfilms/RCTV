@@ -22,7 +22,7 @@ object SmartScoreEngine {
         val judged = sources.map { judge(it, request, context) }
         val (rejected, kept) = judged.partition { it.rejection?.removesFromAll == true }
         val ordered = kept.sortedWith(SMART_ORDER)
-        val eligible = ordered.filter { it.rejection == null }
+        val eligible = wantedFirst(ordered.filter { it.rejection == null }, request, context)
         val groups = group(eligible, context.config).take(context.config.maxSmartSources.coerceAtLeast(1))
         val smart = label(groups, context)
         val fallbackChain = smart.flatMap { entry -> listOf(entry.best.stream) + entry.copies.map { it.stream } }
@@ -436,6 +436,50 @@ object SmartScoreEngine {
         return (sum / weights.total * 100f).roundToInt().coerceIn(0, 100)
     }
 
+    // ==================================================================== The owner's rule
+
+    /**
+     * RCTV (owner's rule, 4-nov-2026; Auto Stream's too, see [AutoStreamEngine]): the wanted
+     * resolutions (4K, 2K, 1080p, up to the TV's own) the connection keeps up with and the TV shows
+     * as meant come first, 5.1 or more before stereo, then the smallest file (files within
+     * [AutoStreamConfig.sameSizeMargin] are the same size: the higher resolution first, then the
+     * Smart Score). The rest (720p, unknown, too much for the connection) after them, by Smart Score.
+     */
+    private fun wantedFirst(
+        sources: List<ScoredSource>,
+        request: SmartSourceRequest,
+        context: SmartRankingContext
+    ): List<ScoredSource> {
+        val config = context.config.autoStream
+        val (wanted, rest) = sources.partition { scored ->
+            AutoStreamEngine.isWantedResolution(scored.release.resolution, context.device, config) &&
+                AutoStreamEngine.tvCompatible(scored.release, context.device) &&
+                scored.breakdown.connection >= CONNECTION_KEEPS_UP
+        }
+        if (wanted.isEmpty()) return sources
+        fun sizeOf(scored: ScoredSource): Long? =
+            if (scored.release.sizeIsPack && request.isEpisode) null else scored.release.sizeBytes
+        val sizeGroup = java.util.IdentityHashMap<ScoredSource, Int>()
+        var smallest = 0.0
+        var index = -1
+        wanted.filter { sizeOf(it) != null }.sortedBy { sizeOf(it) }.forEach { scored ->
+            val size = sizeOf(scored)!!.toDouble()
+            if (index < 0 || size > smallest * (1.0 + config.sameSizeMargin)) {
+                smallest = size
+                index++
+            }
+            sizeGroup[scored] = index
+        }
+        wanted.filter { sizeOf(it) == null }.forEach { sizeGroup[it] = Int.MAX_VALUE }
+        val ordered = wanted.sortedWith(
+            compareByDescending<ScoredSource> { if (it.release.channels.count >= AudioChannels.CH_5_1.count) 1 else 0 }
+                .thenBy { sizeGroup.getValue(it) }
+                .thenByDescending { it.release.resolution.level }
+                .then(SMART_ORDER)
+        )
+        return ordered + rest
+    }
+
     // ==================================================================== Duplicates, labels
 
     private fun group(sorted: List<ScoredSource>, config: SmartScraperConfig): List<List<ScoredSource>> {
@@ -517,6 +561,9 @@ object SmartScoreEngine {
 
     /** What a stream needs beyond its average bitrate to play smoothly (its peaks, the network's ups and downs). */
     const val HEADROOM = 1.3
+
+    /** [connectionScore] when the connection keeps up (ratio 1.0 or more, or not measured). */
+    private const val CONNECTION_KEEPS_UP = 0.6f
 }
 
 /** How the person sorts the sources in manual mode (never by provider: providers aren't shown). */

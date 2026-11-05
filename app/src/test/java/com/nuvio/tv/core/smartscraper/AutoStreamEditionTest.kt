@@ -52,7 +52,7 @@ class AutoStreamEditionTest {
     @Test
     fun `the regular Play keeps the regular version first, a Director's Cut only after it`() {
         val result = AutoStreamEngine.rank(streams().map(SourceProviderAdapters::normalize), movie)
-        assertEquals(listOf("regular-1080", "regular-720", "dc-4k", "dc-1080"), result.candidates.map { it.stream.infoHash })
+        assertEquals(listOf("regular-1080", "regular-720", "dc-1080", "dc-4k"), result.candidates.map { it.stream.infoHash })
     }
 
     @Test
@@ -61,7 +61,7 @@ class AutoStreamEditionTest {
             streams().map(SourceProviderAdapters::normalize),
             movie.copy(edition = ReleaseEdition.DIRECTORS_CUT)
         )
-        assertEquals(listOf("dc-4k", "dc-1080"), result.candidates.map { it.stream.infoHash })
+        assertEquals(listOf("dc-1080", "dc-4k"), result.candidates.map { it.stream.infoHash })
         assertTrue(result.rejected.all { it.second == AutoStreamReject.WRONG_CONTENT })
         val extended = AutoStreamEngine.rank(streams().map(SourceProviderAdapters::normalize), movie.copy(edition = ReleaseEdition.EXTENDED))
         assertTrue(extended.candidates.isEmpty())
@@ -71,7 +71,8 @@ class AutoStreamEditionTest {
     fun `the Extras offer each version Auto Stream can play, with its best file`() {
         val editions = AutoStreamEngine.editions(streams().map(SourceProviderAdapters::normalize), movie)
         assertEquals(listOf(ReleaseEdition.DIRECTORS_CUT), editions.map { it.edition })
-        assertEquals(VideoResolution.UHD_2160, editions.single().best.resolution)
+        // RCTV (owner's rule): its smallest 4K, 2K or 1080p file.
+        assertEquals(VideoResolution.FHD_1080, editions.single().best.resolution)
         // Only a version over 8 GB: not offered.
         val tooBig = AutoStreamEngine.editions(
             listOf(stream("ext-9", "Kingdom.of.Heaven.2005.Extended.2160p.BluRay.DDP5.1.HEVC", 9.0)).map(SourceProviderAdapters::normalize),
@@ -87,11 +88,11 @@ class AutoStreamEditionTest {
     fun `the cloud's list keeps the version playing, or the regular one first`() {
         val normalized = streams().map(SourceProviderAdapters::normalize)
         assertEquals(
-            listOf("regular-1080", "regular-720", "dc-4k", "dc-1080"),
+            listOf("regular-1080", "regular-720", "dc-1080", "dc-4k"),
             AutoStreamEngine.panelSources(normalized, movie).map { it.stream.infoHash }
         )
         assertEquals(
-            listOf("dc-4k", "dc-1080"),
+            listOf("dc-1080", "dc-4k"),
             AutoStreamEngine.panelSources(normalized, movie.copy(edition = ReleaseEdition.DIRECTORS_CUT)).map { it.stream.infoHash }
         )
     }

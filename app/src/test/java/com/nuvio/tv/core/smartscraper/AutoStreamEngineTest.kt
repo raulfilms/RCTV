@@ -57,12 +57,14 @@ class AutoStreamEngineTest {
     )
 
     @Test
-    fun `B - The Batman picks 4K 7_4 GB DD+ 5_1 Atmos HDR, each other for its rule`() {
+    fun `B - The Batman picks the 1080p of 5_2 GB before the 4K of 7_4 GB (owner's rule), each other for its rule`() {
         val tv = SmartRankingContext(device = DeviceProfile(maxResolution = VideoResolution.UHD_2160, supportsHdr10 = true, isKnown = true))
         for (context in listOf(SmartRankingContext.DEFAULT, tv)) {
             val result = AutoStreamEngine.rank(batmanStreams().map(SourceProviderAdapters::normalize), batman, context)
-            assertEquals("atmos", result.best?.stream?.infoHash)
-            assertEquals(listOf("atmos", "stereo", "1080"), hashes(result))
+            // RCTV (owner's rule, 4-nov-2026): 4K, 2K and 1080p are wanted, the smallest first;
+            // 5.1 before stereo.
+            assertEquals("1080", result.best?.stream?.infoHash)
+            assertEquals(listOf("1080", "atmos", "stereo"), hashes(result))
             assertEquals(AutoStreamReject.TOO_LARGE, reason(result, "too-big"))
             assertEquals(AutoStreamReject.AUDIO_NOT_ALLOWED, reason(result, "truehd-7.1"))
             assertEquals(AutoStreamReject.NOT_CACHED, reason(result, "uncached"))
@@ -76,12 +78,67 @@ class AutoStreamEngineTest {
         val enough = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 10.0))
         val short = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 8.0))
         val normalized = batmanStreams().map(SourceProviderAdapters::normalize)
-        assertEquals("atmos", AutoStreamEngine.rank(normalized, batman, enough).best?.stream?.infoHash)
+        val kept = AutoStreamEngine.rank(normalized, batman, enough)
+        assertEquals(listOf("1080", "atmos", "stereo"), hashes(kept))
+        assertTrue(kept.candidates.all { it.tierAllowed })
         val stepped = AutoStreamEngine.rank(normalized, batman, short)
         assertEquals("1080", stepped.best?.stream?.infoHash)
-        // The 4Ks stay only as the last resort.
+        // The 4Ks the connection can't keep up with stay only as the last resort.
         assertEquals(listOf("1080", "atmos", "stereo"), hashes(stepped))
+        assertTrue(stepped.candidates.first().tierAllowed)
+        assertFalse(stepped.candidates[1].tierAllowed)
         assertFalse(stepped.candidates.last().tierAllowed)
+    }
+
+    // ==================================================================== RCTV: the owner's rule (4-nov-2026)
+
+    @Test
+    fun `owner's rule - a 1080p of 4_5 GB before a 4K of 6_5 GB, the same size the 4K, 720p only as the last resort`() {
+        // His example: a 4K of 6.5 GB and a 1080p of 4.5 GB: the 1080p.
+        assertEquals(
+            listOf("1080-4.5", "4k-6.5", "720-2.0"),
+            hashes(
+                rank(
+                    stream("4k-6.5", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 6.5),
+                    stream("1080-4.5", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5),
+                    stream("720-2.0", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0)
+                )
+            )
+        )
+        // The same size (within 10%): the higher resolution. A 2K between them.
+        assertEquals(
+            listOf("4k-4.6", "1080-4.5", "2k-5.4"),
+            hashes(
+                rank(
+                    stream("1080-4.5", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5),
+                    stream("2k-5.4", "Movie.2020.1440p.WEB-DL.DDP5.1.HEVC", 5.4),
+                    stream("4k-4.6", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 4.6)
+                )
+            )
+        )
+        // 720p when there's nothing else, or when the connection keeps up with nothing better:
+        // 120 min, 1080p 4.5 GB ≈ 5.4 Mbps × 1.5 ≈ 8.1; 720p 2.0 GB ≈ 2.4 × 1.5 ≈ 3.6.
+        val slow = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 5.0))
+        val streams = listOf(
+            stream("1080-4.5", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5),
+            stream("720-2.0", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0)
+        )
+        assertEquals("1080-4.5", rank(*streams.toTypedArray()).best?.stream?.infoHash)
+        assertEquals("720-2.0", rank(*streams.toTypedArray(), context = slow).best?.stream?.infoHash)
+        assertEquals("720-2.0", rank(stream("720-2.0", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0)).best?.stream?.infoHash)
+    }
+
+    @Test
+    fun `owner's rule - the Smart Scraper's list puts the smallest 4K, 2K or 1080p first too`() {
+        val result = SmartScoreEngine.rank(
+            listOf(
+                stream("4k-6.5", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 6.5),
+                stream("1080-4.5", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5),
+                stream("720-2.0", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0)
+            ).map(SourceProviderAdapters::normalize),
+            movie
+        )
+        assertEquals(listOf("1080-4.5", "4k-6.5", "720-2.0"), result.smart.map { it.best.stream.infoHash })
     }
 
     // ==================================================================== C. Episodes
@@ -129,13 +186,14 @@ class AutoStreamEngineTest {
     // ==================================================================== J. Unknown audio (its ranking; the check before the first picture is Phase 2)
 
     @Test
-    fun `J - audio not said may play, after the 5_1 and 2_0 ones of its resolution, and is checked first`() {
+    fun `J - audio not said may play, after the 5_1 and 2_0 ones, and is checked first`() {
         val result = rank(
             stream("unsaid", "Movie.2020.2160p.WEB-DL.HEVC", 5.5),
             stream("stereo", "Movie.2020.2160p.WEB-DL.AAC2.0.HEVC", 5.4),
             stream("hd", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5)
         )
-        assertEquals(listOf("stereo", "unsaid", "hd"), hashes(result))
+        // RCTV (owner's rule): 5.1 first (the 1080p), then stereo, then the one that says no layout.
+        assertEquals(listOf("hd", "stereo", "unsaid"), hashes(result))
         val unsaid = result.candidates.first { it.stream.infoHash == "unsaid" }
         assertFalse(unsaid.verified)
         assertTrue(unsaid.needsVerification)
@@ -252,13 +310,13 @@ class AutoStreamEngineTest {
             context = context
         )
         assertEquals("5.6", comparable.best?.stream?.infoHash)
-        // Not comparable (over 15% apart): the better picture first, never the smaller for being so.
+        // RCTV (owner's rule): not the same size (over 10% apart): the smaller first.
         val apart = rank(
             stream("7.8", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 7.8, addon = "Slow", name = "[RD+] Slow"),
             stream("5.6", "Movie.2020.2160p.WEB-DL.DDP5.1.HEVC", 5.6, addon = "Fast", name = "[RD+] Fast"),
             context = context
         )
-        assertEquals("7.8", apart.best?.stream?.infoHash)
+        assertEquals("5.6", apart.best?.stream?.infoHash)
     }
 
     @Test
@@ -268,12 +326,12 @@ class AutoStreamEngineTest {
             stream("dual", "Movie.2020.1080p.WEB-DL.DDP5.1.x264.Dual.Latino-Ingles", 4.0)
         )
         assertEquals("dual", result.best?.stream?.infoHash)
-        // Not comparable: the picture first.
+        // RCTV (owner's rule): not the same size: the smaller first.
         val apart = rank(
             stream("english", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.2),
             stream("dual", "Movie.2020.1080p.WEB-DL.DDP5.1.x264.Dual.Latino-Ingles", 3.0)
         )
-        assertEquals("english", apart.best?.stream?.infoHash)
+        assertEquals("dual", apart.best?.stream?.infoHash)
     }
 
     @Test
@@ -316,10 +374,11 @@ class AutoStreamEngineTest {
             stream("1080", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0),
             context = tv
         )
-        assertEquals(listOf("hdr10", "1080", "dvonly"), hashes(result))
+        // RCTV (owner's rule): the 1080p of 4.0 GB before the 4K of 5.5 GB; Dolby Vision only last.
+        assertEquals(listOf("1080", "hdr10", "dvonly"), hashes(result))
         assertTrue(result.bestIsIdeal(tv))
-        // Not at once: a 1080p on a 4K TV, or a source not known to start reliably.
-        assertFalse(rank(stream("1080", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0), context = tv).bestIsIdeal(tv))
+        // Not at once: a 720p on a 4K TV, or a source not known to start reliably.
+        assertFalse(rank(stream("720", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0), context = tv).bestIsIdeal(tv))
         val unknownSource = tv.copy(providerStats = emptyMap())
         assertFalse(rank(stream("hdr10", "Movie.2020.2160p.WEB-DL.DDP5.1.HDR10.HEVC", 5.5), context = unknownSource).bestIsIdeal(unknownSource))
     }
