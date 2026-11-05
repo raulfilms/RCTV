@@ -5,7 +5,6 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -227,9 +226,12 @@ fun LoadingOverlay(
                 }
 
                 // The horizontal progress bar is suppressed when the show logo
-                // is acting as the fill indicator. The text message stays visible.
+                // is acting as the fill indicator.
+                // RCTV (owner's rule): while a source is found and opened, only the title's logo and
+                // its animation: no words (nothing of the source, its size, its quality or what's
+                // being done). [message] isn't shown (the loading diagnostics keep their own).
                 val showHorizontalBar = progress != null && !showLogo
-                if (!message.isNullOrBlank() || showHorizontalBar) {
+                if (showHorizontalBar) {
                     val messageOffset = if (showLogo || !title.isNullOrBlank()) 94.dp else 86.dp
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -238,30 +240,6 @@ fun LoadingOverlay(
                             .offset(y = messageOffset)
                             .padding(horizontal = NuvioTheme.spacing.xl)
                     ) {
-                        Crossfade(
-                            targetState = message?.takeIf { it.isNotBlank() },
-                            animationSpec = tween(durationMillis = 260),
-                            label = "loadingMessageCrossfade",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                        ) { loadingMessage ->
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (loadingMessage != null) {
-                                    Text(
-                                        text = loadingMessage,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = Color.White.copy(alpha = 0.72f),
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 2,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        }
                         if (showHorizontalBar) {
                             Spacer(modifier = Modifier.height(10.dp))
                             val animatedProgress by animateFloatAsState(

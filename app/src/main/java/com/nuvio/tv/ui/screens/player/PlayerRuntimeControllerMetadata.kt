@@ -456,8 +456,12 @@ internal fun PlayerRuntimeController.evaluatePostPlayOverlayVisibility(positionM
     }
 }
 
+private const val SHOW_SOURCE_WHEN_IT_STARTS = false
+
 internal fun PlayerRuntimeController.showStreamSourceIndicator(stream: Stream) {
-    // RCTV: what the source is ("4K · 5.7 GB · 5.1"), never its addon's or service's name.
+    // RCTV (owner's rule): nothing of the source is said when it starts (not its size, its quality
+    // or where it's from); that's only in the Smart Scraper's list.
+    if (!SHOW_SOURCE_WHEN_IT_STARTS) return
     val chosenSource = sourceSummary(stream)?.trim().orEmpty()
     if (chosenSource.isBlank()) return
 
