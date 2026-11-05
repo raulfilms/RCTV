@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.data.remote.espn.BananaBallSource
 import com.nuvio.tv.data.trailer.YouTubeSearchResult
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.SportsEventStatus
@@ -17,6 +18,49 @@ internal fun SportsEvent.isOverAt(now: Long): Boolean = when (status) {
     SportsEventStatus.FINISHED -> true
     SportsEventStatus.LIVE -> false
     SportsEventStatus.UPCOMING -> startTimeMs?.let { start -> now > start + GAME_OVER_AFTER_MS } == true
+}
+
+/** RCTV (owner's list): the YouTube channel a league's recaps come from, and only from. */
+internal data class RecapChannel(
+    /** The channel's handle on YouTube ("@NBA"). */
+    val handle: String,
+    /** Its titles are in Spanish ("Resumen") rather than English ("Highlights"). */
+    val spanish: Boolean,
+    /** What to search for there besides the two teams. */
+    val words: String,
+    /** A title with this first (NBC Sports' "Extended Highlights" for the Premier League). */
+    val preferred: String? = null,
+    /** Any video of the game there will do (Banana Ball's), not only one called highlights. */
+    val anyVideo: Boolean = false
+)
+
+internal object OfficialRecapChannels {
+
+    private val BY_LEAGUE: Map<String, RecapChannel> = mapOf(
+        "soccer:esp.1" to RecapChannel("@LaLiga", spanish = true, words = "resumen"),
+        "soccer:eng.1" to RecapChannel("@NBCSports", spanish = false, words = "extended highlights", preferred = "extended"),
+        "soccer:ger.1" to RecapChannel("@bundesliga", spanish = false, words = "highlights"),
+        "soccer:ita.1" to RecapChannel("@seriea", spanish = false, words = "highlights"),
+        "soccer:usa.1" to RecapChannel("@mls", spanish = false, words = "highlights"),
+        "soccer:uefa.champions" to RecapChannel("@tudn_usa", spanish = true, words = "resumen"),
+        "hockey:nhl" to RecapChannel("@NHL", spanish = false, words = "highlights"),
+        "basketball:wnba" to RecapChannel("@WNBA", spanish = false, words = "highlights"),
+        "baseball:mlb" to RecapChannel("@MLB", spanish = false, words = "highlights"),
+        "football:nfl" to RecapChannel("@NFL", spanish = false, words = "highlights"),
+        "basketball:nba" to RecapChannel("@NBA", spanish = false, words = "highlights"),
+        BananaBallSource.LEAGUE_ID to RecapChannel("@officialbananaball", spanish = false, words = "highlights", anyVideo = true)
+    )
+
+    /** College football, basketball and baseball: the official highlights only (see [SportsRecapPicker]). */
+    private val COLLEGE = setOf(
+        "football:college-football", "basketball:mens-college-basketball",
+        "basketball:womens-college-basketball", "baseball:college-baseball"
+    )
+
+    /** The league's own channel; null for a league that has none on the list (YouTube's search then). */
+    fun of(event: SportsEvent): RecapChannel? = event.leagueId?.lowercase(Locale.ROOT)?.let { BY_LEAGUE[it] }
+
+    fun isCollege(event: SportsEvent): Boolean = event.leagueId?.lowercase(Locale.ROOT) in COLLEGE
 }
 
 /**
@@ -74,6 +118,21 @@ internal object SportsRecapPicker {
         "nascar", "nascar on fox", "nascar on nbc", "wwe", "aew", "all elite wrestling", "top rank", "top rank boxing",
         "matchroom", "matchroom boxing", "premier boxing champions", "golden boy", "queensberry", "the ring", "dazn boxing"
     )
+
+    /**
+     * RCTV: the channels a college game's official highlights come from (the networks that show
+     * the games, the conferences, the NCAA). Else only the schools' own channels.
+     */
+    private val COLLEGE_CHANNELS = listOf(
+        "espn", "espnu", "espn college football", "espn college basketball", "espn college sports", "sportscenter",
+        "cbs sports", "cbs sports college football", "cbs sports college basketball", "cbs sports hq",
+        "fox sports", "fox college football", "fox college hoops", "big ten network", "big ten", "btn",
+        "sec network", "sec", "acc network", "acc digital network", "accdn", "the acc", "big 12 conference",
+        "big 12 network", "big 12", "pac 12 network", "pac 12 conference", "pac 12", "big east conference",
+        "big east", "mountain west", "american athletic conference", "the american", "ncaa", "ncaa championships",
+        "ncaa march madness", "march madness", "ncaa baseball", "d1baseball", "nbc sports", "peacock", "tnt sports",
+        "the cw sports", "cw sports", "abc sports"
+    ).map { SportsGameChannels.normalize(it) }.toSet()
 
     /** Words too common to stand for a team on their own ("City", "United"). */
     private val GENERIC_WORDS = setOf(
@@ -203,7 +262,19 @@ internal object SportsRecapPicker {
             val month = date.month.getDisplayName(TextStyle.FULL, Locale.US)
             "$away vs $home highlights $month ${date.dayOfMonth} ${date.year}"
         }
+        // RCTV: a college game's official highlights.
+        if (OfficialRecapChannels.isCollege(event)) {
+            return listOfNotNull(dated, "$away vs $home official highlights", "$away vs $home $suffix").distinct()
+        }
         return listOfNotNull(dated, "$away vs $home $suffix", "$home vs $away highlights").distinct()
+    }
+
+    /** RCTV: what to search in the league's own channel: the two teams, and its word for highlights. */
+    fun channelQueriesFor(event: SportsEvent, channel: RecapChannel): List<String> {
+        val home = fullName(event.homeTeamName, event.homeTeamAliases)
+        val away = fullName(event.awayTeamName, event.awayTeamAliases)
+        val teams = if (isSpanish(event)) "$home $away" else "$away $home"
+        return listOf("$teams ${channel.words}", teams).distinct()
     }
 
     /** The team's longest name ("Dallas Cowboys" before "Cowboys"), for titles. */
@@ -248,13 +319,14 @@ internal object SportsRecapPicker {
 
     /**
      * The videos that are this game's highlights, the likeliest first. [week]: the game's week
-     * (football), when known.
+     * (football), when known. [channel]: the league's own channel: only its videos are taken.
      */
     fun pick(
         results: List<YouTubeSearchResult>,
         event: SportsEvent,
         now: Long,
-        week: Int? = null
+        week: Int? = null,
+        channel: RecapChannel? = null
     ): List<YouTubeSearchResult> {
         val home = teamNames(event.homeTeamName, event.homeTeamAliases)
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
@@ -265,8 +337,10 @@ internal object SportsRecapPicker {
             finalScore = if (event.homeScore != null && event.awayScore != null) event.homeScore to event.awayScore else null,
             week = week
         )
+        val college = channel == null && OfficialRecapChannels.isCollege(event)
         return results
-            .mapNotNull { result -> scoreOf(result, home, away, daysSinceGame, spanish, game)?.let { result to it } }
+            .filter { channel == null || it.channelHandle.equals(channel.handle, ignoreCase = true) }
+            .mapNotNull { result -> scoreOf(result, home, away, daysSinceGame, spanish, game, channel, college)?.let { result to it } }
             .sortedByDescending { it.second }
             .map { it.first }
     }
@@ -280,7 +354,9 @@ internal object SportsRecapPicker {
         away: List<String>,
         daysSinceGame: Double?,
         spanish: Boolean,
-        game: GameFacts
+        game: GameFacts,
+        recapChannel: RecapChannel? = null,
+        college: Boolean = false
     ): Int? {
         val title = SportsGameChannels.canonical(SportsGameChannels.normalize(result.title))
         val channel = SportsGameChannels.normalize(result.channel.orEmpty())
@@ -291,9 +367,16 @@ internal object SportsRecapPicker {
         val awayIn = away.any { hasTeam(title, it) }
         if (!homeIn || !awayIn) return null
         val highlights = HIGHLIGHT_WORDS.any { has(title, it) }
-        val official = OFFICIAL_CHANNELS.any { has(channel, it) } ||
-            home.any { has(channel, it) } || away.any { has(channel, it) }
-        if (!highlights && !official) return null
+        val teamChannel = home.any { has(channel, it) } || away.any { has(channel, it) }
+        val official = when {
+            // The league's own channel (only its videos get here).
+            recapChannel != null -> true
+            // A college game: the networks', conferences' and NCAA's channels, or the schools' own.
+            college -> channel in COLLEGE_CHANNELS || teamChannel
+            else -> OFFICIAL_CHANNELS.any { has(channel, it) } || teamChannel
+        }
+        if (college && !official) return null
+        if (!highlights && (!official || (recapChannel != null && !recapChannel.anyVideo))) return null
         // When it came out: between [age] and [age] + its unit ago ("2 weeks ago": 14 to 21 days).
         val age = result.ageDays
         val ageUnit = result.ageUnitDays ?: 1.0
@@ -330,6 +413,8 @@ internal object SportsRecapPicker {
         var score = 50 + gameScore
         if (highlights) score += 40
         if (official) score += 25
+        // The kind the league's channel is asked for first (the Premier League's extended highlights).
+        recapChannel?.preferred?.let { if (has(title, it)) score += 30 }
         score += when {
             seconds < 45 -> -30
             seconds <= 25 * 60 -> 10

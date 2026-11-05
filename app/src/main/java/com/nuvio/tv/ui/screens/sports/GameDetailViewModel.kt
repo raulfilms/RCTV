@@ -177,12 +177,35 @@ class GameDetailViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             val found = ArrayList<com.nuvio.tv.data.trailer.YouTubeSearchResult>()
             val spanish = SportsRecapPicker.isSpanish(game)
-            for (query in SportsRecapPicker.queriesFor(game)) {
-                val results = runCatching { youTubeSearch.search(query, spanish = spanish) }.getOrDefault(emptyList())
-                ensureActive() // Closed meanwhile.
-                found += SportsRecapPicker.pick(results, game, now, week = _uiState.value.week)
-                    .filter { candidate -> found.none { it.videoId == candidate.videoId } }
-                if (found.isNotEmpty()) break
+            val week = _uiState.value.week
+            // RCTV (owner's list): a league with its own channel (NBA, NFL, LaLiga...) only from there:
+            // its newest uploads first (a game that just ended), then a search of that channel.
+            val official = OfficialRecapChannels.of(game)
+            if (official != null) {
+                val daysSinceGame = game.startTimeMs?.let { (now - it) / 86_400_000.0 }
+                if (daysSinceGame == null || daysSinceGame <= RECAP_IN_LATEST_DAYS) {
+                    val latest = runCatching { youTubeSearch.latestOfChannel(official.handle) }.getOrDefault(emptyList())
+                    ensureActive() // Closed meanwhile.
+                    found += SportsRecapPicker.pick(latest, game, now, week = week, channel = official)
+                }
+                if (found.isEmpty()) {
+                    for (query in SportsRecapPicker.channelQueriesFor(game, official)) {
+                        val results = runCatching {
+                            youTubeSearch.searchChannel(query, official.handle, spanish = official.spanish)
+                        }.getOrDefault(emptyList())
+                        ensureActive()
+                        found += SportsRecapPicker.pick(results, game, now, week = week, channel = official)
+                        if (found.isNotEmpty()) break
+                    }
+                }
+            } else {
+                for (query in SportsRecapPicker.queriesFor(game)) {
+                    val results = runCatching { youTubeSearch.search(query, spanish = spanish) }.getOrDefault(emptyList())
+                    ensureActive() // Closed meanwhile.
+                    found += SportsRecapPicker.pick(results, game, now, week = week)
+                        .filter { candidate -> found.none { it.videoId == candidate.videoId } }
+                    if (found.isNotEmpty()) break
+                }
             }
             // RCTV Smart Player: the likeliest one, in YouTube's official player (a video its owner
             // keeps off other sites opens in the YouTube app).
@@ -227,6 +250,9 @@ class GameDetailViewModel @Inject constructor(
     }
 
     private companion object {
+        /** A channel's newest uploads hold the games of about the last few days. */
+        const val RECAP_IN_LATEST_DAYS = 3.0
+
         /** How often a race on now looks at its running order again. */
         const val RACE_REFRESH_MS = 30_000L
 
