@@ -2185,6 +2185,7 @@
     <string name="library_empty_sports_leagues">Add leagues to My Sports on the Sports page to see them here</string>
     <string name="library_empty_events">On the Sports page, hold OK on a game and choose Add to library</string>
     <string name="library_type_imdb_list">IMDb List</string>
+    <string name="library_imdb_sync">Sync IMDb list</string>
     <string name="library_empty_imdb_title">Nothing in your IMDb List</string>
     <string name="library_empty_imdb_not_linked">Link your IMDb account in Settings › Integrations › IMDb to see your watchlist here</string>
     <string name="library_empty_imdb">Your IMDb watchlist is empty, or it\'s private on IMDb</string>

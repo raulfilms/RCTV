@@ -190,7 +190,9 @@ data class LibraryUiState(
     /** An IMDb account is linked (the "IMDb List" type shows). */
     val imdbConnected: Boolean = false,
     /** Why the IMDb watchlist couldn't be read last time (private...). */
-    val imdbError: com.nuvio.tv.data.remote.imdb.ImdbException.Reason? = null
+    val imdbError: com.nuvio.tv.data.remote.imdb.ImdbException.Reason? = null,
+    /** RCTV: the IMDb lists are being read again (the sync button turns). */
+    val imdbSyncing: Boolean = false
 )
 
 @HiltViewModel
@@ -1223,6 +1225,7 @@ class LibraryViewModel @Inject constructor(
             combine(imdbSync.account, imdbSync.watchlistLinked, imdbSync.ratedSeriesLinked) { account, watchlist, ratedSeries ->
                 ImdbLibraryLists(
                     connected = account.isConnected,
+                    syncing = account.isSyncing,
                     error = account.error,
                     watchlist = watchlist.mapNotNull(::imdbEntryOf),
                     ratedSeries = ratedSeries.mapNotNull(::imdbEntryOf)
@@ -1231,6 +1234,7 @@ class LibraryViewModel @Inject constructor(
                 _uiState.update { current ->
                     current.copy(
                         imdbConnected = lists.connected,
+                        imdbSyncing = lists.syncing,
                         imdbError = lists.error,
                         imdbItems = if (lists.connected) lists.watchlist else emptyList(),
                         imdbRatedSeries = if (lists.connected) lists.ratedSeries else emptyList()
@@ -1240,8 +1244,17 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /** RCTV: the IMDb List's sync button: the watchlist and rated series read from IMDb again now. */
+    fun syncImdbList() {
+        if (_uiState.value.imdbSyncing) return
+        viewModelScope.launch {
+            runCatching { imdbSync.sync(force = true) }
+        }
+    }
+
     private class ImdbLibraryLists(
         val connected: Boolean,
+        val syncing: Boolean,
         val error: com.nuvio.tv.data.remote.imdb.ImdbException.Reason?,
         val watchlist: List<LibraryEntry>,
         val ratedSeries: List<LibraryEntry>

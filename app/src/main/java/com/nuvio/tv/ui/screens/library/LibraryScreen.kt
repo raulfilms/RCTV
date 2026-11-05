@@ -32,6 +32,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.focusable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.DropdownMenu
@@ -376,6 +380,11 @@ fun LibraryScreen(
                                 }
                             )
                         }
+                    }
+                } else if (uiState.imdbConnected && uiState.selectedTypeTab?.key in LIBRARY_IMDB_TYPES) {
+                    // RCTV: the IMDb List's sync, at the top right.
+                    {
+                        ImdbSyncButton(syncing = uiState.imdbSyncing, onClick = viewModel::syncImdbList)
                     }
                 } else {
                     null
@@ -795,6 +804,38 @@ fun LibraryScreen(
             onNavigateToDetail(id, type, addonBaseUrl.takeIf { it.isNotBlank() })
         }
     )
+}
+
+/** RCTV: a round button with the sync arrows; they turn while the IMDb list is read again. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ImdbSyncButton(syncing: Boolean, onClick: () -> Unit) {
+    val turning = androidx.compose.animation.core.rememberInfiniteTransition(label = "imdbSync")
+    val angle by turning.animateFloat(
+        initialValue = 0f,
+        targetValue = -360f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 1_000, easing = androidx.compose.animation.core.LinearEasing)
+        ),
+        label = "imdbSyncAngle"
+    )
+    Button(
+        onClick = onClick,
+        shape = ButtonDefaults.shape(shape = androidx.compose.foundation.shape.CircleShape),
+        contentPadding = PaddingValues(10.dp),
+        colors = ButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.BackgroundCard,
+            contentColor = NuvioTheme.colors.TextPrimary
+        )
+    ) {
+        Icon(
+            imageVector = androidx.compose.material.icons.Icons.Default.Sync,
+            contentDescription = stringResource(R.string.library_imdb_sync),
+            modifier = Modifier
+                .size(22.dp)
+                .graphicsLayer { rotationZ = if (syncing) angle else 0f }
+        )
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
