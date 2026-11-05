@@ -155,8 +155,8 @@ data class SubtitleStyleSettings(
     val outlineWidth: Int = 2, // 1-5
     /** RCTV: the subtitle's font (the choices Disney+ and TV captions offer). */
     val font: SubtitleFont = SubtitleFont.DEFAULT,
-    /** RCTV: the letters' edge (an outline, a shadow...). */
-    val edge: SubtitleEdge = SubtitleEdge.OUTLINE,
+    /** RCTV: the letters' edge (an outline, a shadow...): none, the black box is behind each line. */
+    val edge: SubtitleEdge = SubtitleEdge.NONE,
     /** RCTV: a box behind all the lines together (transparent: none); [backgroundColor] is each line's. */
     val windowColor: Int = Color.Transparent.toArgb()
 )
@@ -658,6 +658,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val migrationVodCacheBackBufferZeroedDoneKey = booleanPreferencesKey("migration_vod_cache_back_buffer_zeroed_done")
     /** RCTV: the audio language set to English once (a Spanish choice in the player used to be kept). */
     private val migrationAudioEnglishDoneKey = booleanPreferencesKey("migration_rctv_audio_english_done")
+    private val migrationSubtitleBoxStyleDoneKey = booleanPreferencesKey("migration_rctv_subtitle_box_style_done")
     init {
         ioScope.launch {
             profileManager.activeProfileId.collect { pid ->
@@ -818,6 +819,21 @@ class PlayerSettingsDataStore @Inject constructor(
                 if (prefs[migrationAudioEnglishDoneKey] != true) {
                     prefs[preferredAudioLanguageKey] = "en"
                     prefs[migrationAudioEnglishDoneKey] = true
+                }
+
+                // RCTV (owner's choice, 4-nov-2026): every subtitle in one style, white letters with
+                // a black box behind each line, whatever was chosen before (once; the size and the
+                // position stay, and the style can be changed again afterwards).
+                if (prefs[migrationSubtitleBoxStyleDoneKey] != true) {
+                    prefs[subtitleTextColorKey] = Color.White.toArgb()
+                    prefs[subtitleBackgroundColorKey] = Color.Black.toArgb()
+                    prefs[subtitleBackgroundChosenKey] = true
+                    prefs[subtitleWindowColorKey] = Color.Transparent.toArgb()
+                    prefs[subtitleBoldKey] = false
+                    prefs[subtitleFontKey] = SubtitleFont.DEFAULT.key
+                    prefs[subtitleEdgeKey] = SubtitleEdge.NONE.key
+                    prefs[subtitleOutlineEnabledKey] = false
+                    prefs[migrationSubtitleBoxStyleDoneKey] = true
                 }
 
                 val min = prefs[minBufferMsKey]
