@@ -774,14 +774,9 @@ fun ContinueWatchingCard(
                             Modifier
                         }
                     )
+                    // RCTV: the focus ring outside the artwork (before its clip, which would cut it off).
+                    .tileFocusOutline(textBelowArtwork && isFocused, cwClipShape)
                     .clip(cwClipShape)
-                    .then(
-                        if (textBelowArtwork && isFocused) {
-                            Modifier.border(border = TileFocusStroke, shape = cwClipShape)
-                        } else {
-                            Modifier
-                        }
-                    )
             ) {
                 // Background image with size hints for efficient decoding
                 if (effectiveImageModel.isNullOrBlank()) {

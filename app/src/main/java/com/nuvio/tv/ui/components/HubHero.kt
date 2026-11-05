@@ -151,9 +151,11 @@ fun HubHeroBanner(
                         else -> false
                     }
                 }
+                // RCTV: the focus ring outside the tile (before its clip, which would cut it off).
+                .tileFocusOutline(isFocused, shape)
                 .clip(shape)
                 .then(
-                    if (isFocused) Modifier.border(TileFocusStroke, shape)
+                    if (isFocused) Modifier
                     else Modifier.border(BorderStroke(1.dp, NuvioTheme.colors.Border), shape)
                 )
                 .background(NuvioTheme.colors.BackgroundCard)

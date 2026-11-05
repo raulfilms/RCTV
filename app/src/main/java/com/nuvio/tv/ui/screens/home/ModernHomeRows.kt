@@ -1241,10 +1241,8 @@ private fun ModernCarouselCard(
     val titleMedium = MaterialTheme.typography.titleMedium
     val backgroundPainter = remember(backgroundCardColor) { ColorPainter(backgroundCardColor) }
     val focusedBorder = remember(cardShape, focusRingBorder) {
-        Border(
-            border = focusRingBorder,
-            shape = cardShape
-        )
+        // RCTV: the ring every tile has (see TileFocus.kt).
+        com.nuvio.tv.ui.components.tileFocusBorder(cardShape)
     }
     // While the user is dragging the list via held DPAD (see LazyColumn-level fast
     // scroll takeover in ModernHomeContent), hide focus chrome entirely — the list is
