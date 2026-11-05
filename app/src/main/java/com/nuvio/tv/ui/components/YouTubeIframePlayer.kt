@@ -34,6 +34,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.nuvio.tv.R
 import com.nuvio.tv.data.trailer.YouTubeVideo
 
@@ -143,6 +145,7 @@ fun YouTubeIframePlayer(
                         }
                     }
                     addJavascriptInterface(bridge, BRIDGE_NAME)
+                    preferH264()
                     setOnKeyListener { _, keyCode, event ->
                         if (currentOnRemoteKey(keyCode, event.action, event.repeatCount)) return@setOnKeyListener true
                         // Back leaves the screen; every other remote key is RCTV's, not the page's.
@@ -213,6 +216,40 @@ private const val BRIDGE_NAME = "RctvYouTube"
 private val ORIGIN: String get() = com.nuvio.tv.core.network.RctvServers.CORE + "/"
 
 private val MAIN = Handler(Looper.getMainLooper())
+
+/** YouTube's player pages (the official player inside RCTV's page). */
+private val YOUTUBE_FRAMES = setOf("https://www.youtube.com", "https://www.youtube-nocookie.com")
+
+/**
+ * RCTV: YouTube's own player is told this TV can't play VP9 or AV1, so YouTube sends H.264 (up to
+ * 1080p), the format every TV draws. On the Mi Box the others play with sound and no picture.
+ * Only what the player asks the TV changes; the player and its video are YouTube's own.
+ */
+private const val H264_ONLY_SCRIPT = """
+(function(){
+  var no=/vp0?9|av01|av1/i;
+  try{
+    [window.MediaSource,window.ManagedMediaSource,window.WebKitMediaSource].forEach(function(M){
+      if(M&&M.isTypeSupported){var f=M.isTypeSupported.bind(M);M.isTypeSupported=function(t){return no.test(String(t))?false:f(t);};}
+    });
+    var p=HTMLMediaElement.prototype,c=p.canPlayType;
+    p.canPlayType=function(t){return no.test(String(t))?'':c.call(this,t);};
+    var mc=navigator.mediaCapabilities;
+    if(mc&&mc.decodingInfo){var d=mc.decodingInfo.bind(mc);
+      mc.decodingInfo=function(q){var t=(q&&q.video&&q.video.contentType)||'';
+        return no.test(t)?Promise.resolve({supported:false,smooth:false,powerEfficient:false}):d(q);};}
+  }catch(e){}
+})();
+"""
+
+/** Before any page loads: YouTube's frames get [H264_ONLY_SCRIPT] (a WebView that can't: as it was). */
+private fun WebView.preferH264() {
+    runCatching {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(this, H264_ONLY_SCRIPT, YOUTUBE_FRAMES)
+        }
+    }
+}
 
 private fun WebView.command(js: String) {
     runCatching { evaluateJavascript("window.rctv && window.rctv.$js;", null) }

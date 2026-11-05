@@ -412,6 +412,9 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.profileinstaller)
     implementation("androidx.recyclerview:recyclerview:1.4.0")
+    // RCTV: to have YouTube's official player send H.264 (see YouTubeIframePlayer.kt): on the Mi Box
+    // its other formats play with sound and no picture.
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation(composeBom)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
