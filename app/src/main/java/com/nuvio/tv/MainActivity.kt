@@ -1487,13 +1487,21 @@ private fun LegacySidebarScaffold(
     var legacyDrawerInteractionVersion by remember { mutableStateOf(0) }
 
 
-    BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Closed) {
+    // RCTV (owner's rule): Back opens the menu only on Home, Guide, Sports and Movies & TV; on every
+    // other page it goes back.
+    BackHandler(enabled = currentRoute in menuOnBackRoutes && drawerState.currentValue == DrawerValue.Closed) {
         pendingSidebarFocusRequest = true
         drawerState.setValue(DrawerValue.Open)
     }
 
     BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Open) {
         if (longPressBackHeld.value) return@BackHandler
+        // A page whose Back doesn't open the menu (Search, Library, Settings): Back just closes it.
+        if (currentRoute !in menuOnBackRoutes) {
+            pendingSidebarFocusRequest = false
+            drawerState.setValue(DrawerValue.Closed)
+            return@BackHandler
+        }
         // Sports: Back opened the menu; Back again goes Home (like choosing Home in the menu).
         if (currentRoute in backToHomeRoutes) {
             onNavigate(Screen.Home.route)
@@ -1943,7 +1951,9 @@ private fun ModernSidebarScaffold(
         }
     }
 
-    BackHandler(enabled = currentRoute in rootRoutes && !isSidebarExpanded && !sidebarCollapsePending) {
+    // RCTV (owner's rule): Back opens the menu only on Home, Guide, Sports and Movies & TV; on every
+    // other page it goes back.
+    BackHandler(enabled = currentRoute in menuOnBackRoutes && !isSidebarExpanded && !sidebarCollapsePending) {
         isSidebarExpanded = true
         sidebarCollapsePending = false
         pendingSidebarFocusRequest = true
@@ -1951,6 +1961,13 @@ private fun ModernSidebarScaffold(
 
     BackHandler(enabled = currentRoute in rootRoutes && isSidebarExpanded && !sidebarCollapsePending) {
         if (longPressBackHeld.value) return@BackHandler
+        // A page whose Back doesn't open the menu (Search, Library, Settings): Back just closes it.
+        if (currentRoute !in menuOnBackRoutes) {
+            pendingSidebarFocusRequest = false
+            isSidebarExpanded = false
+            sidebarCollapsePending = false
+            return@BackHandler
+        }
         // Sports: Back opened the menu; Back again goes Home (like choosing Home in the menu).
         if (currentRoute in backToHomeRoutes) {
             onNavigate(Screen.Home.route)
@@ -2423,7 +2440,15 @@ private fun CollapsedSidebarPill(
  * Menu sections where Back, once the menu is open, goes Home instead of leaving the app: on the
  * Guide and Sports, Back goes up to the top, then opens the menu, then returns Home.
  */
-private val backToHomeRoutes: Set<String> = setOf(Screen.Sports.route, Screen.LiveTv.route)
+private val backToHomeRoutes: Set<String> = setOf(Screen.Sports.route, Screen.LiveTv.route, Screen.MoviesTv.route)
+
+/** RCTV (owner's rule): the only pages where Back opens the menu (on every other page Back goes back). */
+private val menuOnBackRoutes: Set<String> = setOf(
+    Screen.Home.route,
+    Screen.LiveTv.route,
+    Screen.Sports.route,
+    Screen.MoviesTv.route
+)
 
 private fun navigateToDrawerRoute(
     navController: NavHostController,

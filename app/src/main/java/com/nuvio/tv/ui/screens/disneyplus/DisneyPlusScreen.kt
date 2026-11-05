@@ -196,7 +196,8 @@ fun DisneyPlusScreen(
         }
     }
     // A streaming service's own page: Back anywhere down the page goes all the way back up, onto
-    // the banner; Back at the top opens the app's menu; Back with the menu open returns Home.
+    // the banner; Back at the top goes back to the page it was opened from (RCTV, owner's rule: the
+    // menu opens on Back only on Home, Guide, Sports and Movies & TV).
     val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
     val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
     val isServiceHome = isMain && !viewModel.isDirectSeeAll
@@ -227,9 +228,6 @@ fun DisneyPlusScreen(
                 }
             }
         }
-    }
-    BackHandler(enabled = isServiceHome && seeAll == null && cardsPage == null && !menuOpen && atPageTop && menuBridge != null) {
-        menuBridge?.open?.invoke()
     }
     // Back on a page of cards ("All Collections") goes back to the card that opened it.
     BackHandler(enabled = seeAll == null && cardsPage != null) {

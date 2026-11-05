@@ -293,8 +293,9 @@ fun CatalogSeeAllScreen(
         }
     }
 
-    // Back down the list goes all the way back up, to its first title; at the top it opens the app's
-    // menu; with the menu open, Back leaves the list (back where it was opened from).
+    // Back down the list goes all the way back up, to its first title; at the top, Back leaves the
+    // list (back where it was opened from). RCTV, owner's rule: the menu opens on Back only on Home,
+    // Guide, Sports and Movies & TV.
     val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
     val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
     DisposableEffect(menuBridge) {
@@ -317,9 +318,6 @@ fun CatalogSeeAllScreen(
                 if (runCatching { restoreFocusRequester.requestFocus(); true }.getOrDefault(false)) return@launch
             }
         }
-    }
-    BackHandler(enabled = !menuOpen && atListTop && menuBridge != null) {
-        menuBridge?.open?.invoke()
     }
     // The menu closed without leaving the list (Right): focus back on the list.
     var menuWasOpen by remember { mutableStateOf(false) }

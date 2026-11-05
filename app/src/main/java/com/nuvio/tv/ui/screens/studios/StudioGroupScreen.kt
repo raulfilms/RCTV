@@ -78,16 +78,13 @@ fun StudioGroupScreen(
         }
     }
 
-    // Like the streaming services' pages: Back opens the app's menu (there's nothing to scroll),
-    // and Back with the menu open returns Home.
+    // Like the streaming services' pages: Back goes back to the page it was opened from (RCTV,
+    // owner's rule: the menu opens on Back only on Home, Guide, Sports and Movies & TV).
     val menuBridge = com.nuvio.tv.ui.components.LocalAppMenuBridge.current
     val menuOpen = com.nuvio.tv.LocalSidebarExpanded.current
     DisposableEffect(menuBridge) {
         menuBridge?.registerPage()
         onDispose { menuBridge?.unregisterPage() }
-    }
-    BackHandler(enabled = menuBridge != null && !menuOpen) {
-        menuBridge?.open?.invoke()
     }
     // The menu closed without leaving: focus back on the last tile.
     var menuWasOpen by remember { mutableStateOf(false) }
