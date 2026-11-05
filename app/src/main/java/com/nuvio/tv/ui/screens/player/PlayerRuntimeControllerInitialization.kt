@@ -1256,6 +1256,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         if (playbackState == Player.STATE_READY) {
                             // RCTV: an addon's error clip instead of the title: the next source, before it shows.
                             if (!hasRenderedFirstFrame && skipIfDebridErrorClip(this@apply.duration)) return
+                            // RCTV: not as long as the movie (a making-of, a featurette): the next source.
+                            if (!hasRenderedFirstFrame && skipIfWrongLength(this@apply.duration)) return
                             if (pendingSeekTelemetryRequestedAtMs > 0L && pendingSeekTelemetryReadyAtMs <= 0L) {
                                 val latencyMs = (System.currentTimeMillis() - pendingSeekTelemetryRequestedAtMs).coerceAtLeast(0L)
                                 pendingSeekTelemetryReadyAtMs = System.currentTimeMillis()

@@ -58,7 +58,12 @@ object SmartScoreEngine {
         val config = context.config
         val release = source.release
         val titleMatch = TitleMatcher.match(release.title, request)
-        val metadata = checkMetadata(release, titleMatch, request, config)
+        // RCTV: a featurette, a making-of, a trailer... isn't the movie or the episode.
+        val metadata = if (ExtraContent.wordIn(source, request) != null) {
+            MetadataCheck(0f, RejectReason.WRONG_TYPE)
+        } else {
+            checkMetadata(release, titleMatch, request, config)
+        }
         val bitrate = bitrateOf(release, request)
         val required = (bitrate ?: defaultMbps(release.resolution)) * HEADROOM
         val rejection = metadata.rejection

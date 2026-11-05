@@ -71,6 +71,7 @@ internal fun PlayerRuntimeController.startAutoStreamWatch() {
                 ?: _playbackTimeline.value.duration.takeIf { now - session.attemptStartedAtMs > 3_000L }
                 ?: 0L
             if (skipIfDebridErrorClip(clipDuration)) continue
+            if (skipIfWrongLength(clipDuration)) continue
             if (hasRenderedFirstFrame && !session.prePlayCheckPending) {
                 AutoStreamSession.markStarted(videoId)
                 SmartScraperEnvironment.recordPlayback(session.current, ok = true)
@@ -156,6 +157,37 @@ internal fun PlayerRuntimeController.skipIfDebridErrorClip(durationMs: Long): Bo
     if (!isMovieOrEpisode()) return false
     stopForUnavailableSource("an error clip of ${durationMs / 1000} s, not the title")
     return true
+}
+
+/**
+ * RCTV (owner's rule): a movie is the movie. Auto Stream's source much shorter or longer than the
+ * movie (a 50-minute making-of for a 2 h 49 min movie) is something else: the next source plays.
+ * An Extended or Director's Cut is a little longer and plays.
+ */
+internal fun PlayerRuntimeController.skipIfWrongLength(durationMs: Long): Boolean {
+    if (durationMs <= 0L || _playbackTimeline.value.isLive || isLiveTvPlayback) return false
+    if (contentType?.lowercase() != "movie") return false
+    val session = AutoStreamSession.current(currentVideoId) ?: return false
+    if (session.started || session.switching) return false
+    val expected = runtimeMinutesOf(_uiState.value.runtime) ?: return false
+    val minutes = durationMs / 60_000.0
+    if (minutes >= expected * MIN_LENGTH_SHARE && minutes <= expected * MAX_LENGTH_SHARE) return false
+    return tryAutoStreamFallback("${minutes.toInt()} min long, the movie is $expected min: not the movie")
+}
+
+/** A source shorter than this share of the movie's length isn't the movie... */
+private const val MIN_LENGTH_SHARE = 0.7
+
+/** ...nor one longer than this (an Extended or Director's Cut is well within it). */
+private const val MAX_LENGTH_SHARE = 1.8
+
+/** "169", "169 min", "2h 49m" → minutes; null when it doesn't say, or says less than 40. */
+internal fun runtimeMinutesOf(text: String?): Int? {
+    val value = text?.lowercase()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val hours = Regex("""(\d+)\s*h""").find(value)?.groupValues?.get(1)?.toIntOrNull()
+    val minutes = Regex("""(\d+)\s*m""").find(value)?.groupValues?.get(1)?.toIntOrNull()
+    val total = if (hours != null || minutes != null) (hours ?: 0) * 60 + (minutes ?: 0) else Regex("""\d+""").find(value)?.value?.toIntOrNull()
+    return total?.takeIf { it >= 40 }
 }
 
 private fun PlayerRuntimeController.isMovieOrEpisode(): Boolean =
