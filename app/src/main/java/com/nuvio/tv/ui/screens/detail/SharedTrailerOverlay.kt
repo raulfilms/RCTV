@@ -189,8 +189,8 @@ fun SharedTrailerOverlay(
                     },
                     onEnded = onDismiss,
                     modifier = Modifier.fillMaxSize(),
-                    youTubeAllowed = true,
-                    openYouTubeWhenBlocked = true
+                    // RCTV: never the YouTube app; a trailer that can't play here just ends.
+                    youTubeAllowed = true
                 )
             }
 

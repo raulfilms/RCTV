@@ -79,6 +79,7 @@ fun GameDetailScreen(
             isLoading = recap.isLoading,
             errorMessage = if (recap.notFound) stringResource(R.string.game_detail_recap_not_found) else null,
             onDismiss = viewModel::closeRecap,
+            onUnplayable = viewModel::recapUnplayable,
             onRetry = viewModel::watchRecap
         )
     }

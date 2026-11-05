@@ -207,20 +207,41 @@ class GameDetailViewModel @Inject constructor(
                     if (found.isNotEmpty()) break
                 }
             }
-            // RCTV Smart Player: the likeliest one, in YouTube's official player (a video its owner
-            // keeps off other sites opens in the YouTube app).
-            found.firstOrNull()?.let { video ->
-                _uiState.update {
-                    it.copy(recap = GameRecapState(isLoading = false, title = video.title, videoUrl = video.watchUrl, audioUrl = null))
-                }
-                return@launch
-            }
-            _uiState.update { it.copy(recap = GameRecapState(isLoading = false, notFound = true)) }
+            // RCTV Smart Player: the likeliest one, in YouTube's official player, inside RCTV. One its
+            // owner keeps off other sites gives its place to the next one (never the YouTube app).
+            recapCandidates = found.toList()
+            recapAt = 0
+            showRecapCandidate()
         }
+    }
+
+    /** The highlights found for the game, the likeliest first; [recapAt]: the one playing. */
+    private var recapCandidates: List<com.nuvio.tv.data.trailer.YouTubeSearchResult> = emptyList()
+    private var recapAt = 0
+
+    private fun showRecapCandidate() {
+        val video = recapCandidates.getOrNull(recapAt)
+        _uiState.update {
+            it.copy(
+                recap = if (video != null) {
+                    GameRecapState(isLoading = false, title = video.title, videoUrl = video.watchUrl, audioUrl = null)
+                } else {
+                    GameRecapState(isLoading = false, notFound = true)
+                }
+            )
+        }
+    }
+
+    /** RCTV: the video playing can't play here (its owner allows it only on YouTube): the next one. */
+    fun recapUnplayable() {
+        if (_uiState.value.recap == null) return
+        recapAt++
+        showRecapCandidate()
     }
 
     fun closeRecap() {
         recapJob?.cancel()
+        recapCandidates = emptyList()
         _uiState.update { it.copy(recap = null) }
     }
 

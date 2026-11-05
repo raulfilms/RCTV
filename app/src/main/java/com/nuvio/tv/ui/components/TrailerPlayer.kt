@@ -64,7 +64,12 @@ fun TrailerPlayer(
      */
     youTubeAllowed: Boolean = false,
     /** A YouTube video its owner doesn't let RCTV show opens in the YouTube app (asked for, not autoplayed). */
-    openYouTubeWhenBlocked: Boolean = false
+    openYouTubeWhenBlocked: Boolean = false,
+    /**
+     * RCTV: a YouTube video that can't play here (its code, see [YouTubeIframePlayer]): told instead of
+     * [onEnded] when set.
+     */
+    onYouTubeError: ((code: Int) -> Unit)? = null
 ) {
     val youTubeId = remember(trailerUrl) { com.nuvio.tv.data.trailer.YouTubeVideo.idOf(trailerUrl) }
     if (youTubeId != null) {
@@ -80,7 +85,7 @@ fun TrailerPlayer(
                 onStarted = onFirstFrameRendered,
                 onEnded = onEnded,
                 // A video that can't play here ends: the screen goes back to what it showed.
-                onError = { onEnded() },
+                onError = { code -> onYouTubeError?.invoke(code) ?: onEnded() },
                 onProgressChanged = onProgressChanged,
                 onRemoteKey = onRemoteKey,
                 modifier = modifier

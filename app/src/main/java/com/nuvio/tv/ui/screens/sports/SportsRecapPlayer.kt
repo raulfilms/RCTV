@@ -56,6 +56,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.components.LoadingIndicator
+import com.nuvio.tv.ui.components.ERROR_WEBVIEW_GONE
 import com.nuvio.tv.ui.components.TrailerPlayer
 import com.nuvio.tv.ui.screens.detail.formatPlaybackTime
 import kotlinx.coroutines.delay
@@ -80,7 +81,9 @@ internal fun SportsRecapPlayer(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    /** RCTV: the video can't play inside RCTV (its owner allows it only on YouTube): the next one. */
+    onUnplayable: () -> Unit = onDismiss
 ) {
     var isPaused by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -102,6 +105,8 @@ internal fun SportsRecapPlayer(
 
     LaunchedEffect(videoUrl) {
         isPaused = false
+        positionMs = 0L
+        durationMs = 0L
         showControls(RecapControl.NONE)
     }
     // The controls hide a moment after the last key (not while paused).
@@ -193,9 +198,10 @@ internal fun SportsRecapPlayer(
                         durationMs = duration
                     },
                     onEnded = onDismiss,
+                    // Never the YouTube app: a video that can't play here gives its place to the next one.
+                    onYouTubeError = { code -> if (code == ERROR_WEBVIEW_GONE) onDismiss() else onUnplayable() },
                     modifier = Modifier.fillMaxSize(),
-                    youTubeAllowed = true,
-                    openYouTubeWhenBlocked = true
+                    youTubeAllowed = true
                 )
             }
 

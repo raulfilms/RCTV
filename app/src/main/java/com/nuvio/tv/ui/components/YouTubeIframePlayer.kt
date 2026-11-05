@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -107,59 +108,62 @@ fun YouTubeIframePlayer(
         )
     }
 
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                setBackgroundColor(android.graphics.Color.BLACK)
-                // RCTV: its own hardware layer. Without it some TVs (the Mi Box) play the sound
-                // with no picture.
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)
-                isFocusable = true
-                isFocusableInTouchMode = true
-                keepScreenOn = true
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.setSupportMultipleWindows(false)
-                webChromeClient = WebChromeClient()
-                webViewClient = object : WebViewClient() {
-                    // The player stays the page: a tap on YouTube's logo doesn't open youtube.com here.
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                        request.isForMainFrame
+    // A new video, a new WebView (its page and its bridge are that video's).
+    key(videoId) {
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    // RCTV: its own hardware layer. Without it some TVs (the Mi Box) play the sound
+                    // with no picture.
+                    setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    keepScreenOn = true
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    settings.setSupportMultipleWindows(false)
+                    webChromeClient = WebChromeClient()
+                    webViewClient = object : WebViewClient() {
+                        // The player stays the page: a tap on YouTube's logo doesn't open youtube.com here.
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                            request.isForMainFrame
 
-                    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                        // The WebView can't be used again: dropped, and the screen is told.
-                        MAIN.post {
-                            if (webView === view) webView = null
-                            view.release()
-                            currentOnError(ERROR_WEBVIEW_GONE)
+                        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                            // The WebView can't be used again: dropped, and the screen is told.
+                            MAIN.post {
+                                if (webView === view) webView = null
+                                view.release()
+                                currentOnError(ERROR_WEBVIEW_GONE)
+                            }
+                            return true
                         }
-                        return true
                     }
+                    addJavascriptInterface(bridge, BRIDGE_NAME)
+                    setOnKeyListener { _, keyCode, event ->
+                        if (currentOnRemoteKey(keyCode, event.action, event.repeatCount)) return@setOnKeyListener true
+                        // Back leaves the screen; every other remote key is RCTV's, not the page's.
+                        keyCode != KeyEvent.KEYCODE_BACK && keyCode != KeyEvent.KEYCODE_ESCAPE
+                    }
+                    loadDataWithBaseURL(ORIGIN, pageFor(videoId, muted), "text/html", "UTF-8", null)
+                    webView = this
                 }
-                addJavascriptInterface(bridge, BRIDGE_NAME)
-                setOnKeyListener { _, keyCode, event ->
-                    if (currentOnRemoteKey(keyCode, event.action, event.repeatCount)) return@setOnKeyListener true
-                    // Back leaves the screen; every other remote key is RCTV's, not the page's.
-                    keyCode != KeyEvent.KEYCODE_BACK && keyCode != KeyEvent.KEYCODE_ESCAPE
-                }
-                loadDataWithBaseURL(ORIGIN, pageFor(videoId, muted), "text/html", "UTF-8", null)
-                webView = this
+            },
+            onRelease = { view ->
+                if (webView === view) webView = null
+                view.release()
+            },
+            // Black over it until it plays (not YouTube's loading screen). Drawn on top rather than
+            // fading the WebView: a WebView drawn see-through can show no picture.
+            modifier = modifier.drawWithContent {
+                drawContent()
+                if (!started) drawRect(Color.Black)
             }
-        },
-        onRelease = { view ->
-            if (webView === view) webView = null
-            view.release()
-        },
-        // Black over it until it plays (not YouTube's loading screen). Drawn on top rather than
-        // fading the WebView: a WebView drawn see-through can show no picture.
-        modifier = modifier.drawWithContent {
-            drawContent()
-            if (!started) drawRect(Color.Black)
-        }
-    )
+        )
+    }
 
     LaunchedEffect(webView, isPlaying, isPaused) {
         webView?.command(if (isPlaying && !isPaused) "play()" else "pause()")
