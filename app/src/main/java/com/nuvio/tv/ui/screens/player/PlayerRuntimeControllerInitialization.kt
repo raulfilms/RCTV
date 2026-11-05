@@ -924,6 +924,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                     if (pv != null) pv.videoBoundsFraction(videoAspectRatio) else null
                 },
                 gainAudioProcessor = gainAudioProcessor,
+                speechTap = liveSpeechTap,
                 downmixEnabled = effectiveDownmixEnabled,
                 audioOutputChannels = effectiveAudioOutputChannels,
                 downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
@@ -2210,6 +2211,8 @@ private class SubtitleOffsetRenderersFactory(
     private val isSidecarAddonSubtitleActiveProvider: () -> Boolean = { false },
     private val videoBoundsFractionProvider: () -> RectF?,
     private val gainAudioProcessor: GainAudioProcessor,
+    /** RCTV: the subtitle sync hears the decoded sound here (read only; see SpeechTapAudioSink). */
+    private val speechTap: com.nuvio.tv.core.subsync.LiveSpeechTap? = null,
     private val downmixEnabled: Boolean,
     private val audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     private val downmixNormalizationEnabled: Boolean,
@@ -2275,7 +2278,9 @@ private class SubtitleOffsetRenderersFactory(
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .setAudioProcessors(arrayOf(gainAudioProcessor))
-        val baseAudioSink = builder.build()
+        val baseAudioSink = builder.build().let { sink ->
+            if (speechTap != null) SpeechTapAudioSink(sink, speechTap) else sink
+        }
         val playbackSpeedAwareAudioSink = PlaybackSpeedAwareAudioSink(
             sink = baseAudioSink,
             initialForcePcm = initialForcePcm,

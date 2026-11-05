@@ -107,4 +107,52 @@ class SubtitleAlignerTest {
         val dialogue = dialogue(17).take(10)
         assertNull(SubtitleAligner.align(dialogue, heard(dialogue(17), windows, 18)))
     }
+
+    /** A subtitle of another cut: [extraMs] more of the movie (a scene) from [cutAtMs] of the movie on. */
+    private fun otherCut(dialogue: List<CueSpan>, offsetMs: Long, cutAtMs: Long, extraMs: Long, seed: Int): List<CueSpan> =
+        subtitleFor(dialogue, offsetMs, 1.0, seed).map { cue ->
+            if (cue.startMs + offsetMs >= cutAtMs) CueSpan(cue.startMs - extraMs, cue.endMs - extraMs) else cue
+        }
+
+    @Test
+    fun `along the movie, a scene of another cut is found where it starts`() {
+        val dialogue = dialogue(21)
+        val subtitle = otherCut(dialogue, 1_200, cutAtMs = 50L * 60 * 1000, extraMs = 4_300, seed = 22)
+        // Before the scene: the shift in use holds.
+        val before = heard(dialogue, listOf((40L * 60 * 1000)..(40L * 60 * 1000 + 150_000)), 23)
+        val same = SubtitleAligner.alignNear(subtitle, before, 1.0, aroundMs = 1_200)
+        assertNotNull(same)
+        assertTrue("offset ${same!!.offsetMs}", kotlin.math.abs(same.offsetMs - 1_200) <= 150)
+        // After it: 4.3 s later.
+        val after = heard(dialogue, listOf((55L * 60 * 1000)..(55L * 60 * 1000 + 150_000)), 24)
+        val moved = SubtitleAligner.alignNear(subtitle, after, 1.0, aroundMs = 1_200)
+        assertNotNull(moved)
+        assertTrue("offset ${moved!!.offsetMs}", kotlin.math.abs(moved.offsetMs - 5_500) <= 150)
+    }
+
+    @Test
+    fun `along the movie, a stretch without dialogue changes nothing`() {
+        val dialogue = dialogue(31).filter { it.startMs < 30L * 60 * 1000 || it.startMs > 34L * 60 * 1000 }
+        val quiet = heard(dialogue, listOf((31L * 60 * 1000)..(31L * 60 * 1000 + 150_000)), 32)
+        assertNull(SubtitleAligner.alignNear(subtitleFor(dialogue, 900, 1.0, 33), quiet, 1.0, aroundMs = 900))
+    }
+
+    @Test
+    fun `along the movie, a subtitle of another movie isn't moved`() {
+        val heardHere = heard(dialogue(41), listOf((20L * 60 * 1000)..(20L * 60 * 1000 + 150_000)), 42)
+        assertNull(SubtitleAligner.alignNear(subtitleFor(dialogue(43), 0, 1.0, 44), heardHere, 1.0, aroundMs = 0, strict = true))
+    }
+
+    @Test
+    fun `each part of the movie keeps its own shift`() {
+        val map = SubtitleOffsetMap()
+        assertNull(map.offsetAt(10_000))
+        map.reset(1_200)
+        map.put(50L * 60 * 1000, 5_500)
+        assertEquals(1_200L, map.offsetAt(0))
+        assertEquals(1_200L, map.offsetAt(49L * 60 * 1000))
+        assertEquals(5_500L, map.offsetAt(51L * 60 * 1000))
+        map.reset(-300)
+        assertEquals(-300L, map.offsetAt(51L * 60 * 1000))
+    }
 }

@@ -43,6 +43,18 @@ object SubtitleAligner {
     /** ...and this many above the best try elsewhere (another shift more than [PEAK_WIDTH_MS] away). */
     private const val MIN_PROMINENCE = 1.0
     private const val PEAK_WIDTH_MS = 1_500L
+    /** Following a subtitle along the movie: shifts this far around the one in use are tried. */
+    const val NEAR_RANGE_MS = 12_000L
+    /** ...with at least this many of its lines in the stretch heard, standing out this much. */
+    private const val MIN_NEAR_CUES = 8
+    /*
+     * Few shifts are tried there, so the match stands fewer deviations above the average try than in
+     * a search of the whole subtitle; what tells it is how far above the best try elsewhere it is.
+     */
+    private const val MIN_Z_NEAR = 3.0
+    private const val MIN_PROMINENCE_NEAR = 1.5
+    private const val MIN_Z_NEAR_STRICT = 3.3
+    private const val MIN_PROMINENCE_STRICT = 2.0
     /** Another frame rate is taken only when it matches clearly better than the subtitle's own. */
     private const val SCALE_PREFERENCE = 0.15
 
@@ -66,10 +78,10 @@ object SubtitleAligner {
         if (lines.size < MIN_CUES || windows.isEmpty()) return null
         val subtitleEnd = lines.maxOf { it.endMs } + 1_000L
 
-        val coarseSub = subtitleSignal(lines, COARSE_MS, subtitleEnd)
+        val coarseSub = subtitleSignal(lines, COARSE_MS, 0L, subtitleEnd)
         val coarseSpeech = speechSignal(windows, COARSE_MS) ?: return null
 
-        val candidates = SCALES.toList().mapNotNull { scale -> search(scale, coarseSpeech, coarseSub, COARSE_MS, maxOffsetMs) }
+        val candidates = SCALES.toList().mapNotNull { scale -> search(scale, coarseSpeech, coarseSub, COARSE_MS, -maxOffsetMs, maxOffsetMs) }
         if (candidates.isEmpty()) return null
         val own = candidates.first { it.scale == 1.0 }
         val other = candidates.filter { it.scale != 1.0 }.maxByOrNull { it.score }
@@ -77,8 +89,50 @@ object SubtitleAligner {
         if (chosen.z < MIN_Z || chosen.prominence < MIN_PROMINENCE || chosen.score <= 0.0) return null
 
         // Then to the 10 ms around it.
-        val fineSub = subtitleSignal(lines, FRAME_MS, subtitleEnd)
+        val fineSub = subtitleSignal(lines, FRAME_MS, 0L, subtitleEnd)
         val fineSpeech = speechSignal(windows, FRAME_MS) ?: return null
+        return refined(chosen, fineSpeech, fineSub)
+    }
+
+    /**
+     * RCTV: the shift within [rangeMs] of [aroundMs] where [cues] (stretched by [scale]) fit the speech
+     * in [windows] (a few minutes of the movie): to follow a subtitle along the movie, where a scene of
+     * another cut, or a drift, moves its lines. Null when that stretch doesn't settle it clearly (little
+     * dialogue there). [strict]: a single look decides, so it must stand out more.
+     */
+    fun alignNear(
+        cues: List<CueSpan>,
+        windows: List<SpeechWindow>,
+        scale: Double,
+        aroundMs: Long,
+        rangeMs: Long = NEAR_RANGE_MS,
+        strict: Boolean = false
+    ): SubtitleAlignment? {
+        if (windows.isEmpty()) return null
+        val heardFrom = windows.minOf { it.startMs }
+        val heardTo = windows.maxOf { it.endMs }
+        // The part of the subtitle those shifts can bring there (and a little room).
+        val from = (((heardFrom - aroundMs - rangeMs) / scale).toLong() - 2_000L).coerceAtLeast(0L)
+        val to = ((heardTo - aroundMs + rangeMs) / scale).toLong() + 2_000L
+        val lines = cues.filter { it.endMs > it.startMs && it.startMs >= 0 && it.endMs > from && it.startMs < to }.sortedBy { it.startMs }
+        // Lines that land in what was heard (at the shift expected): enough to tell.
+        val landing = lines.count { cue ->
+            val at = (cue.startMs * scale + aroundMs).toLong()
+            at in heardFrom until heardTo
+        }
+        if (landing < MIN_NEAR_CUES) return null
+        val coarseSpeech = speechSignal(windows, COARSE_MS) ?: return null
+        val coarseSub = subtitleSignal(lines, COARSE_MS, from, to)
+        val found = search(scale, coarseSpeech, coarseSub, COARSE_MS, aroundMs - rangeMs, aroundMs + rangeMs) ?: return null
+        val minZ = if (strict) MIN_Z_NEAR_STRICT else MIN_Z_NEAR
+        val minProminence = if (strict) MIN_PROMINENCE_STRICT else MIN_PROMINENCE_NEAR
+        if (found.z < minZ || found.prominence < minProminence || found.score <= 0.0) return null
+        val fineSpeech = speechSignal(windows, FRAME_MS) ?: return null
+        return refined(found, fineSpeech, subtitleSignal(lines, FRAME_MS, from, to))
+    }
+
+    /** [chosen] to the 10 ms around it. */
+    private fun refined(chosen: Candidate, fineSpeech: Signal, fineSub: SubSignal): SubtitleAlignment {
         var bestOffset = chosen.offsetMs
         var bestScore = Double.NEGATIVE_INFINITY
         var offset = chosen.offsetMs - FINE_RANGE_MS
@@ -118,16 +172,23 @@ object SubtitleAligner {
         return Signal(times.toLongArray(), centered)
     }
 
-    /** The subtitle as a signal: per step, the share of it with a line on screen (centered on 0). */
-    private fun subtitleSignal(cues: List<CueSpan>, stepMs: Int, endMs: Long): DoubleArray {
-        val steps = (endMs / stepMs + 1).toInt()
-        val covered = DoubleArray(steps)
+    /** The subtitle's steps from [SubSignal.base] on (its file's time / step). */
+    private class SubSignal(val base: Int, val values: DoubleArray)
+
+    /**
+     * The subtitle from [fromMs] to [endMs] of its file as a signal: per step, the share of it with a
+     * line on screen (centered on 0). Only that part: a whole film at 10 ms would be megabytes.
+     */
+    private fun subtitleSignal(cues: List<CueSpan>, stepMs: Int, fromMs: Long, endMs: Long): SubSignal {
+        val base = (fromMs / stepMs).toInt()
+        val steps = (endMs / stepMs + 1).toInt() - base
+        val covered = DoubleArray(steps.coerceAtLeast(1))
         for (cue in cues) {
-            var t = cue.startMs
+            var t = maxOf(cue.startMs, base.toLong() * stepMs)
             while (t < cue.endMs) {
-                val step = (t / stepMs).toInt()
-                if (step >= steps) break
-                val stepEnd = (step + 1).toLong() * stepMs
+                val step = (t / stepMs).toInt() - base
+                if (step >= covered.size) break
+                val stepEnd = (step + base + 1).toLong() * stepMs
                 val until = minOf(stepEnd, cue.endMs)
                 covered[step] += (until - t).toDouble() / stepMs
                 t = until
@@ -135,11 +196,11 @@ object SubtitleAligner {
         }
         for (i in covered.indices) covered[i] = covered[i].coerceAtMost(1.0)
         val mean = covered.average()
-        return DoubleArray(steps) { covered[it] - mean }
+        return SubSignal(base, DoubleArray(covered.size) { covered[it] - mean })
     }
 
     /** How well the speech and the subtitle agree when a line at T shows at scale * T + offset. */
-    private fun score(scale: Double, offsetMs: Long, speech: Signal, subtitle: DoubleArray, stepMs: Int): Double =
+    private fun score(scale: Double, offsetMs: Long, speech: Signal, subtitle: SubSignal, stepMs: Int): Double =
         score(scaledSteps(scale, speech, stepMs), offsetMs / scale / stepMs, speech.values, subtitle)
 
     /** Each speech step's time in the subtitle's steps (before any shift): times / scale / step. */
@@ -149,26 +210,30 @@ object SubtitleAligner {
     }
 
     /** [scaled] shifted back by [shiftSteps] subtitle steps, against the subtitle (out of it: no say). */
-    private fun score(scaled: DoubleArray, shiftSteps: Double, values: DoubleArray, subtitle: DoubleArray): Double {
+    private fun score(scaled: DoubleArray, shiftSteps: Double, values: DoubleArray, subtitle: SubSignal): Double {
         var sum = 0.0
-        val size = subtitle.size
+        val sub = subtitle.values
+        val size = sub.size
+        val base = subtitle.base
         for (i in scaled.indices) {
             val position = scaled[i] - shiftSteps
             if (position < 0.0) continue
-            val step = position.toInt()
-            if (step >= size) continue
-            sum += values[i] * subtitle[step]
+            val step = position.toInt() - base
+            if (step < 0 || step >= size) continue
+            sum += values[i] * sub[step]
         }
         return sum / scaled.size
     }
 
-    private fun search(scale: Double, speech: Signal, subtitle: DoubleArray, stepMs: Int, maxOffsetMs: Long): Candidate? {
-        val count = (2 * maxOffsetMs / stepMs + 1).toInt()
+    /** Every shift from [fromMs] to [toMs] (a step apart) tried; the best, and how far it stands out. */
+    private fun search(scale: Double, speech: Signal, subtitle: SubSignal, stepMs: Int, fromMs: Long, toMs: Long): Candidate? {
+        val count = ((toMs - fromMs) / stepMs + 1).toInt()
+        if (count < 3) return null
         val scores = DoubleArray(count)
         val scaled = scaledSteps(scale, speech, stepMs)
         var bestIndex = 0
         for (k in 0 until count) {
-            val offset = -maxOffsetMs + k.toLong() * stepMs
+            val offset = fromMs + k.toLong() * stepMs
             scores[k] = score(scaled, offset / scale / stepMs, speech.values, subtitle)
             if (scores[k] > scores[bestIndex]) bestIndex = k
         }
@@ -184,7 +249,7 @@ object SubtitleAligner {
         if (second == Double.NEGATIVE_INFINITY) second = mean
         return Candidate(
             scale = scale,
-            offsetMs = -maxOffsetMs + bestIndex.toLong() * stepMs,
+            offsetMs = fromMs + bestIndex.toLong() * stepMs,
             score = best,
             z = (best - mean) / std,
             prominence = (best - second) / std

@@ -9,7 +9,6 @@ import android.os.SystemClock
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.log10
 
 /**
  * RCTV: hears where people talk in stretches of a movie, from its own audio. Each stretch is read
@@ -23,8 +22,6 @@ internal object SpeechActivityAnalyzer {
     private const val WAIT_US = 5_000L
     /** One stretch gives up after this long (a slow server): the others still count. */
     private const val WINDOW_TIMEOUT_MS = 60_000L
-    private const val HIGH_PASS_HZ = 250.0
-    private const val LOW_PASS_HZ = 3_500.0
 
     /** Whether [url] can be read here (a file on a server, not a playlist, not this device's own torrent server). */
     fun canAnalyze(url: String?): Boolean {
@@ -159,9 +156,7 @@ internal object SpeechActivityAnalyzer {
         val frames = ((endMs - startMs) / SubtitleAligner.FRAME_MS).toInt().coerceAtLeast(1)
         val energy = DoubleArray(frames)
         val counts = IntArray(frames)
-        private var highPassOut = 0.0
-        private var highPassIn = 0.0
-        private var lowPassOut = 0.0
+        private val filter = VoiceBandFilter()
 
         fun add(buffer: ByteBuffer, offset: Int, size: Int, timeUs: Long, pcm: PcmLayout) {
             val data = buffer.duplicate().order(ByteOrder.nativeOrder())
@@ -171,13 +166,9 @@ internal object SpeechActivityAnalyzer {
             val bytesPerSample = if (pcm.isFloat) 4 else 2
             val sampleCount = size / (bytesPerSample * channels)
             val rate = pcm.sampleRate.coerceAtLeast(8_000).toDouble()
+            filter.setSampleRate(pcm.sampleRate)
             // Dialogue is in the center channel (3rd, as decoders lay out 5.1 and 7.1); else all mixed.
             val center = if (channels >= 3) 2 else -1
-            val dt = 1.0 / rate
-            val highPass = 1.0 / (2 * Math.PI * HIGH_PASS_HZ)
-            val lowPass = 1.0 / (2 * Math.PI * LOW_PASS_HZ)
-            val a = highPass / (highPass + dt)
-            val b = dt / (lowPass + dt)
             val startUs = startMs * 1_000L
             for (s in 0 until sampleCount) {
                 var value = 0.0
@@ -192,51 +183,18 @@ internal object SpeechActivityAnalyzer {
                     }
                     value /= channels
                 }
-                // Voice band: a high-pass, then a low-pass.
-                val high = a * (highPassOut + value - highPassIn)
-                highPassIn = value
-                highPassOut = high
-                lowPassOut += b * (high - lowPassOut)
+                val power = filter.power(value)
                 val sampleUs = timeUs + (s * 1_000_000L / rate).toLong()
                 val frame = ((sampleUs - startUs) / 1_000L / SubtitleAligner.FRAME_MS).toInt()
                 if (frame in 0 until frames) {
-                    energy[frame] += lowPassOut * lowPassOut
+                    energy[frame] += power
                     counts[frame]++
                 }
             }
         }
     }
 
-    /**
-     * Each 10 ms's loudness as how likely it is that someone talks (0..1), against the loudness of all
-     * the stretches together (so a quiet stretch with no dialogue counts as quiet).
-     */
-    private fun speechOf(meters: List<LoudnessMeter>): List<SpeechWindow>? {
-        val levels = meters.map { meter ->
-            DoubleArray(meter.frames) { i ->
-                if (meter.counts[i] > 0) 10 * log10(meter.energy[i] / meter.counts[i] + 1e-12) else Double.NaN
-            }
-        }
-        val all = levels.flatMap { level -> level.filter { !it.isNaN() } }.sorted()
-        if (all.size < 1_000) return null
-        val floor = all[(all.size * 0.20).toInt()]
-        val peak = all[(all.size * 0.95).toInt().coerceAtMost(all.size - 1)]
-        if (peak - floor < 6.0) return null
-        return meters.mapIndexed { n, meter ->
-            val level = levels[n]
-            val raw = FloatArray(meter.frames) { i ->
-                val value = level[i]
-                if (value.isNaN()) 0f else ((value - floor) / (peak - floor)).coerceIn(0.0, 1.0).toFloat()
-            }
-            // A little smoothing (30 ms): single loud frames aren't speech.
-            val smooth = FloatArray(raw.size) { i ->
-                val from = (i - 1).coerceAtLeast(0)
-                val to = (i + 1).coerceAtMost(raw.size - 1)
-                var sum = 0f
-                for (k in from..to) sum += raw[k]
-                sum / (to - from + 1)
-            }
-            SpeechWindow(meter.startMs, smooth)
-        }
-    }
+    /** The stretches' speech (see [SpeechLevels.normalize]). */
+    private fun speechOf(meters: List<LoudnessMeter>): List<SpeechWindow>? =
+        SpeechLevels.normalize(meters.map { it.startMs }, meters.map { SpeechLevels.levelsOf(it.energy, it.counts) })
 }
