@@ -208,6 +208,15 @@ sealed class Screen(val route: String) {
             "sports_team/${encode(leagueId)}/${encode(teamId)}?name=${encode(name)}" +
                 "&badgeUrl=${badgeUrl?.let { encode(it) }.orEmpty()}&color=${color?.let { encode(it) }.orEmpty()}"
     }
+    /**
+     * RCTV Smart Player: a YouTube video full screen in YouTube's official player (a Banana Ball
+     * game streaming live on YouTube).
+     */
+    data object YouTubeWatch : Screen("youtube_watch/{videoId}?title={title}") {
+        fun createRoute(videoId: String, title: String): String =
+            "youtube_watch/" + URLEncoder.encode(videoId, "UTF-8").replace("+", "%20") +
+                "?title=" + URLEncoder.encode(title, "UTF-8").replace("+", "%20")
+    }
     data object SportsGameDetail : Screen(
         "sports_game/{eventId}?name={name}&sportName={sportName}&leagueId={leagueId}&leagueName={leagueName}" +
             "&homeTeamId={homeTeamId}&homeTeamName={homeTeamName}&homeTeamBadgeUrl={homeTeamBadgeUrl}&homeScore={homeScore}" +

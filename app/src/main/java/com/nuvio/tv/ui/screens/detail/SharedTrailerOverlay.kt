@@ -188,7 +188,9 @@ fun SharedTrailerOverlay(
                         seekOverlayState.durationMs = duration
                     },
                     onEnded = onDismiss,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    youTubeAllowed = true,
+                    openYouTubeWhenBlocked = true
                 )
             }
 

@@ -193,7 +193,9 @@ internal fun SportsRecapPlayer(
                         durationMs = duration
                     },
                     onEnded = onDismiss,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    youTubeAllowed = true,
+                    openYouTubeWhenBlocked = true
                 )
             }
 

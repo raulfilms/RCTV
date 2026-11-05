@@ -287,9 +287,12 @@ class LayoutPreferenceDataStore @Inject constructor(
             .coerceAtLeast(MIN_FOCUSED_POSTER_BACKDROP_EXPAND_DELAY_SECONDS)
     }
 
-    val focusedPosterBackdropTrailerEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[focusedPosterBackdropTrailerEnabledKey] ?: false
-    }
+    /**
+     * RCTV Smart Player (owner's choice, 4-nov-2026): no trailer previews on Home. Trailers are on
+     * YouTube, whose official player can't sit under Home's menus, and each preview took memory.
+     * The trailer stays on the title's page.
+     */
+    val focusedPosterBackdropTrailerEnabled: Flow<Boolean> = profileFlow { false }
 
     val focusedPosterBackdropTrailerMuted: Flow<Boolean> = profileFlow { prefs ->
         prefs[focusedPosterBackdropTrailerMutedKey] ?: true

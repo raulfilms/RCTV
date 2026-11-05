@@ -722,8 +722,11 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         mpv.setOptionString("tls-verify", "yes")
         mpv.setOptionString("tls-ca-file", "${context.filesDir.path}/cacert.pem")
         mpv.setOptionString("input-default-bindings", "yes")
-        mpv.setOptionString("demuxer-max-bytes", "${64 * 1024 * 1024}")
-        mpv.setOptionString("demuxer-max-back-bytes", "${64 * 1024 * 1024}")
+        // RCTV Smart Player: on a TV with 2 GB or less (the Mi Box 4), 32 MB ahead and 16 MB behind
+        // instead of 64 + 64: that cache is native memory, which a 32-bit app runs out of.
+        val lowRamTv = isLowRamTv(context)
+        mpv.setOptionString("demuxer-max-bytes", "${(if (lowRamTv) 32 else 64) * 1024 * 1024}")
+        mpv.setOptionString("demuxer-max-back-bytes", "${(if (lowRamTv) 16 else 64) * 1024 * 1024}")
         mpv.setOptionString("keep-open", "yes")
         mpv.setOptionString("softvol", "yes")
         mpv.setOptionString("volume-max", MPV_MAX_VOLUME_PERCENT.toInt().toString())
@@ -918,3 +921,10 @@ internal fun isMpvPositionFromMediaRequest(
     if (currentPath.isNullOrEmpty()) return false
     return currentPath == requestedUrl || currentPath != pathAtRequest
 }
+
+/** A TV with 2 GB of memory or less (the Mi Box 4). */
+private fun isLowRamTv(context: android.content.Context): Boolean = runCatching {
+    val manager = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+    val info = android.app.ActivityManager.MemoryInfo().also(manager::getMemoryInfo)
+    info.totalMem in 1..(2048L * 1024 * 1024)
+}.getOrDefault(false)

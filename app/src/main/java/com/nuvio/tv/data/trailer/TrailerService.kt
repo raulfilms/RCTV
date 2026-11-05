@@ -6,10 +6,8 @@ import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbVideoResult
 import com.nuvio.tv.data.remote.api.TrailerApi
-import java.time.Clock
 import java.net.URI
 import java.time.Instant
-import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,39 +17,22 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "TrailerService"
 private const val TMDB_TRAILER_FALLBACK_LANGUAGE = "en-US"
-private val YOUTUBE_SOURCE_CACHE_TTL: Duration = Duration.ofHours(3)
-private val YOUTUBE_VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
 
+/**
+ * RCTV Smart Player: a trailer on YouTube is given as its watch address, which the trailer player
+ * plays in YouTube's official IFrame player. RCTV no longer reads YouTube's stream addresses
+ * (the in-app extractor and the backend resolver are gone).
+ */
 @Singleton
-class TrailerService(
+class TrailerService @Inject constructor(
     private val trailerApi: TrailerApi,
     private val tmdbApi: TmdbApi,
-    private val inAppYouTubeExtractor: InAppYouTubeExtractor,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
-    private val tmdbService: TmdbService,
-    private val clock: Clock
+    private val tmdbService: TmdbService
 ) {
-    @Inject
-    constructor(
-        trailerApi: TrailerApi,
-        tmdbApi: TmdbApi,
-        inAppYouTubeExtractor: InAppYouTubeExtractor,
-        tmdbSettingsDataStore: TmdbSettingsDataStore,
-        tmdbService: TmdbService
-    ) : this(
-        trailerApi = trailerApi,
-        tmdbApi = tmdbApi,
-        inAppYouTubeExtractor = inAppYouTubeExtractor,
-        tmdbSettingsDataStore = tmdbSettingsDataStore,
-        tmdbService = tmdbService,
-        clock = Clock.systemUTC()
-    )
-
     // Cache: "title|year|tmdbId|type" -> trailer playback source (NEGATIVE_CACHE sentinel for misses)
     private val cache = ConcurrentHashMap<String, TrailerPlaybackSource>()
     private val NEGATIVE_CACHE = TrailerPlaybackSource(videoUrl = "")
-    // Time-bound cache: youtubeVideoId -> resolved playback source (success-only)
-    private val youtubeSourceCache = ConcurrentHashMap<String, CachedTrailerPlaybackSource>()
 
     /**
      * Search for a trailer by title, year, tmdbId, and type.
@@ -214,77 +195,23 @@ class TrailerService(
                 return@withContext source
             }
 
-            Log.d(
-                TAG,
-                "TMDB candidate extraction failed, trying next: key=${obfuscateYoutubeKey(key)}"
-            )
+            Log.d(TAG, "TMDB candidate is not a YouTube video id, trying next: key=${obfuscateYoutubeKey(key)}")
         }
 
         null
     }
 
     /**
-     * Resolve a YouTube trailer URL to a playback source (prefers in-app extraction).
+     * A YouTube trailer address as a playback source: its watch address, for YouTube's official
+     * player; null when it isn't a YouTube video.
      */
     suspend fun getTrailerPlaybackSourceFromYouTubeUrl(
         youtubeUrl: String,
         title: String? = null,
         year: String? = null
-    ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        try {
-            val youtubeKey = extractYouTubeVideoId(youtubeUrl)
-            if (!youtubeKey.isNullOrBlank()) {
-                getValidCachedYoutubeSource(youtubeKey)?.let { cached ->
-                    Log.d(TAG, "YouTube cache hit for key=${obfuscateYoutubeKey(youtubeKey)}")
-                    return@withContext cached
-                }
-            }
-
-            Log.d(TAG, "Attempting in-app YouTube extraction for ${summarizeUrl(youtubeUrl)}")
-            val localSource = inAppYouTubeExtractor.extractPlaybackSource(youtubeUrl)
-            if (localSource != null) {
-                if (!youtubeKey.isNullOrBlank()) {
-                    youtubeSourceCache[youtubeKey] = CachedTrailerPlaybackSource(
-                        playbackSource = localSource,
-                        cachedAt = Instant.now(clock),
-                        expiresAt = extractUrlExpireInstant(localSource)
-                    )
-                }
-                Log.d(
-                    TAG,
-                    "Using in-app YouTube source for ${summarizeUrl(youtubeUrl)} " +
-                        "(audioPresent=${!localSource.audioUrl.isNullOrBlank()})"
-                )
-                return@withContext localSource
-            }
-
-            // Fallback to remote trailer resolver if in-app extraction fails.
-            Log.w(TAG, "In-app extraction failed, falling back to backend resolver for ${summarizeUrl(youtubeUrl)}")
-            val response = trailerApi.getTrailer(youtubeUrl = youtubeUrl, title = title, year = year)
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Backend trailer fallback failed (${response.code()}) for ${summarizeUrl(youtubeUrl)}")
-                return@withContext null
-            }
-
-            val fallbackUrl = response.body()?.url ?: return@withContext null
-            if (!isValidUrl(fallbackUrl)) return@withContext null
-
-            if (!youtubeKey.isNullOrBlank()) {
-                val fallbackSource = TrailerPlaybackSource(videoUrl = fallbackUrl)
-                youtubeSourceCache[youtubeKey] = CachedTrailerPlaybackSource(
-                    playbackSource = fallbackSource,
-                    cachedAt = Instant.now(clock),
-                    expiresAt = extractUrlExpireInstant(fallbackSource)
-                )
-            }
-            Log.d(TAG, "Using backend fallback source for ${summarizeUrl(youtubeUrl)}")
-            TrailerPlaybackSource(videoUrl = fallbackUrl)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting trailer from YouTube: ${e.message}", e)
-            null
-        }
+    ): TrailerPlaybackSource? {
+        val id = YouTubeVideo.idOf(youtubeUrl) ?: return null
+        return TrailerPlaybackSource(videoUrl = YouTubeVideo.watchUrl(id))
     }
 
     /**
@@ -386,86 +313,10 @@ class TrailerService(
         return "***${key.takeLast(4)}"
     }
 
-    private fun getValidCachedYoutubeSource(youtubeKey: String): TrailerPlaybackSource? {
-        val cached = youtubeSourceCache[youtubeKey] ?: return null
-        val now = Instant.now(clock)
-
-        // Use URL expire timestamp if available, otherwise fall back to TTL
-        val expired = cached.expiresAt?.let { now.isAfter(it) }
-            ?: (Duration.between(cached.cachedAt, now) > YOUTUBE_SOURCE_CACHE_TTL)
-
-        if (!expired) {
-            return cached.playbackSource
-        }
-
-        youtubeSourceCache.remove(youtubeKey, cached)
-        return null
-    }
-
     fun clearCache() {
         cache.clear()
-        youtubeSourceCache.clear()
     }
 
-    /**
-     * Extracts the YouTube URL expiration timestamp from the `/expire/EPOCH/` path segment.
-     */
-    private fun extractUrlExpireInstant(source: TrailerPlaybackSource): Instant? {
-        val url = source.videoUrl
-        val expireRegex = Regex("/expire/(\\d+)/")
-        val match = expireRegex.find(url) ?: return null
-        val epoch = match.groupValues[1].toLongOrNull() ?: return null
-        return Instant.ofEpochSecond(epoch)
-    }
-
-    private fun extractYouTubeVideoId(input: String): String? {
-        val trimmed = input.trim()
-        if (trimmed.matches(YOUTUBE_VIDEO_ID_REGEX)) return trimmed
-
-        return runCatching {
-            val uri = URI(trimmed)
-            val host = uri.host?.lowercase()?.removePrefix("www.") ?: return@runCatching null
-            when {
-                host == "youtu.be" -> {
-                    val id = uri.path?.trim('/')?.substringBefore('/')?.trim().orEmpty()
-                    id.takeIf { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
-                }
-
-                host == "youtube.com" || host.endsWith(".youtube.com") -> {
-                    val path = uri.path.orEmpty()
-                    val query = uri.rawQuery.orEmpty()
-
-                    if (path.startsWith("/watch")) {
-                        query.split("&")
-                            .asSequence()
-                            .mapNotNull { entry ->
-                                val index = entry.indexOf('=')
-                                if (index <= 0) return@mapNotNull null
-                                val key = entry.substring(0, index)
-                                val value = entry.substring(index + 1)
-                                if (key == "v") value else null
-                            }
-                            .firstOrNull { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
-                    } else {
-                        val segments = path.trim('/').split("/")
-                        val candidate = when (segments.firstOrNull()?.lowercase()) {
-                            "embed", "shorts", "live" -> segments.getOrNull(1)
-                            else -> null
-                        }
-                        candidate?.takeIf { it.matches(YOUTUBE_VIDEO_ID_REGEX) }
-                    }
-                }
-
-                else -> null
-            }
-        }.getOrNull()
-    }
-
-    private data class CachedTrailerPlaybackSource(
-        val playbackSource: TrailerPlaybackSource,
-        val cachedAt: Instant,
-        val expiresAt: Instant? = null
-    )
 }
 
 internal fun normalizeTmdbTrailerLanguage(language: String?): String {

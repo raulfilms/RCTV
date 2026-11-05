@@ -178,6 +178,7 @@ private fun StreamInfoContent(data: StreamInfoData) {
                 label = stringResource(R.string.stream_info_language),
                 value = data.audioLanguage?.let { languageCodeToName(it) }
             )
+            InfoItem(label = stringResource(R.string.stream_info_audio_output), value = data.audioOutput)
         }
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
     }

@@ -1697,4 +1697,9 @@
     <string name="cd_switch_player_engine">Cambiar motor de reproducción</string>
     <string name="cd_stream_info">Información del stream</string>
     <string name="player_report_issue">Reportar problema</string>
+    <string name="youtube_opening_app">Este video solo se puede ver en YouTube: abriendo YouTube</string>
+    <string name="youtube_app_missing">YouTube no está instalado en esta TV</string>
+    <string name="stream_info_audio_output">Salida</string>
+    <string name="stream_info_audio_output_passthrough">%1$s, enviado tal cual</string>
+    <string name="stream_info_audio_output_pcm">PCM (decodificado)</string>
 </resources>

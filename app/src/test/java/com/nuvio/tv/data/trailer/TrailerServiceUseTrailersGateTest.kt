@@ -47,7 +47,7 @@ class TrailerServiceUseTrailersGateTest {
     @Test
     fun `getTrailerPlaybackSource returns null and does not call TMDB when useTrailers is false`() = runTest {
         val service = newServiceWithUseTrailers(enabled = false)
-        val (trailerApi, tmdbApi, extractor) = service.collaborators
+        val (trailerApi, tmdbApi) = service.collaborators
 
         val result = service.target.getTrailerPlaybackSource(
             title = "Some Movie",
@@ -60,14 +60,13 @@ class TrailerServiceUseTrailersGateTest {
         // No TMDB calls of any kind should fire when the user has opted out.
         coVerify(exactly = 0) { tmdbApi.getMovieVideos(any(), any(), any()) }
         coVerify(exactly = 0) { tmdbApi.getTvVideos(any(), any(), any()) }
-        coVerify(exactly = 0) { extractor.extractPlaybackSource(any()) }
         coVerify(exactly = 0) { trailerApi.getTrailer(any(), any(), any()) }
     }
 
     @Test
     fun `getExternalTrailerUrl returns null when useTrailers is false`() = runTest {
         val service = newServiceWithUseTrailers(enabled = false)
-        val (_, tmdbApi, _) = service.collaborators
+        val (_, tmdbApi) = service.collaborators
 
         val result = service.target.getExternalTrailerUrl(tmdbId = "12345", type = "movie")
 
@@ -83,14 +82,12 @@ class TrailerServiceUseTrailersGateTest {
 
     private data class Collaborators(
         val trailerApi: TrailerApi,
-        val tmdbApi: TmdbApi,
-        val extractor: InAppYouTubeExtractor
+        val tmdbApi: TmdbApi
     )
 
     private fun newServiceWithUseTrailers(enabled: Boolean): HarnessedService {
         val trailerApi = mockk<TrailerApi>(relaxed = true)
         val tmdbApi = mockk<TmdbApi>(relaxed = true)
-        val extractor = mockk<InAppYouTubeExtractor>(relaxed = true)
         val tmdbSettingsDataStore = mockk<TmdbSettingsDataStore> {
             every { settings } returns MutableStateFlow(TmdbSettings(language = "en", useTrailers = enabled))
         }
@@ -100,13 +97,12 @@ class TrailerServiceUseTrailersGateTest {
         val service = TrailerService(
             trailerApi = trailerApi,
             tmdbApi = tmdbApi,
-            inAppYouTubeExtractor = extractor,
             tmdbSettingsDataStore = tmdbSettingsDataStore,
             tmdbService = tmdbService
         )
         return HarnessedService(
             target = service,
-            collaborators = Collaborators(trailerApi, tmdbApi, extractor)
+            collaborators = Collaborators(trailerApi, tmdbApi)
         )
     }
 }

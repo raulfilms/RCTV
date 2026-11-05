@@ -147,3 +147,7 @@
 
 -dontwarn java.beans.ConstructorProperties
 -dontwarn java.beans.Transient
+# RCTV Smart Player: the YouTube IFrame page calls these (YouTubeIframePlayer.kt).
+-keepclassmembers class com.nuvio.tv.ui.components.YouTubeBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

@@ -820,8 +820,9 @@ fun LayoutSettingsContent(
                 ) {
                     val isModern = uiState.selectedLayout == HomeLayout.MODERN
                     val isModernLandscape = isModern && uiState.modernLandscapePostersEnabled
-                    val showAutoplayRow = AppFeaturePolicy.inAppTrailerPlaybackEnabled &&
-                        (uiState.focusedPosterBackdropExpandEnabled || isModernLandscape)
+                    // RCTV Smart Player: Home's trailer previews are gone (see
+                    // LayoutPreferenceDataStore.focusedPosterBackdropTrailerEnabled).
+                    val showAutoplayRow = false
 
                     if (!isModernLandscape) {
                         CompactToggleRow(

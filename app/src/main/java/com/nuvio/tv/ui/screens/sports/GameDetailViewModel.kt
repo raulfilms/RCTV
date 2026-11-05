@@ -67,7 +67,6 @@ class GameDetailViewModel @Inject constructor(
     private val libraryPreferences: LibraryPreferences,
     private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
     private val youTubeSearch: com.nuvio.tv.data.trailer.YouTubeVideoSearch,
-    private val youTubeExtractor: com.nuvio.tv.data.trailer.InAppYouTubeExtractor,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -185,13 +184,11 @@ class GameDetailViewModel @Inject constructor(
                     .filter { candidate -> found.none { it.videoId == candidate.videoId } }
                 if (found.isNotEmpty()) break
             }
-            // The likeliest first; the next one if a video can't play.
-            for (video in found.take(3)) {
-                val source = runCatching { youTubeExtractor.extractPlaybackSource(video.watchUrl) }.getOrNull()
-                ensureActive()
-                if (source == null) continue
+            // RCTV Smart Player: the likeliest one, in YouTube's official player (a video its owner
+            // keeps off other sites opens in the YouTube app).
+            found.firstOrNull()?.let { video ->
                 _uiState.update {
-                    it.copy(recap = GameRecapState(isLoading = false, title = video.title, videoUrl = source.videoUrl, audioUrl = source.audioUrl))
+                    it.copy(recap = GameRecapState(isLoading = false, title = video.title, videoUrl = video.watchUrl, audioUrl = null))
                 }
                 return@launch
             }

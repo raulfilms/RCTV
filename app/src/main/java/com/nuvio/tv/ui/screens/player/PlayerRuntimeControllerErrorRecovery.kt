@@ -511,7 +511,7 @@ internal fun PlayerRuntimeController.tryParsingErrorProbeFallback(
             }
             initializePlayer(currentStreamUrl, currentHeaders, startPaused = paused)
         } else {
-            if (maybeAutoSwitchInternalPlayerOnStartupError(detailedError = detailedError, allowEngineFailover = allowEngineFailover)) {
+            if (maybeAutoSwitchInternalPlayerOnStartupError(detailedError = detailedError, allowEngineFailover = allowEngineFailover, errorCode = error.smartPlayerErrorCode())) {
                 return@launch
             }
             if (attemptAutoRetry(error, detailedError)) {

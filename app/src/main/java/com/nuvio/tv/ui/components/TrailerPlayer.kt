@@ -31,7 +31,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MergingMediaSource
 import com.nuvio.tv.core.player.LocalTrailerPlayerPool
 import com.nuvio.tv.core.player.TrailerPlayerPool
-import com.nuvio.tv.data.trailer.YoutubeChunkedDataSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import android.view.LayoutInflater
@@ -57,8 +56,38 @@ fun TrailerPlayer(
     modifier: Modifier = Modifier,
     enter: EnterTransition = fadeIn(animationSpec = tween(800)),
     exit: ExitTransition = fadeOut(animationSpec = tween(500)),
-    trailerPlayerPool: TrailerPlayerPool? = null
+    trailerPlayerPool: TrailerPlayerPool? = null,
+    /**
+     * RCTV Smart Player: a YouTube trailer plays only in YouTube's official player, and only where
+     * nothing covers it (the title's page, full screen): true there. Elsewhere (a poster's preview)
+     * a YouTube trailer isn't played and the artwork stays.
+     */
+    youTubeAllowed: Boolean = false,
+    /** A YouTube video its owner doesn't let RCTV show opens in the YouTube app (asked for, not autoplayed). */
+    openYouTubeWhenBlocked: Boolean = false
 ) {
+    val youTubeId = remember(trailerUrl) { com.nuvio.tv.data.trailer.YouTubeVideo.idOf(trailerUrl) }
+    if (youTubeId != null) {
+        if (youTubeAllowed && isPlaying) {
+            YouTubeIframePlayer(
+                videoId = youTubeId,
+                isPlaying = isPlaying,
+                isPaused = isPaused,
+                muted = muted,
+                seekRequestToken = seekRequestToken,
+                seekDeltaMs = seekDeltaMs,
+                openYouTubeWhenBlocked = openYouTubeWhenBlocked,
+                onStarted = onFirstFrameRendered,
+                onEnded = onEnded,
+                // A video that can't play here ends: the screen goes back to what it showed.
+                onError = { onEnded() },
+                onProgressChanged = onProgressChanged,
+                onRemoteKey = onRemoteKey,
+                modifier = modifier
+            )
+        }
+        return
+    }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val activityLifecycleOwner = remember(context) { context as? androidx.lifecycle.LifecycleOwner ?: lifecycleOwner }
@@ -108,7 +137,7 @@ fun TrailerPlayer(
         if (isPlaying && trailerUrl != null) {
             hasRenderedFirstFrame = false
             if (!trailerAudioUrl.isNullOrBlank()) {
-                val mediaSourceFactory = DefaultMediaSourceFactory(YoutubeChunkedDataSourceFactory())
+                val mediaSourceFactory = DefaultMediaSourceFactory(context)
                 val videoSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(trailerUrl))
                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(trailerAudioUrl))
                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))
@@ -184,7 +213,7 @@ fun TrailerPlayer(
                     if (currentIsPlaying && !currentTrailerUrl.isNullOrBlank()) {
                         if (player.currentMediaItem == null) {
                             if (!currentTrailerAudioUrl.isNullOrBlank()) {
-                                val mediaSourceFactory = DefaultMediaSourceFactory(YoutubeChunkedDataSourceFactory())
+                                val mediaSourceFactory = DefaultMediaSourceFactory(context)
                                 val videoSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(currentTrailerUrl!!))
                                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(currentTrailerAudioUrl!!))
                                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))

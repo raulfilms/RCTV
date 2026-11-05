@@ -1,7 +1,6 @@
 package com.nuvio.tv.ui.screens.sports
 
 import com.nuvio.tv.data.remote.espn.BananaBallSource
-import com.nuvio.tv.data.trailer.InAppYouTubeExtractor
 import com.nuvio.tv.data.trailer.YouTubeSearchResult
 import com.nuvio.tv.data.trailer.YouTubeVideoSearch
 import com.nuvio.tv.domain.model.SportsEvent
@@ -32,8 +31,7 @@ internal object BananaBallLiveIds {
 @Singleton
 class BananaBallLive @Inject constructor(
     private val guideLoader: LiveTvGuideLoader,
-    private val youTubeSearch: YouTubeVideoSearch,
-    private val youTubeExtractor: InAppYouTubeExtractor
+    private val youTubeSearch: YouTubeVideoSearch
 ) {
     private val mutex = Mutex()
     @Volatile private var lastCheckMs = 0L
@@ -66,14 +64,17 @@ class BananaBallLive @Inject constructor(
         }
     }
 
-    /** The game's live stream on YouTube, ready to play (HLS); null when it isn't streaming. */
+    /**
+     * The game's live stream on YouTube: its watch address, for YouTube's official player (RCTV
+     * Smart Player); null when it isn't streaming.
+     */
     suspend fun youTubeStreamFor(event: SportsEvent): String? {
         if (!event.isBananaBall()) return null
         val now = System.currentTimeMillis()
         val stream = streamFor(event, liveStreamsNow(now))
             ?: streamFor(event, liveStreamsNow(now, force = true))
             ?: return null
-        return youTubeExtractor.extractLiveHlsUrl(stream.watchUrl)
+        return stream.watchUrl
     }
 
     private suspend fun onGuideNow(event: SportsEvent, now: Long): Boolean {

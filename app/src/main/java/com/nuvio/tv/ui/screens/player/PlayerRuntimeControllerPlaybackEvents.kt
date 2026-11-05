@@ -1900,6 +1900,7 @@ internal fun PlayerRuntimeController.buildStreamInfoData(): StreamInfoData {
         },
         audioSampleRate = selectedAudio?.sampleRate,
         audioLanguage = selectedAudio?.language,
+        audioOutput = audioOutputLabel(),
         subtitleName = selectedSubtitle?.name ?: addonSub?.lang,
         subtitleCodec = selectedSubtitle?.codec,
         subtitleLanguage = selectedSubtitle?.language ?: addonSub?.lang,
@@ -1927,5 +1928,33 @@ private fun formatTorrentSpeed(context: android.content.Context, bytesPerSec: Lo
         bytesPerSec >= 1_048_576 -> context.getString(R.string.unit_speed_mb_s, String.format("%.1f", bytesPerSec / 1_048_576.0))
         bytesPerSec >= 1_024 -> context.getString(R.string.unit_speed_kb_s, String.format("%.0f", bytesPerSec / 1_024.0))
         else -> context.getString(R.string.unit_speed_b_s, bytesPerSec)
+    }
+}
+
+/**
+ * RCTV Smart Player: what the app sends out, for the stream info panel. Only what the app does is
+ * said ("sent as is"), never what the receiver shows, which the app can't know. libmpv decodes
+ * everything to PCM.
+ */
+internal fun PlayerRuntimeController.audioOutputLabel(): String? {
+    if (currentInternalPlayerEngine == com.nuvio.tv.data.local.InternalPlayerEngine.MVP_PLAYER) {
+        return context.getString(com.nuvio.tv.R.string.stream_info_audio_output_pcm)
+    }
+    val encoding = audioOutputEncoding ?: return null
+    val encoded = when (encoding) {
+        androidx.media3.common.C.ENCODING_AC3 -> "Dolby Digital"
+        androidx.media3.common.C.ENCODING_E_AC3 -> "Dolby Digital Plus"
+        androidx.media3.common.C.ENCODING_E_AC3_JOC -> "Dolby Digital Plus (Atmos)"
+        androidx.media3.common.C.ENCODING_AC4 -> "Dolby AC-4"
+        androidx.media3.common.C.ENCODING_DOLBY_TRUEHD -> "Dolby TrueHD"
+        androidx.media3.common.C.ENCODING_DTS -> "DTS"
+        androidx.media3.common.C.ENCODING_DTS_HD -> "DTS-HD"
+        androidx.media3.common.C.ENCODING_DTS_UHD_P2 -> "DTS:X"
+        else -> null
+    }
+    return if (encoded != null) {
+        context.getString(com.nuvio.tv.R.string.stream_info_audio_output_passthrough, encoded)
+    } else {
+        context.getString(com.nuvio.tv.R.string.stream_info_audio_output_pcm)
     }
 }

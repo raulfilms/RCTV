@@ -2862,7 +2862,12 @@ private fun BackdropLayer(
             onRemoteKey = onTrailerControlKey,
             onProgressChanged = onTrailerProgressChanged,
             onEnded = onTrailerEnded,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            // RCTV Smart Player: the page's menus fade while the trailer plays, so YouTube's
+            // official player has nothing over it. Asked for (the Trailer button): a video its
+            // owner keeps off other sites opens in the YouTube app; autoplayed: it just ends.
+            youTubeAllowed = true,
+            openYouTubeWhenBlocked = showTrailerControls
         )
         Box(
             modifier = Modifier

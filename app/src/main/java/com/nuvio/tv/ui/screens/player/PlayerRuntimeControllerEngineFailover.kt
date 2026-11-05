@@ -8,12 +8,28 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * RCTV Smart Player: ExoPlayer's error code for [com.nuvio.tv.core.player.SmartPlayerPolicy]. An
+ * audio decoder's error gives null: it's left to the audio recovery (decoding to PCM in ExoPlayer),
+ * not a switch to libmpv, which has no passthrough.
+ */
+internal fun androidx.media3.common.PlaybackException.smartPlayerErrorCode(): Int? {
+    val renderer = (this as? androidx.media3.exoplayer.ExoPlaybackException)
+        ?.takeIf { it.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER }
+    if (renderer?.rendererFormat?.sampleMimeType?.startsWith("audio/") == true) return null
+    return errorCode
+}
+
 internal fun PlayerRuntimeController.maybeAutoSwitchInternalPlayerOnStartupError(
     detailedError: String,
-    allowEngineFailover: Boolean
+    allowEngineFailover: Boolean,
+    /** ExoPlayer's error code (PlaybackException.errorCode); null for libmpv's and other errors. */
+    errorCode: Int? = null
 ): Boolean {
     if (!allowEngineFailover) return false
-    if (!autoSwitchInternalPlayerOnErrorEnabled) return false
+    // RCTV Smart Player: a format ExoPlayer can't play always goes to libmpv once; any other error
+    // only when the owner turned the setting on.
+    if (!com.nuvio.tv.core.player.SmartPlayerPolicy.shouldSwitchEngine(autoSwitchInternalPlayerOnErrorEnabled, errorCode)) return false
     if (startupEngineFailoverTriggered) return false
     if (!isStartupPhaseForEngineFailover()) return false
 

@@ -38,8 +38,10 @@ data class YouTubeSearchResult(
 }
 
 /**
- * Searches YouTube (no account, no key) the way its website does: YouTube's own search API, else
- * its results page. Gives the videos found, in YouTube's order.
+ * Searches YouTube. RCTV Smart Player: first YouTube's official Data API through RCTV Core, which
+ * holds the key (/api/v1/youtube/search); while RCTV Core has no key, is out of quota or can't be
+ * reached, the way YouTube's website does (no account, no key): its search API, else its results
+ * page. Gives the videos found, in YouTube's order.
  */
 @Singleton
 class YouTubeVideoSearch @Inject constructor() {
@@ -60,6 +62,7 @@ class YouTubeVideoSearch @Inject constructor() {
     suspend fun search(query: String, spanish: Boolean = false, liveOnly: Boolean = false): List<YouTubeSearchResult> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
         val language = if (spanish) "es" else "en"
+        searchCore(query, language, liveOnly)?.let { return@withContext it }
         val filter = if (liveOnly) LIVE_FILTER else VIDEOS_FILTER
         val fromApi = runCatching { searchApi(query, language, filter) }
             .onFailure { Log.w(SEARCH_TAG, "Search API failed: ${it.message}") }
@@ -68,6 +71,63 @@ class YouTubeVideoSearch @Inject constructor() {
         runCatching { searchPage(query, language, filter) }
             .onFailure { Log.w(SEARCH_TAG, "Search page failed: ${it.message}") }
             .getOrDefault(emptyList())
+    }
+
+    /** Until when RCTV Core's search is left alone (it has no key, is out of quota, or failed). */
+    @Volatile private var coreRestUntilMs = 0L
+
+    private val coreClient by lazy {
+        httpClient.newBuilder()
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build()
+    }
+
+    /**
+     * YouTube's official search through RCTV Core; null when it can't answer (then the app's own
+     * search). An empty list is an answer: nothing found.
+     */
+    private fun searchCore(query: String, language: String, liveOnly: Boolean): List<YouTubeSearchResult>? {
+        val now = System.currentTimeMillis()
+        if (now < coreRestUntilMs) return null
+        val url = com.nuvio.tv.core.network.RctvServers.CORE + "/api/v1/youtube/search" +
+            "?q=" + URLEncoder.encode(query.take(120), "UTF-8") +
+            "&lang=" + language + "&live=" + (if (liveOnly) "1" else "0") + "&limit=15"
+        return try {
+            val request = Request.Builder().url(url).header("Accept", "application/json").build()
+            coreClient.newCall(request).execute().use { response ->
+                if (response.code == 503) {
+                    // No key yet, or the day's quota is spent: asked again in 30 minutes.
+                    coreRestUntilMs = now + CORE_REST_UNAVAILABLE_MS
+                    return null
+                }
+                if (!response.isSuccessful) {
+                    coreRestUntilMs = now + CORE_REST_FAILED_MS
+                    return null
+                }
+                val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: JSONArray()
+                (0 until data.length()).mapNotNull { index ->
+                    val video = data.optJSONObject(index) ?: return@mapNotNull null
+                    val videoId = video.optString("videoId").takeIf { YouTubeVideo.isId(it) } ?: return@mapNotNull null
+                    val live = video.optBoolean("live", false)
+                    YouTubeSearchResult(
+                        videoId = videoId,
+                        title = video.optString("title"),
+                        channel = video.optString("channel").takeIf { it.isNotBlank() },
+                        durationSeconds = if (live) null else video.optInt("durationSeconds", 0).takeIf { it > 0 },
+                        ageDays = video.optDouble("ageDays").takeIf { !it.isNaN() },
+                        // The Data API gives the exact time it was published.
+                        ageUnitDays = 0.0
+                    )
+                }.filter { !liveOnly || it.durationSeconds == null }
+            }
+        } catch (error: Exception) {
+            Log.w(SEARCH_TAG, "RCTV Core search failed: ${error.javaClass.simpleName}")
+            coreRestUntilMs = now + CORE_REST_FAILED_MS
+            null
+        }
     }
 
     /** YouTube's search API (what its website calls), videos only. */
@@ -176,6 +236,8 @@ class YouTubeVideoSearch @Inject constructor() {
 
     companion object {
         private const val MAX_RESULTS = 25
+        private const val CORE_REST_UNAVAILABLE_MS = 30 * 60_000L
+        private const val CORE_REST_FAILED_MS = 5 * 60_000L
         /** YouTube's search filters: videos; live now. */
         private const val VIDEOS_FILTER = "EgIQAQ=="
         private const val LIVE_FILTER = "EgJAAQ=="

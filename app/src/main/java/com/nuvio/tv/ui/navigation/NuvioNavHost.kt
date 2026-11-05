@@ -87,17 +87,12 @@ private fun rememberGameOpener(navController: NavHostController): (SportsEvent) 
                 )
             )
         },
-        // A Banana Ball game streaming on YouTube (no channel showing it): played live, like a channel.
+        // A Banana Ball game streaming on YouTube (no channel showing it): in YouTube's official
+        // player, full screen (RCTV Smart Player).
         onPlayStream = { url, event ->
-            navController.navigate(
-                Screen.Player.createRoute(
-                    streamUrl = url,
-                    title = "${event.leagueName ?: event.sportName ?: ""} · YouTube".trimStart(' ', '·'),
-                    contentType = "live",
-                    contentName = event.name,
-                    logo = event.homeTeamBadgeUrl
-                )
-            )
+            com.nuvio.tv.data.trailer.YouTubeVideo.idOf(url)?.let { videoId ->
+                navController.navigate(Screen.YouTubeWatch.createRoute(videoId = videoId, title = event.name))
+            }
         }
     )
 
@@ -1614,6 +1609,25 @@ private fun PlaybackNavHost(
                         }
                     }
                 }
+            )
+        }
+
+        composable(
+            route = Screen.YouTubeWatch.route,
+            arguments = listOf(
+                navArgument("videoId") { type = NavType.StringType },
+                navArgument("title") { type = NavType.StringType; nullable = true; defaultValue = "" }
+            )
+        ) { entry ->
+            val videoId = com.nuvio.tv.data.trailer.YouTubeVideo.idOf(entry.arguments?.getString("videoId"))
+            com.nuvio.tv.ui.screens.sports.SportsRecapPlayer(
+                title = entry.arguments?.getString("title").orEmpty(),
+                videoUrl = videoId?.let { com.nuvio.tv.data.trailer.YouTubeVideo.watchUrl(it) },
+                audioUrl = null,
+                isLoading = false,
+                errorMessage = if (videoId == null) androidx.compose.ui.res.stringResource(R.string.detail_trailer_error) else null,
+                onDismiss = { navController.popBackStack() },
+                onRetry = { navController.popBackStack() }
             )
         }
 

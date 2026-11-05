@@ -1672,7 +1672,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         }
 
                         // ── Main Engine Failover ──
-                        if (maybeAutoSwitchInternalPlayerOnStartupError(detailedError = detailedError, allowEngineFailover = allowEngineFailover)) {
+                        if (maybeAutoSwitchInternalPlayerOnStartupError(detailedError = detailedError, allowEngineFailover = allowEngineFailover, errorCode = error.smartPlayerErrorCode())) {
                             return
                         }
                         if (attemptAutoRetry(error, detailedError)) {
@@ -1773,6 +1773,13 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
                         playbackAnalyticsDiagnostics.onPlayerError(eventTime, error)
+                    }
+
+                    override fun onAudioTrackInitialized(
+                        eventTime: AnalyticsListener.EventTime,
+                        audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig
+                    ) {
+                        audioOutputEncoding = audioTrackConfig.encoding
                     }
 
                     override fun onVideoDecoderInitialized(
@@ -1978,7 +1985,13 @@ internal fun PlayerRuntimeController.initializePlayer(
     }
 }
 
-internal suspend fun PlayerRuntimeController.resolveAutoInternalPlayerEngine(): InternalPlayerEngine {
+internal suspend fun PlayerRuntimeController.resolveAutoInternalPlayerEngine(): InternalPlayerEngine =
+    // RCTV Smart Player: Auto starts everything on ExoPlayer (passthrough); a format it can't play
+    // switches to libmpv once (SmartPlayerPolicy). The old guess by name, kept below, is unused.
+    com.nuvio.tv.core.player.SmartPlayerPolicy.autoStartEngine()
+
+@Suppress("unused")
+private suspend fun PlayerRuntimeController.resolveAutoInternalPlayerEngineByName(): InternalPlayerEngine {
     val streamMetadataText = buildString {
         currentFilename?.let { appendLine(it) }
         streamName?.let { appendLine(it) }
@@ -2705,13 +2718,25 @@ private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrou
     return AudioCapabilities(supportedEncodings.toIntArray(), maxChannelCount)
 }
 
+/**
+ * HLS starts at its best quality: the speed is taken as at least 25 Mbps. RCTV Smart Player: only
+ * for the first [HLS_START_FLOOR_MS]; then the measured speed decides, so a slow connection steps
+ * down a quality instead of stalling.
+ */
 private class SafeBandwidthMeter(
     private val delegate: BandwidthMeter,
     private val isHls: Boolean
 ) : BandwidthMeter {
+    private val createdAtMs = android.os.SystemClock.elapsedRealtime()
+
     override fun getBitrateEstimate(): Long {
         val raw = delegate.bitrateEstimate
-        return if (isHls) maxOf(raw, 25_000_000L) else raw
+        val starting = android.os.SystemClock.elapsedRealtime() - createdAtMs < HLS_START_FLOOR_MS
+        return if (isHls && starting) maxOf(raw, 25_000_000L) else raw
+    }
+
+    private companion object {
+        const val HLS_START_FLOOR_MS = 12_000L
     }
 
     override fun getTimeToFirstByteEstimateUs(): Long = delegate.timeToFirstByteEstimateUs

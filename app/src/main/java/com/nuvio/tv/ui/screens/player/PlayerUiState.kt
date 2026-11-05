@@ -418,6 +418,8 @@ data class StreamInfoData(
     val audioChannels: String? = null,
     val audioSampleRate: Int? = null,
     val audioLanguage: String? = null,
+    /** RCTV Smart Player: how the audio leaves the app (sent as is, or decoded to PCM). */
+    val audioOutput: String? = null,
     // Subtitle
     val subtitleName: String? = null,
     val subtitleCodec: String? = null,

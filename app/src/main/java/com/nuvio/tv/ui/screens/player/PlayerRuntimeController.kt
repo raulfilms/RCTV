@@ -538,6 +538,11 @@ class PlayerRuntimeController(
     internal var hasScannedTextTracksOnce: Boolean = false
     internal var streamReuseLastLinkEnabled: Boolean = false
     internal var autoSwitchInternalPlayerOnErrorEnabled: Boolean = false
+    /**
+     * RCTV Smart Player: how ExoPlayer's audio leaves the app (C.ENCODING_*: an encoded format is
+     * sent to the receiver as it is; a PCM one was decoded); null before it starts or on libmpv.
+     */
+    @Volatile internal var audioOutputEncoding: Int? = null
     internal var startupEngineFailoverTriggered: Boolean = false
     internal var runtimeInternalPlayerEngineOverride: InternalPlayerEngine? = null
     internal var resolvedAutoPlayerEngine: InternalPlayerEngine? = null
