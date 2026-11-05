@@ -86,6 +86,10 @@ fun StudioGroupScreen(
         menuBridge?.registerPage()
         onDispose { menuBridge?.unregisterPage() }
     }
+    // RCTV (owner's rule): Back with the menu open closes the app.
+    BackHandler(enabled = menuOpen && menuBridge != null) {
+        menuBridge?.exitApp?.invoke()
+    }
     // The menu closed without leaving: focus back on the last tile.
     var menuWasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(menuOpen) {

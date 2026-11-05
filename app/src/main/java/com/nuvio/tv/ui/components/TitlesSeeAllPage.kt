@@ -184,6 +184,10 @@ fun TitlesSeeAllPage(
             }
         }
     }
+    // RCTV (owner's rule): Back with the menu open closes the app.
+    BackHandler(enabled = menuOpen && menuBridge != null) {
+        menuBridge?.exitApp?.invoke()
+    }
     // The menu closed without leaving the list (Right): focus back on the list.
     var menuWasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(menuOpen) {

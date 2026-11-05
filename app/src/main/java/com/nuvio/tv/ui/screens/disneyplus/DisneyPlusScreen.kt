@@ -229,6 +229,10 @@ fun DisneyPlusScreen(
             }
         }
     }
+    // RCTV (owner's rule): Back with the menu open closes the app.
+    BackHandler(enabled = menuOpen && menuBridge != null) {
+        menuBridge?.exitApp?.invoke()
+    }
     // Back on a page of cards ("All Collections") goes back to the card that opened it.
     BackHandler(enabled = seeAll == null && cardsPage != null) {
         returnFocusRowId = cardsPage?.cardId?.let { cardRowOf[it] }

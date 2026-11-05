@@ -32,6 +32,9 @@ class AppMenuBridge {
 
     /** Whether the menu is open (set by the menu's host). */
     var isMenuOpen: () -> Boolean = { false }
+
+    /** RCTV (owner's rule): Back with the menu open closes the app (set by the menu's host). */
+    var exitApp: () -> Unit = {}
 }
 
 /** The menu's bridge; null where the app's menu can't be opened from a page (the classic sidebar). */
