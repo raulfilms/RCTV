@@ -180,6 +180,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                 )
             }
             resetLoadingOverlayForNewStream()
+            // RCTV: a source that isn't there (an addon's error clip, an error page, a dead link) is
+            // never put on, whoever chose it: its link is checked before the player gets it.
+            if (!passesPrePlayCheck(url, headers)) return@launch
             // RCTV: a live channel is watched and reconnected by itself whichever engine plays it.
             startLiveTvWatchdog(url)
             if (startPaused) {

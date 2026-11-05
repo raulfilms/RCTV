@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.media3.common.Player
 import com.nuvio.tv.core.smartscraper.AutoStreamConfig
 import com.nuvio.tv.core.smartscraper.AutoStreamEngine
+import com.nuvio.tv.core.smartscraper.AutoStreamLinkCheck
 import com.nuvio.tv.core.smartscraper.AutoStreamResolver
 import com.nuvio.tv.core.smartscraper.AutoStreamSession
 import com.nuvio.tv.core.smartscraper.AutoStreamTrackCheck
@@ -145,10 +146,80 @@ internal fun PlayerRuntimeController.checkAutoStreamTracks() {
  * the clip is seen. True when it was skipped.
  */
 internal fun PlayerRuntimeController.skipIfDebridErrorClip(durationMs: Long): Boolean {
-    if (!isShortPlaceholderDuration(durationMs) || _playbackTimeline.value.isLive) return false
-    val session = AutoStreamSession.current(currentVideoId) ?: return false
-    if (session.started) return false
-    return tryAutoStreamFallback("an error clip of ${durationMs / 1000} s, not the title")
+    if (!isShortPlaceholderDuration(durationMs) || _playbackTimeline.value.isLive || isLiveTvPlayback) return false
+    val session = AutoStreamSession.current(currentVideoId)
+    if (session != null) {
+        if (session.started) return false
+        return tryAutoStreamFallback("an error clip of ${durationMs / 1000} s, not the title")
+    }
+    // RCTV: a source chosen by hand, a movie's or an episode's, that's a clip of a minute or two.
+    if (!isMovieOrEpisode()) return false
+    stopForUnavailableSource("an error clip of ${durationMs / 1000} s, not the title")
+    return true
+}
+
+private fun PlayerRuntimeController.isMovieOrEpisode(): Boolean =
+    contentType?.lowercase().let { it == "movie" || it == "series" }
+
+/** Asked once more at most this long before the player gets the link. */
+private const val PRE_PLAY_TIMEOUT_MS = 8_000L
+
+/**
+ * RCTV: before any source plays (one chosen by hand, the next episode's, Auto Stream's), its link
+ * is asked for its first bytes: one that isn't there (no file, an addon's error clip, an error page,
+ * the service refusing it) is never put on. Auto Stream then plays its next source; otherwise the
+ * sources are shown with a notice that says nothing of the service. A link that checked out a
+ * moment ago (Auto Stream's own check), a live channel, a file on this device: not asked. A link
+ * that doesn't answer in time: the player tries it (its own error shows if it fails).
+ */
+internal suspend fun PlayerRuntimeController.passesPrePlayCheck(url: String, headers: Map<String, String>): Boolean {
+    if (isLiveTvPlayback || !isMovieOrEpisode() || !isRemoteLink(url) || AutoStreamLinkVerifier.recentlyOk(url)) return true
+    val check = AutoStreamLinkVerifier.verify(
+        url = url,
+        headers = headers,
+        knownSizeBytes = null,
+        maxBytes = Long.MAX_VALUE,
+        timeoutMs = PRE_PLAY_TIMEOUT_MS
+    )
+    if (!AutoStreamLinkCheck.isNotThere(check)) return true
+    val reason = "its link: ${check.outcome.description}${check.httpCode?.let { " (HTTP $it)" }.orEmpty()}"
+    if (AutoStreamSession.current(currentVideoId) != null && tryAutoStreamFallback(reason)) return false
+    stopForUnavailableSource(reason)
+    return false
+}
+
+/** A link on another machine (not this device's torrent server or a local file). */
+private fun isRemoteLink(url: String): Boolean {
+    val lower = url.lowercase()
+    if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false
+    val host = lower.substringAfter("://").substringBefore('/').substringBefore(':')
+    return host != "localhost" && host != "127.0.0.1" && host != "[" && !host.startsWith("[")
+}
+
+/**
+ * RCTV: a source chosen by hand isn't there: nothing of it shows (no error clip, no service's
+ * name); the sources are shown to choose another, with a short notice.
+ */
+private fun PlayerRuntimeController.stopForUnavailableSource(reason: String) {
+    Log.w(AUTO_STREAM_TAG, "A source isn't there ($reason): not played, the sources are shown")
+    cancelFirstFrameWatchdog()
+    cancelStallWatchdog()
+    runCatching {
+        _exoPlayer?.playWhenReady = false
+        _exoPlayer?.stop()
+    }
+    if (isUsingMpvEngine()) mpvView?.setPaused(true)
+    _uiState.update {
+        it.copy(
+            error = null,
+            showSwitchToMpvErrorAction = false,
+            showLoadingOverlay = false,
+            loadingMessage = null,
+            isBuffering = false
+        )
+    }
+    showPlayerNotice(context.getString(com.nuvio.tv.R.string.player_source_unavailable), GIVE_UP_NOTICE_MS)
+    showSourcesPanel()
 }
 
 /**

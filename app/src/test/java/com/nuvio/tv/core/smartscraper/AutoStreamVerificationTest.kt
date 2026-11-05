@@ -33,6 +33,41 @@ class AutoStreamVerificationTest {
     }
 
     @Test
+    fun `an addon's error clip or error page is never the title, whatever size was said`() {
+        val mb = 1024L * 1024
+        // A few MB, no size said (the clip says "Debrid not found" or "download failed").
+        val clip = AutoStreamLinkCheck.evaluate(206, "bytes 0-1/${3 * mb}", "2", null, max, "video/mp4", "/d/ABC/clip.mp4")
+        assertEquals(Outcome.PLACEHOLDER, clip.outcome)
+        assertTrue(AutoStreamLinkCheck.isNotThere(clip))
+        // The addons' error videos by their address (Torrentio, MediaFusion), even with no size given.
+        listOf(
+            "/videos/failed_download_v2.mp4",
+            "/videos/downloading_v2.mp4",
+            "/videos/failed_infringement_v2.mp4",
+            "/static/exceptions/transfer_error.mp4",
+            "/static/debrid_not_found.mp4"
+        ).forEach { path ->
+            assertEquals(path, Outcome.PLACEHOLDER, AutoStreamLinkCheck.evaluate(200, null, null, null, max, "video/mp4", path).outcome)
+        }
+        // An error page instead of a file.
+        val page = AutoStreamLinkCheck.evaluate(200, null, "5120", null, max, "text/html; charset=utf-8", "/resolve/x")
+        assertTrue(AutoStreamLinkCheck.isNotThere(page))
+        assertTrue(AutoStreamLinkCheck.isNotThere(AutoStreamLinkCheck.evaluate(200, null, "90", null, max, "application/json", "/play")))
+        // A movie called "Error" is still a movie.
+        assertEquals(
+            Outcome.OK,
+            AutoStreamLinkCheck.evaluate(206, "bytes 0-1/${(4.2 * GB).toLong()}", "2", null, max, "video/x-matroska", "/d/XYZ/Error.2019.1080p.WEB-DL.mkv").outcome
+        )
+        // A playlist is small by nature.
+        assertEquals(Outcome.OK, AutoStreamLinkCheck.evaluate(200, null, "812", null, max, "application/vnd.apple.mpegurl", "/hls/index.m3u8").outcome)
+        // A link that couldn't be asked: the player tries it; no file, or the service refusing it: not.
+        assertFalse(AutoStreamLinkCheck.isNotThere(AutoStreamLinkCheck.unreachable()))
+        assertTrue(AutoStreamLinkCheck.isNotThere(AutoStreamLinkCheck.evaluate(404, null, null, null, max)))
+        assertTrue(AutoStreamLinkCheck.isNotThere(AutoStreamLinkCheck.evaluate(503, null, null, null, max)))
+        assertFalse(AutoStreamLinkCheck.isNotThere(AutoStreamLinkCheck.evaluate(206, "bytes 0-1/*", null, null, max)))
+    }
+
+    @Test
     fun `a size not given plays only when the link confirms it`() {
         assertEquals(Outcome.SIZE_UNCONFIRMED, AutoStreamLinkCheck.evaluate(206, "bytes 0-1/*", null, null, max).outcome)
         assertEquals(Outcome.OK, AutoStreamLinkCheck.evaluate(206, "bytes 0-1/*", null, (5.0 * GB).toLong(), max).outcome)

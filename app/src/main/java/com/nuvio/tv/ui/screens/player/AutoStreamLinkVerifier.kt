@@ -23,6 +23,23 @@ import okhttp3.Response
  */
 internal object AutoStreamLinkVerifier {
 
+    /** RCTV: links that checked out lately (each once: the player doesn't ask again what Auto Stream just did). */
+    private const val RECENT_MS = 3L * 60 * 1000
+    private const val RECENT_KEPT = 16
+    private val recentOk = LinkedHashMap<String, Long>()
+
+    /** [url] checked out in the last few minutes. */
+    fun recentlyOk(url: String): Boolean = synchronized(recentOk) {
+        val at = recentOk[url] ?: return false
+        System.currentTimeMillis() - at < RECENT_MS
+    }
+
+    private fun rememberOk(url: String) = synchronized(recentOk) {
+        recentOk.remove(url)
+        recentOk[url] = System.currentTimeMillis()
+        while (recentOk.size > RECENT_KEPT) recentOk.remove(recentOk.keys.first())
+    }
+
     suspend fun verify(
         url: String?,
         headers: Map<String, String>,
@@ -67,9 +84,13 @@ internal object AutoStreamLinkVerifier {
                             contentRange = it.header("Content-Range"),
                             contentLength = it.header("Content-Length"),
                             knownSizeBytes = knownSizeBytes,
-                            maxBytes = maxBytes
+                            maxBytes = maxBytes,
+                            contentType = it.header("Content-Type"),
+                            // Where the redirects ended (an addon's error video?); read here only, never logged.
+                            finalPath = it.request.url.encodedPath
                         )
                     }
+                    if (!AutoStreamLinkCheck.isNotThere(result)) url?.let(::rememberOk)
                     if (continuation.isActive) continuation.resume(result)
                 }
             })

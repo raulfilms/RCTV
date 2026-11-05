@@ -40,13 +40,20 @@ object AutoStreamLinkCheck {
      * [code] and headers of the link's answer (after redirects); [knownSizeBytes]: the size the
      * stream said (null: not said). 200/206 with a whole size at most [maxBytes] plays; a size that
      * isn't known anywhere doesn't (§3.1); a file far smaller than said is a placeholder clip.
+     *
+     * RCTV: also an addon's error clip whatever size was said ("Debrid not found", "download
+     * failed"...): a video file of a few MB, or one at an error video's address ([finalPath]: the
+     * path the redirects ended on); and an error page ([contentType] HTML or JSON) instead of a
+     * file. A playlist (HLS, DASH) is small by nature: only its answer counts.
      */
     fun evaluate(
         code: Int,
         contentRange: String?,
         contentLength: String?,
         knownSizeBytes: Long?,
-        maxBytes: Long
+        maxBytes: Long,
+        contentType: String? = null,
+        finalPath: String? = null
     ): Result {
         when {
             code == 200 || code == 206 -> Unit
@@ -55,16 +62,42 @@ object AutoStreamLinkCheck {
                 return Result(Outcome.PROVIDER_ERROR, httpCode = code)
             else -> return Result(Outcome.FILE_GONE, httpCode = code)
         }
+        val type = contentType?.lowercase(Locale.ROOT).orEmpty()
+        if ("html" in type || "json" in type) return Result(Outcome.PROVIDER_ERROR, httpCode = code)
+        if (isPlaylist(type, finalPath)) return Result(Outcome.OK, knownSizeBytes, code)
         val total = totalBytes(code, contentRange, contentLength)
+        if (finalPath != null && ERROR_VIDEO.containsMatchIn(finalPath.lowercase(Locale.ROOT)) &&
+            (total == null || total < ERROR_VIDEO_MAX_BYTES)
+        ) {
+            return Result(Outcome.PLACEHOLDER, total, code)
+        }
         if (total == null) {
             return if (knownSizeBytes != null) Result(Outcome.OK, knownSizeBytes, code)
             else Result(Outcome.SIZE_UNCONFIRMED, httpCode = code)
         }
+        if (total < MIN_TITLE_BYTES) return Result(Outcome.PLACEHOLDER, total, code)
         if (total > maxBytes) return Result(Outcome.TOO_LARGE, total, code)
         if (knownSizeBytes != null && knownSizeBytes > 0 && total < knownSizeBytes * PLACEHOLDER_SHARE) {
             return Result(Outcome.PLACEHOLDER, total, code)
         }
         return Result(Outcome.OK, total, code)
+    }
+
+    /**
+     * RCTV: before any source plays (one chosen by hand too), whether its link shows it isn't the
+     * title: no file, an error clip or page, or the service refusing it. A link that couldn't be
+     * asked (a timeout) isn't: the player tries it.
+     */
+    fun isNotThere(result: Result): Boolean = when (result.outcome) {
+        Outcome.FILE_GONE, Outcome.PLACEHOLDER -> true
+        Outcome.PROVIDER_ERROR -> result.httpCode != null
+        else -> false
+    }
+
+    private fun isPlaylist(type: String, path: String?): Boolean {
+        if ("mpegurl" in type || "dash+xml" in type) return true
+        val file = path?.lowercase(Locale.ROOT)?.substringBefore('?') ?: return false
+        return file.endsWith(".m3u8") || file.endsWith(".m3u") || file.endsWith(".mpd")
     }
 
     /** The answer couldn't be had (no connection, a timeout, a TLS error): the provider's failure. */
@@ -81,6 +114,22 @@ object AutoStreamLinkCheck {
 
     /** A link far smaller than this share of the size said isn't the file. */
     private const val PLACEHOLDER_SHARE = 0.1
+
+    /** RCTV: no movie or episode is this small (the addons' error clips are a few MB). */
+    const val MIN_TITLE_BYTES = 20L * 1024 * 1024
+
+    /** An error video's address is one only when the file is smaller than this. */
+    private const val ERROR_VIDEO_MAX_BYTES = 300L * 1024 * 1024
+
+    /**
+     * The addresses of the addons' error videos (Torrentio's /videos/failed_download_v2.mp4,
+     * MediaFusion's /static/exceptions/..., the like): a video file named for an error.
+     */
+    private val ERROR_VIDEO = Regex(
+        "(/exceptions/|/videos?/|/static/|/assets?/|/errors?/)[^/]*" +
+            "(error|fail|not_?found|notfound|unavailable|expired|invalid|denied|blocked|limit|downloading|no_?video|no_?debrid|debrid|infringement|unsupported|no_?access)" +
+            "[^/]*\\.(mp4|mkv|webm|m4v|mov)$"
+    )
 }
 
 /** §8.3: the tracks the player found, checked before the first picture. */
