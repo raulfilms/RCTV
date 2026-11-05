@@ -1569,6 +1569,7 @@ private fun TitleBrandBadge(brand: com.nuvio.tv.data.streaming.TitleBrand, modif
             .border(1.dp, Color.White.copy(alpha = 0.22f), androidx.compose.foundation.shape.CircleShape),
         contentAlignment = Alignment.Center
     ) {
+        val logoRes = brand.logoRes
         if (!icon.isNullOrBlank()) {
             AsyncImage(
                 model = ImageRequest.Builder(context).data(icon).crossfade(true).build(),
@@ -1576,6 +1577,15 @@ private fun TitleBrandBadge(brand: com.nuvio.tv.data.streaming.TitleBrand, modif
                 contentScale = ContentScale.Crop,
                 onError = { failed = true },
                 modifier = Modifier.fillMaxSize()
+            )
+        } else if (logoRes != null) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(logoRes),
+                contentDescription = brand.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp)
             )
         } else {
             AsyncImage(

@@ -72,9 +72,14 @@ internal fun PlayerRuntimeController.applyMetaDetails(meta: Meta) {
     } else {
         null
     }
-    // A show's network, a movie's studio: the pause screen's logo until the streaming service is known.
-    val company = (if (isEpisode || contentType in listOf("series", "tv")) meta.networks + meta.productionCompanies else meta.productionCompanies)
-        .firstOrNull { !it.logo.isNullOrBlank() }
+    // RCTV: where it comes from originally (a show's network, a movie's studio, as its service), the
+    // pause screen's logo until TMDB says more (see OriginalHome).
+    val home = com.nuvio.tv.data.streaming.OriginalHome.of(
+        isSeries = isEpisode || contentType in listOf("series", "tv"),
+        networks = meta.networks,
+        companies = meta.productionCompanies,
+        providers = emptyList()
+    )
 
     recomputeNextEpisode(resetVisibility = false)
     _uiState.update { state ->
@@ -84,8 +89,9 @@ internal fun PlayerRuntimeController.applyMetaDetails(meta: Meta) {
             isNextEpisodeMetadataResolved = true,
             ageRating = state.ageRating ?: meta.ageRating?.takeIf { it.isNotBlank() },
             runtime = episodeRuntime?.toString() ?: state.runtime ?: meta.runtime?.takeIf { !isEpisode && it.isNotBlank() },
-            brandLogoUrl = state.brandLogoUrl ?: company?.logo,
-            brandName = state.brandName ?: company?.name
+            brandLogoRes = state.brandLogoRes ?: home?.logoRes,
+            brandLogoUrl = state.brandLogoUrl ?: home?.let { h -> h.logoUrl.takeIf { h.logoRes == null } },
+            brandName = state.brandName ?: home?.name
         )
     }
 }
@@ -161,28 +167,33 @@ private suspend fun PlayerRuntimeController.enrichDescriptionFromTmdb(id: String
         _uiState.update { it.copy(description = tmdbDescription) }
     }
 
-    // RCTV pause screen: the age rating, the length (the episode's for a show), and the logo of the
-    // streaming service it's on, else its network (a show) or studio (a movie).
+    // RCTV pause screen: the age rating, the length (the episode's for a show), and the logo of where
+    // it comes from originally (owner's rule: American Horror Story is Hulu's, whatever else it's on;
+    // see OriginalHome).
     val tmdbRuntime = if (isSeries) episodeEnrichment?.runtimeMinutes else enrichment.runtimeMinutes
-    val company = (if (isSeries) enrichment.networks + enrichment.productionCompanies else enrichment.productionCompanies)
-        .firstOrNull { !it.logo.isNullOrBlank() }
     _uiState.update { state ->
         state.copy(
             ageRating = enrichment.ageRating?.takeIf { it.isNotBlank() } ?: state.ageRating,
-            runtime = tmdbRuntime?.takeIf { it > 0 }?.toString() ?: state.runtime,
-            brandLogoUrl = if (state.brandLogoRes == null) company?.logo ?: state.brandLogoUrl else state.brandLogoUrl,
-            brandName = if (state.brandLogoRes == null) company?.name ?: state.brandName else state.brandName
+            runtime = tmdbRuntime?.takeIf { it > 0 }?.toString() ?: state.runtime
         )
     }
-    val service = runCatching { tmdbMetadataService.fetchTitleStreamingProviders(tmdbId, contentType) }
+    val providers = runCatching { tmdbMetadataService.fetchTitleStreamingProviders(tmdbId, contentType) }
         .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
         .getOrDefault(emptyList())
-        .firstNotNullOfOrNull { provider ->
-            com.nuvio.tv.data.streaming.StreamingServicesRepository.logoForProvider(provider.providerId, provider.providerName)
-                ?.let { logo -> logo to provider.providerName }
+    val home = com.nuvio.tv.data.streaming.OriginalHome.of(
+        isSeries = isSeries,
+        networks = enrichment.networks,
+        companies = enrichment.productionCompanies,
+        providers = providers
+    )
+    if (home != null) {
+        _uiState.update {
+            it.copy(
+                brandLogoRes = home.logoRes,
+                brandLogoUrl = home.logoUrl.takeIf { home.logoRes == null },
+                brandName = home.name
+            )
         }
-    if (service != null) {
-        _uiState.update { it.copy(brandLogoRes = service.first, brandName = service.second ?: it.brandName) }
     }
 
     // Enrich title from TMDB (localized).

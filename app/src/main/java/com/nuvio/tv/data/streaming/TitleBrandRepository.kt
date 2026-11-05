@@ -13,18 +13,20 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * RCTV: where a title comes from, as a small round badge on its Continue Watching card. That's the
- * streaming service it's on (that service's square app icon from TMDB), else its network for a
- * show, or its studio for a movie (that company's logo).
+ * RCTV: where a title comes from originally ([OriginalHome]), as a small round badge on its Continue
+ * Watching card: that service's square app icon from TMDB when the title is on it, else the app's
+ * own logo of that service or studio, else the network's or studio's logo.
  */
 data class TitleBrand(
     /** A square icon (the service's app icon): fills the circle. */
     val iconUrl: String? = null,
+    /** The app's own logo of the service or studio: drawn small inside the circle. */
+    val logoRes: Int? = null,
     /** A company's wordmark (transparent): drawn small and white inside the circle. */
     val wordmarkUrl: String? = null,
     val name: String? = null
 ) {
-    val isEmpty: Boolean get() = iconUrl.isNullOrBlank() && wordmarkUrl.isNullOrBlank()
+    val isEmpty: Boolean get() = iconUrl.isNullOrBlank() && logoRes == null && wordmarkUrl.isNullOrBlank()
 }
 
 @Singleton
@@ -58,21 +60,19 @@ class TitleBrandRepository @Inject constructor(
         val isSeries = contentType.lowercase() in setOf("series", "tv")
         val tmdbId = tmdbService.ensureTmdbId(contentId, if (isSeries) "series" else "movie") ?: return null
         val type = if (isSeries) ContentType.SERIES else ContentType.MOVIE
-        // The streaming service it's on: its own app icon (square, made for a circle).
-        val service = tmdbMetadataService.fetchTitleStreamingProviders(tmdbId, type)
-            .firstOrNull { !it.logoPath.isNullOrBlank() }
-        if (service != null) {
-            return TitleBrand(iconUrl = TMDB_ICON_BASE + service.logoPath, name = service.providerName)
-        }
-        // Else its network (a show) or studio (a movie).
-        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId = tmdbId, contentType = type) ?: return null
-        val company = (if (isSeries) enrichment.networks + enrichment.productionCompanies else enrichment.productionCompanies)
-            .firstOrNull { !it.logo.isNullOrBlank() }
-            ?: return null
-        return TitleBrand(wordmarkUrl = company.logo, name = company.name)
-    }
-
-    private companion object {
-        const val TMDB_ICON_BASE = "https://image.tmdb.org/t/p/w92"
+        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId = tmdbId, contentType = type)
+        val providers = tmdbMetadataService.fetchTitleStreamingProviders(tmdbId, type)
+        val home = OriginalHome.of(
+            isSeries = isSeries,
+            networks = enrichment?.networks.orEmpty(),
+            companies = enrichment?.productionCompanies.orEmpty(),
+            providers = providers
+        ) ?: return null
+        return TitleBrand(
+            iconUrl = home.iconUrl,
+            logoRes = home.logoRes,
+            wordmarkUrl = home.logoUrl.takeIf { home.logoRes == null },
+            name = home.name
+        )
     }
 }
