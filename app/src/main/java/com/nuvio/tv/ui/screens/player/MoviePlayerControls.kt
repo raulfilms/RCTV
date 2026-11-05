@@ -166,29 +166,41 @@ internal fun TitlePlayerControlsOverlay(
                 .background(PlayerBottomShade)
         )
 
-        // The title's logo (its name when it has none) and Settings.
+        // The title's logo (its name when it has none) and Settings; a show's episode under its logo.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .padding(start = NuvioTheme.spacing.xxl, end = NuvioTheme.spacing.xxl - iconInset, top = NuvioTheme.spacing.xl),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(start = NuvioTheme.spacing.xxl, end = NuvioTheme.spacing.xxl - iconInset, top = NuvioTheme.spacing.xl)
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    MovieTitleLogo(
-                        title = if (isEpisode) uiState.contentName?.takeIf { it.isNotBlank() } ?: uiState.title else uiState.title,
-                        logo = uiState.logo
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        MovieTitleLogo(
+                            title = if (isEpisode) uiState.contentName?.takeIf { it.isNotBlank() } ?: uiState.title else uiState.title,
+                            logo = uiState.logo
+                        )
+                    }
+                    ControlButton(
+                        icon = Icons.Outlined.Settings,
+                        contentDescription = stringResource(R.string.nav_settings),
+                        onClick = onOpenSettings,
+                        focusRequester = settingsFocusRequester,
+                        onDownKey = { runCatching { progressBarFocusRequester.requestFocus() } },
+                        onFocused = onResetHideTimer
                     )
                 }
-                ControlButton(
-                    icon = Icons.Outlined.Settings,
-                    contentDescription = stringResource(R.string.nav_settings),
-                    onClick = onOpenSettings,
-                    focusRequester = settingsFocusRequester,
-                    onDownKey = { runCatching { progressBarFocusRequester.requestFocus() } },
-                    onFocused = onResetHideTimer
-                )
+                if (isEpisode) {
+                    EpisodeLine(
+                        season = uiState.currentSeason,
+                        episode = uiState.currentEpisode,
+                        name = uiState.episodeLineTitle ?: uiState.currentEpisodeTitle,
+                        spanish = uiState.episodeLineSpanish
+                    )
+                }
             }
         }
 
@@ -380,6 +392,42 @@ internal fun TitlePlayerControlsOverlay(
         }
     }
 }
+
+/**
+ * RCTV: under a show's logo, its season and episode and the episode's name, in the show's own
+ * language ("Season 1 · Episode 3 · Wolferton Splash"; a show in Spanish: "Temporada 1 · Episodio
+ * 3 · ..."), whatever the app's language. A name that only says the episode's number isn't repeated.
+ */
+@Composable
+private fun EpisodeLine(season: Int?, episode: Int?, name: String?, spanish: Boolean) {
+    if (season == null || episode == null) return
+    val label = if (spanish) "Temporada $season · Episodio $episode" else "Season $season · Episode $episode"
+    val title = name?.trim()?.takeIf { it.isNotBlank() && !GENERIC_EPISODE_NAME.matches(it) }
+    Row(
+        modifier = Modifier.padding(top = NuvioTheme.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, letterSpacing = 0.3.sp),
+            color = Color.White.copy(alpha = 0.75f),
+            maxLines = 1
+        )
+        if (title != null) {
+            Text(
+                text = "  ·  $title",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 520.dp)
+            )
+        }
+    }
+}
+
+/** "Episode 3", "Episodio 3", "Ep. 3", "E03": a name that's only the episode's number. */
+private val GENERIC_EPISODE_NAME = Regex("(?i)(episode|episodio|ep\\.?|e)\\s*\\d+")
 
 /** The title's logo, as large as the top allows; its name when it has no logo (or it won't load). */
 @Composable

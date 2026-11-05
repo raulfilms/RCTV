@@ -153,6 +153,10 @@ data class PlayerUiState(
     val currentEpisode: Int? = null,
     val currentVideoId: String? = null,
     val currentEpisodeTitle: String? = null,
+    /** RCTV: the episode's name in the show's own language (Spanish for a show in Spanish, else English). */
+    val episodeLineTitle: String? = null,
+    /** RCTV: the show is in Spanish: its season and episode are said in Spanish under its logo. */
+    val episodeLineSpanish: Boolean = false,
     val blurUnwatchedEpisodes: Boolean = false,
     val episodeWatchProgressMap: Map<Pair<Int, Int>, WatchProgress> = emptyMap(),
     val watchedEpisodeKeys: Set<Pair<Int, Int>> = emptySet(),

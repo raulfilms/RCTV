@@ -742,6 +742,7 @@ class PlayerRuntimeController(
         startAutoStreamWatch()
         startSubtitleAutoAlignWatch()
         startLanguageReadyWatch()
+        startEpisodeLineWatch()
     }
 
     private fun observeTorrentSettings() {
