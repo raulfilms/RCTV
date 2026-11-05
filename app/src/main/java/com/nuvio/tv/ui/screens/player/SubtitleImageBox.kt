@@ -115,6 +115,45 @@ internal object SubtitleImageBox {
         }.getOrDefault(cue)
     }
 
+    /**
+     * RCTV: [cue]'s picture [scale] times as big on the screen (the subtitle size the viewer chose,
+     * as for text subtitles), its shape kept. A subtitle low on the screen grows up from its bottom
+     * edge, one high on it down from its top edge, from its middle sideways; it stays on the screen.
+     * The cue itself when it doesn't say where and how big it is.
+     */
+    fun scaled(cue: Cue, scale: Float): Cue {
+        if (cue.bitmap == null || scale <= 0f || scale == 1f) return cue
+        if (cue.size == Cue.DIMEN_UNSET || cue.bitmapHeight == Cue.DIMEN_UNSET || cue.position == Cue.DIMEN_UNSET ||
+            cue.line == Cue.DIMEN_UNSET || cue.lineType != Cue.LINE_TYPE_FRACTION || cue.size <= 0f || cue.bitmapHeight <= 0f
+        ) {
+            return cue
+        }
+        val width = (cue.size * scale).coerceAtMost(1f)
+        val height = cue.bitmapHeight * (width / cue.size)
+        if (height > 1f) return cue
+        val left = cue.position - anchorFraction(cue.positionAnchor) * cue.size
+        val top = cue.line - anchorFraction(cue.lineAnchor) * cue.bitmapHeight
+        val middle = left + cue.size / 2
+        val newLeft = (middle - width / 2).coerceIn(0f, 1f - width)
+        val low = top + cue.bitmapHeight / 2 >= 0.5f
+        val newTop = (if (low) top + cue.bitmapHeight - height else top).coerceIn(0f, 1f - height)
+        return cue.buildUpon()
+            .setSize(width)
+            .setBitmapHeight(height)
+            .setPosition(newLeft)
+            .setPositionAnchor(Cue.ANCHOR_TYPE_START)
+            .setLine(newTop, Cue.LINE_TYPE_FRACTION)
+            .setLineAnchor(Cue.ANCHOR_TYPE_START)
+            .build()
+    }
+
+    /** How far into the picture its anchor is: its start edge 0, its middle half, its end edge 1. */
+    private fun anchorFraction(anchor: Int): Float = when (anchor) {
+        Cue.ANCHOR_TYPE_MIDDLE -> 0.5f
+        Cue.ANCHOR_TYPE_END -> 1f
+        else -> 0f
+    }
+
     /** Where a grown picture's anchor moves: its start edge out, its middle stays, its end edge out. */
     private fun shift(anchor: Int): Float = when (anchor) {
         Cue.ANCHOR_TYPE_MIDDLE -> 0f
@@ -131,7 +170,9 @@ internal object SubtitleImageBox {
 internal class ImageCueBoxingTextOutput(
     private val delegate: TextOutput,
     /** The box's color: the subtitle style's line background (transparent: no box). */
-    private val boxColorProvider: () -> Int
+    private val boxColorProvider: () -> Int,
+    /** RCTV: the subtitle size the viewer chose, in percent (100: the picture's own size). */
+    private val sizePercentProvider: () -> Int = { 100 }
 ) : TextOutput {
 
     /** The last pictures boxed (a Bitmap is its own key: it doesn't compare contents), with the color used. */
@@ -152,13 +193,16 @@ internal class ImageCueBoxingTextOutput(
     private fun boxAll(cues: List<Cue>): List<Cue> {
         if (cues.none { it.bitmap != null }) return cues
         val color = boxColorProvider()
-        if ((color ushr 24) == 0) return cues
-        return synchronized(recent) {
+        val boxed = if ((color ushr 24) == 0) cues else synchronized(recent) {
             cues.map { cue ->
                 val bitmap = cue.bitmap ?: return@map cue
                 recent[bitmap]?.takeIf { it.first == color }?.second
                     ?: SubtitleImageBox.boxed(cue, color).also { recent[bitmap] = color to it }
             }
         }
+        // RCTV: the size the viewer chose, like the text subtitles (only where they go on the screen
+        // changes: the picture isn't redrawn).
+        val scale = (runCatching { sizePercentProvider() }.getOrDefault(100) / 100f).coerceIn(0.5f, 2f)
+        return if (scale == 1f) boxed else boxed.map { SubtitleImageBox.scaled(it, scale) }
     }
 }
