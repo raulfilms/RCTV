@@ -910,6 +910,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                 shouldStripSdhProvider = {
                     currentPlayerSettingsForReport.subtitleStyle.stripSdh
                 },
+                subtitleBoxColorProvider = {
+                    currentPlayerSettingsForReport.subtitleStyle.backgroundColor
+                },
                 isBuiltInSubtitleProvider = {
                     _uiState.value.selectedAddonSubtitle == null
                 },
@@ -2201,6 +2204,8 @@ private class SubtitleOffsetRenderersFactory(
     private val audioDelayUsProvider: () -> Long,
     private val shouldNormalizeCuePositionProvider: () -> Boolean,
     private val shouldStripSdhProvider: () -> Boolean,
+    /** RCTV: the subtitle style's box color (each line's background) for image subtitles. */
+    private val subtitleBoxColorProvider: () -> Int = { android.graphics.Color.BLACK },
     private val isBuiltInSubtitleProvider: () -> Boolean,
     private val isSidecarAddonSubtitleActiveProvider: () -> Boolean = { false },
     private val videoBoundsFractionProvider: () -> RectF?,
@@ -2335,8 +2340,11 @@ private class SubtitleOffsetRenderersFactory(
             isSidecarAddonSubtitleActiveProvider = isSidecarAddonSubtitleActiveProvider,
             videoBoundsFractionProvider = videoBoundsFractionProvider
         )
+        // RCTV: image subtitles (PGS, VobSub, DVB) get the black box behind each line too, first,
+        // on the cues as their decoder made them.
+        val boxingOutput = ImageCueBoxingTextOutput(normalizingOutput, subtitleBoxColorProvider)
         val startIndex = out.size
-        super.buildTextRenderers(context, normalizingOutput, outputLooper, extensionRendererMode, out)
+        super.buildTextRenderers(context, boxingOutput, outputLooper, extensionRendererMode, out)
         for (index in startIndex until out.size) {
             out[index] = SubtitleOffsetRenderer(
                 baseRenderer = out[index],
