@@ -1411,124 +1411,147 @@ private fun AppleContinueWatchingCard(
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
-        Box(
+        // RCTV (owner's choice, like Prime Video): the artwork, and under it a dark band with the
+        // progress line, both inside the card's outline.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(shape)
+                .background(CW_PROGRESS_BAND_COLOR)
         ) {
-            if (imageUrl.isNullOrBlank()) {
-                MonochromePosterPlaceholder()
-            } else {
-                AsyncImage(
-                    model = imageRequest,
-                    contentDescription = titleText,
-                    contentScale = ContentScale.Crop,
-                    placeholder = backgroundPainter,
-                    error = backgroundPainter,
-                    fallback = backgroundPainter,
-                    onError = {
-                        if (reloadKey < 3) {
-                            brokenImageUrls.add(imageUrl)
-                            reloadKey++
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            // Darken the lower part so the logo and the progress line read on any artwork.
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0f to Color.Transparent,
-                                0.42f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.78f)
-                            )
-                        )
-                    )
-            )
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 10.dp, end = CW_BRAND_SIZE + 18.dp, bottom = 13.dp)
+                    .fillMaxWidth()
+                    .weight(1f)
             ) {
-                if (logoRequest != null && !logoFailed) {
-                    AsyncImage(
-                        model = logoRequest,
-                        contentDescription = titleText,
-                        contentScale = ContentScale.Fit,
-                        alignment = Alignment.BottomStart,
-                        onError = { logoFailed = true },
-                        modifier = Modifier
-                            .height(26.dp)
-                            .widthIn(max = cardWidth * 0.62f)
-                    )
+                if (imageUrl.isNullOrBlank()) {
+                    MonochromePosterPlaceholder()
                 } else {
-                    Text(
-                        text = titleText,
-                        color = AppleTvColors.Label,
-                        style = AppleTvType.Caption1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = titleText,
+                        contentScale = ContentScale.Crop,
+                        placeholder = backgroundPainter,
+                        error = backgroundPainter,
+                        fallback = backgroundPainter,
+                        onError = {
+                            if (reloadKey < 3) {
+                                brokenImageUrls.add(imageUrl)
+                                reloadKey++
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(12.dp)
-                    )
-                    if (infoText.isNotBlank()) {
-                        Spacer(modifier = Modifier.width(4.dp))
+
+                // Darken the lower part so the logo and the progress line read on any artwork.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    0.42f to Color.Transparent,
+                                    1f to Color.Black.copy(alpha = 0.78f)
+                                )
+                            )
+                        )
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 10.dp, end = CW_BRAND_SIZE + 18.dp, bottom = 8.dp)
+                ) {
+                    if (logoRequest != null && !logoFailed) {
+                        AsyncImage(
+                            model = logoRequest,
+                            contentDescription = titleText,
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.BottomStart,
+                            onError = { logoFailed = true },
+                            modifier = Modifier
+                                .height(26.dp)
+                                .widthIn(max = cardWidth * 0.62f)
+                        )
+                    } else {
                         Text(
-                            text = infoText,
-                            color = AppleTvColors.LabelSecondary,
-                            style = AppleTvType.Caption2,
+                            text = titleText,
+                            color = AppleTvColors.Label,
+                            style = AppleTvType.Caption1,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        if (infoText.isNotBlank()) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = infoText,
+                                color = AppleTvColors.LabelSecondary,
+                                style = AppleTvType.Caption2,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
+
+                // Where it comes from, in a small circle at the bottom right.
+                brand?.let { found ->
+                    TitleBrandBadge(
+                        brand = found,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 10.dp, bottom = 7.dp)
+                    )
+                }
+
             }
 
-            // Where it comes from, in a small circle at the bottom right.
-            brand?.let { found ->
-                TitleBrandBadge(
-                    brand = found,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 10.dp, bottom = 12.dp)
-                )
-            }
-
-            // The progress, like Prime Video: a thin line across the card's bottom.
-            if (progress != null && progressFraction > 0f) {
+            // The progress: a rounded line across the band (an episode not started: its empty track).
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(CW_PROGRESS_BAND_HEIGHT),
+                contentAlignment = Alignment.Center
+            ) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(start = 10.dp, end = 10.dp, bottom = 6.dp)
-                        .height(3.dp)
+                        .padding(horizontal = 12.dp)
+                        .height(4.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Color.White.copy(alpha = 0.28f))
+                        .background(CW_PROGRESS_TRACK_COLOR)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(progressFraction)
-                            .background(AppleTvColors.Accent)
-                    )
+                    if (progress != null && progressFraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progressFraction)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(CW_PROGRESS_FILL_COLOR)
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/** RCTV: the band under a Continue Watching card's artwork, with its progress line (Prime Video's look). */
+internal val CW_PROGRESS_BAND_HEIGHT = 18.dp
+private val CW_PROGRESS_BAND_COLOR = Color(0xFF0F1115)
+private val CW_PROGRESS_TRACK_COLOR = Color(0xFF3A3E45)
+private val CW_PROGRESS_FILL_COLOR = Color(0xFF5BBCF0)
 
 /** RCTV: the round badge's size: easy to tell at a glance, never over the art. */
 private val CW_BRAND_SIZE = 28.dp

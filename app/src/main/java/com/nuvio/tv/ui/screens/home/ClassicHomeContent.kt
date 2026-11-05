@@ -100,8 +100,9 @@ private val CLASSIC_ROW_HEADER_FOCUS_INSET = 160.dp
 private val APPLE_HERO_FADE_DISTANCE = 200.dp
 // Apple TV "Continue Watching" cards: the sheet's 4-column width.
 private val APPLE_CW_CARD_WIDTH = AppleTvSpacing.Col4
-// RCTV (owner's choice): 16:9, like Prime Video's Continue Watching.
-private val APPLE_CW_CARD_HEIGHT = 116.dp
+// RCTV (owner's choice), like Prime Video's Continue Watching: 16:9 artwork (116 dp) and under it
+// the band with the progress line (CW_PROGRESS_BAND_HEIGHT, 18 dp).
+private val APPLE_CW_CARD_HEIGHT = 134.dp
 private const val STREAMING_SERVICES_ROW_KEY = "streaming_services"
 // Saved-focus row index for the services row; catalog rows use 0 and up, Continue Watching -1, the hero -2.
 private const val STREAMING_SERVICES_ROW_INDEX = -3
