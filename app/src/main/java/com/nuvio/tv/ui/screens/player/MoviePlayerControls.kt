@@ -157,12 +157,13 @@ internal fun TitlePlayerControlsOverlay(
                 .align(Alignment.TopCenter)
                 .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)))
         )
+        // RCTV: a soft black from the middle down, so the time and the timeline read on any scene.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(320.dp)
                 .align(Alignment.BottomCenter)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))))
+                .background(PlayerBottomShade)
         )
 
         // The title's logo (its name when it has none) and Settings.

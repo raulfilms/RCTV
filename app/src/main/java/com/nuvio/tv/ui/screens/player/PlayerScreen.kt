@@ -2315,20 +2315,13 @@ private fun PlayerControlsOverlay(
                 )
         )
 
-        // Bottom gradient
+        // Bottom gradient (RCTV: a soft black from the middle down, so the time reads on any scene)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(320.dp)
                 .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.8f)
-                        )
-                    )
-                )
+                .background(PlayerBottomShade)
         )
 
         Column(
@@ -2668,10 +2661,28 @@ internal fun PlayerControlsTimeTextHost(viewModel: PlayerViewModel, color: Color
 
     Text(
         text = timeText,
-        style = MaterialTheme.typography.bodyMedium,
+        // RCTV: a soft shadow, so the minutes and seconds read on a bright scene too.
+        style = MaterialTheme.typography.bodyMedium.copy(
+            shadow = androidx.compose.ui.graphics.Shadow(
+                color = Color.Black.copy(alpha = 0.7f),
+                offset = androidx.compose.ui.geometry.Offset(0f, 1f),
+                blurRadius = 6f
+            )
+        ),
         color = color
     )
 }
+
+/**
+ * RCTV: the shade under the player's controls: nothing at its top, a soft black where the time and
+ * the timeline are, darker at the very bottom (the buttons).
+ */
+internal val PlayerBottomShade: Brush = Brush.verticalGradient(
+    0f to Color.Transparent,
+    0.35f to Color.Black.copy(alpha = 0.3f),
+    0.65f to Color.Black.copy(alpha = 0.55f),
+    1f to Color.Black.copy(alpha = 0.8f)
+)
 
 @Composable
 private fun ReportControlButton(
