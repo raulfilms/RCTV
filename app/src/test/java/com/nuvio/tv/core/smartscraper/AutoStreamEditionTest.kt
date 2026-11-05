@@ -73,9 +73,9 @@ class AutoStreamEditionTest {
         assertEquals(listOf(ReleaseEdition.DIRECTORS_CUT), editions.map { it.edition })
         // RCTV (owner's rule): its smallest 4K, 2K or 1080p file.
         assertEquals(VideoResolution.FHD_1080, editions.single().best.resolution)
-        // Only a version over 8 GB: not offered.
+        // Only a version over the limit (8 GB per 2 hours: about 9.6 GB for this 2 h 24 min movie): not offered.
         val tooBig = AutoStreamEngine.editions(
-            listOf(stream("ext-9", "Kingdom.of.Heaven.2005.Extended.2160p.BluRay.DDP5.1.HEVC", 9.0)).map(SourceProviderAdapters::normalize),
+            listOf(stream("ext-9", "Kingdom.of.Heaven.2005.Extended.2160p.BluRay.DDP5.1.HEVC", 10.5)).map(SourceProviderAdapters::normalize),
             movie
         )
         assertTrue(tooBig.isEmpty())

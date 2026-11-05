@@ -47,7 +47,8 @@ class AutoStreamEngineTest {
     private val batman = SmartSourceRequest(title = "The Batman", year = 2022, isSeries = false, runtimeMinutes = 176)
 
     private fun batmanStreams() = listOf(
-        stream("too-big", "The.Batman.2022.2160p.WEB-DL.DDP5.1.HDR.HEVC", 9.1),
+        // RCTV: over the limit for a 2 h 56 min movie (8 GB per 2 hours: about 11.7 GB).
+        stream("too-big", "The.Batman.2022.2160p.WEB-DL.DDP5.1.HDR.HEVC", 12.5),
         stream("truehd-7.1", "The.Batman.2022.2160p.BluRay.TrueHD.7.1.Atmos.HEVC", 7.6),
         stream("uncached", "The.Batman.2022.2160p.WEB-DL.DDP5.1.HEVC", 5.9, name = "[RD download] Torrentio\n4k"),
         stream("1989", "Batman.1989.2160p.BluRay.DTS-HD.MA.5.1.HEVC", 6.0),

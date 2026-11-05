@@ -364,7 +364,7 @@ private suspend fun PlayerRuntimeController.resolveAndVerifyForPlayer(
         url = url,
         headers = PlayerMediaSourceFactory.sanitizeHeaders(playable.behaviorHints?.proxyHeaders?.request),
         knownSizeBytes = release.sizeBytes?.takeIf { !(release.sizeIsPack && isSeries) },
-        maxBytes = config.maxFileSizeBytes,
+        maxBytes = config.maxFileSizeBytesFor(runtimeMinutesOf(_uiState.value.runtime), isSeries),
         timeoutMs = (config.resolveVerifyTimeoutSeconds * 1_000).toLong()
     )
     return if (check.ok) {

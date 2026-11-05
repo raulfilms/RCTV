@@ -199,6 +199,16 @@ data class AutoStreamConfig(
     /** The limit in bytes (a file of exactly this many bytes plays). */
     val maxFileSizeBytes: Long get() = (maxFileSizeGb * bytesPerGb).toLong()
 
+    /**
+     * RCTV (owner's choice): the limit grows with a long movie, as its file does: the limit for every
+     * [LENGTH_OF_BASE_LIMIT_MINUTES] (8 GB per 2 hours: about 11 GB for a 2 h 49 min movie). Never
+     * less than the limit; an episode's stays the limit.
+     */
+    fun maxFileSizeBytesFor(runtimeMinutes: Int?, isSeries: Boolean): Long {
+        val minutes = runtimeMinutes?.takeIf { !isSeries && it > LENGTH_OF_BASE_LIMIT_MINUTES } ?: return maxFileSizeBytes
+        return (maxFileSizeBytes * (minutes / LENGTH_OF_BASE_LIMIT_MINUTES.toDouble())).toLong()
+    }
+
     /** [provider]'s place in [serverOrder] and [debridOrder] (lower first). */
     fun serverRank(provider: ProviderIdentity): Int {
         val family = serverOrder.indexOf(provider.family).let { if (it < 0) serverOrder.size else it }
@@ -287,3 +297,6 @@ data class SmartRankingContext(
         val DEFAULT = SmartRankingContext()
     }
 }
+
+/** The movie length the size limit is for (a longer movie's limit grows with it). */
+const val LENGTH_OF_BASE_LIMIT_MINUTES = 120

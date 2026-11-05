@@ -259,7 +259,7 @@ object AutoStreamEngine {
         val size = fileSize(release, request)
         if (size == null) {
             if (!canVerifySize) return AutoStreamReject.SIZE_UNKNOWN
-        } else if (size > config.maxFileSizeBytes) {
+        } else if (size > config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries)) {
             return AutoStreamReject.TOO_LARGE
         }
         if (release.resolution.isKnown && release.resolution !in config.resolutions) return AutoStreamReject.LOW_RESOLUTION
@@ -513,7 +513,7 @@ object AutoStreamEngine {
             .filter { it.source.isInstantOrSpanishServer }
             .filter { scored ->
                 val size = fileSize(scored.release, request)
-                if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytes
+                if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries)
             }
             .map { candidate(it, request, context, AutoStreamPool.MAIN) }
         val shown = candidates.filter { it.fitsConnection }.ifEmpty { candidates }

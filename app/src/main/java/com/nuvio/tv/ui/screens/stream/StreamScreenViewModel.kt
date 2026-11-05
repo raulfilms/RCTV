@@ -1548,7 +1548,7 @@ class StreamScreenViewModel @Inject constructor(
             url = url,
             headers = info.headers.orEmpty(),
             knownSizeBytes = knownSize,
-            maxBytes = config.maxFileSizeBytes,
+            maxBytes = config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries),
             timeoutMs = (config.resolveVerifyTimeoutSeconds * 1_000).toLong()
         )
         return if (check.ok) {
