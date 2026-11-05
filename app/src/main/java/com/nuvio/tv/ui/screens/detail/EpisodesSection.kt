@@ -664,13 +664,15 @@ private fun EpisodeCard(
     }
     // RCTV: the still at 16:9 over its progress band; "1. Payback (44m)" under the card.
     val thumbnailHeight = cardMetrics.cardWidth * 9f / 16f
-    val episodeLine = remember(episode.episode, episode.title, runtimeLabel, context) {
+    // Like Disney+: "1. Swap.com" and, lighter, "(23m)".
+    val episodeLine = remember(episode.episode, episode.title, context) {
         val name = episode.title.localizeEpisodeTitle(context)
-        val numbered = episode.episode?.let { "$it. $name" } ?: name
-        runtimeLabel?.let { "$numbered ($it)" } ?: numbered
+        episode.episode?.let { "$it. $name" } ?: name
     }
-    val belowTitleStyle = remember(typography) { typography.titleSmall.copy(fontWeight = FontWeight.SemiBold) }
-    val belowDescriptionStyle = remember(typography) { typography.bodySmall }
+    val runtimeSuffix = remember(runtimeLabel) { runtimeLabel?.let { " ($it)" } }
+    val belowTitleStyle = remember(typography) { typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+    val belowRuntimeStyle = remember(typography) { typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal) }
+    val belowDescriptionStyle = remember(typography) { typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp) }
     val strEpisode = stringResource(R.string.episodes_episode)
     val strUnavailable = stringResource(R.string.episodes_unavailable)
     val episodeCode = remember(episode.episode, strEpisode) {
@@ -864,12 +866,23 @@ private fun EpisodeCard(
 
         // "1. Payback (44m)", then its story.
         Spacer(modifier = Modifier.height(8.dp))
-        FocusMarqueeText(
-            text = episodeLine,
-            focused = isFocused && !suppressMarquee,
-            style = belowTitleStyle,
-            color = textPrimary,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FocusMarqueeText(
+                text = episodeLine,
+                focused = isFocused && !suppressMarquee,
+                style = belowTitleStyle,
+                color = textPrimary,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            runtimeSuffix?.let { runtime ->
+                Text(
+                    text = runtime,
+                    style = belowRuntimeStyle,
+                    color = textPrimary.copy(alpha = 0.8f),
+                    maxLines = 1
+                )
+            }
+        }
         if (description.isNotBlank()) {
             Spacer(modifier = Modifier.height(3.dp))
             Text(
