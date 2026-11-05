@@ -139,7 +139,8 @@ object SmartScoreEngine {
     ): RejectReason? {
         val release = source.release
         if (!source.isPlayable) return RejectReason.NOT_PLAYABLE
-        if (source.cache == CacheState.UNCACHED) return RejectReason.NOT_CACHED
+        // RCTV (owner's rule): ready on a debrid service, or a Spanish server's link; nothing to download.
+        if (!source.isInstantOrSpanishServer) return RejectReason.NOT_CACHED
         if (release.source.isLowQuality) return RejectReason.LOW_QUALITY_SOURCE
         if (release.resolution.isKnown && release.resolution.level < config.minResolution.level) {
             return RejectReason.LOW_RESOLUTION

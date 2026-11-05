@@ -223,6 +223,23 @@ data class NormalizedSource(
         val said = release.audioLanguages + providerLanguages
         return said.ifEmpty { setOf(originalLanguage ?: AudioLanguage.ENGLISH) }
     }
+
+    /** From one of the Spanish servers (LatinoDebrid, Addon LATAM). */
+    val isSpanishServer: Boolean
+        get() = provider.family == ProviderFamily.LATINODEBRID || provider.family == ProviderFamily.LATAM
+
+    /**
+     * RCTV (owner's rule): the only sources the Smart Scraper and Auto Stream use. Ready on a debrid
+     * service (it plays at once), or a link of the Spanish servers, which aren't debrid. Never one
+     * the debrid service would have to download first, a torrent to fetch on the device, or any other
+     * link (a plugin's, a site's).
+     */
+    val isInstantOrSpanishServer: Boolean
+        get() = when (cache) {
+            CacheState.CACHED -> true
+            CacheState.UNCACHED -> false
+            CacheState.UNKNOWN -> isSpanishServer && isPlayable && !isPeerToPeer && stream.getStreamUrl() != null
+        }
 }
 
 /** RCTV: a movie's version beyond the regular one. [key]: how it travels between screens. */

@@ -3,6 +3,7 @@ package com.nuvio.tv.core.smartscraper
 import com.nuvio.tv.domain.model.Stream
 import com.nuvio.tv.domain.model.StreamBehaviorHints
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,7 +40,7 @@ class AutoStreamServerTest {
     }
 
     @Test
-    fun `the same sound - AIO Stream, then Torrentio by TorBox, Real-Debrid, Premiumize, then a plugin, then the rest`() {
+    fun `the same sound - AIO Stream, then Torrentio by TorBox, Real-Debrid, Premiumize, then the rest (never a plugin's link)`() {
         val result = rank(
             stream("other", RELEASE_4K, 5.0, name = "[RD+] Something", addon = "Something"),
             stream("plugin", RELEASE_4K, 5.0, name = "All-in-One 4K", addon = "MoviesDrive", plugin = "All-in-One-Nuvio", url = "https://example.com/plugin.mkv", hash = null),
@@ -48,7 +49,8 @@ class AutoStreamServerTest {
             stream("tb", RELEASE_4K, 5.0, name = "[TB+] Torrentio\n4k", addon = "Torrentio TB"),
             stream("aio", RELEASE_4K, 5.0, name = "[RD+] AIOStreams 4K", addon = "AIOStreams")
         )
-        assertEquals(listOf("aio", "tb", "rd", "pm", "plugin", "other"), result.candidates.map { it.stream.addonLogo })
+        // Owner's rule: only what's ready on a debrid service (and the Spanish servers' links).
+        assertEquals(listOf("aio", "tb", "rd", "pm", "other"), result.candidates.map { it.stream.addonLogo })
     }
 
     @Test
@@ -77,13 +79,31 @@ class AutoStreamServerTest {
     }
 
     @Test
-    fun `a plugin's own link plays though no debrid service says it's ready, a debrid addon's doesn't`() {
+    fun `only what's ready on a debrid service - never a plugin's link, another link, or one to download`() {
         val result = rank(
             stream("plugin", RELEASE_4K, 5.0, name = "All-in-One 4K", addon = "MoviesDrive", plugin = "All-in-One-Nuvio", url = "https://example.com/p.mkv", hash = null),
-            stream("unsaid", RELEASE_4K, 5.0, name = "Something 4K", addon = "Something", url = "https://example.com/s.mkv", hash = null)
+            stream("unsaid", RELEASE_4K, 5.0, name = "Something 4K", addon = "Something", url = "https://example.com/s.mkv", hash = null),
+            stream("download", RELEASE_4K, 5.0, name = "[RD download] Torrentio\n4k", addon = "Torrentio RD"),
+            stream("ready", RELEASE_4K, 5.0, name = "[RD+] Torrentio\n4k", addon = "Torrentio RD")
         )
-        assertEquals(listOf("plugin"), result.candidates.map { it.stream.addonLogo })
-        assertEquals(AutoStreamReject.NOT_CACHED, result.rejected.single().second)
+        assertEquals(listOf("ready"), result.candidates.map { it.stream.addonLogo })
+        assertEquals(listOf(AutoStreamReject.NOT_CACHED), result.rejected.map { it.second }.distinct())
+        assertEquals(3, result.rejected.size)
+    }
+
+    @Test
+    fun `the Smart Scraper keeps only what's ready on a debrid service, and the Spanish servers' links`() {
+        val request = movie
+        fun judged(id: String, name: String, addon: String, url: String = "https://example.com/$id", hash: String? = "same-file", plugin: String? = null) =
+            SmartScoreEngine.judge(
+                SourceProviderAdapters.normalize(stream(id, RELEASE_4K, 5.0, name = name, addon = addon, plugin = plugin, url = url, hash = hash)),
+                request,
+                SmartRankingContext.DEFAULT
+            ).rejection
+        assertNull(judged("ready", "[RD+] Torrentio\n4k", "Torrentio RD"))
+        assertEquals(RejectReason.NOT_CACHED, judged("download", "[RD download] Torrentio\n4k", "Torrentio RD"))
+        assertEquals(RejectReason.NOT_CACHED, judged("plugin", "All-in-One 4K", "MoviesDrive", url = "https://example.com/p.mkv", hash = null, plugin = "All-in-One-Nuvio"))
+        assertNull(judged("latam", "LATAM\n4k", "Addon LATAM", url = "https://example.com/l.mkv", hash = null))
     }
 
     @Test

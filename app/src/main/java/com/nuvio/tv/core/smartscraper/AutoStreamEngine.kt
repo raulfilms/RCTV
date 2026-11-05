@@ -129,9 +129,9 @@ data class AutoStreamResult(
  * Hard rules (§3), any failed and the stream is out: the right title, year, season and episode;
  * playable; never CAM/TS/TC/SCR; at most 8.00 GB (the episode's file, never a whole season's); 2160p
  * to 480p; 5.1 or 2.0 (one whose layout isn't said may play, after the rest); English or the title's
- * own audio (a Spanish-only file is never the video); marked ready on the debrid service (RCTV: or
- * a link that plays as it is, see [readyLink]). Nothing is ever relaxed: when nothing passes,
- * there's no automatic stream.
+ * own audio (a Spanish-only file is never the video); marked ready on the debrid service (RCTV,
+ * owner's rule: or a Spanish server's link, see [NormalizedSource.isInstantOrSpanishServer]; never
+ * one to download). Nothing is ever relaxed: when nothing passes, there's no automatic stream.
  *
  * RCTV (owner's rule, 4-nov-2026), before the ranking below: the wanted resolutions (4K, 2K, 1080p,
  * up to the TV's own) the connection and the TV take come first, 5.1 before 2.0, then the smallest
@@ -274,31 +274,18 @@ object AutoStreamEngine {
             AutoStreamPool.MAIN -> if (!mayHaveOriginalAudio(said, release, request)) return AutoStreamReject.NO_ORIGINAL_AUDIO
             AutoStreamPool.SPANISH -> if (AudioLanguage.SPANISH !in said) return AutoStreamReject.NO_SPANISH_AUDIO
         }
-        when (source.cache) {
-            CacheState.CACHED -> Unit
-            CacheState.UNCACHED -> return AutoStreamReject.NOT_CACHED
-            // RCTV: the Spanish streams keep v1's rule (only a file said not to be ready is out) until
-            // the dual-language engine checks them itself (Phase 3).
-            CacheState.UNKNOWN -> if (config.requireCached && pool == AutoStreamPool.MAIN && !readyLink(source, request)) {
-                return AutoStreamReject.NOT_CACHED
-            }
+        // RCTV (owner's rule): only files ready on a debrid service (nothing to download first) and the
+        // Spanish servers' links (LatinoDebrid, Addon LATAM: not debrid). Their links stand for the
+        // title's own audio only for a title in Spanish (a Mexican or Colombian telenovela the other
+        // servers often don't have); for Spanish audio, always. A link's first bytes are checked
+        // before it plays.
+        if (!source.isInstantOrSpanishServer) return AutoStreamReject.NOT_CACHED
+        if (source.cache != CacheState.CACHED && pool == AutoStreamPool.MAIN &&
+            request.originalLanguage != AudioLanguage.SPANISH
+        ) {
+            return AutoStreamReject.NOT_CACHED
         }
         return null
-    }
-
-    /**
-     * RCTV: a link that plays as it is though no debrid service says it's ready (its first bytes are
-     * checked before it plays): a plugin's (All-in-One-Nuvio's links are its own, never the
-     * person's debrid services), and, for a title in Spanish (a Mexican or Colombian telenovela the
-     * other servers often don't have), LatinoDebrid's and Addon LATAM's.
-     */
-    private fun readyLink(source: NormalizedSource, request: SmartSourceRequest): Boolean {
-        if (source.isPeerToPeer || source.stream.getStreamUrl() == null) return false
-        return when (source.provider.family) {
-            ProviderFamily.PLUGIN -> true
-            ProviderFamily.LATINODEBRID, ProviderFamily.LATAM -> request.originalLanguage == AudioLanguage.SPANISH
-            else -> false
-        }
     }
 
     /**
@@ -522,6 +509,8 @@ object AutoStreamEngine {
         val candidates = sources
             .map { SmartScoreEngine.judge(it, request, context) }
             .filter { it.rejection?.removesFromAll != true }
+            // RCTV (owner's rule): only what plays at once on a debrid service, and the Spanish servers.
+            .filter { it.source.isInstantOrSpanishServer }
             .filter { scored ->
                 val size = fileSize(scored.release, request)
                 if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytes

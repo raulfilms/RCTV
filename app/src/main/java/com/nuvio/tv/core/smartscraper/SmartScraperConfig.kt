@@ -101,7 +101,10 @@ data class AutoStreamConfig(
     ),
     /** AUTO_STREAM_ALLOWED_CHANNELS: by layout, not tags (DD+ 5.1 Atmos is 5.1; 7.1 never). */
     val allowedChannels: Set<AudioChannels> = setOf(AudioChannels.CH_5_1, AudioChannels.CH_2_0),
-    /** REQUIRE_CACHED: only what its addon marks ready on the debrid service ([RD+], ⚡...). */
+    /**
+     * REQUIRE_CACHED: only what its addon marks ready on the debrid service ([RD+], ⚡...). RCTV:
+     * always so now (owner's rule, see [NormalizedSource.isInstantOrSpanishServer]); kept for reference.
+     */
     val requireCached: Boolean = true,
     /** §3.1: a file whose layout isn't said may play, after every one said to be 5.1 or 2.0. */
     val allowUnverifiedAudio: Boolean = true,
