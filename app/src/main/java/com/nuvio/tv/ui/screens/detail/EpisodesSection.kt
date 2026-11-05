@@ -10,6 +10,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -539,8 +541,8 @@ private fun EpisodeCard(
     val thumbnailWidthPx = remember(cardMetrics.cardWidth, density) {
         with(density) { cardMetrics.cardWidth.roundToPx() }
     }
-    val thumbnailHeightPx = remember(cardMetrics.cardHeight, density) {
-        with(density) { cardMetrics.cardHeight.roundToPx() }
+    val thumbnailHeightPx = remember(cardMetrics.cardWidth, density) {
+        with(density) { (cardMetrics.cardWidth * 9f / 16f).roundToPx() }
     }
     val overlayBrush = remember {
         Brush.verticalGradient(
@@ -660,6 +662,15 @@ private fun EpisodeCard(
             )
         )
     }
+    // RCTV: the still at 16:9 over its progress band; "1. Payback (44m)" under the card.
+    val thumbnailHeight = cardMetrics.cardWidth * 9f / 16f
+    val episodeLine = remember(episode.episode, episode.title, runtimeLabel, context) {
+        val name = episode.title.localizeEpisodeTitle(context)
+        val numbered = episode.episode?.let { "$it. $name" } ?: name
+        runtimeLabel?.let { "$numbered ($it)" } ?: numbered
+    }
+    val belowTitleStyle = remember(typography) { typography.titleSmall.copy(fontWeight = FontWeight.SemiBold) }
+    val belowDescriptionStyle = remember(typography) { typography.bodySmall }
     val strEpisode = stringResource(R.string.episodes_episode)
     val strUnavailable = stringResource(R.string.episodes_unavailable)
     val episodeCode = remember(episode.episode, strEpisode) {
@@ -679,314 +690,204 @@ private fun EpisodeCard(
     val cardScale = CardDefaults.scale(focusedScale = 1.0f)
     val cardGlow = CardDefaults.glow()
 
-    Card(
-        onClick = {
-            if (longPressTriggered) {
-                longPressTriggered = false
-            } else {
-                onClick()
-            }
-        },
-        modifier = Modifier
-            .width(cardMetrics.cardWidth)
-            .focusRequester(focusRequester)
-            .onFocusChanged {
-                isFocused = it.isFocused
-                if (it.isFocused) {
-                    onFocused?.invoke()
-                    onFocusRestored?.invoke()
-                }
-            }
-            .onPreviewKeyEvent { event ->
-                val native = event.nativeKeyEvent
-                if (native.action == AndroidKeyEvent.ACTION_DOWN) {
-                    if (native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
-                        longPressTriggered = true
-                        onLongPress()
-                        return@onPreviewKeyEvent true
-                    }
-                }
-                if (longPressKeyTracker.handle(native, ::isSelectKey) {
-                        longPressTriggered = true
-                        onLongPress()
-                    }
-                ) {
-                    if (native.action == AndroidKeyEvent.ACTION_UP) {
-                        longPressTriggered = false
-                    }
-                    return@onPreviewKeyEvent true
-                }
-                if (native.action == AndroidKeyEvent.ACTION_UP &&
-                    longPressTriggered &&
-                    (isSelectKey(native.keyCode) || native.keyCode == AndroidKeyEvent.KEYCODE_MENU)
-                ) {
+    // RCTV (owner's choice, like Disney+ and Prime Video): the still alone in the card, the progress
+    // line in a dark band under it (inside the focus ring), and the episode's name and story under the card.
+    Column(modifier = Modifier.width(cardMetrics.cardWidth)) {
+        Card(
+            onClick = {
+                if (longPressTriggered) {
                     longPressTriggered = false
-                    return@onPreviewKeyEvent true
-                }
-                false
-            }
-            .focusProperties {
-                canFocus = isFocusEnabled
-                up = upFocusRequester
-                if (downFocusRequester != null) {
-                    down = downFocusRequester
+                } else {
+                    onClick()
                 }
             },
-        shape = cardShape,
-        colors = cardColors,
-        border = cardBorder,
-        scale = cardScale,
-        glow = cardGlow
-    ) {
-        Box(
             modifier = Modifier
                 .width(cardMetrics.cardWidth)
-                .height(cardMetrics.cardHeight)
-                .clip(shape)
-                .nuvioCardDepth(
-                    shape = shape,
-                    surface = CardDepthSurface.EPISODE_CARDS,
-                    style = cardDepthStyle,
-                    fallbackBorderAlpha = 0.12f
-                )
-        ) {
-            val bgPainter = remember(cardBgColor) { androidx.compose.ui.graphics.painter.ColorPainter(cardBgColor) }
-            AsyncImage(
-                model = thumbnailRequest,
-                contentDescription = episode.title.localizeEpisodeTitle(context),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        compositingStrategy =
-                            CompositingStrategy.Offscreen
+                .focusRequester(focusRequester)
+                .onFocusChanged {
+                    isFocused = it.isFocused
+                    if (it.isFocused) {
+                        onFocused?.invoke()
+                        onFocusRestored?.invoke()
                     }
-                    .clipToBounds()
-
-                    //Gradient for text legibility
-                    .drawWithContent {
-                        drawContent()
-
-                        // Floor-fade text-protection scrim across the whole card: fully transparent
-                        // over the artwork up top, easing in gradually (no abrupt onset, which banded
-                        // into a visible "line" over smooth/blurred thumbnails) and ramping to ~95%
-                        // black in the bottom strip where the text sits. The scrim — not the shadow —
-                        // carries legibility (WCAG 3:1 title / ~4.5:1 description).
-                        val localBrush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to Color.Transparent,
-                                0.20f to Color.Black.copy(alpha = 0.04f),
-                                0.38f to Color.Black.copy(alpha = 0.26f),
-                                0.54f to Color.Black.copy(alpha = 0.56f),
-                                0.70f to Color.Black.copy(alpha = 0.76f),
-                                0.86f to Color.Black.copy(alpha = 0.88f),
-                                1.0f to Color.Black.copy(alpha = 0.95f)
-                            ),
-                            startY = 0f,
-                            endY = size.height
-                        )
-                        drawRect(
-                            brush = localBrush,
-                            alpha = if (isFocusedState.value) 1f else 0.94f
-                        )
-                    },
-                contentScale = ContentScale.Crop,
-                placeholder = bgPainter,
-                error = bgPainter,
-                fallback = bgPainter
-            )
-
+                }
+                .onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    if (native.action == AndroidKeyEvent.ACTION_DOWN) {
+                        if (native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
+                            longPressTriggered = true
+                            onLongPress()
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                    if (longPressKeyTracker.handle(native, ::isSelectKey) {
+                            longPressTriggered = true
+                            onLongPress()
+                        }
+                    ) {
+                        if (native.action == AndroidKeyEvent.ACTION_UP) {
+                            longPressTriggered = false
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                    if (native.action == AndroidKeyEvent.ACTION_UP &&
+                        longPressTriggered &&
+                        (isSelectKey(native.keyCode) || native.keyCode == AndroidKeyEvent.KEYCODE_MENU)
+                    ) {
+                        longPressTriggered = false
+                        return@onPreviewKeyEvent true
+                    }
+                    false
+                }
+                .focusProperties {
+                    canFocus = isFocusEnabled
+                    up = upFocusRequester
+                    if (downFocusRequester != null) {
+                        down = downFocusRequester
+                    }
+                },
+            shape = cardShape,
+            colors = cardColors,
+            border = cardBorder,
+            scale = cardScale,
+            glow = cardGlow
+        ) {
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(
-                        start = cardMetrics.contentPadding,
-                        end = cardMetrics.contentPadding,
-                        top = cardMetrics.contentPadding,
-                        bottom = cardMetrics.contentBottomPadding
-                    ),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .width(cardMetrics.cardWidth)
+                    .clip(shape)
+                    .background(EPISODE_PROGRESS_BAND_COLOR)
             ) {
                 Box(
                     modifier = Modifier
-                        .background(
-                            color = badgeBgColor,
-                            shape = badgeShape
-                        )
-                        .padding(
-                            horizontal = cardMetrics.episodeBadgeHorizontalPadding,
-                            vertical = cardMetrics.episodeBadgeVerticalPadding
-                        )
+                        .width(cardMetrics.cardWidth)
+                        .height(thumbnailHeight)
                 ) {
-                    Text(
-                        text = episodeCode,
-                        style = episodeBadgeStyle,
-                        maxLines = 1
+                    val bgPainter = remember(cardBgColor) { androidx.compose.ui.graphics.painter.ColorPainter(cardBgColor) }
+                    AsyncImage(
+                        model = thumbnailRequest,
+                        contentDescription = episode.title.localizeEpisodeTitle(context),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        placeholder = bgPainter,
+                        error = bgPainter,
+                        fallback = bgPainter
                     )
-                }
 
-                FocusMarqueeText(
-                    text = episode.title.localizeEpisodeTitle(context),
-                    focused = isFocused && !suppressMarquee,
-                    style = titleStyle,
-                    color = textPrimary,
-                )
+                    if (showCompletedBadge) {
+                        WatchedMarker(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(
+                                    start = cardMetrics.statusBadgeInset,
+                                    top = cardMetrics.statusBadgeInset
+                                ),
+                            size = cardMetrics.statusBadgeSize,
+                            iconSize = cardMetrics.statusIconSize
+                        )
+                    }
 
-                if (description.isNotBlank()) {
-                    Text(
-                        text = description,
-                        style = descriptionStyle.copy(textDirection = description.contentTextDirection()),
-                        maxLines = cardMetrics.descriptionMaxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                if (runtimeLabel != null || ratingLabel != null || formattedDate.isNotBlank()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        runtimeLabel?.let { runtime ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Schedule,
-                                    contentDescription = null,
-                                    tint = textSecondary,
-                                    modifier = Modifier.size(cardMetrics.metadataIconSize)
+                    if (isUnavailable) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(
+                                    end = cardMetrics.statusBadgeInset,
+                                    top = cardMetrics.statusBadgeInset
                                 )
-                                Text(
-                                    text = runtime,
-                                    style = metaLabelStyle,
-                                    maxLines = 1
+                                .background(
+                                    color = Color(0xCC5D4037),
+                                    shape = badgeShape
                                 )
-                            }
-                        }
-
-                        ratingLabel?.let { rating ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ImdbRatingSourceLabel(
-                                    logoModifier = Modifier
-                                        .width(cardMetrics.imdbLogoWidth)
-                                        .height(cardMetrics.imdbLogoHeight),
-                                    textStyle = metaLabelStyle,
-                                    textColor = textSecondary
+                                .padding(
+                                    horizontal = cardMetrics.episodeBadgeHorizontalPadding,
+                                    vertical = cardMetrics.episodeBadgeVerticalPadding
                                 )
-                                Text(
-                                    text = rating,
-                                    style = ratingStyle,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-
-                        if (formattedDate.isNotBlank()) {
+                        ) {
                             Text(
-                                text = formattedDate,
-                                style = metaLabelStyle,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.End,
-                                modifier = Modifier.weight(1f)
+                                text = strUnavailable.uppercase(Locale.getDefault()),
+                                style = episodeBadgeStyle,
+                                maxLines = 1
+                            )
+                        }
+                    } else if (showNotStartedBadge) {
+                        val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(7f, 5f), 0f) }
+                        Canvas(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(
+                                    start = cardMetrics.statusBadgeInset,
+                                    top = cardMetrics.statusBadgeInset
+                                )
+                                .size(cardMetrics.statusBadgeSize)
+                        ) {
+                            drawCircle(
+                                color = notStartedBadgeColor,
+                                style = Stroke(
+                                    width = NuvioTheme.spacing.xxs.toPx(),
+                                    pathEffect = dashEffect
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // The progress (a watched episode: all of it; one not started: the empty track).
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(EPISODE_PROGRESS_BAND_HEIGHT),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(EPISODE_PROGRESS_TRACK_COLOR)
+                    ) {
+                        val filled = if (isWatched) 1f else if (showProgress) progressPercent.coerceIn(0f, 1f) else 0f
+                        if (filled > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(filled)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(EPISODE_PROGRESS_FILL_COLOR)
                             )
                         }
                     }
                 }
             }
+        }
 
-            if (showProgress) {
-                val progressBarRadius = cardMetrics.progressBarHeight / 2
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(
-                            start = cardMetrics.contentPadding,
-                            end = cardMetrics.contentPadding,
-                            bottom = cardMetrics.contentPadding * 0.5f
-                        )
-                        .fillMaxWidth()
-                        .height(cardMetrics.progressBarHeight)
-                        .drawWithCache {
-                            val r = progressBarRadius.toPx()
-                            val cr = androidx.compose.ui.geometry.CornerRadius(r)
-                            val fillWidth = size.width * progressPercent
-                            onDrawBehind {
-                                drawRoundRect(color = progressBgColor, cornerRadius = cr)
-                                drawRoundRect(
-                                    color = primaryColor,
-                                    size = androidx.compose.ui.geometry.Size(fillWidth, size.height),
-                                    cornerRadius = cr
-                                )
-                            }
-                        }
-                )
-            }
-
-            if (showCompletedBadge) {
-                WatchedMarker(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(
-                            start = cardMetrics.statusBadgeInset,
-                            top = cardMetrics.statusBadgeInset
-                        ),
-                    size = cardMetrics.statusBadgeSize,
-                    iconSize = cardMetrics.statusIconSize
-                )
-            }
-
-            if (isUnavailable) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(
-                            end = cardMetrics.statusBadgeInset,
-                            top = cardMetrics.statusBadgeInset
-                        )
-                        .background(
-                            color = Color(0xCC5D4037),
-                            shape = badgeShape
-                        )
-                        .padding(
-                            horizontal = cardMetrics.episodeBadgeHorizontalPadding,
-                            vertical = cardMetrics.episodeBadgeVerticalPadding
-                        )
-                ) {
-                    Text(
-                        text = strUnavailable.uppercase(Locale.getDefault()),
-                        style = episodeBadgeStyle,
-                        maxLines = 1
-                    )
-                }
-            } else if (showNotStartedBadge) {
-                val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(7f, 5f), 0f) }
-                Canvas(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(
-                            start = cardMetrics.statusBadgeInset,
-                            top = cardMetrics.statusBadgeInset
-                        )
-                        .size(cardMetrics.statusBadgeSize)
-                ) {
-                    drawCircle(
-                        color = notStartedBadgeColor,
-                        style = Stroke(
-                            width = NuvioTheme.spacing.xxs.toPx(),
-                            pathEffect = dashEffect
-                        )
-                    )
-                }
-            }
+        // "1. Payback (44m)", then its story.
+        Spacer(modifier = Modifier.height(8.dp))
+        FocusMarqueeText(
+            text = episodeLine,
+            focused = isFocused && !suppressMarquee,
+            style = belowTitleStyle,
+            color = textPrimary,
+        )
+        if (description.isNotBlank()) {
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = description,
+                style = belowDescriptionStyle.copy(textDirection = description.contentTextDirection()),
+                color = textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
+
+/** RCTV: the band under an episode's still, with its progress line (Prime Video's look). */
+private val EPISODE_PROGRESS_BAND_HEIGHT = 14.dp
+private val EPISODE_PROGRESS_BAND_COLOR = Color(0xFF0F1115)
+private val EPISODE_PROGRESS_TRACK_COLOR = Color(0xFF3A3E45)
+private val EPISODE_PROGRESS_FILL_COLOR = Color(0xFF5BBCF0)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -1064,6 +965,8 @@ private data class EpisodeCardMetrics(
 )
 
 @Composable
+// RCTV: the card is the episode's still (16:9) over its progress band, with its name and story under it
+// (like Disney+): narrower than the old text-on-the-still card, the row about as tall as before.
 private fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): EpisodeCardMetrics {
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val userCornerRadius = posterCardCornerRadiusDp.dp
@@ -1073,7 +976,7 @@ private fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): Epis
                 rowHorizontalPadding = NuvioTheme.spacing.huge,
                 rowVerticalPadding = 18.dp,
                 itemSpacing = 20.dp,
-                cardWidth = 400.dp,
+                cardWidth = 300.dp,
                 cardHeight = 263.dp,
                 cornerRadius = userCornerRadius,
                 contentPadding = 20.dp,
@@ -1098,7 +1001,7 @@ private fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): Epis
                 rowHorizontalPadding = 52.dp,
                 rowVerticalPadding = 18.dp,
                 itemSpacing = 18.dp,
-                cardWidth = 360.dp,
+                cardWidth = 272.dp,
                 cardHeight = 235.dp,
                 cornerRadius = userCornerRadius,
                 contentPadding = 18.dp,
@@ -1123,7 +1026,7 @@ private fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): Epis
                 rowHorizontalPadding = NuvioTheme.spacing.xxxl,
                 rowVerticalPadding = NuvioTheme.spacing.lg,
                 itemSpacing = NuvioTheme.spacing.lg,
-                cardWidth = 320.dp,
+                cardWidth = 240.dp,
                 cardHeight = 207.dp,
                 cornerRadius = userCornerRadius,
                 contentPadding = NuvioTheme.spacing.lg,
@@ -1148,7 +1051,7 @@ private fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): Epis
                 rowHorizontalPadding = NuvioTheme.spacing.xxl,
                 rowVerticalPadding = 14.dp,
                 itemSpacing = 14.dp,
-                cardWidth = 280.dp,
+                cardWidth = 208.dp,
                 cardHeight = 179.dp,
                 cornerRadius = userCornerRadius,
                 contentPadding = 14.dp,
