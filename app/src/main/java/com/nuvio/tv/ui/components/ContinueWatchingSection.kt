@@ -95,7 +95,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.tv.material3.Icon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -255,8 +254,9 @@ fun ContinueWatchingSection(
                 }
                 .focusGroup(),
             contentPadding = PaddingValues(horizontal = rowStartPadding),
+            // RCTV: Prime Video's gap between its Continue Watching cards.
             horizontalArrangement = Arrangement.spacedBy(
-                if (appleStyle) AppleTvCardSpacing else NuvioTheme.spacing.lg
+                if (appleStyle) CW_CARD_GAP else NuvioTheme.spacing.lg
             ),
             state = listState
         ) {
@@ -1255,9 +1255,9 @@ internal fun formatRemainingTime(
  * Apple TV style "Continue Watching" card: the artwork fills the card, the title
  * logo sits on it, and a small line at the bottom shows play, progress and time left.
  *
- * RCTV (owner's choice, like Prime Video and the Apple TV app): 16:9, the progress as a thin line
- * across the card's bottom, "▶ S1 E2 · 1h 2m" at the bottom left, and where the title comes from
- * (its streaming service's icon, else its network or studio) in a small circle at the bottom right.
+ * RCTV (owner's choice, exactly like Prime Video's): the whole card a 16:9 picture, the progress as a
+ * thin line on it near the bottom, and where the title comes from (its streaming service's icon,
+ * else its network or studio) in a small circle at the bottom right.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -1280,44 +1280,6 @@ private fun AppleContinueWatchingCard(
     val nextUp = (item as? ContinueWatchingItem.NextUp)?.info
     val titleText = progress?.name ?: nextUp?.name.orEmpty()
     val logoUrl = (progress?.logo ?: nextUp?.logo)?.takeIf { it.isNotBlank() }
-    val season = progress?.season ?: nextUp?.season
-    val episode = progress?.episode ?: nextUp?.episode
-    val episodeCode = remember(season, episode, context) {
-        if (season != null && episode != null) {
-            context.getString(R.string.season_episode_format, season, episode)
-        } else {
-            null
-        }
-    }
-    val strNext = stringResource(R.string.cw_next_up_short)
-    val strNew = stringResource(R.string.cw_new_episode_short)
-    val strUpcoming = stringResource(R.string.cw_upcoming)
-    val statusText = remember(progress, nextUp, strNext, strNew, strUpcoming) {
-        if (progress != null) {
-            val remainingMs = progress.duration - progress.position
-            if (progress.duration > 0 && remainingMs > 0) {
-                val totalMinutes = (remainingMs / 60_000L).coerceAtLeast(1L)
-                val hours = totalMinutes / 60
-                val minutes = totalMinutes % 60
-                when {
-                    hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
-                    hours > 0 -> "${hours}h"
-                    else -> "${minutes}m"
-                }
-            } else {
-                null
-            }
-        } else if (nextUp != null) {
-            when {
-                nextUp.isReleaseAlert -> strNew
-                !nextUp.hasAired -> strUpcoming
-                else -> strNext
-            }
-        } else {
-            null
-        }
-    }
-    val infoText = listOfNotNull(episodeCode, statusText).joinToString(separator = " · ")
     val progressFraction = progress?.progressPercentage?.coerceIn(0f, 1f) ?: 0f
 
     // Show artwork (not the episode still), like the Apple TV app.
@@ -1406,19 +1368,15 @@ private fun AppleContinueWatchingCard(
         scale = CardDefaults.scale(focusedScale = AppleTvFocusScale),
         glow = CardDefaults.glow(focusedGlow = AppleTvFocusGlow)
     ) {
-        // RCTV (owner's choice, like Prime Video): the artwork, and under it a dark band with the
-        // progress line, both inside the card's outline.
-        Column(
+        // RCTV (owner's choice, exactly like Prime Video): the whole card is the 16:9 picture, with
+        // the progress line on it near the bottom and where it comes from at the bottom right.
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(shape)
-                .background(CW_PROGRESS_BAND_COLOR)
+                .background(bgCardColor)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 if (imageUrl.isNullOrBlank()) {
                     MonochromePosterPlaceholder()
                 } else {
@@ -1457,7 +1415,7 @@ private fun AppleContinueWatchingCard(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 10.dp, end = CW_BRAND_SIZE + 18.dp, bottom = 8.dp)
+                        .padding(start = 10.dp, end = CW_BRAND_SIZE + 18.dp, bottom = CW_ABOVE_PROGRESS)
                 ) {
                     if (logoRequest != null && !logoFailed) {
                         AsyncImage(
@@ -1479,25 +1437,6 @@ private fun AppleContinueWatchingCard(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        if (infoText.isNotBlank()) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = infoText,
-                                color = AppleTvColors.LabelSecondary,
-                                style = AppleTvType.Caption2,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
                 }
 
                 // Where it comes from, in a small circle at the bottom right.
@@ -1506,46 +1445,46 @@ private fun AppleContinueWatchingCard(
                         brand = found,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(end = 10.dp, bottom = 7.dp)
+                            .padding(end = 10.dp, bottom = CW_ABOVE_PROGRESS)
                     )
                 }
 
             }
 
-            // The progress: a rounded line across the band (an episode not started: its empty track).
+            // The progress: a thin rounded line on the picture near its bottom, like Prime Video's
+            // (an episode not started: its empty track).
             Box(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(CW_PROGRESS_BAND_HEIGHT),
-                contentAlignment = Alignment.Center
+                    .padding(start = 12.dp, end = 12.dp, bottom = CW_PROGRESS_BOTTOM)
+                    .height(CW_PROGRESS_HEIGHT)
+                    .clip(RoundedCornerShape(CW_PROGRESS_HEIGHT / 2))
+                    .background(CW_PROGRESS_TRACK_COLOR)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(CW_PROGRESS_TRACK_COLOR)
-                ) {
-                    if (progress != null && progressFraction > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(progressFraction)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(CW_PROGRESS_FILL_COLOR)
-                        )
-                    }
+                if (progress != null && progressFraction > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressFraction)
+                            .clip(RoundedCornerShape(CW_PROGRESS_HEIGHT / 2))
+                            .background(CW_PROGRESS_FILL_COLOR)
+                    )
                 }
             }
         }
     }
 }
 
-/** RCTV: the band under a Continue Watching card's artwork, with its progress line (Prime Video's look). */
-internal val CW_PROGRESS_BAND_HEIGHT = 18.dp
-private val CW_PROGRESS_BAND_COLOR = Color(0xFF0F1115)
-private val CW_PROGRESS_TRACK_COLOR = Color(0xFF3A3E45)
+/** RCTV: the gap between Continue Watching cards (Prime Video's). */
+private val CW_CARD_GAP = 17.dp
+
+/** RCTV: a Continue Watching card's progress line, on the picture like Prime Video's. */
+private val CW_PROGRESS_HEIGHT = 3.dp
+private val CW_PROGRESS_BOTTOM = 8.dp
+/** What sits over the picture's bottom (the title, where it comes from) stays above the line. */
+private val CW_ABOVE_PROGRESS = 17.dp
+private val CW_PROGRESS_TRACK_COLOR = Color(0xFF3A3E45).copy(alpha = 0.9f)
 private val CW_PROGRESS_FILL_COLOR = Color(0xFF5BBCF0)
 
 /** RCTV: the round badge's size: easy to tell at a glance, never over the art. */
