@@ -1259,6 +1259,10 @@ internal fun formatRemainingTime(
 /**
  * Apple TV style "Continue Watching" card: the artwork fills the card, the title
  * logo sits on it, and a small line at the bottom shows play, progress and time left.
+ *
+ * RCTV (owner's choice, like Prime Video and the Apple TV app): 16:9, the progress as a thin line
+ * across the card's bottom, "▶ S1 E2 · 1h 2m" at the bottom left, and where the title comes from
+ * (its streaming service's icon, else its network or studio) in a small circle at the bottom right.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -1343,6 +1347,20 @@ private fun AppleContinueWatchingCard(
         }
     }
     var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+    // RCTV: where it comes from (looked up once per title, kept for the app's life).
+    val contentId = progress?.contentId ?: nextUp?.contentId
+    val contentType = progress?.contentType ?: nextUp?.contentType
+    val brandRepository = remember(context) {
+        runCatching {
+            dagger.hilt.android.EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                TitleBrandEntryPoint::class.java
+            ).titleBrandRepository()
+        }.getOrNull()
+    }
+    val brand by androidx.compose.runtime.produceState<com.nuvio.tv.data.streaming.TitleBrand?>(null, contentId, contentType) {
+        value = if (contentId.isNullOrBlank() || contentType.isNullOrBlank()) null else brandRepository?.brandOf(contentId, contentType)
+    }
     val bgCardColor = AppleTvColors.Surface1
     val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
 
@@ -1436,7 +1454,7 @@ private fun AppleContinueWatchingCard(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 10.dp, end = 10.dp, bottom = 8.dp)
+                    .padding(start = 10.dp, end = CW_BRAND_SIZE + 18.dp, bottom = 13.dp)
             ) {
                 if (logoRequest != null && !logoFailed) {
                     AsyncImage(
@@ -1446,7 +1464,7 @@ private fun AppleContinueWatchingCard(
                         alignment = Alignment.BottomStart,
                         onError = { logoFailed = true },
                         modifier = Modifier
-                            .height(28.dp)
+                            .height(26.dp)
                             .widthIn(max = cardWidth * 0.62f)
                     )
                 } else {
@@ -1458,7 +1476,7 @@ private fun AppleContinueWatchingCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(modifier = Modifier.height(5.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
@@ -1466,26 +1484,8 @@ private fun AppleContinueWatchingCard(
                         tint = Color.White,
                         modifier = Modifier.size(12.dp)
                     )
-                    if (progress != null && progressFraction > 0f) {
-                        Spacer(modifier = Modifier.width(5.dp))
-                        // Progress in the sheet's accent (system blue) on a faint track.
-                        Box(
-                            modifier = Modifier
-                                .width(26.dp)
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(AppleTvColors.LabelTertiary)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(progressFraction)
-                                    .background(AppleTvColors.Accent)
-                            )
-                        }
-                    }
                     if (infoText.isNotBlank()) {
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = infoText,
                             color = AppleTvColors.LabelSecondary,
@@ -1496,6 +1496,86 @@ private fun AppleContinueWatchingCard(
                     }
                 }
             }
+
+            // Where it comes from, in a small circle at the bottom right.
+            brand?.let { found ->
+                TitleBrandBadge(
+                    brand = found,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 10.dp, bottom = 12.dp)
+                )
+            }
+
+            // The progress, like Prime Video: a thin line across the card's bottom.
+            if (progress != null && progressFraction > 0f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, end = 10.dp, bottom = 6.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.28f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressFraction)
+                            .background(AppleTvColors.Accent)
+                    )
+                }
+            }
         }
     }
+}
+
+/** RCTV: the round badge's size: easy to tell at a glance, never over the art. */
+private val CW_BRAND_SIZE = 28.dp
+
+/**
+ * RCTV: a title's streaming service (its app icon filling the circle) or its network or studio
+ * (its logo, white, inside a dark circle).
+ */
+@Composable
+private fun TitleBrandBadge(brand: com.nuvio.tv.data.streaming.TitleBrand, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var failed by remember(brand) { mutableStateOf(false) }
+    if (failed) return
+    val icon = brand.iconUrl
+    Box(
+        modifier = modifier
+            .size(CW_BRAND_SIZE)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(Color.Black.copy(alpha = 0.78f))
+            .border(1.dp, Color.White.copy(alpha = 0.22f), androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!icon.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(icon).crossfade(true).build(),
+                contentDescription = brand.name,
+                contentScale = ContentScale.Crop,
+                onError = { failed = true },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(brand.wordmarkUrl).crossfade(true).build(),
+                contentDescription = brand.name,
+                contentScale = ContentScale.Fit,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White),
+                onError = { failed = true },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(5.dp)
+            )
+        }
+    }
+}
+
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+internal interface TitleBrandEntryPoint {
+    fun titleBrandRepository(): com.nuvio.tv.data.streaming.TitleBrandRepository
 }
