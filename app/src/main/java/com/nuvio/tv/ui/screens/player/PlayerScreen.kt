@@ -2674,14 +2674,15 @@ internal fun PlayerControlsTimeTextHost(viewModel: PlayerViewModel, color: Color
 }
 
 /**
- * RCTV: the shade under the player's controls: nothing at its top, a soft black where the time and
- * the timeline are, darker at the very bottom (the buttons).
+ * RCTV: the shade under the player's controls, like Netflix's: nothing at its top, then a black
+ * that's plain to see where the timeline and the time are, darkest at the very bottom (the
+ * buttons), so they read on the brightest scene.
  */
 internal val PlayerBottomShade: Brush = Brush.verticalGradient(
     0f to Color.Transparent,
-    0.35f to Color.Black.copy(alpha = 0.3f),
-    0.65f to Color.Black.copy(alpha = 0.55f),
-    1f to Color.Black.copy(alpha = 0.8f)
+    0.25f to Color.Black.copy(alpha = 0.35f),
+    0.55f to Color.Black.copy(alpha = 0.68f),
+    1f to Color.Black.copy(alpha = 0.88f)
 )
 
 @Composable
