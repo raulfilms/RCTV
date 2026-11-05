@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -25,7 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -94,7 +96,14 @@ fun YouTubeIframePlayer(
                 if (currentOpenWhenBlocked && code in BLOCKED_ERRORS) openInYouTube(context, videoId)
                 currentOnError(code)
             },
-            onProgress = { position, duration -> currentOnProgress(position, duration) }
+            onProgress = { position, duration ->
+                // Playing (its time moves) even if the "playing" state was missed: shown.
+                if (position > 0 && !started) {
+                    started = true
+                    currentOnStarted()
+                }
+                currentOnProgress(position, duration)
+            }
         )
     }
 
@@ -102,6 +111,9 @@ fun YouTubeIframePlayer(
         factory = { ctx ->
             WebView(ctx).apply {
                 setBackgroundColor(android.graphics.Color.BLACK)
+                // RCTV: its own hardware layer. Without it some TVs (the Mi Box) play the sound
+                // with no picture.
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 isFocusable = true
                 isFocusableInTouchMode = true
                 keepScreenOn = true
@@ -141,7 +153,12 @@ fun YouTubeIframePlayer(
             if (webView === view) webView = null
             view.release()
         },
-        modifier = modifier.graphicsLayer { alpha = if (started) 1f else 0f }
+        // Black over it until it plays (not YouTube's loading screen). Drawn on top rather than
+        // fading the WebView: a WebView drawn see-through can show no picture.
+        modifier = modifier.drawWithContent {
+            drawContent()
+            if (!started) drawRect(Color.Black)
+        }
     )
 
     LaunchedEffect(webView, isPlaying, isPaused) {
