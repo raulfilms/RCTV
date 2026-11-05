@@ -186,6 +186,16 @@ private fun CastDetailContent(
             .distinctBy { it.id }
             .sortedByDescending { releaseYearSortKey(it.releaseInfo) }
     }
+    // RCTV: the filmography's Movies / TV buttons: only the movies, only the shows, or (neither) all.
+    var creditFilter by rememberSaveable { mutableStateOf(CreditFilter.ALL) }
+    val shownCredits = remember(allCredits, creditFilter, person.movieCredits, person.tvCredits) {
+        when (creditFilter) {
+            CreditFilter.ALL -> allCredits
+            CreditFilter.MOVIES -> person.movieCredits.map { it.id }.toSet().let { ids -> allCredits.filter { it.id in ids } }
+            CreditFilter.TV -> person.tvCredits.map { it.id }.toSet().let { ids -> allCredits.filter { it.id in ids } }
+        }
+    }
+    val hasBothKinds = person.movieCredits.isNotEmpty() && person.tvCredits.isNotEmpty()
 
     val filmographyPosterStyle = remember(posterCardCornerRadiusDp) {
         PosterCardStyle(
@@ -276,7 +286,7 @@ private fun CastDetailContent(
                 // with it, instead of one row going right.
                 FilmographyGrid(
                     gridState = filmographyGridState,
-                    credits = allCredits,
+                    credits = shownCredits,
                     posterCardStyle = filmographyPosterStyle,
                     firstItemFocusRequester = firstPosterFocusRequester,
                     restoreItemId = pendingRestoreItemId,
@@ -312,8 +322,30 @@ private fun CastDetailContent(
                     )
                     SectionHeader(
                         title = stringResource(R.string.cast_detail_filmography),
-                        count = allCredits.size,
-                        horizontalPadding = 0.dp
+                        count = shownCredits.size,
+                        horizontalPadding = 0.dp,
+                        trailing = if (hasBothKinds) {
+                            {
+                                Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                                    com.nuvio.tv.ui.components.SourceStatusFilterChip(
+                                        name = stringResource(R.string.cast_filter_movies),
+                                        isSelected = creditFilter == CreditFilter.MOVIES,
+                                        onClick = {
+                                            creditFilter = if (creditFilter == CreditFilter.MOVIES) CreditFilter.ALL else CreditFilter.MOVIES
+                                        }
+                                    )
+                                    com.nuvio.tv.ui.components.SourceStatusFilterChip(
+                                        name = stringResource(R.string.cast_filter_tv),
+                                        isSelected = creditFilter == CreditFilter.TV,
+                                        onClick = {
+                                            creditFilter = if (creditFilter == CreditFilter.TV) CreditFilter.ALL else CreditFilter.TV
+                                        }
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        }
                     )
                 }
             }
@@ -552,7 +584,13 @@ private fun HeroSection(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SectionHeader(title: String, count: Int, horizontalPadding: Dp = NuvioTheme.spacing.xxxl) {
+private fun SectionHeader(
+    title: String,
+    count: Int,
+    horizontalPadding: Dp = NuvioTheme.spacing.xxxl,
+    /** RCTV: at the header's right (the filmography's Movies / TV buttons). */
+    trailing: (@Composable () -> Unit)? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -578,8 +616,15 @@ private fun SectionHeader(title: String, count: Int, horizontalPadding: Dp = Nuv
                 )
                 .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.xxs)
         )
+        if (trailing != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            trailing()
+        }
     }
 }
+
+/** RCTV: which of a person's titles the filmography shows. */
+private enum class CreditFilter { ALL, MOVIES, TV }
 
 /** Across, the filmography's wide cards (the page's four columns, like every grid of them). */
 private const val FILMOGRAPHY_COLUMNS = 4

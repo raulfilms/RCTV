@@ -2407,6 +2407,8 @@
     <string name="cast_detail_error">Algo salió mal</string>
     <string name="cast_detail_retry">Reintentar</string>
     <string name="cast_detail_filmography">Filmografía</string>
+    <string name="cast_filter_movies">Películas</string>
+    <string name="cast_filter_tv">TV</string>
     <string name="cast_detail_born">Nacimiento: %1$s</string>
     <string name="cast_detail_born_died">Nacimiento: %1$s — †%2$s</string>
     <string name="cast_detail_age">%1$d años</string>

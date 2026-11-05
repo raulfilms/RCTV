@@ -923,6 +923,8 @@
     <string name="cast_detail_error">Algo salió mal</string>
     <string name="cast_detail_retry">Reintentar</string>
     <string name="cast_detail_filmography">Filmografía</string>
+    <string name="cast_filter_movies">Películas</string>
+    <string name="cast_filter_tv">TV</string>
 
     <!-- CatalogSeeAllScreen -->
     <string name="catalog_see_all_from">de %1$s</string>
