@@ -125,11 +125,13 @@ private fun PauseOverlayClock(modifier: Modifier = Modifier) {
 
     Text(
         text = formatter.format(Date(nowMillis)),
+        // RCTV: smaller and lighter (owner's choice).
         style = MaterialTheme.typography.headlineSmall.copy(
-            fontWeight = FontWeight.Normal,
-            fontSize = 34.sp
+            fontWeight = FontWeight.Light,
+            fontSize = 22.sp,
+            letterSpacing = 0.5.sp
         ),
-        color = Color.White.copy(alpha = 0.95f),
+        color = Color.White.copy(alpha = 0.9f),
         modifier = modifier
     )
 }
@@ -230,7 +232,8 @@ private fun PauseMetadataView(
         if (isEpisode && !episodeTitle.isNullOrBlank()) {
             Text(
                 text = episodeTitle.localizeEpisodeTitle(context),
-                style = MaterialTheme.typography.titleLarge,
+                // RCTV: smaller (owner's choice).
+                style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -241,8 +244,9 @@ private fun PauseMetadataView(
         if (info.isNotBlank()) {
             Text(
                 text = info,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.85f),
+                // RCTV: smaller (owner's choice).
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, letterSpacing = 0.4.sp),
+                color = Color.White.copy(alpha = 0.8f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = NuvioTheme.spacing.md)
@@ -252,14 +256,18 @@ private fun PauseMetadataView(
         if (!description.isNullOrBlank()) {
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodyLarge.copy(
+                // RCTV: smaller (owner's choice).
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    letterSpacing = 0.2.sp,
                     textDirection = description.contentTextDirection()
                 ),
-                color = Color.White.copy(alpha = 0.85f),
+                color = Color.White.copy(alpha = 0.8f),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .widthIn(max = 560.dp)
+                    .widthIn(max = 520.dp)
                     .padding(top = NuvioTheme.spacing.sm)
             )
         }
