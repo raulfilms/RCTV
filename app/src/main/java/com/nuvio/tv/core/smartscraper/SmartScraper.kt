@@ -75,10 +75,12 @@ class SmartScraper @Inject constructor(
     fun rank(
         streams: List<Stream>,
         request: SmartSourceRequest,
-        context: SmartRankingContext = rankingContext()
+        context: SmartRankingContext = rankingContext(),
+        /** RCTV: the sources screen's language (see [SmartScoreEngine.listable]); null: every source. */
+        listLanguage: AudioLanguage? = null
     ): SmartSourcesResult {
         if (streams.isEmpty()) return SmartSourcesResult.EMPTY
-        val result = SmartScoreEngine.rank(streams.map(::normalize), request, context)
+        val result = SmartScoreEngine.rank(streams.map(::normalize), request, context, listLanguage)
         if (context.config.debug) log(result, request, context)
         return result
     }

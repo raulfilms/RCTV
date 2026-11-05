@@ -81,6 +81,8 @@ import javax.inject.Inject
 private const val TAG = "StreamScreenViewModel"
 private const val DIRECT_AUTOPLAY_HARD_TIMEOUT_MS = 60_000L
 private const val STREAM_FILTER_PAGE_SIZE = 100
+/** RCTV: the manual list's sources at most (each file once, in the language and the connection). */
+private const val MAX_MANUAL_SOURCES = 20
 /** Auto Stream's log lines (stage timings, why a source was skipped; never a link). */
 private const val AUTO_STREAM_TAG = "AutoStream"
 /** When a source won't start, at most this many more are tried. */
@@ -174,6 +176,8 @@ class StreamScreenViewModel @Inject constructor(
     /** Every source the Smart Scraper laid out (the shown ones are its first page). */
     private var sourceItemsFull: List<SmartSourceItem> = emptyList()
     @Volatile private var lastSmartResult: SmartSourcesResult = SmartSourcesResult.EMPTY
+    /** RCTV: the other language chosen for this title's sources (null: the title's own). */
+    @Volatile private var sourcesLanguageOverride: com.nuvio.tv.core.smartscraper.AudioLanguage? = null
 
     private val isSeriesContent: Boolean =
         contentType.equals("series", ignoreCase = true) || contentType.equals("tv", ignoreCase = true) ||
@@ -1357,16 +1361,24 @@ class StreamScreenViewModel @Inject constructor(
         result: SmartSourcesResult? = null,
         keepPage: Boolean
     ): StreamScreenUiState {
-        val ranked = result ?: smartScraper.rank(streams, smartRequest())
+        // RCTV (owner's rule): only the sources in the language shown (the title's own until
+        // switched here), within what the connection plays, each file once: the smart ones, never
+        // every source found. [result] (ranked for every language) isn't used for the list.
+        val language = sourcesLanguage()
+        val context = smartScraper.rankingContext()
+        val ranked = smartScraper.rank(streams, smartRequest(), context, listLanguage = language)
         lastSmartResult = ranked
         val view = smartScraperSettings.view.value
         val debug = smartScraper.config.debug
-        val items = ArrayList<SmartSourceItem>(ranked.smart.size + ranked.all.size)
+        val items = ArrayList<SmartSourceItem>(ranked.smart.size)
         if (view.manual) {
-            SmartScoreEngine.applyManual(ranked.all, view.filters, view.sort).mapTo(items) { it.toSourceItem(debug) }
+            SmartScoreEngine.applyManual(
+                SmartScoreEngine.manualBase(ranked.all, language, context),
+                view.filters.copy(language = null),
+                view.sort
+            ).take(MAX_MANUAL_SOURCES).mapTo(items) { it.toSourceItem(debug) }
         } else {
             ranked.smart.mapTo(items) { it.toSourceItem(debug) }
-            ranked.all.mapTo(items) { it.toSourceItem(debug) }
         }
         val smartCount = if (view.manual) 0 else ranked.smart.size
         sourceItemsFull = items
@@ -1378,8 +1390,37 @@ class StreamScreenViewModel @Inject constructor(
             smartSourceCount = smartCount,
             filteredStreams = page.map { it.stream },
             smartView = view,
+            sourcesLanguage = language,
+            sourcesLanguageSwitched = sourcesLanguageOverride != null,
             smartFallbackChain = ranked.fallbackChain
         )
+    }
+
+    /** RCTV: the language of the sources shown: the one chosen here, else the title's own (English when neither). */
+    private fun sourcesLanguage(): com.nuvio.tv.core.smartscraper.AudioLanguage =
+        sourcesLanguageOverride ?: titleLanguage()
+
+    private fun titleLanguage(): com.nuvio.tv.core.smartscraper.AudioLanguage =
+        com.nuvio.tv.core.smartscraper.AudioLanguage.ofCode(contentLanguage)
+            ?: com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH
+
+    /** RCTV: the sources in the other language (English ↔ Spanish), or back to the title's own. */
+    fun switchSourcesLanguage() {
+        val own = titleLanguage()
+        sourcesLanguageOverride = if (sourcesLanguageOverride == null) {
+            if (own == com.nuvio.tv.core.smartscraper.AudioLanguage.SPANISH) {
+                com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH
+            } else {
+                com.nuvio.tv.core.smartscraper.AudioLanguage.SPANISH
+            }
+        } else {
+            null
+        }
+        updateUiStateIfChanged { state ->
+            val streams = state.selectedAddonFilter?.let { addon -> state.allStreams.filter { it.addonName == addon } }
+                ?: state.allStreams
+            laidOut(state, streams, keepPage = false)
+        }
     }
 
     private fun SmartSourceEntry.toSourceItem(debug: Boolean) = SmartSourceItem(

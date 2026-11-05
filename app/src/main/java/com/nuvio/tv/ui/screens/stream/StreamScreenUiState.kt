@@ -41,6 +41,9 @@ data class StreamScreenUiState(
     val sourceItems: List<SmartSourceItem> = emptyList(),
     val smartSourceCount: Int = 0,
     val smartView: com.nuvio.tv.core.smartscraper.SmartSourceViewSettings = com.nuvio.tv.core.smartscraper.SmartSourceViewSettings(),
+    /** RCTV: the language of the sources shown: the title's own until switched on this screen. */
+    val sourcesLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH,
+    val sourcesLanguageSwitched: Boolean = false,
     /** What to try, one after another, when a source fails to start (the smart order). */
     val smartFallbackChain: List<Stream> = emptyList(),
     val autoPlayStream: Stream? = null,

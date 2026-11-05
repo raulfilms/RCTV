@@ -47,7 +47,11 @@ internal fun SmartSourceControls(
     onRefresh: () -> Unit,
     onViewChange: ((SmartSourceViewSettings) -> SmartSourceViewSettings) -> Unit,
     modeFocusRequester: FocusRequester,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** RCTV: the language of the sources shown (the title's own until switched). */
+    language: com.nuvio.tv.core.smartscraper.AudioLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH,
+    languageSwitched: Boolean = false,
+    onSwitchLanguage: () -> Unit = {}
 ) {
     val any = stringResource(R.string.smart_filter_any)
     LazyRow(
@@ -72,6 +76,15 @@ internal fun SmartSourceControls(
                 isSelected = view.manual,
                 onClick = { onViewChange { it.copy(manual = true) } },
                 modifier = if (view.manual) Modifier.focusRequester(modeFocusRequester) else Modifier
+            )
+        }
+        // RCTV (owner's rule): the sources of one language at a time, in both modes: the title's
+        // own, or (pressed) the other one (English ↔ Spanish).
+        item(key = "sources_language") {
+            SourceStatusFilterChip(
+                name = stringResource(R.string.smart_filter_language_format, language.nativeName),
+                isSelected = languageSwitched,
+                onClick = onSwitchLanguage
             )
         }
         if (!view.manual) return@LazyRow
@@ -139,14 +152,6 @@ internal fun SmartSourceControls(
                 onClick = { onViewChange { it.copy(filters = it.filters.copy(imaxOnly = !it.filters.imaxOnly)) } }
             )
         }
-        item(key = "language") {
-            val language = view.filters.language
-            SourceStatusFilterChip(
-                name = stringResource(R.string.smart_filter_language_format, language?.nativeName ?: any),
-                isSelected = language != null,
-                onClick = { onViewChange { it.copy(filters = it.filters.copy(language = next(it.filters.language, LANGUAGES))) } }
-            )
-        }
         item(key = "size") {
             val max = view.filters.maxSizeGb
             SourceStatusFilterChip(
@@ -170,7 +175,6 @@ private fun <T> next(current: T, choices: List<T>): T {
 private val RESOLUTIONS = listOf(null, VideoResolution.UHD_2160, VideoResolution.QHD_1440, VideoResolution.FHD_1080, VideoResolution.HD_720)
 private val CODECS = listOf(null, VideoCodec.HEVC, VideoCodec.AVC, VideoCodec.AV1)
 private val SIZES = listOf(null, 8.0, 6.0, 4.0, 2.0)
-private val LANGUAGES = listOf(null, com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH, com.nuvio.tv.core.smartscraper.AudioLanguage.SPANISH)
 
 /** A section's name over its sources ("SMART SOURCES", "ALL SOURCES"). */
 @Composable

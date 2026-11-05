@@ -1604,6 +1604,7 @@
     <string name="smart_filter_imax_format">IMAX: %1$s</string>
     <string name="smart_filter_size_format">Tamaño máx.: %1$s</string>
     <string name="smart_no_matches">Ninguna fuente coincide con estos filtros</string>
+    <string name="smart_no_sources_in_language">No hay fuentes en %1$s ahora</string>
     <string name="smart_source_copies">%1$d fuentes</string>
     <string name="smart_label_best_match">MEJOR OPCIÓN</string>
     <string name="smart_label_best_4k">MEJOR 4K</string>

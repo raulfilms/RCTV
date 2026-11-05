@@ -4336,6 +4336,7 @@
     <string name="smart_filter_imax_format">IMAX: %1$s</string>
     <string name="smart_filter_size_format">Max size: %1$s</string>
     <string name="smart_no_matches">No sources match these filters</string>
+    <string name="smart_no_sources_in_language">No sources in %1$s right now</string>
     <string name="smart_source_copies">%1$d sources</string>
     <string name="smart_label_best_match">BEST MATCH</string>
     <string name="smart_label_best_4k">BEST 4K</string>

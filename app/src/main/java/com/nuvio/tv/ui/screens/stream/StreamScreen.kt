@@ -446,6 +446,9 @@ fun StreamScreen(
                     smartView = uiState.smartView,
                     hasAnyStreams = uiState.allStreams.isNotEmpty(),
                     onSmartViewChange = { viewModel.updateSmartView(it) },
+                    sourcesLanguage = uiState.sourcesLanguage,
+                    sourcesLanguageSwitched = uiState.sourcesLanguageSwitched,
+                    onSwitchSourcesLanguage = { viewModel.switchSourcesLanguage() },
                     availableAddons = uiState.availableAddons,
                     sourceChips = uiState.sourceChips,
                     selectedAddonFilter = uiState.selectedAddonFilter,
@@ -736,6 +739,9 @@ private fun RightStreamSection(
     smartView: com.nuvio.tv.core.smartscraper.SmartSourceViewSettings,
     hasAnyStreams: Boolean,
     onSmartViewChange: ((com.nuvio.tv.core.smartscraper.SmartSourceViewSettings) -> com.nuvio.tv.core.smartscraper.SmartSourceViewSettings) -> Unit,
+    sourcesLanguage: com.nuvio.tv.core.smartscraper.AudioLanguage = com.nuvio.tv.core.smartscraper.AudioLanguage.ENGLISH,
+    sourcesLanguageSwitched: Boolean = false,
+    onSwitchSourcesLanguage: () -> Unit = {},
     availableAddons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddonFilter: String?,
@@ -861,6 +867,12 @@ private fun RightStreamSection(
                         userMovedFromFirstResult = true
                         onSmartViewChange(transform)
                     },
+                    language = sourcesLanguage,
+                    languageSwitched = sourcesLanguageSwitched,
+                    onSwitchLanguage = {
+                        userMovedFromFirstResult = true
+                        onSwitchSourcesLanguage()
+                    },
                     modeFocusRequester = modeFocusRequester
                 )
             }
@@ -912,10 +924,15 @@ private fun RightStreamSection(
                             onRetry = onRetry
                         )
                     }
-                    items.isEmpty() && hasAnyStreams && smartView.manual -> {
-                        // Manual mode: nothing fits the chosen filters.
+                    items.isEmpty() && hasAnyStreams -> {
+                        // Manual mode: nothing fits the chosen filters; automatic: none in this language
+                        // (RCTV: never every source found instead).
                         Text(
-                            text = stringResource(R.string.smart_no_matches),
+                            text = if (smartView.manual) {
+                                stringResource(R.string.smart_no_matches)
+                            } else {
+                                stringResource(R.string.smart_no_sources_in_language, sourcesLanguage.nativeName)
+                            },
                             style = MaterialTheme.typography.bodyLarge,
                             color = NuvioTheme.extendedColors.textSecondary,
                             textAlign = TextAlign.Center,

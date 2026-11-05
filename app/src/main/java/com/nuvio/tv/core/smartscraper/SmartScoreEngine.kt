@@ -16,17 +16,41 @@ object SmartScoreEngine {
     fun rank(
         sources: List<NormalizedSource>,
         request: SmartSourceRequest,
-        context: SmartRankingContext = SmartRankingContext.DEFAULT
+        context: SmartRankingContext = SmartRankingContext.DEFAULT,
+        listLanguage: AudioLanguage? = null
     ): SmartSourcesResult {
         if (sources.isEmpty()) return SmartSourcesResult.EMPTY
         val judged = sources.map { judge(it, request, context) }
         val (rejected, kept) = judged.partition { it.rejection?.removesFromAll == true }
         val ordered = kept.sortedWith(SMART_ORDER)
         val eligible = wantedFirst(ordered.filter { it.rejection == null }, request, context)
-        val groups = group(eligible, context.config).take(context.config.maxSmartSources.coerceAtLeast(1))
+        val shown = if (listLanguage == null) eligible else listable(eligible, listLanguage, context)
+        val groups = group(shown, context.config).take(context.config.maxSmartSources.coerceAtLeast(1))
         val smart = label(groups, context)
         val fallbackChain = smart.flatMap { entry -> listOf(entry.best.stream) + entry.copies.map { it.stream } }
         return SmartSourcesResult(smart = smart, all = ordered, rejected = rejected, fallbackChain = fallbackChain)
+    }
+
+    /**
+     * RCTV (owner's rule), the sources screen: only the sources in [language] (a file with both
+     * languages is in both lists; one that says none is in the title's own), and only the ones the
+     * connection keeps up with (every one when none does). Never a pile of every source found.
+     */
+    fun listable(sources: List<ScoredSource>, language: AudioLanguage, context: SmartRankingContext): List<ScoredSource> {
+        val inLanguage = sources.filter { language in it.audioLanguages }
+        val keptUp = inLanguage.filter {
+            AutoStreamEngine.fitsConnection(it.bitrateMbps ?: defaultMbps(it.release.resolution), context)
+        }
+        return keptUp.ifEmpty { inLanguage }
+    }
+
+    /**
+     * RCTV: the sources screen's manual list before its filters: every source that passes the rules,
+     * in [language] and within the connection ([listable]), one of each file.
+     */
+    fun manualBase(all: List<ScoredSource>, language: AudioLanguage, context: SmartRankingContext): List<ScoredSource> {
+        val shown = listable(all.filter { it.rejection == null }, language, context)
+        return if (context.config.duplicateGrouping) shown.distinctBy { SourceProviderAdapters.releaseKey(it.source) } else shown
     }
 
     /** One stream checked and scored. */

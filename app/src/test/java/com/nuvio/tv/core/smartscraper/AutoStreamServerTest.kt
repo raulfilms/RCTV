@@ -92,6 +92,23 @@ class AutoStreamServerTest {
     }
 
     @Test
+    fun `the sources screen shows one language at a time - the title's own until switched`() {
+        val streams = listOf(
+            stream("english", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.0, name = "[RD+] Torrentio\n1080p", addon = "Torrentio RD"),
+            stream("latino", "Movie.2020.1080p.WEB-DL.Latino.DDP5.1.x264", 4.1, name = "[RD+] Torrentio\n1080p", addon = "Torrentio RD"),
+            stream("dual", "Movie.2020.1080p.WEB-DL.Dual.Latino.English.DDP5.1.x264", 4.2, name = "[RD+] Torrentio\n1080p", addon = "Torrentio RD")
+        ).map(SourceProviderAdapters::normalize)
+        val english = movie.copy(originalLanguage = AudioLanguage.ENGLISH)
+        fun shown(language: AudioLanguage) =
+            SmartScoreEngine.rank(streams, english, SmartRankingContext.DEFAULT, listLanguage = language)
+                .smart.map { it.best.stream.addonLogo }.toSet()
+        assertEquals(setOf("english", "dual"), shown(AudioLanguage.ENGLISH))
+        assertEquals(setOf("latino", "dual"), shown(AudioLanguage.SPANISH))
+        // Without a language (Auto Stream's and the player's uses): every one.
+        assertEquals(3, SmartScoreEngine.rank(streams, english, SmartRankingContext.DEFAULT).smart.size)
+    }
+
+    @Test
     fun `the Smart Scraper keeps only what's ready on a debrid service, and the Spanish servers' links`() {
         val request = movie
         fun judged(id: String, name: String, addon: String, url: String = "https://example.com/$id", hash: String? = "same-file", plugin: String? = null) =
