@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 /**
  * The Smart Scraper's ranking: every stream of a title is checked against the title asked for
  * (wrong title, year, season or episode is left out), kept from the smart sources when it breaks a
- * hard rule (under 720p, CAM/TS/TC, over 8 GB, can't play), and given a Smart Score from its
+ * hard rule (under 720p, CAM/TS/TC, over 8 GB (more for a movie over 2 hours), can't play), and given a Smart Score from its
  * metadata, picture, sound, size, the connection, its provider's reliability and how it plays.
  * The same file from several providers is one smart source, its copies kept to fall back on.
  * Nothing here is shown as it is: the UI shows what a source is, never where it comes from.
@@ -118,9 +118,14 @@ object SmartScoreEngine {
                 abs(foundYear - wantedYear) <= config.yearTolerance -> 0.7f
                 else -> return MetadataCheck(0f, RejectReason.WRONG_YEAR)
             }
-            // Another title of another year was already left out; another title of the same year is
-            // the movie under another name (its provider found it by its id), anything else isn't sure.
-            if (titleMatch == TitleMatch.MISMATCH && (foundYear == null || wantedYear == null)) {
+            // RCTV (owner's rule): the name alone isn't the movie. A title with more or fewer words
+            // than this one's ("The Dark Knight Rises", "Spider-Man 2", "Dune" for "Dune: Part Two")
+            // or another title (this movie under another language's name, found by its id) is only
+            // this movie when its year is this one's exactly: "Kill Bill: Vol. 2" of 2004 isn't the
+            // "Vol. 1" of 2003. Kept in the list to choose by hand, never played on its own.
+            if ((titleMatch == TitleMatch.PARTIAL || titleMatch == TitleMatch.MISMATCH) &&
+                (wantedYear == null || foundYear != wantedYear)
+            ) {
                 return MetadataCheck(0.6f * title + 0.4f * year, RejectReason.WRONG_TITLE)
             }
             return MetadataCheck(0.6f * title + 0.4f * year, null)
@@ -174,7 +179,8 @@ object SmartScoreEngine {
         if (release.resolution.isKnown && release.resolution.level < config.minResolution.level) {
             return RejectReason.LOW_RESOLUTION
         }
-        val maxBytes = config.maxFileSizeBytes ?: return null
+        // RCTV: the limit grows with a long movie's length (a 2 h 45 min movie's 10 GB file is its own).
+        val maxBytes = config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries) ?: return null
         val size = release.sizeBytes ?: return null
         if (size <= maxBytes) return null
         // A whole season's pack is never an episode's source when it's bigger than the limit.
@@ -471,7 +477,8 @@ object SmartScoreEngine {
     /**
      * RCTV (owner's rule, 4-nov-2026; Auto Stream's too, see [AutoStreamEngine]): the wanted
      * resolutions (4K, 2K, 1080p, up to the TV's own) the connection keeps up with and the TV shows
-     * as meant come first, 5.1 or more before stereo, then the smallest file (files within
+     * as meant come first; for a movie, its own year's files and the ones big enough for its length
+     * first (as Auto Stream's); 5.1 or more before stereo, then the smallest file (files within
      * [AutoStreamConfig.sameSizeMargin] are the same size: the higher resolution first, then the
      * Smart Score). The rest (720p, unknown, too much for the connection) after them, by Smart Score.
      */
@@ -502,7 +509,9 @@ object SmartScoreEngine {
         }
         wanted.filter { sizeOf(it) == null }.forEach { sizeGroup[it] = Int.MAX_VALUE }
         val ordered = wanted.sortedWith(
-            compareByDescending<ScoredSource> { if (it.release.channels.count >= AudioChannels.CH_5_1.count) 1 else 0 }
+            compareByDescending<ScoredSource> { AutoStreamEngine.identityConfirmed(it.release, request) }
+                .thenByDescending { AutoStreamEngine.fullQuality(it.release, it.bitrateMbps, request) }
+                .thenByDescending { if (it.release.channels.count >= AudioChannels.CH_5_1.count) 1 else 0 }
                 .thenBy { sizeGroup.getValue(it) }
                 .thenByDescending { it.release.resolution.level }
                 .then(SMART_ORDER)

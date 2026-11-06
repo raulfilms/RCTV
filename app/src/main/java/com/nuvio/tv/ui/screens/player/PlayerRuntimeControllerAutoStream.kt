@@ -175,8 +175,11 @@ internal fun PlayerRuntimeController.skipIfWrongLength(durationMs: Long): Boolea
     return tryAutoStreamFallback("${minutes.toInt()} min long, the movie is $expected min: not the movie")
 }
 
-/** A source shorter than this share of the movie's length isn't the movie... */
-private const val MIN_LENGTH_SHARE = 0.7
+/**
+ * A source shorter than this share of the movie's length isn't the movie... RCTV (owner's rule):
+ * 0.8, not 0.7: a 2 h 30 min movie's file runs 2 hours at least.
+ */
+private const val MIN_LENGTH_SHARE = 0.8
 
 /** ...nor one longer than this (an Extended or Director's Cut is well within it). */
 private const val MAX_LENGTH_SHARE = 1.8

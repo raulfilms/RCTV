@@ -64,6 +64,18 @@ data class SmartScraperConfig(
     val maxFileSizeBytes: Long?
         get() = maxFileSizeGb.takeIf { it > 0.0 }?.let { (it * ParsedRelease.BYTES_PER_GB).toLong() }
 
+    /**
+     * RCTV (owner's rule): [maxFileSizeBytes] for a title of [runtimeMinutes], as Auto Stream's
+     * ([AutoStreamConfig.maxFileSizeBytesFor]): a movie longer than 2 hours may be bigger (8 GB per 2
+     * hours), so a 2 h 30 min or 3 h movie's own files aren't left out for their size. An episode's
+     * stays the limit; null: no limit.
+     */
+    fun maxFileSizeBytesFor(runtimeMinutes: Int?, isSeries: Boolean): Long? {
+        val base = maxFileSizeBytes ?: return null
+        val minutes = runtimeMinutes?.takeIf { !isSeries && it > LENGTH_OF_BASE_LIMIT_MINUTES } ?: return base
+        return (base * (minutes / LENGTH_OF_BASE_LIMIT_MINUTES.toDouble())).toLong()
+    }
+
     companion object {
         val DEFAULT = SmartScraperConfig()
 
@@ -99,8 +111,11 @@ data class AutoStreamConfig(
         VideoResolution.HD_720,
         VideoResolution.SD
     ),
-    /** AUTO_STREAM_ALLOWED_CHANNELS: by layout, not tags (DD+ 5.1 Atmos is 5.1; 7.1 never). */
-    val allowedChannels: Set<AudioChannels> = setOf(AudioChannels.CH_5_1, AudioChannels.CH_2_0),
+    /**
+     * AUTO_STREAM_ALLOWED_CHANNELS: by layout, not tags (DD+ 5.1 Atmos is 5.1). RCTV (owner's rule):
+     * 7.1 too, with 5.1 (surround before stereo); a format this box can't play still comes last.
+     */
+    val allowedChannels: Set<AudioChannels> = setOf(AudioChannels.CH_7_1, AudioChannels.CH_5_1, AudioChannels.CH_2_0),
     /**
      * REQUIRE_CACHED: only what its addon marks ready on the debrid service ([RD+], ⚡...). RCTV:
      * always so now (owner's rule, see [NormalizedSource.isInstantOrSpanishServer]); kept for reference.

@@ -15,7 +15,7 @@ enum class AutoStreamReject(val description: String) {
     TOO_LARGE("Over the Auto Stream size limit"),
     LOW_RESOLUTION("Below the lowest resolution allowed"),
     THREE_D("3D"),
-    AUDIO_NOT_ALLOWED("Audio other than 5.1 or 2.0"),
+    AUDIO_NOT_ALLOWED("Audio other than 7.1, 5.1 or 2.0"),
     AUDIO_UNVERIFIED("Audio layout not given"),
     NO_ORIGINAL_AUDIO("No English or original-language audio"),
     NO_SPANISH_AUDIO("No Spanish audio"),
@@ -43,7 +43,7 @@ data class AutoStreamCandidate(
     val pool: AutoStreamPool = AutoStreamPool.MAIN,
     /** Its place in the resolution order for this TV (higher first): see [AutoStreamEngine.tier]. */
     val tier: Int = 0,
-    /** Its audio layout: [AutoStreamEngine.LAYOUT_5_1], [AutoStreamEngine.LAYOUT_2_0] or not said (0). */
+    /** Its audio layout: surround (7.1 or 5.1) [AutoStreamEngine.LAYOUT_5_1], [AutoStreamEngine.LAYOUT_2_0] or not said (0). */
     val layout: Int = AutoStreamEngine.LAYOUT_UNKNOWN,
     /** E-AC-3 (Atmos too) 4 > DTS 3 > AC-3 2 > AAC 1 > the rest 0; one this box can't play: -1. */
     val audioCodecRank: Int = 0,
@@ -72,6 +72,17 @@ data class AutoStreamCandidate(
     val recentlyFailed: Boolean = false,
     /** Its size is known (else it may play only once its link's size is checked: ranked after). */
     val sizeKnown: Boolean = true,
+    /**
+     * RCTV (owner's rule): a movie's file that says the movie's own year (its title already is the
+     * movie's): before one whose year isn't said or is a year off. Always true for an episode.
+     */
+    val identityConfirmed: Boolean = true,
+    /**
+     * RCTV (owner's rule): a movie's file big enough for the movie's length at its resolution (at
+     * least [AutoStreamEngine.minimumMbps]): a picture worth watching. One far too small for a 2 or 3
+     * hour movie (a 2 GB 1080p, a 1 GB "4K") comes after every one that is. Always true for an episode.
+     */
+    val fullQuality: Boolean = true,
     /** Its file's size in bytes, when known (a season's pack size isn't an episode's). */
     val sizeBytes: Long? = null,
     /** It says it has English or the title's own audio (else that's presumed, and checked before it plays). */
@@ -127,14 +138,17 @@ data class AutoStreamResult(
  * Auto Stream v2.0's choice, made alone (no list, ever).
  *
  * Hard rules (§3), any failed and the stream is out: the right title, year, season and episode;
- * playable; never CAM/TS/TC/SCR; at most 8.00 GB (the episode's file, never a whole season's); 2160p
- * to 480p; 5.1 or 2.0 (one whose layout isn't said may play, after the rest); English or the title's
+ * playable; never CAM/TS/TC/SCR; at most 8.00 GB (the episode's file, never a whole season's; RCTV:
+ * 8 GB per 2 hours of a longer movie); 2160p to 480p; 7.1, 5.1 or 2.0 (one whose layout isn't said
+ * may play, after the rest); English or the title's
  * own audio (a Spanish-only file is never the video); marked ready on the debrid service (RCTV,
  * owner's rule: or a Spanish server's link, see [NormalizedSource.isInstantOrSpanishServer]; never
  * one to download). Nothing is ever relaxed: when nothing passes, there's no automatic stream.
  *
  * RCTV (owner's rule, 4-nov-2026), before the ranking below: the wanted resolutions (4K, 2K, 1080p,
- * up to the TV's own) the connection and the TV take come first, 5.1 before 2.0, then the smallest
+ * up to the TV's own) the connection and the TV take come first; for a movie, a file of its own year
+ * and one big enough for its length first ([AutoStreamCandidate.identityConfirmed],
+ * [AutoStreamCandidate.fullQuality]); then 5.1 (or 7.1) before 2.0, then the smallest
  * file (files within [AutoStreamConfig.sameSizeMargin] are the same size: the higher resolution
  * first), then the sound and the rest as below. 720p and lower only after them ([order]).
  *
@@ -357,6 +371,8 @@ object AutoStreamEngine {
             serverRank = config.serverRank(source.provider),
             recentlyFailed = failed,
             sizeKnown = fileSize(release, request) != null,
+            identityConfirmed = identityConfirmed(release, request),
+            fullQuality = fullQuality(release, bitrate, request),
             sizeBytes = fileSize(release, request),
             originalAudioConfirmed = AudioLanguage.ENGLISH in said || (original != null && original in said),
             languageMatch = request.preferredLanguage == null || request.preferredLanguage in scored.audioLanguages
@@ -424,6 +440,8 @@ object AutoStreamEngine {
         return members.sortedWith(
             compareBy<AutoStreamCandidate> { if (waits(it)) 1 else 0 }
                 .thenBy { if (it.recentlyFailed) 1 else 0 }
+                .thenByDescending { it.identityConfirmed }
+                .thenByDescending { it.fullQuality }
                 .thenByDescending { it.layout }
                 .thenBy { sizeGroup.getValue(it) }
                 .thenByDescending { it.tier }
@@ -467,6 +485,8 @@ object AutoStreamEngine {
             compareBy<AutoStreamCandidate> { if (it.tvCompatible) 0 else 1 }
                 .thenBy { if (waits(it)) 1 else 0 }
                 .thenBy { if (it.recentlyFailed) 1 else 0 }
+                .thenByDescending { it.identityConfirmed }
+                .thenByDescending { it.fullQuality }
                 .thenByDescending { it.layout }
                 .thenByDescending { it.audioCodecRank }
                 // RCTV: the same sound, the server first (AIO Stream, Torrentio, LatinoDebrid, LATAM...).
@@ -639,8 +659,45 @@ object AutoStreamEngine {
         }
     }
 
+    /**
+     * RCTV: [release] (a movie's) says the movie's own year; an episode's always is. Its title was
+     * already checked by the hard rules (another title needs the exact year, see [SmartScoreEngine]).
+     */
+    fun identityConfirmed(release: ParsedRelease, request: SmartSourceRequest): Boolean =
+        request.isSeries || request.year == null || release.year == request.year
+
+    /**
+     * RCTV (owner's rule): a movie's file of [bitrateMbps] (from its size and the movie's length) is
+     * big enough for its resolution: not a picture far below what that resolution needs, nor a file
+     * too small to be the whole movie. Unknown sizes and episodes aren't held back here.
+     */
+    fun fullQuality(release: ParsedRelease, bitrateMbps: Double?, request: SmartSourceRequest): Boolean =
+        request.isSeries || bitrateMbps == null || bitrateMbps >= minimumMbps(release)
+
+    /**
+     * The least average bitrate (Mbps) a file of [release]'s resolution looks right at: 4K 5, 2K 3.5,
+     * 1080p 2, 720p 1 for HEVC/AV1/VP9 (a 2 h 30 min movie: 4K from about 5.3 GB, 1080p from about
+     * 2.1 GB); 1.5 times that for H.264 and older codecs (1080p from 3 Mbps, about 3.1 GB).
+     */
+    fun minimumMbps(release: ParsedRelease): Double {
+        val base = when (release.resolution) {
+            VideoResolution.UHD_2160 -> 5.0
+            VideoResolution.QHD_1440 -> 3.5
+            VideoResolution.FHD_1080 -> 2.0
+            VideoResolution.HD_720 -> 1.0
+            VideoResolution.SD -> 0.5
+            VideoResolution.LOW -> 0.25
+            VideoResolution.UNKNOWN -> 0.0
+        }
+        return when (release.codec) {
+            VideoCodec.AVC, VideoCodec.LEGACY -> base * 1.5
+            else -> base
+        }
+    }
+
     fun layoutOf(channels: AudioChannels): Int = when (channels) {
-        AudioChannels.CH_5_1 -> LAYOUT_5_1
+        // RCTV: 7.1 is surround too, with 5.1 (the audio format, then the rest, tell them apart).
+        AudioChannels.CH_7_1, AudioChannels.CH_5_1 -> LAYOUT_5_1
         AudioChannels.CH_2_0 -> LAYOUT_2_0
         else -> LAYOUT_UNKNOWN
     }

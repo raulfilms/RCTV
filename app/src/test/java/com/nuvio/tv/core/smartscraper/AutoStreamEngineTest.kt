@@ -65,9 +65,9 @@ class AutoStreamEngineTest {
             // RCTV (owner's rule, 4-nov-2026): 4K, 2K and 1080p are wanted, the smallest first;
             // 5.1 before stereo.
             assertEquals("1080", result.best?.stream?.infoHash)
-            assertEquals(listOf("1080", "atmos", "stereo"), hashes(result))
+            // RCTV (owner's rule): 7.1 is surround too, after the DD+ (the audio format).
+            assertEquals(listOf("1080", "atmos", "truehd-7.1", "stereo"), hashes(result))
             assertEquals(AutoStreamReject.TOO_LARGE, reason(result, "too-big"))
-            assertEquals(AutoStreamReject.AUDIO_NOT_ALLOWED, reason(result, "truehd-7.1"))
             assertEquals(AutoStreamReject.NOT_CACHED, reason(result, "uncached"))
             assertEquals(AutoStreamReject.WRONG_CONTENT, reason(result, "1989"))
         }
@@ -80,12 +80,12 @@ class AutoStreamEngineTest {
         val short = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 8.0))
         val normalized = batmanStreams().map(SourceProviderAdapters::normalize)
         val kept = AutoStreamEngine.rank(normalized, batman, enough)
-        assertEquals(listOf("1080", "atmos", "stereo"), hashes(kept))
+        assertEquals(listOf("1080", "atmos", "truehd-7.1", "stereo"), hashes(kept))
         assertTrue(kept.candidates.all { it.tierAllowed })
         val stepped = AutoStreamEngine.rank(normalized, batman, short)
         assertEquals("1080", stepped.best?.stream?.infoHash)
         // The 4Ks the connection can't keep up with stay only as the last resort.
-        assertEquals(listOf("1080", "atmos", "stereo"), hashes(stepped))
+        assertEquals(listOf("1080", "atmos", "truehd-7.1", "stereo"), hashes(stepped))
         assertTrue(stepped.candidates.first().tierAllowed)
         assertFalse(stepped.candidates[1].tierAllowed)
         assertFalse(stepped.candidates.last().tierAllowed)
@@ -223,15 +223,19 @@ class AutoStreamEngineTest {
     }
 
     @Test
-    fun `only 5_1 and 2_0 - DD+ 5_1 Atmos is 5_1, any 7_1 never`() {
+    fun `7_1, 5_1 and 2_0 - DD+ 5_1 Atmos is 5_1, 7_1 is surround with it, mono never`() {
         val result = rank(
             stream("ddp-atmos", "Movie.2020.2160p.WEB-DL.DDP5.1.Atmos.HEVC", 6.0),
             stream("truehd", "Movie.2020.2160p.BluRay.TrueHD.7.1.Atmos.HEVC", 7.0),
             stream("dtsx", "Movie.2020.2160p.BluRay.DTS-X.7.1.HEVC", 7.0),
-            stream("dtshd", "Movie.2020.1080p.BluRay.DTS-HD.MA.7.1.x264", 7.0)
+            stream("dtshd", "Movie.2020.1080p.BluRay.DTS-HD.MA.7.1.x264", 7.0),
+            stream("mono", "Movie.2020.1080p.WEB-DL.AAC1.0.x264", 3.0)
         )
-        assertEquals(listOf("ddp-atmos"), hashes(result))
-        listOf("truehd", "dtsx", "dtshd").forEach { assertEquals(AutoStreamReject.AUDIO_NOT_ALLOWED, reason(result, it)) }
+        // RCTV (owner's rule): every surround file plays; the smallest first.
+        assertEquals("ddp-atmos", result.best?.stream?.infoHash)
+        assertEquals(setOf("ddp-atmos", "truehd", "dtsx", "dtshd"), hashes(result).toSet())
+        assertEquals(AutoStreamReject.AUDIO_NOT_ALLOWED, reason(result, "mono"))
+        assertEquals(AutoStreamEngine.LAYOUT_5_1, result.candidates.first { it.stream.infoHash == "truehd" }.layout)
     }
 
     @Test
@@ -427,7 +431,7 @@ class AutoStreamEngineTest {
             listOf(VideoResolution.UHD_2160, VideoResolution.QHD_1440, VideoResolution.FHD_1080, VideoResolution.HD_720, VideoResolution.SD),
             c.resolutions
         )
-        assertEquals(setOf(AudioChannels.CH_5_1, AudioChannels.CH_2_0), c.allowedChannels)
+        assertEquals(setOf(AudioChannels.CH_7_1, AudioChannels.CH_5_1, AudioChannels.CH_2_0), c.allowedChannels)
         assertTrue(c.requireCached)
         assertEquals(25.0, c.startupDeadlineSeconds, 0.0)
         assertEquals(4.0, c.providerTimeoutSeconds, 0.0)

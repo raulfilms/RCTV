@@ -96,14 +96,14 @@ class AutoStreamVerificationTest {
     // ==================================================================== Before the first picture (§8.3, J)
 
     @Test
-    fun `J - audio that turns out to be 7_1 fails the check, 5_1 or 2_0 pass`() {
+    fun `J - 7_1, 5_1 or 2_0 pass the check (RCTV - 7_1 too), mono fails`() {
         val english = setOf("en")
-        assertEquals(Violation.AUDIO_LAYOUT, check(listOf(AudioTrack("eng", 8)), 3840, 2160, english))
+        assertNull(check(listOf(AudioTrack("eng", 8)), 3840, 2160, english))
         assertNull(check(listOf(AudioTrack("eng", 6)), 3840, 2160, english))
         assertNull(check(listOf(AudioTrack("en", 2)), 1920, 1080, english))
         // A 7.1 TrueHD with a 5.1 compatibility track in the same language: it has 5.1.
         assertNull(check(listOf(AudioTrack("eng", 8), AudioTrack("eng", 6)), 3840, 2160, english))
-        // Mono isn't 5.1 or 2.0 either.
+        // Mono isn't 7.1, 5.1 or 2.0.
         assertEquals(Violation.AUDIO_LAYOUT, check(listOf(AudioTrack("eng", 1)), 1920, 1080, english))
         // What the player doesn't say can't fail the check.
         assertNull(check(listOf(AudioTrack("eng", null)), 1920, 1080, english))
@@ -120,8 +120,9 @@ class AutoStreamVerificationTest {
         // A Japanese film in Japanese; Spanish chosen (until the dual-language engine): Spanish is fine.
         assertNull(check(listOf(AudioTrack("jpn", 2)), 1920, 1080, setOf("en", "ja")))
         assertNull(check(listOf(AudioTrack("es-419", 6)), 1920, 1080, setOf("en", "es")))
-        // The layout that counts is the wanted language's: English 7.1 with Spanish 5.1 fails.
-        assertEquals(Violation.AUDIO_LAYOUT, check(listOf(AudioTrack("eng", 8), AudioTrack("spa", 6)), 3840, 2160, englishFilm))
+        // The layout that counts is the wanted language's: English 7.1 with Spanish 5.1 passes, mono fails.
+        assertNull(check(listOf(AudioTrack("eng", 8), AudioTrack("spa", 6)), 3840, 2160, englishFilm))
+        assertEquals(Violation.AUDIO_LAYOUT, check(listOf(AudioTrack("eng", 1), AudioTrack("spa", 6)), 1920, 1080, englishFilm))
     }
 
     @Test
