@@ -87,12 +87,18 @@ private fun rememberGameOpener(navController: NavHostController): (SportsEvent) 
                 )
             )
         },
-        // A Banana Ball game streaming on YouTube (no channel showing it): in YouTube's official
-        // player, full screen (RCTV Smart Player).
+        // A Banana Ball game streaming on YouTube (no channel showing it): played live, like a channel
+        // (RCTV, owner's choice: in the app's player again).
         onPlayStream = { url, event ->
-            com.nuvio.tv.data.trailer.YouTubeVideo.idOf(url)?.let { videoId ->
-                navController.navigate(Screen.YouTubeWatch.createRoute(videoId = videoId, title = event.name))
-            }
+            navController.navigate(
+                Screen.Player.createRoute(
+                    streamUrl = url,
+                    title = "${event.leagueName ?: event.sportName ?: ""} · YouTube".trimStart(' ', '·'),
+                    contentType = "live",
+                    contentName = event.name,
+                    logo = event.homeTeamBadgeUrl
+                )
+            )
         }
     )
 

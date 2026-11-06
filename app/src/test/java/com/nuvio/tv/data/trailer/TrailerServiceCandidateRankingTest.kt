@@ -99,6 +99,7 @@ class TrailerServiceCandidateRankingTest {
     fun `trailer selection follows the tmdb enrichment language setting`() = runTest {
         val trailerApi = mockk<TrailerApi>(relaxed = true)
         val tmdbApi = mockk<TmdbApi>()
+        val extractor = mockk<InAppYouTubeExtractor>(relaxed = true)
         val tmdbSettingsDataStore = mockk<TmdbSettingsDataStore> {
             every { settings } returns MutableStateFlow(TmdbSettings(language = "hi", useTrailers = true))
         }
@@ -128,6 +129,7 @@ class TrailerServiceCandidateRankingTest {
         val service = TrailerService(
             trailerApi = trailerApi,
             tmdbApi = tmdbApi,
+            inAppYouTubeExtractor = extractor,
             tmdbSettingsDataStore = tmdbSettingsDataStore,
             tmdbService = tmdbService
         )
@@ -146,6 +148,7 @@ class TrailerServiceCandidateRankingTest {
     fun `falls back to english when the tmdb language setting has no trailer available`() = runTest {
         val trailerApi = mockk<TrailerApi>(relaxed = true)
         val tmdbApi = mockk<TmdbApi>()
+        val extractor = mockk<InAppYouTubeExtractor>(relaxed = true)
         val tmdbSettingsDataStore = mockk<TmdbSettingsDataStore> {
             every { settings } returns MutableStateFlow(TmdbSettings(language = "hi", useTrailers = true))
         }
@@ -168,6 +171,7 @@ class TrailerServiceCandidateRankingTest {
         val service = TrailerService(
             trailerApi = trailerApi,
             tmdbApi = tmdbApi,
+            inAppYouTubeExtractor = extractor,
             tmdbSettingsDataStore = tmdbSettingsDataStore,
             tmdbService = tmdbService
         )

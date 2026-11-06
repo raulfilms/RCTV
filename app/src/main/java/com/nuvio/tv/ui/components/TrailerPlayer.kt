@@ -31,6 +31,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MergingMediaSource
 import com.nuvio.tv.core.player.LocalTrailerPlayerPool
 import com.nuvio.tv.core.player.TrailerPlayerPool
+import com.nuvio.tv.data.trailer.YoutubeChunkedDataSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import android.view.LayoutInflater
@@ -57,42 +58,93 @@ fun TrailerPlayer(
     enter: EnterTransition = fadeIn(animationSpec = tween(800)),
     exit: ExitTransition = fadeOut(animationSpec = tween(500)),
     trailerPlayerPool: TrailerPlayerPool? = null,
-    /**
-     * RCTV Smart Player: a YouTube trailer plays only in YouTube's official player, and only where
-     * nothing covers it (the title's page, full screen): true there. Elsewhere (a poster's preview)
-     * a YouTube trailer isn't played and the artwork stays.
-     */
+    /** No longer used (YouTube's official player): kept so the screens that pass it don't change. */
     youTubeAllowed: Boolean = false,
-    /** A YouTube video its owner doesn't let RCTV show opens in the YouTube app (asked for, not autoplayed). */
+    /** No longer used: RCTV never opens the YouTube app. */
     openYouTubeWhenBlocked: Boolean = false,
     /**
-     * RCTV: a YouTube video that can't play here (its code, see [YouTubeIframePlayer]): told instead of
-     * [onEnded] when set.
+     * RCTV: a YouTube video that can't be read here ([YOUTUBE_NOT_READABLE]): told instead of [onEnded]
+     * when set (a recap then tries the next one).
      */
     onYouTubeError: ((code: Int) -> Unit)? = null
 ) {
+    // RCTV (owner's choice): a YouTube video plays in the app's own player again, from the
+    // addresses RCTV reads off YouTube: YouTube's official player gave sound and no picture on the
+    // Mi Box. A video that can't be read here is told to [onYouTubeError] (else it just ends).
     val youTubeId = remember(trailerUrl) { com.nuvio.tv.data.trailer.YouTubeVideo.idOf(trailerUrl) }
-    if (youTubeId != null) {
-        if (youTubeAllowed && isPlaying) {
-            YouTubeIframePlayer(
-                videoId = youTubeId,
-                isPlaying = isPlaying,
-                isPaused = isPaused,
-                muted = muted,
-                seekRequestToken = seekRequestToken,
-                seekDeltaMs = seekDeltaMs,
-                openYouTubeWhenBlocked = openYouTubeWhenBlocked,
-                onStarted = onFirstFrameRendered,
-                onEnded = onEnded,
-                // A video that can't play here ends: the screen goes back to what it showed.
-                onError = { code -> onYouTubeError?.invoke(code) ?: onEnded() },
-                onProgressChanged = onProgressChanged,
-                onRemoteKey = onRemoteKey,
-                modifier = modifier
-            )
-        }
+    if (youTubeId == null) {
+        ExoTrailerPlayer(
+            trailerUrl = trailerUrl, trailerAudioUrl = trailerAudioUrl, isPlaying = isPlaying, isPaused = isPaused,
+            onEnded = onEnded, onFirstFrameRendered = onFirstFrameRendered, muted = muted,
+            seekRequestToken = seekRequestToken, seekDeltaMs = seekDeltaMs, onProgressChanged = onProgressChanged,
+            onRemoteKey = onRemoteKey, cropToFill = cropToFill, overscanZoom = overscanZoom, modifier = modifier,
+            enter = enter, exit = exit, trailerPlayerPool = trailerPlayerPool
+        )
         return
     }
+    val appContext = LocalContext.current.applicationContext
+    val extractor = remember(appContext) {
+        dagger.hilt.android.EntryPointAccessors.fromApplication(appContext, TrailerYouTubeEntryPoint::class.java).youTubeExtractor()
+    }
+    var source by remember(youTubeId) { mutableStateOf<com.nuvio.tv.data.trailer.TrailerPlaybackSource?>(null) }
+    val currentOnYouTubeError by rememberUpdatedState(onYouTubeError)
+    val currentOnEnded by rememberUpdatedState(onEnded)
+    LaunchedEffect(youTubeId, isPlaying) {
+        if (!isPlaying || source != null) return@LaunchedEffect
+        val found = try {
+            extractor.extractPlaybackSource(com.nuvio.tv.data.trailer.YouTubeVideo.watchUrl(youTubeId))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        if (found == null) {
+            currentOnYouTubeError?.invoke(YOUTUBE_NOT_READABLE) ?: currentOnEnded()
+        } else {
+            source = found
+        }
+    }
+    val playable = source ?: return
+    ExoTrailerPlayer(
+        trailerUrl = playable.videoUrl, trailerAudioUrl = playable.audioUrl, isPlaying = isPlaying, isPaused = isPaused,
+        onEnded = onEnded, onFirstFrameRendered = onFirstFrameRendered, muted = muted,
+        seekRequestToken = seekRequestToken, seekDeltaMs = seekDeltaMs, onProgressChanged = onProgressChanged,
+        onRemoteKey = onRemoteKey, cropToFill = cropToFill, overscanZoom = overscanZoom, modifier = modifier,
+        enter = enter, exit = exit, trailerPlayerPool = trailerPlayerPool
+    )
+}
+
+/** RCTV: a YouTube video RCTV couldn't read (taken down, private, or its owner keeps it on YouTube). */
+const val YOUTUBE_NOT_READABLE = 150
+
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+internal interface TrailerYouTubeEntryPoint {
+    fun youTubeExtractor(): com.nuvio.tv.data.trailer.InAppYouTubeExtractor
+}
+
+/** The trailer in ExoPlayer (a direct address, or YouTube's video and audio read by RCTV). */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun ExoTrailerPlayer(
+    trailerUrl: String?,
+    trailerAudioUrl: String?,
+    isPlaying: Boolean,
+    isPaused: Boolean,
+    onEnded: () -> Unit,
+    onFirstFrameRendered: () -> Unit,
+    muted: Boolean,
+    seekRequestToken: Int,
+    seekDeltaMs: Long,
+    onProgressChanged: (positionMs: Long, durationMs: Long) -> Unit,
+    onRemoteKey: (keyCode: Int, action: Int, repeatCount: Int) -> Boolean,
+    cropToFill: Boolean,
+    overscanZoom: Float,
+    modifier: Modifier,
+    enter: EnterTransition,
+    exit: ExitTransition,
+    trailerPlayerPool: TrailerPlayerPool?
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val activityLifecycleOwner = remember(context) { context as? androidx.lifecycle.LifecycleOwner ?: lifecycleOwner }
@@ -142,7 +194,7 @@ fun TrailerPlayer(
         if (isPlaying && trailerUrl != null) {
             hasRenderedFirstFrame = false
             if (!trailerAudioUrl.isNullOrBlank()) {
-                val mediaSourceFactory = DefaultMediaSourceFactory(context)
+                val mediaSourceFactory = DefaultMediaSourceFactory(YoutubeChunkedDataSourceFactory())
                 val videoSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(trailerUrl))
                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(trailerAudioUrl))
                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))
@@ -218,7 +270,7 @@ fun TrailerPlayer(
                     if (currentIsPlaying && !currentTrailerUrl.isNullOrBlank()) {
                         if (player.currentMediaItem == null) {
                             if (!currentTrailerAudioUrl.isNullOrBlank()) {
-                                val mediaSourceFactory = DefaultMediaSourceFactory(context)
+                                val mediaSourceFactory = DefaultMediaSourceFactory(YoutubeChunkedDataSourceFactory())
                                 val videoSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(currentTrailerUrl!!))
                                 val audioSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(currentTrailerAudioUrl!!))
                                 player.setMediaSource(MergingMediaSource(videoSource, audioSource))

@@ -86,19 +86,22 @@ class TrailerServiceCancellationTest {
                 )
             )
         )
+        coEvery { harness.extractor.extractPlaybackSource(any()) } returns
+            TrailerPlaybackSource(videoUrl = "https://example.test/trailer.mp4")
+
         val result = harness.lookup()
 
         assertNotNull(
             "The earlier cancellation must not be cached as 'no trailer' for this title",
             result
         )
-        // RCTV Smart Player: the trailer is its YouTube watch address, for YouTube's official player.
-        assertEquals("https://www.youtube.com/watch?v=abcdefghijk", result?.videoUrl)
+        assertEquals("https://example.test/trailer.mp4", result?.videoUrl)
     }
 
     private class Harness(
         val target: TrailerService,
-        val tmdbApi: TmdbApi
+        val tmdbApi: TmdbApi,
+        val extractor: InAppYouTubeExtractor
     ) {
         suspend fun lookup(): TrailerPlaybackSource? = target.getTrailerPlaybackSource(
             title = "Some Movie",
@@ -111,6 +114,7 @@ class TrailerServiceCancellationTest {
     private fun newService(): Harness {
         val trailerApi = mockk<TrailerApi>(relaxed = true)
         val tmdbApi = mockk<TmdbApi>(relaxed = true)
+        val extractor = mockk<InAppYouTubeExtractor>(relaxed = true)
         val tmdbSettingsDataStore = mockk<TmdbSettingsDataStore> {
             every { settings } returns MutableStateFlow(
                 TmdbSettings(language = "en", useTrailers = true)
@@ -123,10 +127,12 @@ class TrailerServiceCancellationTest {
             target = TrailerService(
                 trailerApi = trailerApi,
                 tmdbApi = tmdbApi,
+                inAppYouTubeExtractor = extractor,
                 tmdbSettingsDataStore = tmdbSettingsDataStore,
                 tmdbService = tmdbService
             ),
-            tmdbApi = tmdbApi
+            tmdbApi = tmdbApi,
+            extractor = extractor
         )
     }
 }
