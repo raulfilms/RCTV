@@ -55,7 +55,10 @@ data class DisneyTitleInfo(
     val tmdbId: Int,
     val mediaType: TmdbCollectionMediaType,
     val owners: Set<HubService>,
-    val genreIds: List<Int>
+    val genreIds: List<Int>,
+    /** RCTV: the studios and networks TMDB credits it to (a brand page's Continue Watching). */
+    val companyIds: Set<Int> = emptySet(),
+    val networkIds: Set<Int> = emptySet()
 )
 
 /**
@@ -802,6 +805,27 @@ class DisneyPlusRepository @Inject constructor(
     suspend fun isOwnedBy(service: HubService, contentId: String, contentType: String): Boolean =
         titleInfo(contentId, contentType)?.owners?.contains(service) == true
 
+    /**
+     * RCTV (owner's rule): a title in progress belongs to [hub]'s page: it's on one of the page's
+     * rows ([rowIds], "tmdb:123"), or, on a service's main page, the service makes it or streams it
+     * (see [titleInfo]); on a brand page (Pixar, Marvel, CBS, HBO, DC...), TMDB credits it to one
+     * of the studios or networks the page's rows are made of ([studios]). A collection page keeps
+     * only its own rows' titles.
+     */
+    suspend fun belongsToPage(
+        hub: DisneyPlusHub,
+        studios: PageStudios,
+        rowIds: Set<String>,
+        contentId: String,
+        contentType: String
+    ): Boolean {
+        val info = titleInfo(contentId, contentType) ?: return false
+        if ("tmdb:${info.tmdbId}" in rowIds) return true
+        if (hub.isMain) return hub.service in info.owners
+        if (hub.key.startsWith("collection_")) return false
+        return info.companyIds.any { it in studios.companies } || info.networkIds.any { it in studios.networks }
+    }
+
     suspend fun titleInfo(contentId: String, contentType: String): DisneyTitleInfo? = withContext(Dispatchers.IO) {
         val isTv = contentType.equals("series", true) || contentType.equals("tv", true)
         val cacheKey = "${if (isTv) "tv" else "movie"}:$contentId"
@@ -811,12 +835,24 @@ class DisneyPlusRepository @Inject constructor(
                 val tmdbId = tmdbService.ensureTmdbId(contentId, if (isTv) "tv" else "movie")?.toIntOrNull()
                     ?: return@runCatching null
                 val details = if (isTv) tmdbApi.getTvDetails(tmdbId, apiKey).body() else tmdbApi.getMovieDetails(tmdbId, apiKey).body()
+                // RCTV (owner's rule): where it streams in the US counts too (a movie on Netflix is
+                // on Netflix's page, whoever made it). Not known: only who made it counts.
+                val streamsOn = runCatching {
+                    val response = if (isTv) tmdbApi.getTvTitleWatchProviders(tmdbId, apiKey) else tmdbApi.getMovieTitleWatchProviders(tmdbId, apiKey)
+                    response.body()?.results?.get("US")?.let { region ->
+                        (region.flatrate.orEmpty() + region.ads.orEmpty() + region.free.orEmpty()).mapTo(HashSet()) { entry -> entry.providerId }
+                    }
+                }.onFailure { if (it is CancellationException) throw it }.getOrNull().orEmpty()
                 details?.let {
                     DisneyTitleInfo(
                         tmdbId = tmdbId,
                         mediaType = if (isTv) TmdbCollectionMediaType.TV else TmdbCollectionMediaType.MOVIE,
-                        owners = HubService.entries.filter { service -> it.isOwnedBy(service.ownership) }.toSet(),
-                        genreIds = it.genres.orEmpty().map { genre -> genre.id }
+                        owners = HubService.entries.filter { service ->
+                            it.isOwnedBy(service.ownership) || service.providerIds.any { id -> id in streamsOn }
+                        }.toSet(),
+                        genreIds = it.genres.orEmpty().map { genre -> genre.id },
+                        companyIds = it.productionCompanies.orEmpty().mapNotNullTo(HashSet()) { company -> company.id },
+                        networkIds = it.networks.orEmpty().mapNotNullTo(HashSet()) { network -> network.id }
                     )
                 }
             }.onFailure { if (it is CancellationException) throw it }.getOrNull()

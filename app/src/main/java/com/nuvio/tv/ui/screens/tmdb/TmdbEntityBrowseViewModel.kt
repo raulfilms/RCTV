@@ -29,6 +29,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -104,9 +111,19 @@ class TmdbEntityBrowseViewModel @Inject constructor(
     private val _posterCardCornerRadiusDp = MutableStateFlow(12)
     val posterCardCornerRadiusDp: StateFlow<Int> = _posterCardCornerRadiusDp.asStateFlow()
 
+    private val _continueWatching = MutableStateFlow<List<com.nuvio.tv.ui.screens.home.ContinueWatchingItem>>(emptyList())
+
+    /**
+     * RCTV (owner's rule): a studio's or service's page (opened from Home's tiles) has its Continue
+     * Watching, of its own titles only: the ones TMDB credits to this studio or network, or on its
+     * rails. Everything else stays only in Home's.
+     */
+    val continueWatching: StateFlow<List<com.nuvio.tv.ui.screens.home.ContinueWatchingItem>> = _continueWatching.asStateFlow()
+
     init {
         posterOptions.bind(viewModelScope)
         load()
+        if (platformLogoRes != null && entityKind != TmdbEntityKind.PROVIDER) observeContinueWatching()
         viewModelScope.launch {
             watchProgressRepository.observeWatchedMovieIds()
                 .collect { ids -> _watchedMovieIds.value = ids }
@@ -114,6 +131,68 @@ class TmdbEntityBrowseViewModel @Inject constructor(
         viewModelScope.launch {
             layoutPreferenceDataStore.posterCardCornerRadiusDp
                 .collect { _posterCardCornerRadiusDp.value = it }
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun observeContinueWatching() {
+        viewModelScope.launch {
+            val railIds = _uiState
+                .map { state ->
+                    (state as? TmdbEntityBrowseUiState.Success)?.data?.rails.orEmpty()
+                        .flatMap { rail -> rail.items }.mapTo(HashSet()) { it.id }
+                }
+                .distinctUntilChanged()
+            watchProgressRepository.continueWatching
+                .combine(railIds) { progressList, ids -> progressList to ids }
+                .debounce(300)
+                .collectLatest { (progressList, ids) ->
+                    val latestPerTitle = progressList
+                        .filter { it.isInProgress() }
+                        .sortedByDescending { it.lastWatched }
+                        .distinctBy { it.contentId }
+                        .take(40)
+                    val mine = coroutineScope {
+                        latestPerTitle.map { progress ->
+                            async { progress.takeIf { isThisPages(it.contentId, it.contentType, ids) } }
+                        }.awaitAll()
+                    }.filterNotNull()
+                    _continueWatching.value = mine.map { com.nuvio.tv.ui.screens.home.ContinueWatchingItem.InProgress(progress = it) }
+                }
+        }
+    }
+
+    private suspend fun isThisPages(contentId: String, contentType: String, railIds: Set<String>): Boolean {
+        val info = try {
+            hubRepository.titleInfo(contentId, contentType)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return false
+        if ("tmdb:${info.tmdbId}" in railIds) return true
+        return when (entityKind) {
+            TmdbEntityKind.COMPANY -> entityId in info.companyIds
+            TmdbEntityKind.NETWORK -> entityId in info.networkIds
+            TmdbEntityKind.PROVIDER -> false
+        }
+    }
+
+    fun removeContinueWatching(item: com.nuvio.tv.ui.screens.home.ContinueWatchingItem) {
+        val contentId = when (item) {
+            is com.nuvio.tv.ui.screens.home.ContinueWatchingItem.InProgress -> item.progress.contentId
+            is com.nuvio.tv.ui.screens.home.ContinueWatchingItem.NextUp -> item.info.contentId
+        }
+        _continueWatching.update { list ->
+            list.filterNot { existing ->
+                when (existing) {
+                    is com.nuvio.tv.ui.screens.home.ContinueWatchingItem.InProgress -> existing.progress.contentId == contentId
+                    is com.nuvio.tv.ui.screens.home.ContinueWatchingItem.NextUp -> existing.info.contentId == contentId
+                }
+            }
+        }
+        viewModelScope.launch {
+            runCatching { watchProgressRepository.removeProgress(contentId = contentId, season = null, episode = null) }
         }
     }
 

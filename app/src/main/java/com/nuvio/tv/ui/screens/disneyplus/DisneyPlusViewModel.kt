@@ -37,6 +37,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -222,7 +225,8 @@ class DisneyPlusViewModel @Inject constructor(
         } else {
             load(forceRefresh = false)
         }
-        if (seeAllRow == null && hubSpec.rows.any { it.kind == DisneyRowKind.CONTINUE_WATCHING }) {
+        // RCTV (owner's rule): every service's and studio's page has its Continue Watching.
+        if (seeAllRow == null) {
             observeContinueWatching()
         }
     }
@@ -777,19 +781,29 @@ class DisneyPlusViewModel @Inject constructor(
     }
 
     /**
-     * Continue Watching here only keeps titles TMDB credits to a studio or network the page's service owns
-     * (Disney+: Disney, Pixar, Marvel, Lucasfilm, 20th Century, National Geographic, Hulu, FX, ABC...;
-     * Paramount+: Paramount, CBS, Showtime, Nickelodeon, MTV, Comedy Central, BET, Smithsonian...;
-     * discovery+: Discovery, HGTV, Food Network, TLC, ID, OWN, Animal Planet, Magnolia...;
-     * HBO Max: HBO, Warner Bros., DC, Cartoon Network, Adult Swim...).
-     * Everything else stays only in the app's main Home continue watching.
+     * Continue Watching here only keeps the page's own titles. A service's main page: titles TMDB
+     * credits to a studio or network the service owns (Disney+: Disney, Pixar, Marvel, Lucasfilm, 20th
+     * Century, National Geographic, Hulu, FX, ABC...; Paramount+: Paramount, CBS, Showtime,
+     * Nickelodeon...; discovery+; HBO Max: HBO, Warner Bros., DC...; Peacock; Netflix, Prime Video,
+     * Apple TV, A24, Angel, Shudder, Blumhouse, FOX Nation: their own), and RCTV, the ones that stream
+     * on it (US). A brand page (Pixar, Marvel, CBS...): the ones of its studios and networks. Any page:
+     * the ones on its rows. Everything else stays only in the app's main Home continue watching.
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun observeContinueWatching() {
+        val studios = com.nuvio.tv.data.disneyplus.PageStudios.of(hubSpec)
         viewModelScope.launch {
+            // Again when the page's rows have loaded (a title on them is the page's).
+            val rowIds = _uiState
+                .map { state ->
+                    state.heroItems.mapTo(HashSet()) { it.id } +
+                        state.rows.flatMap { row -> row.row?.items.orEmpty() }.map { it.id }
+                }
+                .distinctUntilChanged()
             watchProgressRepository.continueWatching
+                .combine(rowIds) { progressList, ids -> progressList to ids }
                 .debounce(300)
-                .collectLatest { progressList ->
+                .collectLatest { (progressList, ids) ->
                     val latestPerTitle = progressList
                         .filter { it.isInProgress() }
                         .sortedByDescending { it.lastWatched }
@@ -797,7 +811,13 @@ class DisneyPlusViewModel @Inject constructor(
                         .take(40)
                     val ownedOnly = coroutineScope {
                         latestPerTitle.map { progress ->
-                            async { progress.takeIf { repository.isOwnedBy(hub.service, it.contentId, it.contentType) } }
+                            async {
+                                progress.takeIf {
+                                    runCatching { repository.belongsToPage(hub, studios, ids, it.contentId, it.contentType) }
+                                        .onFailure { error -> if (error is CancellationException) throw error }
+                                        .getOrDefault(false)
+                                }
+                            }
                         }.awaitAll()
                     }.filterNotNull()
                     _uiState.update { state ->

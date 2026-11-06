@@ -99,9 +99,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 fun TmdbEntityBrowseScreen(
     viewModel: TmdbEntityBrowseViewModel = hiltViewModel(),
     onBackPress: () -> Unit,
-    onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit
+    onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit,
+    /** RCTV: a title of the page's Continue Watching chosen (it plays where it was left). */
+    onContinueWatchingClick: (com.nuvio.tv.ui.screens.home.ContinueWatchingItem) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val continueWatching by viewModel.continueWatching.collectAsStateWithLifecycle()
     val watchedMovieIds by viewModel.watchedMovieIds.collectAsStateWithLifecycle()
     val watchedSeriesIds by viewModel.watchedSeriesIds.collectAsStateWithLifecycle()
     val heroItems by viewModel.heroItems.collectAsStateWithLifecycle()
@@ -150,6 +153,9 @@ fun TmdbEntityBrowseScreen(
                         sourceType = viewModel.sourceType,
                         platformLogoRes = viewModel.platformLogoRes,
                         heroItems = heroItems,
+                        continueWatching = continueWatching,
+                        onContinueWatchingClick = onContinueWatchingClick,
+                        onRemoveContinueWatching = viewModel::removeContinueWatching,
                         seeAllRailKey = seeAllRailKey,
                         onOpenSeeAll = viewModel::openSeeAll,
                         watchedMovieIds = watchedMovieIds,
@@ -191,6 +197,10 @@ private fun TmdbEntityBrowseContent(
     /** Set when opened from a streaming tile: the page shows as a hub (logo on top, big hero banner). */
     platformLogoRes: Int? = null,
     heroItems: List<MetaPreview> = emptyList(),
+    /** RCTV: the page's own titles in progress (a hub page only). */
+    continueWatching: List<com.nuvio.tv.ui.screens.home.ContinueWatchingItem> = emptyList(),
+    onContinueWatchingClick: (com.nuvio.tv.ui.screens.home.ContinueWatchingItem) -> Unit = {},
+    onRemoveContinueWatching: (com.nuvio.tv.ui.screens.home.ContinueWatchingItem) -> Unit = {},
     /** The rail whose See All page is open, or null. */
     seeAllRailKey: String? = null,
     onOpenSeeAll: (TmdbEntityMediaType, TmdbEntityRailType) -> Unit = { _, _ -> },
@@ -238,7 +248,8 @@ private fun TmdbEntityBrowseContent(
     // Streaming hub layout (Netflix, Prime...): the platform logo and the hero scroll with the rails.
     val hubMode = platformLogoRes != null
     val showHero = hubMode && heroItems.isNotEmpty()
-    val headerItemCount = if (hubMode) (if (showHero) 2 else 1) else 0
+    val showContinueWatching = hubMode && continueWatching.isNotEmpty()
+    val headerItemCount = (if (hubMode) 1 else 0) + (if (showHero) 1 else 0) + (if (showContinueWatching) 1 else 0)
     val heroFocusRequester = remember(data.header.id) { FocusRequester() }
     var heroFocused by remember { mutableStateOf(false) }
 
@@ -407,6 +418,38 @@ private fun TmdbEntityBrowseContent(
                                     focusRequester = heroFocusRequester,
                                     onItemClick = { item -> onNavigateToDetail(item.id, item.apiType, null) },
                                     onFocusChange = { heroFocused = it }
+                                )
+                            }
+                        }
+                        if (showContinueWatching) {
+                            item(key = "hub_continue_watching") {
+                                // RCTV: as on the other studio pages (Disney+...): a 16:9 picture with the
+                                // title's logo and the progress line; no circle of where it's from.
+                                com.nuvio.tv.ui.components.ContinueWatchingSection(
+                                    items = continueWatching,
+                                    title = stringResource(R.string.disney_row_continue_watching),
+                                    onItemClick = onContinueWatchingClick,
+                                    onDetailsClick = { item ->
+                                        when (item) {
+                                            is com.nuvio.tv.ui.screens.home.ContinueWatchingItem.InProgress -> onNavigateToDetail(
+                                                item.progress.contentId,
+                                                item.progress.contentType,
+                                                item.progress.addonBaseUrl
+                                            )
+                                            is com.nuvio.tv.ui.screens.home.ContinueWatchingItem.NextUp -> onNavigateToDetail(
+                                                item.info.contentId,
+                                                item.info.contentType,
+                                                null
+                                            )
+                                        }
+                                    },
+                                    onRemoveItem = onRemoveContinueWatching,
+                                    cardWidth = com.nuvio.tv.ui.components.AppleTvSpacing.Col4,
+                                    imageHeight = com.nuvio.tv.ui.components.AppleTvSpacing.Col4 * (9f / 16f),
+                                    cornerRadius = com.nuvio.tv.ui.components.AppleTvRadius.Poster,
+                                    appleStyle = true,
+                                    showBrandBadge = false,
+                                    startPadding = NuvioTheme.spacing.xxxl
                                 )
                             }
                         }

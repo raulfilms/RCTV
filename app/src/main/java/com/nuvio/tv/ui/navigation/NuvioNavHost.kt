@@ -1915,6 +1915,14 @@ private fun PlaybackNavHost(
                 onBackPress = { navController.popBackStack() },
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
+                },
+                // RCTV: the studio page's Continue Watching plays where it was left, as Disney+'s does.
+                onContinueWatchingClick = onContinueWatchingClick@{ item ->
+                    if (!playbackAvailability.canStream(item)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@onContinueWatchingClick
+                    }
+                    navController.navigate(disneyContinueWatchingRoute(item))
                 }
             )
         }

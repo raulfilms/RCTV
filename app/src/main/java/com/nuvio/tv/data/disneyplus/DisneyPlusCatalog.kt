@@ -508,10 +508,36 @@ enum class HubService(
                 PeacockIds.COMPANY_NAME_FRAGMENTS,
                 PeacockIds.NETWORK_NAMES
             )
-            // Their pages have no Continue Watching row, so nothing needs to count as theirs.
-            NETFLIX, PRIME_VIDEO, APPLE_TV, A24, ANGEL, SHUDDER, BLUMHOUSE, FOX_NATION ->
-                HubOwnership(emptySet(), emptySet(), emptyList(), emptySet())
+            // RCTV (owner's rule): every service's page has its Continue Watching, of its own titles.
+            NETFLIX -> HubOwnership(
+                ids(ServiceHubIds.CO_NETFLIX), ids(ServiceHubIds.NET_NETFLIX), listOf("netflix"), setOf("netflix")
+            )
+            PRIME_VIDEO -> HubOwnership(
+                ids(ServiceHubIds.CO_AMAZON), ids(ServiceHubIds.NET_PRIME_VIDEO),
+                listOf("amazon studios", "amazon mgm"), setOf("prime video", "amazon")
+            )
+            APPLE_TV -> HubOwnership(
+                ids(ServiceHubIds.CO_APPLE), ids(ServiceHubIds.NET_APPLE_TV),
+                listOf("apple studios", "apple original"), setOf("apple tv+", "apple tv")
+            )
+            A24 -> HubOwnership(ids(ServiceHubIds.CO_A24), emptySet(), listOf("a24"), emptySet())
+            ANGEL -> HubOwnership(ids(ServiceHubIds.CO_ANGEL), emptySet(), listOf("angel studios"), emptySet())
+            SHUDDER -> HubOwnership(
+                ids(ServiceHubIds.CO_SHUDDER), ids(ServiceHubIds.NET_SHUDDER), listOf("shudder"), setOf("shudder")
+            )
+            BLUMHOUSE -> HubOwnership(
+                ids(ServiceHubIds.CO_BLUMHOUSE_MOVIES) + ids(ServiceHubIds.CO_BLUMHOUSE_TV), emptySet(),
+                listOf("blumhouse"), emptySet()
+            )
+            FOX_NATION -> HubOwnership(ids(ServiceHubIds.CO_FOX_NATION), emptySet(), listOf("fox nation"), setOf("fox nation"))
         }
+
+    /** RCTV: its TMDB watch provider ids (US): a title that streams on one of them is on this service. */
+    val providerIds: Set<Int> get() = ids(providers)
+
+    private companion object {
+        fun ids(text: String): Set<Int> = text.split('|', ',').mapNotNullTo(HashSet()) { it.trim().toIntOrNull() }
+    }
 }
 
 /**
@@ -929,6 +955,20 @@ data class DisneyHubSpec(
     val heroRowId: String,
     val rows: List<DisneyRowSpec>
 )
+
+/** RCTV: the studios and networks (TMDB ids) a page's rows are made of: what counts as the page's. */
+data class PageStudios(val companies: Set<Int>, val networks: Set<Int>) {
+    companion object {
+        fun of(spec: DisneyHubSpec): PageStudios {
+            val discovers = spec.rows.flatMap { it.sources + it.seeAll }.filterIsInstance<DisneyRowSource.Discover>()
+            fun ids(text: String?): List<Int> = text.orEmpty().split('|', ',').mapNotNull { it.trim().toIntOrNull() }
+            return PageStudios(
+                companies = discovers.flatMapTo(HashSet()) { ids(it.companies) },
+                networks = discovers.flatMapTo(HashSet()) { ids(it.networks) }
+            )
+        }
+    }
+}
 
 private val MOVIE = TmdbCollectionMediaType.MOVIE
 private val TV = TmdbCollectionMediaType.TV
