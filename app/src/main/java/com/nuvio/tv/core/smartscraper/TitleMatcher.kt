@@ -29,6 +29,50 @@ object TitleMatcher {
     }
 
     /**
+     * RCTV (owner's rule): a series' release whose title holds the one asked for, or is held in it
+     * ([TitleMatch.PARTIAL]), is another show when the words that differ come after it: a spin-off
+     * ("Below Deck" for "Below", "NCIS: Los Angeles" for "NCIS", "Daredevil: Born Again" for
+     * "Daredevil") or the show it comes from ("NCIS" for "NCIS: Los Angeles"). Words before it are
+     * its brand ("Marvel's Daredevil", "Star Wars: Andor" / "Andor"); a country, a number or an
+     * episode's words after it are the same show ("The Office US", "Show Episode 4", "Frieren - 05").
+     */
+    fun anotherShow(releaseTitle: String?, request: SmartSourceRequest): Boolean {
+        val found = releaseTitle?.let(::wordsOf)?.takeIf { it.isNotEmpty() } ?: return false
+        val names = (listOfNotNull(request.title) + request.alternateTitles).map(::wordsOf).filter { it.isNotEmpty() }
+        if (names.isEmpty()) return false
+        return names.none { wanted -> sameShow(found, wanted) }
+    }
+
+    private fun sameShow(found: List<String>, wanted: List<String>): Boolean {
+        if (found == wanted) return true
+        val inFound = indexOf(found, wanted)
+        if (inFound >= 0) return found.drop(inFound + wanted.size).all(::sameShowWord)
+        val inWanted = indexOf(wanted, found)
+        if (inWanted >= 0) return wanted.drop(inWanted + found.size).all(::sameShowWord)
+        // Neither holds the other word for word: nothing here to tell them apart.
+        return true
+    }
+
+    private fun sameShowWord(word: String): Boolean =
+        word in COUNTRIES || word in EPISODE_WORDS || word.all(Char::isDigit)
+
+    private fun wordsOf(text: String): List<String> = loose(text).split(' ').filter { it.isNotEmpty() }
+
+    private fun indexOf(outer: List<String>, inner: List<String>): Int {
+        if (inner.isEmpty() || inner.size > outer.size) return -1
+        for (start in 0..outer.size - inner.size) {
+            if (outer.subList(start, start + inner.size) == inner) return start
+        }
+        return -1
+    }
+
+    private val COUNTRIES = setOf("us", "usa", "uk", "au", "nz", "ca")
+    private val EPISODE_WORDS = setOf(
+        "episode", "ep", "episodio", "capitulo", "cap", "chapter", "part", "parte",
+        "season", "temporada", "series", "serie", "vol", "volume", "complete", "completa"
+    )
+
+    /**
      * "Squidward's  Tiki-Land!" → "squidwards tiki land"; "Amélie & Co" → "amelie and co". RCTV
      * (MEM-07): without regular expressions (it runs for every source, each time the list changes;
      * see [FastText]), the same as

@@ -131,6 +131,27 @@ object SmartScoreEngine {
             return MetadataCheck(0.6f * title + 0.4f * year, null)
         }
 
+        // RCTV (owner's rule): a series is the series, as a movie is the movie.
+        if (request.isEpisode) {
+            // A movie's file (a year said, no season or episode, not a whole season): "Below" (2002)
+            // the movie is never an episode of the series "Below".
+            val saysEpisode = release.seasons.isNotEmpty() || release.episodes.isNotEmpty() || release.isSeasonPack
+            if (!saysEpisode && foundYear != null) return MetadataCheck(0f, RejectReason.WRONG_TYPE)
+        }
+        if (wantedYear != null && foundYear != null) {
+            // A show of the same name from before this one began is another show (Shōgun of 1980 for
+            // the one of 2024); for its first season, so is one from after it began (a newer show of
+            // its name). A later year is a later season's own.
+            if (foundYear < wantedYear - config.yearTolerance) return MetadataCheck(0f, RejectReason.WRONG_YEAR)
+            if (request.season == 1 && foundYear > wantedYear + config.yearTolerance) {
+                return MetadataCheck(0.5f * title, RejectReason.WRONG_TITLE)
+            }
+        }
+        // A spin-off or the show it comes from ("Below Deck" for "Below", "NCIS" for "NCIS: Los
+        // Angeles"): kept in the list to choose by hand, never played on its own.
+        if (titleMatch == TitleMatch.PARTIAL && TitleMatcher.anotherShow(release.title, request)) {
+            return MetadataCheck(0.5f * title, RejectReason.WRONG_TITLE)
+        }
         val year = when {
             wantedYear == null || foundYear == null -> 0.8f
             abs(foundYear - wantedYear) <= config.yearTolerance -> 1f
@@ -477,8 +498,8 @@ object SmartScoreEngine {
     /**
      * RCTV (owner's rule, 4-nov-2026; Auto Stream's too, see [AutoStreamEngine]): the wanted
      * resolutions (4K, 2K, 1080p, up to the TV's own) the connection keeps up with and the TV shows
-     * as meant come first; for a movie, its own year's files and the ones big enough for its length
-     * first (as Auto Stream's); 5.1 or more before stereo, then the smallest file (files within
+     * as meant come first; a movie's own year's files (an episode's that say its season and episode)
+     * and the ones big enough for its length first (as Auto Stream's); 5.1 or more before stereo, then the smallest file (files within
      * [AutoStreamConfig.sameSizeMargin] are the same size: the higher resolution first, then the
      * Smart Score). The rest (720p, unknown, too much for the connection) after them, by Smart Score.
      */

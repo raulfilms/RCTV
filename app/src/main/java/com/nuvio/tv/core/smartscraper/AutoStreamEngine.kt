@@ -74,13 +74,15 @@ data class AutoStreamCandidate(
     val sizeKnown: Boolean = true,
     /**
      * RCTV (owner's rule): a movie's file that says the movie's own year (its title already is the
-     * movie's): before one whose year isn't said or is a year off. Always true for an episode.
+     * movie's): before one whose year isn't said or is a year off. An episode's file that says its
+     * season and episode: before a whole season's or one that says neither.
      */
     val identityConfirmed: Boolean = true,
     /**
      * RCTV (owner's rule): a movie's file big enough for the movie's length at its resolution (at
      * least [AutoStreamEngine.minimumMbps]): a picture worth watching. One far too small for a 2 or 3
-     * hour movie (a 2 GB 1080p, a 1 GB "4K") comes after every one that is. Always true for an episode.
+     * hour movie (a 2 GB 1080p, a 1 GB "4K") comes after every one that is. The same for an episode,
+     * by the episode's length.
      */
     val fullQuality: Boolean = true,
     /** Its file's size in bytes, when known (a season's pack size isn't an episode's). */
@@ -146,8 +148,8 @@ data class AutoStreamResult(
  * one to download). Nothing is ever relaxed: when nothing passes, there's no automatic stream.
  *
  * RCTV (owner's rule, 4-nov-2026), before the ranking below: the wanted resolutions (4K, 2K, 1080p,
- * up to the TV's own) the connection and the TV take come first; for a movie, a file of its own year
- * and one big enough for its length first ([AutoStreamCandidate.identityConfirmed],
+ * up to the TV's own) the connection and the TV take come first; a movie's file of its own year (an
+ * episode's that says its season and episode) and one big enough for its length first ([AutoStreamCandidate.identityConfirmed],
  * [AutoStreamCandidate.fullQuality]); then 5.1 (or 7.1) before 2.0, then the smallest
  * file (files within [AutoStreamConfig.sameSizeMargin] are the same size: the higher resolution
  * first), then the sound and the rest as below. 720p and lower only after them ([order]).
@@ -312,7 +314,9 @@ object AutoStreamEngine {
         val release = source.release
         if (release.seasons.isNotEmpty() && release.episodes.isNotEmpty()) return true
         if (release.isSeasonPack) return source.fileIdx != null
-        return release.episodes.isEmpty()
+        // RCTV (owner's rule): a file that says nothing is an addon's answer for this episode's id; a
+        // local plugin's scrapers find theirs by name, so one may be a movie of the same name.
+        return release.episodes.isEmpty() && source.stream.pluginRepository == null
     }
 
     /** The file's own size: a whole season's pack size isn't an episode's (unknown then). */
@@ -663,8 +667,14 @@ object AutoStreamEngine {
      * RCTV: [release] (a movie's) says the movie's own year; an episode's always is. Its title was
      * already checked by the hard rules (another title needs the exact year, see [SmartScoreEngine]).
      */
-    fun identityConfirmed(release: ParsedRelease, request: SmartSourceRequest): Boolean =
-        request.isSeries || request.year == null || release.year == request.year
+    fun identityConfirmed(release: ParsedRelease, request: SmartSourceRequest): Boolean = when {
+        // RCTV (owner's rule): an episode's file that says this season and episode, before a whole
+        // season's file or one that says neither.
+        request.isEpisode -> request.season in release.seasons &&
+            (request.episode in release.episodes || release.episodes.any { it in request.equivalentEpisodes })
+        request.isSeries -> true
+        else -> request.year == null || release.year == request.year
+    }
 
     /**
      * RCTV (owner's rule): a movie's file of [bitrateMbps] (from its size and the movie's length) is
@@ -672,7 +682,7 @@ object AutoStreamEngine {
      * too small to be the whole movie. Unknown sizes and episodes aren't held back here.
      */
     fun fullQuality(release: ParsedRelease, bitrateMbps: Double?, request: SmartSourceRequest): Boolean =
-        request.isSeries || bitrateMbps == null || bitrateMbps >= minimumMbps(release)
+        (request.isSeries && !request.isEpisode) || bitrateMbps == null || bitrateMbps >= minimumMbps(release)
 
     /**
      * The least average bitrate (Mbps) a file of [release]'s resolution looks right at: 4K 5, 2K 3.5,

@@ -166,14 +166,28 @@ internal fun PlayerRuntimeController.skipIfDebridErrorClip(durationMs: Long): Bo
  */
 internal fun PlayerRuntimeController.skipIfWrongLength(durationMs: Long): Boolean {
     if (durationMs <= 0L || _playbackTimeline.value.isLive || isLiveTvPlayback) return false
-    if (contentType?.lowercase() != "movie") return false
+    val type = contentType?.lowercase()
+    if (type != "movie" && type != "series" && type != "tv") return false
     val session = AutoStreamSession.current(currentVideoId) ?: return false
     if (session.started || session.switching) return false
+    val episode = type != "movie"
+    // An episode's length as given is often rounded ("45 min"), so it has room either way; a 20 to
+    // 25 min one says less than 40 and isn't checked.
     val expected = runtimeMinutesOf(_uiState.value.runtime) ?: return false
     val minutes = durationMs / 60_000.0
-    if (minutes >= expected * MIN_LENGTH_SHARE && minutes <= expected * MAX_LENGTH_SHARE) return false
-    return tryAutoStreamFallback("${minutes.toInt()} min long, the movie is $expected min: not the movie")
+    val min = if (episode) EPISODE_MIN_LENGTH_SHARE else MIN_LENGTH_SHARE
+    val max = if (episode) EPISODE_MAX_LENGTH_SHARE else MAX_LENGTH_SHARE
+    if (minutes >= expected * min && minutes <= expected * max) return false
+    val what = if (episode) "episode" else "movie"
+    return tryAutoStreamFallback("${minutes.toInt()} min long, the $what is $expected min: not the $what")
 }
+
+/**
+ * RCTV (owner's rule): an episode is the episode. Auto Stream's source under half its length, or
+ * over 2.5 times it (a movie of the same name for a 45 min episode), is something else.
+ */
+private const val EPISODE_MIN_LENGTH_SHARE = 0.5
+private const val EPISODE_MAX_LENGTH_SHARE = 2.5
 
 /**
  * A source shorter than this share of the movie's length isn't the movie... RCTV (owner's rule):

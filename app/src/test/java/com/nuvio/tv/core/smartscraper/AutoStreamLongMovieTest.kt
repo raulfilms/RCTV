@@ -120,7 +120,7 @@ class AutoStreamLongMovieTest {
     }
 
     @Test
-    fun `an episode keeps its own order - nothing here holds one back`() {
+    fun `an episode's file far too small for its length comes after one that isn't`() {
         val episode = SmartSourceRequest(title = "Show", year = null, isSeries = true, season = 1, episode = 2, runtimeMinutes = 45)
         val result = AutoStreamEngine.rank(
             listOf(
@@ -129,7 +129,8 @@ class AutoStreamLongMovieTest {
             ).map(SourceProviderAdapters::normalize),
             episode
         )
-        assertEquals(listOf("small", "big"), hashes(result))
+        // 0.3 GB for 45 min of 1080p H.264 (under 3 Mbps) is far too small.
+        assertEquals(listOf("big", "small"), hashes(result))
     }
 
     private fun hashes(result: AutoStreamResult) = result.candidates.map { it.stream.infoHash }
