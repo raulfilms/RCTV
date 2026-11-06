@@ -228,9 +228,9 @@ class AutoStreamVerificationTest {
         AutoStreamSession.begin("tt1", first, listOf(first, second), config, startedAtMs = startedAt, wantedLanguages = setOf("en"))
         val session = AutoStreamSession.current("tt1")!!
         assertEquals(listOf("second"), session.upcoming.map { it.infoHash })
-        assertEquals(startedAt + 10_000, session.deadlineAtMs)
-        assertFalse(session.pastDeadline(startedAt + 9_999))
-        assertTrue(session.pastDeadline(startedAt + 10_000))
+        assertEquals(startedAt + 25_000, session.deadlineAtMs)
+        assertFalse(session.pastDeadline(startedAt + 24_999))
+        assertTrue(session.pastDeadline(startedAt + 25_000))
         // A late one is added after them; one already there or playing isn't added again.
         assertEquals(1, AutoStreamSession.appendLate("tt1", listOf(first, second, stream("late", "C"))))
         assertEquals(listOf("second", "late"), session.upcoming.map { it.infoHash })

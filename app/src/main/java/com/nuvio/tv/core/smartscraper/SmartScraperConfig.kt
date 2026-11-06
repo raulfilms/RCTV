@@ -131,8 +131,13 @@ data class AutoStreamConfig(
     val typicalEpisodeMinutes: Int = 45,
 
     // ------------------------------------------------------------------ Pipeline (§8)
-    /** STARTUP_DEADLINE_S: from Play to the first picture; past it no other source is started. */
-    val startupDeadlineSeconds: Double = 10.0,
+    /**
+     * STARTUP_DEADLINE_S: from Play to the first picture; past it no other source is started.
+     * RCTV (owner's report): 25 s, not 10: the first time a title is played its debrid links are
+     * made then (several seconds each), and 10 s ran out, so the sources showed instead of the
+     * movie; the second time the links were ready and it played.
+     */
+    val startupDeadlineSeconds: Double = 25.0,
     /**
      * PROVIDER_TIMEOUT_S: the choice is made when every addon has answered or this long after Play
      * (the "Search time" setting); later answers are only fallbacks.
@@ -141,8 +146,11 @@ data class AutoStreamConfig(
     /** EARLY_DECISION_S / EARLY_DECISION_MIN_RELIABILITY (§8.1). */
     val earlyDecisionSeconds: Double = 2.5,
     val earlyDecisionMinReliability: Double = 0.90,
-    /** RESOLVE_TIMEOUT_S: each source's link resolved and its first bytes checked within this. */
-    val resolveVerifyTimeoutSeconds: Double = 2.5,
+    /**
+     * RESOLVE_TIMEOUT_S: each source's link resolved and its first bytes checked within this.
+     * RCTV: 8 s, not 2.5: a debrid service making a link for the first time takes longer.
+     */
+    val resolveVerifyTimeoutSeconds: Double = 8.0,
     /** §8.3: the longest the first picture waits for the player to say its tracks (then it plays unchecked). */
     val prePlayCheckTimeoutSeconds: Double = 4.0,
 

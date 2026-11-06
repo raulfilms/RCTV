@@ -393,7 +393,7 @@ class StreamScreenViewModel @Inject constructor(
             val playerSettings = playerSettingsDataStore.playerSettings.first()
             // RCTV Auto Stream v2.0 (§8): its own rules and timing, never on a screen opened to choose
             // by hand. The choice is made when every addon has answered or after the search time (4 s);
-            // nothing valid by the startup deadline (10 s from Play) means the sources are shown. No
+            // nothing valid by the startup deadline (25 s from Play) means the sources are shown. No
             // speed test at Play (§5): the connection is what plays and the app's last test have shown.
             preferredAudioLanguageSetting = playerSettings.preferredAudioLanguage
             val autoStreamMode = playerSettings.streamAutoPlayMode == StreamAutoPlayMode.AUTO_STREAM && !manualSelection
@@ -1498,10 +1498,16 @@ class StreamScreenViewModel @Inject constructor(
         val startedAtMs = autoStreamStartedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis()
         val failed = ArrayList<Stream>()
         val request = smartRequest()
+        val attemptTimeoutMs = (config.resolveVerifyTimeoutSeconds * 1_000).toLong()
         val found = AutoStreamResolver.firstPlayable(
             candidates = candidates,
-            deadlineAtMs = startedAtMs + (config.startupDeadlineSeconds * 1_000).toLong(),
-            attemptTimeoutMs = (config.resolveVerifyTimeoutSeconds * 1_000).toLong(),
+            // RCTV: a source chosen late still gets one whole try at its link (the first time a
+            // title plays, the debrid service makes its link then).
+            deadlineAtMs = maxOf(
+                startedAtMs + (config.startupDeadlineSeconds * 1_000).toLong(),
+                System.currentTimeMillis() + attemptTimeoutMs
+            ),
+            attemptTimeoutMs = attemptTimeoutMs,
             maxAttempts = 1 + config.maxFallbacks,
             providerOf = AutoStreamResolver::providerOf,
             onFailure = { candidate, failure ->
