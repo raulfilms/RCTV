@@ -4440,7 +4440,6 @@
     <!-- RCTV: the Guide's provider categories and the 24/7 types. -->
     <string name="livetv_guide_cat_live_events">Live Events &amp; PPV</string>
     <string name="livetv_guide_cat_24_7">24/7</string>
-    <string name="livetv_guide_cat_streaming">Streaming</string>
     <string name="livetv_guide_24_7_type">24/7 Type</string>
     <string name="livetv_guide_24_7_all">All 24/7</string>
 </resources>

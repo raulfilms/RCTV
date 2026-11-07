@@ -292,6 +292,7 @@ class LiveTvGuideLoader @Inject constructor(
         val results = sources.map { source -> source to loadSourceChannels(source) }
         val channels = results
             .flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+            .filterNot(::isHidden)
             .map { channel ->
                 // Country for the Guide's filter: the playlist's own, or guessed from group/name.
                 val country = LiveTvCountry.of(channel)
@@ -382,6 +383,24 @@ class LiveTvGuideLoader @Inject constructor(
             else -> null
         }
     }
+
+    /**
+     * RCTV (owner's choice): a provider's groups the app never shows (streaming services' copies:
+     * Netflix, Prime, Disney+, Sky Store, OnePlay, Samsung TV Plus...), by name, any case or spacing.
+     */
+    private val hiddenGroups = setOf(
+        "SkyMix Series", "Sky Store Premiere", "OnePlay Cinema", "OnePlay Adventure", "BBCiplayer Series",
+        "Hulu Originals", "Amazon Prime Video", "Apple TV+ Series", "Disney+ Series", "Netflix Series",
+        "Netflix Movies", "Peacock Original", "Paramount+ Original", "SkyMix Docs", "OnePlay Anime",
+        "OnePlay Kids International", "Samsung TV Plus", "España | Netflix Series", "España | MoviStar+ Series",
+        "España | MoviStar+ Estrenos", "España | Netflix Estrenos"
+    ).mapTo(HashSet(), ::groupKey)
+
+    private fun groupKey(group: String): String =
+        group.lowercase(java.util.Locale.ROOT).filterNot { it.isWhitespace() }
+
+    private fun isHidden(channel: LiveTvChannel): Boolean =
+        channel.groupTitle?.let { groupKey(it) in hiddenGroups } == true
 
     /** One source's channels; never throws (a failing source just adds nothing). */
     private suspend fun loadSourceChannels(source: LiveTvSource): Result<List<LiveTvChannel>> = runCatching {

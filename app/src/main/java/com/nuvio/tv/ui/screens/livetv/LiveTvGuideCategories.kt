@@ -23,8 +23,6 @@ enum class GuideBrowse(@StringRes val labelRes: Int, val isCategory: Boolean) {
     MOVIES(R.string.livetv_guide_cat_movies, true),
     /** RCTV: a provider's 24/7 channels (one show or genre all day), with their own types to pick. */
     CHANNELS_24_7(R.string.livetv_guide_cat_24_7, true),
-    /** RCTV: channels of streaming services (Netflix, Tubi, Samsung TV Plus, Prime Video...). */
-    STREAMING(R.string.livetv_guide_cat_streaming, true),
     LIFESTYLE(R.string.livetv_guide_cat_lifestyle, true),
     CRIME_REALITY(R.string.livetv_guide_cat_crime_reality, true),
     KIDS(R.string.livetv_guide_cat_kids, true),
@@ -189,13 +187,6 @@ internal object LiveTvGuideCategories {
         "flo sports", "sportsnet+", "tsn+", "efl", "dazn"
     )
 
-    /** RCTV: streaming services' groups ("Netflix Movies", "USA | Tubi", "Samsung TV Plus"). */
-    private val streamingGroups = listOf(
-        "netflix", "prime video", "apple tv+", "disney+", "hulu", "hbomax", "hbo max", "| max", "paramount",
-        "peacock original", "tubi", "samsung tv plus", "vix+", "oneplay", "sky store", "skymix", "bbciplayer",
-        "movistar+", "pluto", "plex", "roku channel"
-    )
-
     /** RCTV: a 24/7 channel: its group or name starts with "24/7" ("24/7 Sitcom", "24/7: Desmonds", "EN 24/7 | ..."). */
     fun is24x7(channel: LiveTvChannel): Boolean {
         val group = channel.groupTitle?.trim()?.lowercase(Locale.ROOT).orEmpty()
@@ -263,7 +254,7 @@ internal object LiveTvGuideCategories {
             result += GuideBrowse.LOCAL
         }
 
-        // RCTV: a provider's own groups: live events, 24/7 channels, streaming services.
+        // RCTV: a provider's own groups: live events, 24/7 channels.
         val group = channel.groupTitle?.lowercase(Locale.ROOT).orEmpty()
         val name = channel.name.lowercase(Locale.ROOT)
         if (liveEventGroups.any { it in group } || name.startsWith("ppv")) {
@@ -271,7 +262,6 @@ internal object LiveTvGuideCategories {
             result += GuideBrowse.SPORTS
         }
         if (is24x7(channel)) result += GuideBrowse.CHANNELS_24_7
-        if (streamingGroups.any { it in group } && "live events" !in group) result += GuideBrowse.STREAMING
 
         // Another country's channel is international.
         if (channel.country != null && channel.country != "US") result += GuideBrowse.INTERNATIONAL

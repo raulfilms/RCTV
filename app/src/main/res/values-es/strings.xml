@@ -1718,7 +1718,6 @@
     <!-- RCTV: categorías del proveedor en la guía y los tipos de 24/7. -->
     <string name="livetv_guide_cat_live_events">Eventos en vivo y PPV</string>
     <string name="livetv_guide_cat_24_7">24/7</string>
-    <string name="livetv_guide_cat_streaming">Streaming</string>
     <string name="livetv_guide_24_7_type">Tipo de 24/7</string>
     <string name="livetv_guide_24_7_all">Todos los 24/7</string>
 </resources>
