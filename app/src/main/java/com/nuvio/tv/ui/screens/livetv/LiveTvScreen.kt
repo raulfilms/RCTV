@@ -137,6 +137,7 @@ fun LiveTvScreen(
                 topInset = if (showBuiltInHeader) NuvioTheme.spacing.lg else 56.dp,
                 onSetBrowse = viewModel::setGuideBrowse,
                 onSetCountry = viewModel::setGuideCountry,
+                onSet24x7Type = viewModel::setGuide24x7Type,
                 onToggleCustom = viewModel::toggleCustomChannel,
                 // The focused program's artwork from TMDB (backdrop and logo), like every row.
                 cachedProgramArt = viewModel::cachedProgramArt,

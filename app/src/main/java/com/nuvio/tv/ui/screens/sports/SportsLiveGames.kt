@@ -287,11 +287,12 @@ internal object SportsGameChannels {
         val seen = HashSet<String>()
         channels.forEach { channel ->
             val channelPrograms = epgByChannel[channel.epgChannelId ?: channel.id]
-            // A PPV channel named after the show ("PPV 1: Fundora vs Hadribeaj"), often with no guide.
-            if (event.isPpv()) {
-                ppvChannelAiring(channel, channelPrograms, home, away, event, now)?.let { airing ->
-                    if (seen.add("${channel.id}|ppv")) found += airing
-                }
+            // A channel named after the game, often with no guide: a PPV show ("PPV 1: Fundora vs
+            // Hadribeaj"); RCTV, any game a provider's event channels carry today ("NBA 1: Boston
+            // Celtics vs Charlotte Hornets 7:00 PM ET", "EPL 01: Everton v Coventry City", "(63) Yale
+            // vs. Brown (2026-11-06 18:00:00 ET)").
+            ppvChannelAiring(channel, channelPrograms, home, away, event, now)?.let { airing ->
+                if (seen.add("${channel.id}|ppv")) found += airing
             }
             val programs = channelPrograms ?: return@forEach
             programs.forEach program@{ program ->
@@ -386,6 +387,9 @@ internal object SportsGameChannels {
     ): GameAiring? {
         val name = canonical(normalize(channel.name))
         if (teamIn(name, home) == 0 || teamIn(name, away) == 0) return null
+        // A replay or a show about it ("NBA | Replay"), not the game.
+        val group = normalize(channel.groupTitle.orEmpty())
+        if (NOT_THE_GAME.any { has(name, it) || has(group, it) }) return null
         val start = event.startTimeMs ?: return null
         if (abs(now - start) > BANANA_BALL_DAY_MS) return null
         val program = programs?.firstOrNull { it.isAiringAt(now) } ?: EpgProgram(

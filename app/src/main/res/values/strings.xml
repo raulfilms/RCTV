@@ -4437,4 +4437,10 @@
     <string name="livetv_reason_unreachable">couldn\'t reach the server, check its address and port</string>
     <string name="livetv_reason_memory">too many channels for this TV\'s memory</string>
     <string name="livetv_reason_unexpected">the server\'s answer isn\'t a channel list, check its address</string>
+    <!-- RCTV: the Guide's provider categories and the 24/7 types. -->
+    <string name="livetv_guide_cat_live_events">Live Events &amp; PPV</string>
+    <string name="livetv_guide_cat_24_7">24/7</string>
+    <string name="livetv_guide_cat_streaming">Streaming</string>
+    <string name="livetv_guide_24_7_type">24/7 Type</string>
+    <string name="livetv_guide_24_7_all">All 24/7</string>
 </resources>

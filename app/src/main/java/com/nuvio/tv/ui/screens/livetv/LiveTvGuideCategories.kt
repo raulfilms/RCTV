@@ -18,7 +18,13 @@ enum class GuideBrowse(@StringRes val labelRes: Int, val isCategory: Boolean) {
     TV_SHOWS(R.string.livetv_guide_cat_tv_shows, true),
     NEWS(R.string.livetv_guide_cat_news, true),
     SPORTS(R.string.livetv_guide_cat_sports, true),
+    /** RCTV: a provider's event channels (PPV, Game Pass, ESPN+, NCAA, EPL...), named after today's games. */
+    LIVE_EVENTS(R.string.livetv_guide_cat_live_events, true),
     MOVIES(R.string.livetv_guide_cat_movies, true),
+    /** RCTV: a provider's 24/7 channels (one show or genre all day), with their own types to pick. */
+    CHANNELS_24_7(R.string.livetv_guide_cat_24_7, true),
+    /** RCTV: channels of streaming services (Netflix, Tubi, Samsung TV Plus, Prime Video...). */
+    STREAMING(R.string.livetv_guide_cat_streaming, true),
     LIFESTYLE(R.string.livetv_guide_cat_lifestyle, true),
     CRIME_REALITY(R.string.livetv_guide_cat_crime_reality, true),
     KIDS(R.string.livetv_guide_cat_kids, true),
@@ -125,16 +131,19 @@ internal object LiveTvGuideCategories {
         GuideBrowse.DOCUMENTARIES to words(
             "discovery", "nat geo", "national geographic", "history", "smithsonian", "science",
             "animal planet", "nature", "bbc earth", "curiosity", "documentary", "military", "ahc",
-            "american heroes", "magellan"
+            "american heroes", "magellan", "documentaries", "docs"
         ),
         GuideBrowse.LIFESTYLE to words(
             "food", "food network", "cooking", "hgtv", "travel", "tlc", "magnolia", "fyi", "diy",
-            "home shopping", "garden", "qvc", "hsn", "shop", "outdoor", "tastemade", "great american living"
+            "home shopping", "garden", "qvc", "hsn", "shop", "outdoor", "tastemade", "great american living",
+            "shopping", "relaxation"
         ),
         GuideBrowse.CRIME_REALITY to words(
             "investigation discovery", "id", "oxygen", "court tv", "a&e", "crime", "true crime",
-            "law & crime", "reality", "bravo", "e!", "justice"
+            "law & crime", "reality", "bravo", "e!", "justice", "reality show"
         ),
+        // RCTV: a provider's own group names ("USA | Entertainment", "Netflix Series").
+        GuideBrowse.TV_SHOWS to words("entertainment", "series", "sitcom"),
         GuideBrowse.GAME_SHOWS_CLASSICS to words(
             "gsn", "game show", "game show network", "buzzr", "metv", "antenna tv", "cozi", "tv land",
             "decades", "catchy comedy", "grit", "gettv", "start tv", "laff", "h&i", "heroes & icons",
@@ -147,7 +156,7 @@ internal object LiveTvGuideCategories {
         GuideBrowse.INTERNATIONAL to words(
             "univision", "telemundo", "unimas", "unimás", "galavision", "galavisión", "estrella", "azteca",
             "telefe", "caracol", "rcn", "venevision", "venevisión", "wapa", "telemicro", "en español",
-            "español", "espanol", "latino", "latina", "spanish", "tudn", "deportes", "cine latino",
+            "español", "espanol", "latino", "latina", "latin", "spanish", "tudn", "deportes", "cine latino",
             "rai", "tv5", "tv5monde", "zee", "star plus", "arirang", "nhk", "kbs", "dw", "tve",
             "canal", "mega", "hola", "pasiones", "sorpresa", "vme", "estrella tv", "multimedios"
         ),
@@ -172,6 +181,39 @@ internal object LiveTvGuideCategories {
             if (program.categories.any { it.lowercase(Locale.ROOT) in adultCategories }) adultMinutes += minutes
         }
         return totalMinutes > 0 && adultMinutes * 2 > totalMinutes
+    }
+
+    /** RCTV: a provider's live-event groups and channel names ("PPV | Live Events", "USA | NBA Game Pass"). */
+    private val liveEventGroups = listOf(
+        "ppv", "live events", "game pass", "espn+", "espn play", "ncaa", "premier league", "champions league",
+        "flo sports", "sportsnet+", "tsn+", "efl", "dazn"
+    )
+
+    /** RCTV: streaming services' groups ("Netflix Movies", "USA | Tubi", "Samsung TV Plus"). */
+    private val streamingGroups = listOf(
+        "netflix", "prime video", "apple tv+", "disney+", "hulu", "hbomax", "hbo max", "| max", "paramount",
+        "peacock original", "tubi", "samsung tv plus", "vix+", "oneplay", "sky store", "skymix", "bbciplayer",
+        "movistar+", "pluto", "plex", "roku channel"
+    )
+
+    /** RCTV: a 24/7 channel: its group or name starts with "24/7" ("24/7 Sitcom", "24/7: Desmonds", "EN 24/7 | ..."). */
+    fun is24x7(channel: LiveTvChannel): Boolean {
+        val group = channel.groupTitle?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        if (group.startsWith("24/7")) return true
+        val name = channel.name.trim().lowercase(Locale.ROOT)
+        return name.startsWith("24/7") || name.startsWith("en 24/7") || name.contains(" 24/7 ") || name.contains("[24/7]")
+    }
+
+    /**
+     * RCTV: a 24/7 channel's type, from its group ("24/7 Sitcom" → "Sitcom", "24/7 comedy" →
+     * "Comedy"); null when the group doesn't say.
+     */
+    fun type24x7(channel: LiveTvChannel): String? {
+        val group = channel.groupTitle?.trim() ?: return null
+        if (!group.startsWith("24/7")) return null
+        val rest = group.removePrefix("24/7").trim().trimStart(':', '|', '-').trim()
+        if (rest.isEmpty()) return null
+        return rest.lowercase(Locale.ROOT).replaceFirstChar { it.titlecase(Locale.ROOT) }
     }
 
     /** Categories for each channel id. */
@@ -220,6 +262,16 @@ internal object LiveTvGuideCategories {
         if ((number != null && number.contains('.')) || hasCallSign) {
             result += GuideBrowse.LOCAL
         }
+
+        // RCTV: a provider's own groups: live events, 24/7 channels, streaming services.
+        val group = channel.groupTitle?.lowercase(Locale.ROOT).orEmpty()
+        val name = channel.name.lowercase(Locale.ROOT)
+        if (liveEventGroups.any { it in group } || name.startsWith("ppv")) {
+            result += GuideBrowse.LIVE_EVENTS
+            result += GuideBrowse.SPORTS
+        }
+        if (is24x7(channel)) result += GuideBrowse.CHANNELS_24_7
+        if (streamingGroups.any { it in group } && "live events" !in group) result += GuideBrowse.STREAMING
 
         // Another country's channel is international.
         if (channel.country != null && channel.country != "US") result += GuideBrowse.INTERNATIONAL

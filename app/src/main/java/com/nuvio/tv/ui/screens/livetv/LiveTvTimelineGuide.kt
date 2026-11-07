@@ -132,6 +132,7 @@ private val BadgeRed = Color(0xFFD42A20)
 private const val SECTION_LISTS = "lists"
 private const val SECTION_CATEGORIES = "categories"
 private const val SECTION_COUNTRY = "country"
+private const val SECTION_24_7_TYPE = "type_24_7"
 private val CustomStar = Color(0xFFFFD60A)
 
 /** "1:00 – 2:00 PM" (the AM/PM once when both times share it), or "13:00 – 14:00". */
@@ -179,6 +180,8 @@ internal fun LiveTvTimelineGuide(
     onShowChannels: () -> Unit,
     onAddIptv: (() -> Unit)?,
     onProgramClick: (LiveTvChannel, EpgProgram?) -> Unit,
+    /** RCTV: the 24/7 type picked in the 24/7 category. */
+    onSet24x7Type: (String?) -> Unit = {},
     /** A channel's logo was chosen. */
     onChannelClick: (LiveTvChannel) -> Unit,
     /**
@@ -216,6 +219,7 @@ internal fun LiveTvTimelineGuide(
         uiState.channelCategories,
         uiState.guideBrowse,
         uiState.guideCountry,
+        uiState.guide24x7Type,
         uiState.customChannelIds
     ) {
         // A channel listed twice (a source with it in two groups) is shown once: two rows with
@@ -232,6 +236,11 @@ internal fun LiveTvTimelineGuide(
                     .map { it.first }
             }
             GuideBrowse.CUSTOM -> inCountry.filter { it.id in uiState.customChannelIds }
+            // RCTV: 24/7 channels, of the type picked when one is.
+            GuideBrowse.CHANNELS_24_7 -> inCountry.filter { channel ->
+                browse in uiState.channelCategories[channel.id].orEmpty() &&
+                    (uiState.guide24x7Type == null || LiveTvGuideCategories.type24x7(channel) == uiState.guide24x7Type)
+            }
             else -> inCountry.filter { browse in uiState.channelCategories[it.id].orEmpty() }
         }
     }
@@ -475,7 +484,8 @@ internal fun LiveTvTimelineGuide(
                 onSetBrowse = onSetBrowse,
                 onSetCountry = onSetCountry,
                 onShowChannels = onShowChannels,
-                onAddIptv = onAddIptv
+                onAddIptv = onAddIptv,
+                onSet24x7Type = onSet24x7Type
             )
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -625,9 +635,32 @@ private fun GuideHeader(
     onSetBrowse: (GuideBrowse) -> Unit,
     onSetCountry: (String?) -> Unit,
     onShowChannels: () -> Unit,
-    onAddIptv: (() -> Unit)?
+    onAddIptv: (() -> Unit)?,
+    onSet24x7Type: (String?) -> Unit
 ) {
     val context = LocalContext.current
+    // RCTV (owner's rule): in the 24/7 category, a second button with its types ("Sitcom", "Anime").
+    val typeTitle = stringResource(R.string.livetv_guide_24_7_type)
+    val allTypes = stringResource(R.string.livetv_guide_24_7_all)
+    val typeSection = remember(uiState.channels, uiState.guideCountry, uiState.guide24x7Type, uiState.guideBrowse, allTypes, typeTitle) {
+        if (uiState.guideBrowse != GuideBrowse.CHANNELS_24_7) {
+            null
+        } else {
+            val counts = uiState.channels
+                .asSequence()
+                .filter { uiState.guideCountry == null || it.country == uiState.guideCountry }
+                .mapNotNull { LiveTvGuideCategories.type24x7(it) }
+                .groupingBy { it }
+                .eachCount()
+            AppleFilterSection(
+                key = SECTION_24_7_TYPE,
+                title = typeTitle,
+                options = listOf(AppleFilterOption(allTypes, null)) +
+                    counts.entries.sortedBy { it.key }.map { (type, count) -> AppleFilterOption(type, type, count) },
+                selectedValue = uiState.guide24x7Type
+            )
+        }
+    }
     val countryTitle = stringResource(R.string.livetv_guide_country)
     val allCountries = stringResource(R.string.livetv_guide_all_countries)
     val categoriesTitle = stringResource(R.string.livetv_guide_categories)
@@ -719,6 +752,19 @@ private fun GuideHeader(
             leadingIcon = null,
             closeOnSelect = true
         )
+        if (typeSection != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            AppleFilterMenuButton(
+                label = uiState.guide24x7Type ?: typeTitle,
+                sections = listOf(typeSection),
+                hasActiveFilter = false,
+                clearLabel = "",
+                onSelect = { _, option -> onSet24x7Type(option.value) },
+                onClearAll = {},
+                leadingIcon = null,
+                closeOnSelect = true
+            )
+        }
         Spacer(modifier = Modifier.weight(1f))
         if (onAddIptv != null) {
             GuidePillButton(

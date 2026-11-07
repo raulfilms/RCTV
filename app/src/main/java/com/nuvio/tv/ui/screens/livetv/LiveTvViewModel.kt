@@ -93,6 +93,8 @@ data class LiveTvUiState(
     val guideBrowse: GuideBrowse = GuideBrowse.LIVE_NOW,
     /** Guide filter: ISO country code, or null for every country. */
     val guideCountry: String? = null,
+    /** RCTV: in the 24/7 category, the type picked ("Sitcom", "Anime"), or null for every one. */
+    val guide24x7Type: String? = null,
     /** Channels the user added to "Custom". */
     val customChannelIds: Set<String> = emptySet(),
     /** Guide categories of each channel id. */
@@ -686,7 +688,12 @@ class LiveTvViewModel @Inject constructor(
     }
 
     fun setGuideBrowse(browse: GuideBrowse) {
-        _uiState.update { it.copy(guideBrowse = browse) }
+        _uiState.update { it.copy(guideBrowse = browse, guide24x7Type = null) }
+    }
+
+    /** RCTV: the 24/7 type to list ("Sitcom"), or null for every 24/7 channel. */
+    fun setGuide24x7Type(type: String?) {
+        _uiState.update { it.copy(guide24x7Type = type) }
     }
 
     /** Adds the channel to the Guide's "Custom" list (Home's Top Channels too), or takes it out. */
