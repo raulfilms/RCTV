@@ -314,7 +314,10 @@ class LiveTvGuideLoader @Inject constructor(
             // RCTV (RCTV-AUD-021): the provider's certificate didn't check out (settings kept).
             channels.isEmpty() && failures.isNotEmpty() && failures.all { (_, failure) -> failure.isTlsCertificateFailure() } ->
                 appContext.getString(com.nuvio.tv.R.string.livetv_channels_certificate_invalid)
-            channels.isEmpty() && failures.isNotEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_load_failed)
+            channels.isEmpty() && failures.isNotEmpty() ->
+                reasonOf(failures.first().second)
+                    ?.let { appContext.getString(com.nuvio.tv.R.string.livetv_channels_load_failed_because, it) }
+                    ?: appContext.getString(com.nuvio.tv.R.string.livetv_channels_load_failed)
             channels.isEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_none)
             failures.isNotEmpty() -> appContext.getString(com.nuvio.tv.R.string.livetv_channels_some_failed)
             else -> null
@@ -359,6 +362,25 @@ class LiveTvGuideLoader @Inject constructor(
         )
         publish(key, loaded)
         if (coroutineContext[Job]?.isActive != false) com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-save") { save(loaded) }
+    }
+
+    /**
+     * RCTV: why a source's channels didn't load, in a few words (never its server or login), or null
+     * when there's nothing more useful to say than that they didn't.
+     */
+    private fun reasonOf(failure: Throwable): String? {
+        val message = failure.message.orEmpty()
+        return when {
+            failure is OutOfMemoryError -> appContext.getString(com.nuvio.tv.R.string.livetv_reason_memory)
+            failure is java.net.UnknownHostException -> appContext.getString(com.nuvio.tv.R.string.livetv_reason_no_server)
+            failure is java.net.ConnectException || failure is java.net.SocketTimeoutException ||
+                failure is java.net.NoRouteToHostException ->
+                appContext.getString(com.nuvio.tv.R.string.livetv_reason_unreachable)
+            message == "Invalid Xtream credentials" -> appContext.getString(com.nuvio.tv.R.string.livetv_reason_login)
+            Regex("^HTTP \\d{3}$").matches(message) -> appContext.getString(com.nuvio.tv.R.string.livetv_reason_http, message)
+            failure is XtreamClient.XtreamException -> appContext.getString(com.nuvio.tv.R.string.livetv_reason_unexpected)
+            else -> null
+        }
     }
 
     /** One source's channels; never throws (a failing source just adds nothing). */

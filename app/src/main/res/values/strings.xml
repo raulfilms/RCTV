@@ -4429,4 +4429,12 @@
     <string name="stream_info_audio_output">Output</string>
     <string name="stream_info_audio_output_passthrough">%1$s, sent as is</string>
     <string name="stream_info_audio_output_pcm">PCM (decoded)</string>
+    <!-- RCTV: why an IPTV source's channels didn't load (never the server or the login). -->
+    <string name="livetv_channels_load_failed_because">Couldn\'t load the channels: %1$s. Try again.</string>
+    <string name="livetv_reason_login">wrong username or password, or the account has expired</string>
+    <string name="livetv_reason_http">the server answered %1$s</string>
+    <string name="livetv_reason_no_server">couldn\'t find the server, check its address</string>
+    <string name="livetv_reason_unreachable">couldn\'t reach the server, check its address and port</string>
+    <string name="livetv_reason_memory">too many channels for this TV\'s memory</string>
+    <string name="livetv_reason_unexpected">the server\'s answer isn\'t a channel list, check its address</string>
 </resources>

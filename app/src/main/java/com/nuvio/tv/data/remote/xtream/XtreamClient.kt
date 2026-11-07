@@ -25,10 +25,34 @@ class XtreamClient @Inject constructor(
 ) {
     class XtreamException(message: String) : Exception(message)
 
+    /**
+     * RCTV: the same client, presenting itself as a common IPTV player. Many providers' panels only
+     * answer the players they know (others get an error or a blocked page); the app's own name is
+     * tried first and this one only when the server turns it away.
+     */
+    private val playerUaClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("User-Agent", PLAYER_USER_AGENT).build())
+            }
+            .build()
+    }
+
+    /** Servers ("host:port") that only answered as a common IPTV player. */
+    private val playerUaServers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun clientFor(url: okhttp3.HttpUrl): OkHttpClient =
+        if ("${url.host}:${url.port}" in playerUaServers) playerUaClient else okHttpClient
+
     private fun normalizedServerUrl(rawUrl: String): String {
         var url = rawUrl.trim()
         if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
             url = "http://$url"
+        }
+        // RCTV: a whole player_api.php or get.php address pasted as the server: just the server.
+        for (page in listOf("/player_api.php", "/get.php", "/xmltv.php")) {
+            val at = url.indexOf(page, ignoreCase = true)
+            if (at > 0) url = url.substring(0, at)
         }
         return url.trimEnd('/')
     }
@@ -43,9 +67,11 @@ class XtreamClient @Inject constructor(
         return builder.build()
     }
 
-    private fun get(url: okhttp3.HttpUrl): String {
+    private fun get(url: okhttp3.HttpUrl): String = getWith(clientFor(url), url)
+
+    private fun getWith(client: OkHttpClient, url: okhttp3.HttpUrl): String {
         val request = Request.Builder().url(url).build()
-        okHttpClient.newCall(request).execute().use { response ->
+        client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw XtreamException("HTTP ${response.code}")
             }
@@ -62,65 +88,128 @@ class XtreamClient @Inject constructor(
             throw XtreamException("Missing username or password")
         }
 
-        val authBody = get(playerApiUrl(server, user, pass))
-        val authJson = runCatching { JSONObject(authBody) }.getOrNull()
-            ?: throw XtreamException("Unexpected response from server")
-        val userInfo = authJson.optJSONObject("user_info")
-        val authStatus = userInfo?.optString("auth")
-        if (userInfo == null || authStatus == "0") {
-            throw XtreamException("Invalid Xtream credentials")
-        }
-
-        val categoryNames = runCatching {
-            val array = JSONArray(get(playerApiUrl(server, user, pass, "get_live_categories")))
-            buildMap {
-                for (i in 0 until array.length()) {
-                    val category = array.getJSONObject(i)
-                    val id = category.optString("category_id")
-                    val name = category.optString("category_name")
-                    if (id.isNotBlank()) put(id, name.ifBlank { id })
-                }
-            }
-        }.getOrDefault(emptyMap())
-
-        val streamsBody = get(playerApiUrl(server, user, pass, "get_live_streams"))
-        val streamsArray = runCatching { JSONArray(streamsBody) }.getOrNull()
-            ?: throw XtreamException("Couldn't read the channel list from this server")
-
-        val channels = mutableListOf<LiveTvChannel>()
-        for (i in 0 until streamsArray.length()) {
-            val stream = streamsArray.optJSONObject(i) ?: continue
-            val streamId = stream.optString("stream_id").takeIf { it.isNotBlank() }
-                ?: stream.optInt("stream_id", -1).takeIf { it >= 0 }?.toString()
-                ?: continue
-            val name = stream.optString("name").ifBlank { "Channel $streamId" }
-            val categoryId = stream.optString("category_id")
-            val logo = stream.optString("stream_icon").takeIf { it.isNotBlank() }
-            val epgChannelId = stream.optString("epg_channel_id").takeIf { it.isNotBlank() }
-            val streamUrl = "$server/live/$user/$pass/$streamId.m3u8"
-            channels += LiveTvChannel(
-                id = "xtream_$streamId",
-                name = name,
-                streamUrl = streamUrl,
-                logoUrl = logo,
-                groupTitle = categoryNames[categoryId] ?: categoryId.takeIf { it.isNotBlank() },
-                epgChannelId = epgChannelId
-            )
-        }
-        return channels
+        val auth = authenticate(server, user, pass)
+        val categoryNames = fetchCategoryNames(server, user, pass, "get_live_categories")
+        return readLiveStreams(server, user, pass, categoryNames, liveExtensionOf(auth))
     }
 
-    /** Verifies credentials and returns the account's auth JSON (throws [XtreamException] on failure). */
-    private fun authenticate(server: String, user: String, pass: String): JSONObject {
-        val authBody = get(playerApiUrl(server, user, pass))
-        val authJson = runCatching { JSONObject(authBody) }.getOrNull()
-            ?: throw XtreamException("Unexpected response from server")
-        val userInfo = authJson.optJSONObject("user_info")
-        val authStatus = userInfo?.optString("auth")
-        if (userInfo == null || authStatus == "0") {
-            throw XtreamException("Invalid Xtream credentials")
+    /**
+     * RCTV: the live format the account may play: HLS (m3u8) when it's allowed or not said, else
+     * MPEG-TS (an account that only allows "ts" gets nothing from an .m3u8 address).
+     */
+    private fun liveExtensionOf(auth: JSONObject): String {
+        val formats = auth.optJSONObject("user_info")?.optJSONArray("allowed_output_formats")
+            ?.let { array -> (0 until array.length()).map { array.optString(it).lowercase() } }
+            .orEmpty()
+        return when {
+            formats.isEmpty() || "m3u8" in formats -> "m3u8"
+            "ts" in formats -> "ts"
+            else -> "m3u8"
         }
-        return authJson
+    }
+
+    /**
+     * RCTV: the live channel list read as it downloads, keeping only what a channel needs. A big
+     * provider's list (tens of thousands of channels, tens of megabytes) held as one piece of text
+     * and then as JSON objects is more than a TV box's memory has for the app.
+     */
+    private fun readLiveStreams(
+        server: String,
+        user: String,
+        pass: String,
+        categoryNames: Map<String, String>,
+        extension: String
+    ): List<LiveTvChannel> {
+        val url = playerApiUrl(server, user, pass, "get_live_streams")
+        clientFor(url).newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) throw XtreamException("HTTP ${response.code}")
+            val body = response.body ?: throw XtreamException("Empty response")
+            val channels = ArrayList<LiveTvChannel>()
+            try {
+                android.util.JsonReader(body.charStream()).use { reader ->
+                    if (reader.peek() != android.util.JsonToken.BEGIN_ARRAY) {
+                        throw XtreamException("Couldn't read the channel list from this server")
+                    }
+                    reader.beginArray()
+                    while (reader.hasNext()) {
+                        if (reader.peek() != android.util.JsonToken.BEGIN_OBJECT) {
+                            reader.skipValue()
+                            continue
+                        }
+                        var streamId: String? = null
+                        var name: String? = null
+                        var categoryId: String? = null
+                        var logo: String? = null
+                        var epgChannelId: String? = null
+                        reader.beginObject()
+                        while (reader.hasNext()) {
+                            when (reader.nextName()) {
+                                "stream_id" -> streamId = reader.textOrNull()
+                                "name" -> name = reader.textOrNull()
+                                "category_id" -> categoryId = reader.textOrNull()
+                                "stream_icon" -> logo = reader.textOrNull()
+                                "epg_channel_id" -> epgChannelId = reader.textOrNull()
+                                else -> reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+                        val id = streamId?.trim()?.removeSuffix(".0")?.takeIf { it.isNotBlank() } ?: continue
+                        val category = categoryId?.trim().orEmpty()
+                        channels += LiveTvChannel(
+                            id = "xtream_$id",
+                            name = name?.takeIf { it.isNotBlank() } ?: "Channel $id",
+                            streamUrl = "$server/live/$user/$pass/$id.$extension",
+                            logoUrl = logo?.takeIf { it.isNotBlank() },
+                            groupTitle = categoryNames[category] ?: category.takeIf { it.isNotBlank() },
+                            epgChannelId = epgChannelId?.takeIf { it.isNotBlank() }
+                        )
+                    }
+                    reader.endArray()
+                }
+            } catch (e: IllegalStateException) {
+                throw XtreamException("Couldn't read the channel list from this server")
+            } catch (e: android.util.MalformedJsonException) {
+                throw XtreamException("Couldn't read the channel list from this server")
+            }
+            return channels
+        }
+    }
+
+    private fun android.util.JsonReader.textOrNull(): String? = when (peek()) {
+        android.util.JsonToken.NULL -> { nextNull(); null }
+        android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> nextString()
+        android.util.JsonToken.BOOLEAN -> nextBoolean().toString()
+        else -> { skipValue(); null }
+    }
+
+    /**
+     * Verifies credentials and returns the account's auth JSON (throws [XtreamException] on failure).
+     * RCTV: a server that turns the app away (an error, or a page that isn't the account's answer) is
+     * asked again as a common IPTV player, and asked that way from then on.
+     */
+    private fun authenticate(server: String, user: String, pass: String): JSONObject {
+        val url = playerApiUrl(server, user, pass)
+        val key = "${url.host}:${url.port}"
+        var turnedAway: XtreamException? = null
+        val clients = if (key in playerUaServers) listOf(playerUaClient) else listOf(okHttpClient, playerUaClient)
+        for (client in clients) {
+            val authBody = try {
+                getWith(client, url)
+            } catch (e: XtreamException) {
+                turnedAway = turnedAway ?: e
+                continue
+            }
+            val authJson = runCatching { JSONObject(authBody) }.getOrNull()
+            val userInfo = authJson?.optJSONObject("user_info")
+            if (authJson == null || userInfo == null) {
+                turnedAway = turnedAway ?: XtreamException("Unexpected response from server")
+                continue
+            }
+            if (userInfo.optString("auth") == "0") throw XtreamException("Invalid Xtream credentials")
+            if (client === playerUaClient) playerUaServers += key
+            return authJson
+        }
+        throw turnedAway ?: XtreamException("Unexpected response from server")
     }
 
     private fun fetchCategoryNames(server: String, user: String, pass: String, action: String): Map<String, String> =
@@ -282,8 +371,9 @@ class XtreamClient @Inject constructor(
      * closes [read]'s stream by returning from it.
      */
     fun <T> streamXmltv(connection: LiveTvConnection.Xtream, read: (java.io.InputStream) -> T): T {
-        val request = Request.Builder().url(xmltvUrl(connection)).build()
-        okHttpClient.newCall(request).execute().use { response ->
+        val url = xmltvUrl(connection)
+        val request = Request.Builder().url(url).build()
+        clientFor(url).newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw XtreamException("HTTP ${response.code}")
             val body = response.body ?: throw XtreamException("Empty guide")
             return read(body.byteStream())
@@ -299,5 +389,10 @@ class XtreamClient @Inject constructor(
             .addQueryParameter("username", user)
             .addQueryParameter("password", pass)
             .build()
+    }
+
+    private companion object {
+        /** A widely accepted IPTV player's name (VLC's). */
+        const val PLAYER_USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20"
     }
 }

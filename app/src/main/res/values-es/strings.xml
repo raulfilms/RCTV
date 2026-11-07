@@ -1707,4 +1707,12 @@
     <string name="stream_info_audio_output">Salida</string>
     <string name="stream_info_audio_output_passthrough">%1$s, enviado tal cual</string>
     <string name="stream_info_audio_output_pcm">PCM (decodificado)</string>
+    <!-- RCTV: por qué no cargaron los canales de una fuente IPTV (nunca el servidor ni el usuario). -->
+    <string name="livetv_channels_load_failed_because">No se pudieron cargar los canales: %1$s. Inténtalo de nuevo.</string>
+    <string name="livetv_reason_login">usuario o contraseña incorrectos, o la cuenta venció</string>
+    <string name="livetv_reason_http">el servidor respondió %1$s</string>
+    <string name="livetv_reason_no_server">no se encontró el servidor, revisa la dirección</string>
+    <string name="livetv_reason_unreachable">no se pudo conectar con el servidor, revisa la dirección y el puerto</string>
+    <string name="livetv_reason_memory">demasiados canales para la memoria de este TV</string>
+    <string name="livetv_reason_unexpected">la respuesta del servidor no es una lista de canales, revisa la dirección</string>
 </resources>
