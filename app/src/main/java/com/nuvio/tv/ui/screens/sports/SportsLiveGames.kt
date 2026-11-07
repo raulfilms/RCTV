@@ -98,6 +98,83 @@ internal data class GameAiring(val channel: LiveTvChannel, val program: EpgProgr
  */
 internal object SportsGameChannels {
 
+    // -------------------------------------------------------------- by the network showing the game
+
+    /** ESPN's short names for networks, as IPTV channels name them. */
+    private val NETWORK_ALIASES = mapOf(
+        "nflnet" to "nflnetwork", "nfln" to "nflnetwork", "mlbn" to "mlbnetwork", "nhln" to "nhlnetwork",
+        "cbssn" to "cbssportsnetwork", "cbssports" to "cbssportsnetwork", "secn" to "secnetwork",
+        "secnplus" to "secnetwork", "btn" to "bigtennetwork", "accn" to "accnetwork", "usanet" to "usanetwork",
+        "usa" to "usanetwork", "nbatv" to "nbatv", "golf" to "golfchannel", "tennis" to "tennischannel",
+        "fs1" to "foxsports1", "fs2" to "foxsports2", "foxsports1" to "foxsports1", "foxsports2" to "foxsports2",
+        "tudn" to "tudn", "unimas" to "unimas", "univision" to "univision", "telemundo" to "telemundo",
+        "beinsports" to "beinsports", "espndeportes" to "espndeportes", "trutv" to "trutv",
+        "pac12" to "pac12network", "longhornnetwork" to "longhornnetwork", "lhn" to "longhornnetwork"
+    )
+
+    /** Streaming-only services: no IPTV channel to look for. */
+    private val STREAMING_ONLY = setOf(
+        "espn+", "espnplus", "peacock", "primevideo", "amazonprimevideo", "appletv", "appletv+", "netflix",
+        "max", "paramount+", "paramountplus", "youtube", "youtubetv", "nbaleaguepass", "nhlpowerplay",
+        "mlbtv", "nflplus", "dazn", "fubo", "fubotv", "espnapp", "espnunlimited", "foxone"
+    )
+
+    /** Over-the-air networks: their IPTV channels are local stations ("FOX 5 New York", "ABC 7 Chicago"). */
+    private val BROADCAST_NETWORKS = setOf("abc", "cbs", "nbc", "fox", "cw")
+
+    /** Words after an over-the-air network's name that make it another channel ("FOX News", "CBS Sports"). */
+    private val NOT_THE_NETWORK = setOf(
+        "news", "sports", "sport", "business", "life", "kids", "family", "soul", "deportes", "comedy",
+        "weather", "now", "classics", "movies", "cinema", "reality", "nation", "radio"
+    )
+
+    /** "US: ESPN 2 FHD" → "espn2"; "US | NFL Network HD" → "nflnetwork". */
+    private fun channelKey(name: String): String {
+        val words = normalize(com.nuvio.tv.ui.screens.livetv.LiveTvViewModel.stripCountryTag(name))
+            .split(' ')
+            .filter { it.isNotBlank() && it !in CHANNEL_NOISE }
+        return words.joinToString("")
+    }
+
+    private val CHANNEL_NOISE = setOf(
+        "hd", "fhd", "uhd", "sd", "4k", "hevc", "h265", "1080p", "720p", "1080", "720", "east", "west",
+        "us", "backup", "raw", "60fps", "50fps", "vip"
+    )
+
+    private fun networkKey(network: String): String {
+        val raw = network.lowercase().replace("+", "plus")
+        if (raw.replace(" ", "") in STREAMING_ONLY || network.lowercase().replace(" ", "") in STREAMING_ONLY) return ""
+        val key = normalize(network).split(' ').filter { it.isNotBlank() && it !in CHANNEL_NOISE }.joinToString("")
+        return NETWORK_ALIASES[key] ?: key
+    }
+
+    /**
+     * RCTV: the channel of a network showing the game ([networks], ESPN's names), when the
+     * provider's guide doesn't name the game: a US channel first, then any. Over-the-air networks
+     * match their local stations ("FOX 5 New York" for FOX), never their other channels.
+     */
+    fun byNetwork(channels: List<LiveTvChannel>, networks: List<String>): LiveTvChannel? {
+        for (network in networks) {
+            val wanted = networkKey(network)
+            if (wanted.length < 2) continue
+            val matches = channels.filter { channel ->
+                val key = channelKey(channel.name)
+                val aliased = NETWORK_ALIASES[key] ?: key
+                when {
+                    aliased == wanted || key == wanted -> true
+                    wanted in BROADCAST_NETWORKS -> {
+                        val words = normalize(com.nuvio.tv.ui.screens.livetv.LiveTvViewModel.stripCountryTag(channel.name)).split(' ')
+                        words.firstOrNull() == wanted && words.drop(1).none { it in NOT_THE_NETWORK }
+                    }
+                    else -> false
+                }
+            }
+            if (matches.isEmpty()) continue
+            return matches.firstOrNull { it.country == "US" } ?: matches.first()
+        }
+        return null
+    }
+
     /** A program starting this soon can be the game (the guide's slot may start on the hour). */
     private const val STARTING_SOON_MS = 15L * 60 * 1000
     /** A program starting this close to the game's start is the game's slot. */
@@ -344,7 +421,8 @@ internal object SportsGameChannels {
 class SportsWatchViewModel @Inject constructor(
     private val guideLoader: LiveTvGuideLoader,
     private val liveTvDataStore: LiveTvDataStore,
-    private val bananaBallLive: BananaBallLive
+    private val bananaBallLive: BananaBallLive,
+    private val espnClient: com.nuvio.tv.data.remote.espn.EspnSportsClient
 ) : ViewModel() {
 
     /** A Banana Ball game no channel is showing: its live stream on YouTube, ready to play; else null. */
@@ -364,8 +442,26 @@ class SportsWatchViewModel @Inject constructor(
             } ?: guideLoader.guide.value
             airing = loaded?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, System.currentTimeMillis()) } }
         }
-        val channel = airing?.channel ?: return null
+        // RCTV (owner's rule): the provider's guide doesn't name the game: the channel of the network
+        // showing it (ESPN, TNT, FOX...), as ESPN says.
+        val channel = airing?.channel ?: networkChannelFor(event) ?: return null
         return channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources))
+    }
+
+    private suspend fun networkChannelFor(event: SportsEvent): LiveTvChannel? {
+        val guide = guideLoader.guide.value ?: return null
+        if (guide.isPreview || guide.channels.isEmpty()) return null
+        val networks = withContext(Dispatchers.IO) {
+            try {
+                espnClient.fetchBroadcasts(event.id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                emptyList()
+            }
+        }
+        if (networks.isEmpty()) return null
+        return withContext(Dispatchers.Default) { SportsGameChannels.byNetwork(guide.channels, networks) }
     }
 
     private suspend fun bestAiring(guide: LiveGuideSnapshot, event: SportsEvent, now: Long): GameAiring? {

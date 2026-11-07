@@ -1636,6 +1636,34 @@ class EspnSportsClient @Inject constructor(
         val seasonType: Int? = null
     )
 
+    /**
+     * RCTV: the TV networks showing a game ("ESPN", "ABC", "TNT"), from its ESPN summary, to find
+     * it on an IPTV channel when the provider's guide doesn't name the game. Empty when it isn't
+     * ESPN's game or none are said.
+     */
+    fun fetchBroadcasts(eventId: String): List<String> {
+        val parsed = parseEventId(eventId) ?: return emptyList()
+        val json = JSONObject(get("$BASE_URL/${parsed.sportPath}/${parsed.leaguePath}/summary?event=${parsed.rawEventId}"))
+        val names = LinkedHashSet<String>()
+        fun addFrom(array: org.json.JSONArray?) {
+            if (array == null) return
+            for (i in 0 until array.length()) {
+                val entry = array.optJSONObject(i) ?: continue
+                entry.optJSONObject("media")?.str("shortName")?.let(names::add)
+                entry.optJSONObject("media")?.str("name")?.let(names::add)
+                entry.str("station")?.let(names::add)
+                entry.optJSONArray("names")?.let { list ->
+                    for (j in 0 until list.length()) list.optString(j).takeIf { it.isNotBlank() }?.let(names::add)
+                }
+            }
+        }
+        addFrom(json.optJSONArray("broadcasts"))
+        val competition = json.optJSONObject("header")?.optJSONArray("competitions")?.optJSONObject(0)
+        addFrom(competition?.optJSONArray("broadcasts"))
+        addFrom(competition?.optJSONArray("geoBroadcasts"))
+        return names.map { it.trim() }.filter { it.isNotBlank() }
+    }
+
     fun fetchGameSummary(sportPath: String, leaguePath: String, eventId: String): GameSummary {
         // A golf tournament has a leaderboard ([fetchGolfLeaderboard]), not team stats.
         if (sportPath == GOLF) return GameSummary(emptyList(), emptyList(), emptyList())
