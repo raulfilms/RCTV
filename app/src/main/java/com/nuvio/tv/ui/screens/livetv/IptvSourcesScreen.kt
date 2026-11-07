@@ -1,5 +1,11 @@
 package com.nuvio.tv.ui.screens.livetv
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -362,8 +368,17 @@ private fun IptvSourcesTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
+    // RCTV: OK on the box opens the keyboard (the box takes the remote's focus, not the text in it).
+    val textFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var isEditing by remember { mutableStateOf(false) }
+    LaunchedEffect(isEditing) {
+        if (isEditing) {
+            runCatching { textFocus.requestFocus() }
+            keyboardController?.show()
+        }
+    }
     Surface(
-        onClick = {},
+        onClick = { isEditing = true },
         modifier = Modifier.fillMaxWidth(),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundElevated,
@@ -387,11 +402,14 @@ private fun IptvSourcesTextField(
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(textFocus)
+                        .onFocusChanged { if (!it.isFocused && isEditing) { isEditing = false; keyboardController?.hide() } },
                     singleLine = true,
                     visualTransformation = visualTransformation,
                     keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() }),
+                    keyboardActions = KeyboardActions(onDone = { isEditing = false; keyboardController?.hide() }),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = NuvioTheme.colors.TextPrimary),
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(NuvioTheme.colors.Primary),
                     decorationBox = { innerTextField ->
