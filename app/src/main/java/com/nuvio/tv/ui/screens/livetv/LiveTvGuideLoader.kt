@@ -393,7 +393,8 @@ class LiveTvGuideLoader @Inject constructor(
         "Hulu Originals", "Amazon Prime Video", "Apple TV+ Series", "Disney+ Series", "Netflix Series",
         "Netflix Movies", "Peacock Original", "Paramount+ Original", "SkyMix Docs", "OnePlay Anime",
         "OnePlay Kids International", "Samsung TV Plus", "España | Netflix Series", "España | MoviStar+ Series",
-        "España | MoviStar+ Estrenos", "España | Netflix Estrenos"
+        "España | MoviStar+ Estrenos", "España | Netflix Estrenos",
+        "USA | Tubi", "USA | MAX", "USA | Paramount +", "HBOMax Original"
     ).mapTo(HashSet(), ::groupKey)
 
     private fun groupKey(group: String): String =
