@@ -360,6 +360,55 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         )
     }
 
+    /**
+     * RCTV: what plays now, in the notes a crash report reads ("ExoPlayer · video HEVC 3840x2160 HDR10
+     * (OMX.amlogic.hevc.decoder.awesome) · audio E-AC-3 6 ch (passthrough)").
+     */
+    private fun noteForCrashReport() {
+        runCatching {
+            val video = videoFormat?.let { format ->
+                buildString {
+                    append("video ").append(mimeName(format.sampleMimeType))
+                    if (format.width != null && format.height != null) append(' ').append(format.width).append('x').append(format.height)
+                    when (format.colorTransfer) {
+                        C.COLOR_TRANSFER_ST2084 -> append(" HDR10")
+                        C.COLOR_TRANSFER_HLG -> append(" HLG")
+                    }
+                    videoDecoderName?.let { append(" (").append(it).append(')') }
+                }
+            }
+            val audio = audioFormat?.let { format ->
+                buildString {
+                    append("audio ").append(mimeName(format.sampleMimeType))
+                    format.channelCount?.let { append(' ').append(it).append(" ch") }
+                    append(" (").append(audioDecoderName ?: "passthrough").append(')')
+                }
+            }
+            com.nuvio.tv.core.diagnostics.SessionTrail.notePlaying(
+                listOfNotNull("ExoPlayer", video, audio).joinToString(" · ")
+            )
+        }
+    }
+
+    private fun mimeName(mime: String?): String = when (mime) {
+        "video/hevc" -> "HEVC"
+        "video/avc" -> "H.264"
+        "video/av01" -> "AV1"
+        "video/x-vnd.on2.vp9" -> "VP9"
+        "video/dolby-vision" -> "Dolby Vision"
+        "audio/ac3" -> "AC-3"
+        "audio/eac3" -> "E-AC-3"
+        "audio/eac3-joc" -> "E-AC-3 Atmos"
+        "audio/true-hd" -> "TrueHD"
+        "audio/vnd.dts" -> "DTS"
+        "audio/vnd.dts.hd" -> "DTS-HD"
+        "audio/mp4a-latm" -> "AAC"
+        "audio/opus" -> "Opus"
+        "audio/flac" -> "FLAC"
+        null -> "?"
+        else -> mime.substringAfter('/')
+    }
+
     fun onVideoDecoderInitialized(
         eventTime: AnalyticsListener.EventTime,
         decoderName: String,
@@ -372,6 +421,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             eventTime = eventTime,
             details = details("decoder" to decoderName, "initMs" to videoDecoderInitMs?.toString())
         )
+        noteForCrashReport()
     }
 
     fun onVideoDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
@@ -398,6 +448,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             eventTime = eventTime,
             details = format.formatDetails(C.TRACK_TYPE_VIDEO.trackTypeName())
         )
+        noteForCrashReport()
     }
 
     fun onVideoTrackSnapshot(format: Format, support: String?, selected: Boolean) {
@@ -492,6 +543,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             eventTime = eventTime,
             details = details("decoder" to decoderName, "initMs" to audioDecoderInitMs?.toString())
         )
+        noteForCrashReport()
     }
 
     fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
@@ -518,6 +570,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
             eventTime = eventTime,
             details = format.formatDetails(C.TRACK_TYPE_AUDIO.trackTypeName())
         )
+        noteForCrashReport()
     }
 
     fun onAudioUnderrun(

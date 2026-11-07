@@ -17,6 +17,7 @@ internal fun PlayerRuntimeController.attachMpvView(view: NuvioMpvSurfaceView?) {
 
     if (view == null) return
     if (!isUsingMpvEngine()) return
+    com.nuvio.tv.core.diagnostics.SessionTrail.notePlaying("mpv")
     if (currentStreamUrl.isBlank()) return
     if (!mpvMediaLoadPrepared) return
     if (mpvInitializationInProgress) return
@@ -564,10 +565,30 @@ internal fun PlayerRuntimeController.hasActivePlayIntent(): Boolean {
     }
 }
 
+/** RCTV: the jump, for the crash report (where a native crash after a seek came from). */
+private fun PlayerRuntimeController.noteSeekForCrashReport(positionMs: Long) {
+    runCatching {
+        val from = if (isUsingMpvEngine()) null else _exoPlayer?.currentPosition
+        val detail = buildString {
+            if (from != null) {
+                val seconds = (positionMs - from) / 1000
+                append(if (seconds >= 0) "forward " else "back ").append(kotlin.math.abs(seconds)).append(" s")
+                val inBuffer = seconds >= 0 && _exoPlayer?.let { NuvioExoPlayerPerformanceHelper.isSeekInBuffer(it, positionMs) } == true
+                append(if (inBuffer) ", in the buffer" else ", outside the buffer")
+                if (NuvioExoPlayerPerformanceHelper.enabled) append(", scrubbing")
+            } else {
+                append("to ").append(positionMs / 1000).append(" s (mpv)")
+            }
+        }
+        com.nuvio.tv.core.diagnostics.SessionTrail.noteSeek(detail)
+    }
+}
+
 internal fun PlayerRuntimeController.seekPlaybackTo(
     positionMs: Long,
     seekParameters: SeekParameters = SeekParameters.CLOSEST_SYNC
 ) {
+    noteSeekForCrashReport(positionMs)
     if (isUsingMpvEngine()) {
         mpvView?.let { view ->
             view.seekToMs(positionMs)

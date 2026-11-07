@@ -139,7 +139,9 @@ fun LiveTvScreen(
                 cachedProgramArt = viewModel::cachedProgramArt,
                 programArt = viewModel::programArt,
                 onShowChannels = { viewModel.setShowGuide(false) },
-                onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else null,
+                // RCTV (owner's rule): adding IPTV (an M3U, Xtream Codes or Stalker) is always at hand
+                // from the guide: the form on the sample guide, the sources list once one is added.
+                onAddIptv = if (uiState.isPreviewGuide) viewModel::showSetupForm else onManageSources,
                 onProgramClick = { channel, program ->
                     val airingNow = program == null || program.isAiringAt(System.currentTimeMillis())
                     when {

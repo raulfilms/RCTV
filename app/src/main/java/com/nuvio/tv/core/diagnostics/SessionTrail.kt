@@ -77,6 +77,32 @@ object SessionTrail {
     /** RCTV (MEM-09): the TV guide's size and state (counts only). */
     @Volatile var guideProbe: (() -> String?)? = null
 
+    /**
+     * RCTV: what the player plays now (engine, picture, sound, their decoders), when it last jumped
+     * (a seek), and whether the subtitle sync reads the movie's sound from its file right now: a
+     * native crash after a seek or while the sound is read says where it came from.
+     */
+    @Volatile private var playing: String? = null
+    @Volatile private var lastSeekAt: String? = null
+    @Volatile private var readingSound = false
+
+    fun notePlaying(text: String?) {
+        if (text == playing) return
+        playing = text
+        if (state == RUNNING) writeSoon()
+    }
+
+    /** A jump in the movie: [detail] says how ("forward 30 s, outside the buffer, scrubbing"). */
+    fun noteSeek(detail: String) {
+        lastSeekAt = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date()) + " · " + detail
+        if (state == RUNNING) writeSoon()
+    }
+
+    fun noteReadingSound(on: Boolean) {
+        readingSound = on
+        if (state == RUNNING) writeSoon()
+    }
+
     /** The screen on now, as the notes name it ("sports_teams"). */
     fun screenName(): String = screen
 
@@ -155,6 +181,10 @@ object SessionTrail {
             screenImageBytes = 0L
         }
         screen = name
+        if (name == "player") {
+            playing = null
+            lastSeekAt = null
+        }
         screenSinceMs = System.currentTimeMillis()
         visits.record(name, nativeMb())
         memoryKindsWanted = true
@@ -260,6 +290,11 @@ object SessionTrail {
                 append("state=").append(state).append('\n')
                 append("time=").append(time).append('\n')
                 append("screen=").append(screen).append(" (").append(onScreenFor).append(" s)\n")
+                if (screen == "player") {
+                    playing?.let { append("playing=").append(it).append('\n') }
+                    lastSeekAt?.let { append("seek=").append(it).append('\n') }
+                    if (readingSound) append("soundread=yes\n")
+                }
                 // RCTV (MEM-01): native = what's in use; heap/free = what the allocator holds and how
                 // much of it is unused. A large free with a small native means memory kept, not used.
                 append("app=Java ").append(javaUsedMb).append(" of ").append(javaMaxMb).append(" MB · native ").append(nativeMb)
@@ -306,6 +341,9 @@ object SessionTrail {
             append(values["time"].orEmpty()).append(" · system exit\n")
             append("reason: closed with no error (the system closed it, most likely for memory, or a native crash)\n")
             append("screen: ").append(values["screen"].orEmpty()).append('\n')
+            values["playing"]?.let { append("playing: ").append(it).append('\n') }
+            values["seek"]?.let { append("last jump (seek): ").append(it).append('\n') }
+            if (values["soundread"] == "yes") append("subtitle sync was reading the movie's sound from the file\n")
             append("app memory: ").append(values["app"].orEmpty()).append('\n')
             append("TV memory: ").append(values["tv"].orEmpty()).append('\n')
             append("asked to free memory: ").append(values["asks"].orEmpty()).append('\n')

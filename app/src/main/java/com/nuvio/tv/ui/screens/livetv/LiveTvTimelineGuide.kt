@@ -721,7 +721,12 @@ private fun GuideHeader(
         )
         Spacer(modifier = Modifier.weight(1f))
         if (onAddIptv != null) {
-            GuidePillButton(label = stringResource(R.string.livetv_preview_add_iptv), onClick = onAddIptv)
+            GuidePillButton(
+                label = stringResource(
+                    if (uiState.isPreviewGuide) R.string.livetv_preview_add_iptv else R.string.iptv_sources_manage_btn
+                ),
+                onClick = onAddIptv
+            )
             Spacer(modifier = Modifier.width(10.dp))
         }
         GuidePillButton(

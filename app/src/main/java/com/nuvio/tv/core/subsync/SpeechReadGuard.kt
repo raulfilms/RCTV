@@ -31,10 +31,12 @@ internal object SpeechReadGuard {
             }
             if (prefs.getBoolean(KEY_CLOSED_APP, false)) return null
             prefs.edit().putBoolean(KEY_READING, true).commit()
+            com.nuvio.tv.core.diagnostics.SessionTrail.noteReadingSound(true)
             try {
                 return read()
             } finally {
                 prefs.edit().putBoolean(KEY_READING, false).commit()
+                com.nuvio.tv.core.diagnostics.SessionTrail.noteReadingSound(false)
             }
         } finally {
             readingNow.set(0)
