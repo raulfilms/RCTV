@@ -125,7 +125,9 @@ internal fun LiveTvPlayerOverlay(
     onHideControls: () -> Unit,
     onPlayChannel: (LiveTvChannel) -> Unit,
     onOpenTitle: (LiveProgramMatch) -> Unit,
-    onOpenEpisode: (LiveProgramMatch, LiveEpisode) -> Unit
+    onOpenEpisode: (LiveProgramMatch, LiveEpisode) -> Unit,
+    /** RCTV: the game center (YouTube TV's stats panel); null when what's on isn't a known game. */
+    onOpenGameCenter: (() -> Unit)? = null
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
@@ -210,26 +212,61 @@ internal fun LiveTvPlayerOverlay(
                 LiveBadge()
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = program?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: uiState.title,
-                color = Color.White,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            val secondLine = listOfNotNull(
-                program?.subtitle?.takeIf { it.isNotBlank() },
-                channel?.name?.takeIf { program != null }
-            ).joinToString(" · ")
-            if (secondLine.isNotBlank()) {
-                Text(
-                    text = secondLine,
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = program?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: uiState.title,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val secondLine = listOfNotNull(
+                        program?.subtitle?.takeIf { it.isNotBlank() },
+                        channel?.name?.takeIf { program != null }
+                    ).joinToString(" · ")
+                    if (secondLine.isNotBlank()) {
+                        Text(
+                            text = secondLine,
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                // RCTV (as YouTube TV): a game on now: its stats and the league's games, at the right
+                // above the timeline; Down goes back to the tabs.
+                if (onOpenGameCenter != null) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    IconButton(
+                        onClick = onOpenGameCenter,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .focusProperties { down = initialFocusRequester }
+                            .onFocusChanged { if (it.isFocused) onResetHideTimer() },
+                        colors = IconButtonDefaults.colors(
+                            containerColor = Color.Black.copy(alpha = 0.45f),
+                            focusedContainerColor = Color.White,
+                            contentColor = Color.White,
+                            focusedContentColor = Color.Black
+                        ),
+                        border = IconButtonDefaults.border(
+                            border = androidx.tv.material3.Border(
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                                shape = CircleShape
+                            )
+                        ),
+                        shape = IconButtonDefaults.shape(shape = CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BarChart,
+                            contentDescription = stringResource(R.string.player_live_game_stats),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             if (program != null) {

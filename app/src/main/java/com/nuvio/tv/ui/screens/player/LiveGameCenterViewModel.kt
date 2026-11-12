@@ -92,7 +92,15 @@ class LiveGameCenterViewModel @Inject constructor(
         }
     }
 
-    /** The panel opened or closed: it's kept up to date only while it's open. */
+    /**
+     * The live controls showed: when Sports didn't say a game, the program's game is looked for
+     * (once per program), so the stats button shows only for a game.
+     */
+    fun lookForGame() {
+        if (currentEventId() == null) searchProgramGame()
+    }
+
+        /** The panel opened or closed: it's kept up to date only while it's open. */
     fun setOpen(value: Boolean) {
         if (open == value) return
         open = value

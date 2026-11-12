@@ -4468,4 +4468,5 @@
     <string name="league_no_highlights">No highlights yet.</string>
     <string name="league_no_completed_games">No completed games yet.</string>
     <string name="league_channel_failed">Couldn\'t open this channel. Try again.</string>
+    <string name="player_live_game_stats">Game stats</string>
 </resources>

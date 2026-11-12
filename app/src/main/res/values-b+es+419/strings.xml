@@ -3958,4 +3958,5 @@
     <string name="league_no_highlights">Todavía no hay highlights.</string>
     <string name="league_no_completed_games">Todavía no hay juegos terminados.</string>
     <string name="league_channel_failed">No se pudo abrir este canal. Inténtalo de nuevo.</string>
+    <string name="player_live_game_stats">Estadísticas del juego</string>
 </resources>

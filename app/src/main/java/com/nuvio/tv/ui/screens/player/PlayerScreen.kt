@@ -293,12 +293,16 @@ fun PlayerScreen(
     }
     LaunchedEffect(showGameCenter) {
         gameCenterViewModel.setOpen(showGameCenter)
-        if (showGameCenter && uiState.showControls) viewModel.onEvent(PlayerEvent.OnToggleControls)
+        if (showGameCenter && uiState.showControls) viewModel.hideControls()
     }
     LaunchedEffect(isLiveTvChannel) { if (!isLiveTvChannel) showGameCenter = false }
-    // RCTV: opens the game center (the owner will say from where in the player).
-    @Suppress("UNUSED_VARIABLE")
+    // RCTV: opens the game center (the stats button at the right above the live timeline).
     val openGameCenter: () -> Unit = { if (isLiveTvChannel) showGameCenter = true }
+    // The button shows only for a game the panel knows; the controls showing look for it.
+    val gameCenterAvailable = isLiveTvChannel && gameCenterState.eventId != null
+    LaunchedEffect(uiState.showControls, liveProgramText) {
+        if (uiState.showControls && isLiveTvChannel) gameCenterViewModel.lookForGame()
+    }
     val openLiveTitle: (com.nuvio.tv.data.livetv.LiveProgramMatch) -> Unit = openLiveTitle@{ match ->
         if (exitDispatched) return@openLiveTitle
         exitDispatched = true
@@ -1567,7 +1571,8 @@ fun PlayerScreen(
                     onHideControls = { viewModel.hideControls() },
                     onPlayChannel = switchLiveChannel,
                     onOpenTitle = openLiveTitle,
-                    onOpenEpisode = openLiveEpisode
+                    onOpenEpisode = openLiveEpisode,
+                    onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable }
                 )
             } else if (uiState.usesTitleControls) {
                 // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).
