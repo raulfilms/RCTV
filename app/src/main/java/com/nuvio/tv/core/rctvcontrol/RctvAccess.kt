@@ -58,17 +58,19 @@ data class RctvServices(
     val addons: Map<String, String> = emptyMap(),
     val iptv: RctvIptv? = null,
     /** The account's addons (Torrentio, AIOStreams...), in the website's order. They carry keys. */
-    val addonList: List<String> = emptyList()
+    val addonList: List<String> = emptyList(),
+    /** RCTV: the account's Seekr key (seekr.tv: the timeline's pictures while seeking). Never logged. */
+    val seekr: String? = null
 ) {
     val isEmpty: Boolean get() =
-        realDebrid == null && torbox == null && premiumize == null && addons.isEmpty() && addonList.isEmpty() && iptv == null
+        realDebrid == null && torbox == null && premiumize == null && addons.isEmpty() && addonList.isEmpty() && iptv == null && seekr == null
 
     /** Every addon the website sets, in its order: the account's list, then LatinoDebrid and Addon LATAM. */
     val managedAddonUrls: List<String> get() =
         (addonList + RctvControlParser.ADDON_SERVICES.mapNotNull { addons[it] }).distinct()
 
     override fun toString(): String =
-        "RctvServices(debrid=${listOfNotNull(realDebrid?.let { "rd" }, torbox?.let { "tb" }, premiumize?.let { "pm" })}, addons=${addons.keys}, addonList=${addonList.size}, iptv=${iptv != null})"
+        "RctvServices(debrid=${listOfNotNull(realDebrid?.let { "rd" }, torbox?.let { "tb" }, premiumize?.let { "pm" })}, addons=${addons.keys}, addonList=${addonList.size}, iptv=${iptv != null}, seekr=${seekr != null})"
 }
 
 /** The account's Xtream Codes login (only with Full). Never logged. */
@@ -122,6 +124,8 @@ data class RctvDeviceConfig(
 object RctvControlParser {
     /** The device token's shape (the server's own check). */
     private val TOKEN = Regex("^[A-Za-z0-9_-]{42,90}$")
+    /** RCTV: a Seekr key's shape (letters, digits, "_", "-", "."). */
+    private val SEEKR_KEY = Regex("^[A-Za-z0-9_.-]{8,200}$")
     const val DEFAULT_CHECK_SECONDS = 300
     private const val MIN_CHECK_SECONDS = 60
     private const val MAX_CHECK_SECONDS = 3600
@@ -223,7 +227,9 @@ object RctvControlParser {
             premiumize = key("premiumize"),
             addons = addons,
             iptv = iptv,
-            addonList = addonList
+            addonList = addonList,
+            // One word: it goes in a header to Seekr only.
+            seekr = services?.optStringOrNull("seekr")?.trim()?.takeIf { SEEKR_KEY.matches(it) }
         )
     }
 

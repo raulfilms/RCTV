@@ -77,6 +77,7 @@ class RctvManagedServices @Inject constructor(
         services.premiumize?.let { values.put("premiumize", it) }
         services.addons.forEach { (name, url) -> values.put(name, url) }
         if (services.addonList.isNotEmpty()) values.put("addon_list", org.json.JSONArray(services.addonList))
+        services.seekr?.let { values.put("seekr", it) }
         json.put("services", values)
         services.iptv?.let { iptv ->
             json.put(

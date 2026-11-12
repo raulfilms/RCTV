@@ -17,6 +17,10 @@ import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.nuvio.tv.core.player.SeekPreviewService
+import com.nuvio.tv.core.player.SeekrEntryPoint
+import com.nuvio.tv.core.player.SeekrPreviews
+import com.nuvio.tv.core.player.SeekrTitle
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,14 +76,36 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
     private var lastAskedAtMs = 0L
     private var timeouts = 0
 
+    /** RCTV: Seekr's pictures (the account's key, set on the website), when it has the title. */
+    private val seekr: SeekrPreviews? = runCatching {
+        dagger.hilt.android.EntryPointAccessors.fromApplication(app, SeekrEntryPoint::class.java).seekrPreviews()
+    }.getOrNull()
+    private var seekrTrack: SeekrPreviews.Track? = null
+    private var seekrLookup: Job? = null
+    /** Seekr was asked about this movie (whatever it answered). */
+    private var seekrAsked = false
+    private var seekrWanted: Long? = null
+    private var seekrReading = false
+
     private val replies = Messenger(Handler(Looper.getMainLooper()) { message ->
         if (message.what == SeekPreviewService.MSG_RESULT) onResult(message.data)
         true
     })
 
-    /** The timeline was moved to [positionMs] of the movie at [url]; [eligible]: its source can give pictures. */
-    fun show(url: String, headers: Map<String, String>, positionMs: Long, eligible: Boolean) {
+    /**
+     * The timeline was moved to [positionMs] of the movie at [url]; [eligible]: its source can give
+     * pictures. RCTV: [title] (a movie or an episode, [durationMs] long) is asked of Seekr first.
+     */
+    fun show(
+        url: String,
+        headers: Map<String, String>,
+        positionMs: Long,
+        eligible: Boolean,
+        title: SeekrTitle? = null,
+        durationMs: Long = 0L
+    ) {
         if (url != streamUrl) reset(url, headers)
+        if (showSeekr(title, durationMs, positionMs)) return
         if (!eligible || unsupported || crashes.get() >= MAX_CRASHES || isDisabledOnDevice()) {
             _showsPictures.value = false
             return
@@ -123,6 +149,11 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
     }
 
     private fun reset(url: String?, headers: Map<String, String>) {
+        seekrLookup?.cancel()
+        seekrLookup = null
+        seekrTrack = null
+        seekrAsked = false
+        seekrWanted = null
         streamUrl = url
         streamHeaders = headers
         unsupported = false
@@ -135,6 +166,57 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
         wanted = null
         timeoutJob?.cancel()
         timeoutJob = null
+    }
+
+    /**
+     * RCTV: true when Seekr has this movie's pictures (the one at [positionMs] shows, or is on its
+     * way). The first time, Seekr is asked meanwhile and the TV's own pictures show until it answers.
+     */
+    private fun showSeekr(title: SeekrTitle?, durationMs: Long, positionMs: Long): Boolean {
+        val client = seekr ?: return false
+        if (title == null || durationMs <= 0L || !client.hasKey) return false
+        seekrWanted = positionMs
+        val track = seekrTrack
+        if (track == null) {
+            if (!seekrAsked && seekrLookup == null) {
+                seekrLookup = scope.launch(Dispatchers.Main.immediate) {
+                    val found = try {
+                        client.track(title, durationMs)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                    seekrAsked = true
+                    seekrLookup = null
+                    seekrTrack = found
+                    // The timeline is still out: its picture from Seekr now.
+                    if (found != null && seekrWanted != null) readSeekr(client, found)
+                }
+            }
+            return false
+        }
+        readSeekr(client, track)
+        return true
+    }
+
+    /** RCTV: Seekr's picture where the timeline is now (one read at a time: only the latest place). */
+    private fun readSeekr(client: SeekrPreviews, track: SeekrPreviews.Track) {
+        _showsPictures.value = true
+        if (seekrReading) return
+        seekrReading = true
+        scope.launch(Dispatchers.Main.immediate) {
+            try {
+                while (true) {
+                    val position = seekrWanted ?: break
+                    seekrWanted = null
+                    val picture = client.pictureAt(track, position)
+                    if (picture != null && seekrTrack === track) _image.value = picture
+                }
+            } finally {
+                seekrReading = false
+            }
+        }
     }
 
     private fun ask(bucket: Long) {
@@ -190,7 +272,8 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
         if (picture != null) {
             failures = 0
             cache[bucket] = picture
-            if (_showsPictures.value) _image.value = picture
+            // RCTV: once Seekr's pictures show, the TV's own don't replace them.
+            if (_showsPictures.value && seekrTrack == null) _image.value = picture
         } else if (++failures >= MAX_FAILURES) {
             markUnsupported()
             return
