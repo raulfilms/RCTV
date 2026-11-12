@@ -46,7 +46,8 @@ fun RctvCollectionScreen(
                 onItemClick = onItemClick,
                 onItemLongPress = {},
                 onLoadMore = viewModel::loadMore,
-                vertical = true
+                // RCTV (owner's choice): a collection's titles as horizontal 16:9 cards.
+                vertical = false
             )
         }
     }

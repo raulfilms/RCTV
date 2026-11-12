@@ -246,6 +246,8 @@ class HomeViewModel @Inject constructor(
     internal var heroEnrichmentJob: Job? = null
     internal var lastHeroEnrichmentSignature: String? = null
     internal var lastHeroEnrichedItems: List<MetaPreview> = emptyList()
+    /** RCTV: the profile whose hero from last time is showing while its catalogs load (else null). */
+    internal var cachedHeroProfileId: Int? = null
     internal var heroItemOrder: List<String> = emptyList()
     internal val modernCarouselRowBuildCache = ModernCarouselRowBuildCache()
     internal val prefetchedExternalMetaIds: MutableSet<String> = Collections.newSetFromMap(createLruMap(MAX_PREFETCH_CACHE_SIZE))
@@ -346,6 +348,9 @@ class HomeViewModel @Inject constructor(
         observeStartupAuthNotice()
         viewModelScope.launch {
             profileManager.activeProfileReady.first { it }
+            // RCTV: the hero from last time at once; the fresh one replaces it.
+            restoreCachedHeroPipeline()
+            observeHeroCachePipeline()
             observeLayoutPreferences()
             observeModernHomePresentation()
             loadContinueWatching()

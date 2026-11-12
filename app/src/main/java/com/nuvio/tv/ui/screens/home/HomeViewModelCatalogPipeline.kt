@@ -891,10 +891,20 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
     // catalogs loaded after the initial startup race set an error).
     val hasContent = computedHomeRows.isNotEmpty() || baseHeroItems.isNotEmpty() || displayRows.isNotEmpty()
 
+    // RCTV: the hero kept from last time stays until the catalogs it comes from are in.
+    val catalogsStillLoading = pendingCatalogLoads > 0 || catalogsLoadInProgress || addonsCache.isEmpty()
+    val keepCachedHero = baseHeroItems.isEmpty() && catalogsStillLoading &&
+        cachedHeroProfileId == profileManager.activeProfileId.value
+    if (!keepCachedHero) cachedHeroProfileId = null
+
     _uiState.update { state ->
         state.copy(
             catalogRows = if (state.catalogRows == displayRows) state.catalogRows else displayRows,
-            heroItems = if (state.heroItems == baseHeroItems) state.heroItems else baseHeroItems,
+            heroItems = when {
+                keepCachedHero -> state.heroItems
+                state.heroItems == baseHeroItems -> state.heroItems
+                else -> baseHeroItems
+            },
             gridItems = if (state.gridItems == nextGridItems) state.gridItems else nextGridItems,
             homeRows = if (state.homeRows == computedHomeRows) state.homeRows else computedHomeRows,
             isLoading = false,
