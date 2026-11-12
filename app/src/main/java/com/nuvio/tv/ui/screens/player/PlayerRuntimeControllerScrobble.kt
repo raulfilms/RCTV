@@ -68,7 +68,8 @@ internal fun PlayerRuntimeController.preparePlaybackBeforeStart(
             // from the track selection above. This happens before
             // initializePlayer() because the renderers factory snapshots
             // subtitleDelayUs from _uiState.value.subtitleDelayMs on build.
-            currentVideoId?.takeIf { it.isNotBlank() }?.let { vid ->
+            // RCTV (owner's rule): only this release's own correction (see subtitleCorrectionKey).
+            subtitleCorrectionKey()?.let { vid ->
                 val savedDelayMs = trackPreferenceDataStore.loadSubtitleDelayMs(vid)
                 if (savedDelayMs != null && savedDelayMs != 0) {
                     subtitleDelayUs.set(savedDelayMs.toLong() * 1000L)

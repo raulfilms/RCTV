@@ -488,7 +488,12 @@ private fun windowsOf(durationMs: Long, fractions: List<Double>): List<LongRange
 /** The speech in [windows] of the stream (decoded in the background); null when its audio can't be read. */
 /** The file's sound in [windows]; null when it can't be read here (see SpeechReadGuard). */
 private suspend fun PlayerRuntimeController.hear(url: String, headers: Map<String, String>, windows: List<LongRange>): List<SpeechWindow>? =
-    withContext(Dispatchers.IO) {
+    // RCTV: on Android 9 and older (the Mi Box), in a process of its own: a crash there never closes the app.
+    if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
+        com.nuvio.tv.core.subsync.SpeechAnalysisClient.analyze(
+            context, url, headers, windows, timeoutMs = 30_000L + windows.size * 20_000L
+        )
+    } else withContext(Dispatchers.IO) {
         com.nuvio.tv.core.subsync.SpeechReadGuard.reading(context) {
             SpeechActivityAnalyzer.analyze(url, headers, windows) { !isActive }
         }

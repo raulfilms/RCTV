@@ -712,7 +712,8 @@ internal fun PlayerRuntimeController.persistTrackPreference() {
     // calibrated against one episode release rarely applies to the next
     // episode. Scoping it to the exact video prevents cross-episode leakage.
     // See issue #1063 discussion.
-    val vid = currentVideoId?.takeIf { it.isNotBlank() }
+    // RCTV (owner's rule): and to this release of it (see subtitleCorrectionKey).
+    val vid = subtitleCorrectionKey()
     if (vid != null) {
         val currentDelayMs = _uiState.value.subtitleDelayMs
         scope.launch {
@@ -747,4 +748,17 @@ internal fun PlayerRuntimeController.captureCurrentAudioSelectionForSubtitleRefr
         }
     }
     return null
+}
+
+/**
+ * RCTV (owner's rule): a subtitle delay (set by hand or by the sync) is kept for this video's own
+ * release (its torrent, or its file's name), never applied to another release of the same movie or
+ * episode, whose timing differs. Null when the release isn't known: then nothing is kept.
+ */
+internal fun PlayerRuntimeController.subtitleCorrectionKey(): String? {
+    val video = currentVideoId?.takeIf { it.isNotBlank() } ?: return null
+    val release = currentInfoHash?.takeIf { it.isNotBlank() }?.lowercase()
+        ?: currentFilename?.takeIf { it.isNotBlank() }?.lowercase()
+        ?: return null
+    return "$video|$release"
 }

@@ -77,6 +77,13 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <!-- RCTV: reads a movie's sound for the subtitle sync in a process of its own, so a crash of
+             the TV's file reader or audio decoder (Android 9, the Mi Box) never closes the app. -->
+        <service
+            android:name=".core.subsync.SpeechAnalysisService"
+            android:exported="false"
+            android:process=":speech" />
+
         <service
             android:name=".core.player.ExternalPlaybackKeepAliveService"
             android:exported="false"

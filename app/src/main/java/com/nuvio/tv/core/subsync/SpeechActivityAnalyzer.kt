@@ -28,9 +28,8 @@ internal object SpeechActivityAnalyzer {
     fun canAnalyze(url: String?): Boolean {
         // RCTV: on Android 9 and older (the Mi Box) the TV's own file reader closed the whole app
         // while reading a movie's sound from the internet (Che: Part One, then an H.264/AAC 5.1
-        // movie, the crash report said so): the file is never read there; the sync hears the
-        // sound the player plays instead.
-        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) return false
+        // movie): there the file is read in a process of its own (SpeechAnalysisService), where a
+        // crash closes only that process.
         if (url.isNullOrBlank()) return false
         val lower = url.lowercase()
         if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false
@@ -48,6 +47,8 @@ internal object SpeechActivityAnalyzer {
         url: String,
         headers: Map<String, String>,
         windowsMs: List<LongRange>,
+        /** RCTV: in the reading process of its own, a TV maker's decoder too (Dolby, DTS). */
+        anyDecoder: Boolean = false,
         cancelled: () -> Boolean
     ): List<SpeechWindow>? {
         val extractor = MediaExtractor()
@@ -55,7 +56,7 @@ internal object SpeechActivityAnalyzer {
         try {
             extractor.setDataSource(url, headers)
             if (cancelled()) return null
-            val track = pickTrack(extractor) ?: run {
+            val track = pickTrack(extractor, anyDecoder) ?: run {
                 Log.i(TAG, "No audio track this device can decode")
                 return null
             }
@@ -140,7 +141,7 @@ internal object SpeechActivityAnalyzer {
      * Android 9 and older (the Mi Box), only with Android's own software decoders (AAC, MP3, Opus...):
      * a TV maker's decoder (Dolby, DTS) opened beside the player's can crash and close the app.
      */
-    private fun pickTrack(extractor: MediaExtractor): Track? {
+    private fun pickTrack(extractor: MediaExtractor, anyDecoder: Boolean): Track? {
         val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS)
         for (index in 0 until extractor.trackCount) {
             val format = extractor.getTrackFormat(index)
@@ -151,6 +152,7 @@ internal object SpeechActivityAnalyzer {
             }
             val decoder = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                 decoders.firstOrNull { isAndroidsOwn(it.name) }?.name
+                    ?: if (anyDecoder) decoders.firstOrNull()?.name else null
             } else {
                 runCatching { codecs.findDecoderForFormat(format) }.getOrNull() ?: decoders.firstOrNull()?.name
             } ?: continue

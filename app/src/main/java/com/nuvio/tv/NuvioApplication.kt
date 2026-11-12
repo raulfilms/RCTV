@@ -98,6 +98,9 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // RCTV: the subtitle sync's sound reader runs in a process of its own (":speech"); none of
+        // the app's start-up (crash screen, memory guard, channels, plugins) belongs there.
+        if (isSpeechProcess()) return
         SentryInitializer.start(this, sentrySettingsDataStore)
         // RCTV: a crash's error is kept and shown the next time the app opens.
         com.nuvio.tv.core.diagnostics.CrashLog.install(this)
@@ -117,6 +120,13 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         val tag = getSharedPreferences("app_locale", Context.MODE_PRIVATE)
             .getString("locale_tag", null)
         LocaleCache.localeTag = tag ?: ""
+    }
+
+    private fun isSpeechProcess(): Boolean {
+        val name = runCatching {
+            java.io.File("/proc/self/cmdline").readText().trimEnd('\u0000').substringBefore('\u0000')
+        }.getOrNull().orEmpty()
+        return name.endsWith(com.nuvio.tv.core.subsync.SpeechAnalysisService.PROCESS_SUFFIX)
     }
 
     override fun newImageLoader(context: android.content.Context): ImageLoader {
