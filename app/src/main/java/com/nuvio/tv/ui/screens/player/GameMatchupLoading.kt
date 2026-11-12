@@ -39,7 +39,9 @@ data class GameMatchupArt(
     val leftBadge: String?,
     val leftColor: Color,
     val rightBadge: String?,
-    val rightColor: Color
+    val rightColor: Color,
+    /** RCTV (game center): the game's id (its stats beside the player). */
+    val eventId: String? = null
 ) {
     companion object {
         /** Soccer reads home vs away; the US sports away @ home. */
@@ -48,7 +50,7 @@ data class GameMatchupArt(
             val home = event.homeTeamBadgeUrl to colorOf(event.homeTeamColor, HOME_FALLBACK)
             val away = event.awayTeamBadgeUrl to colorOf(event.awayTeamColor, AWAY_FALLBACK)
             val (left, right) = if (soccer) home to away else away to home
-            return GameMatchupArt(left.first, left.second, right.first, right.second)
+            return GameMatchupArt(left.first, left.second, right.first, right.second, eventId = event.id)
         }
 
         private val HOME_FALLBACK = Color(0xFF1E5BFF)

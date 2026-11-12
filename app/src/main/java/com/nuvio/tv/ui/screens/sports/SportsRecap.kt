@@ -79,6 +79,14 @@ internal object SportsRecapPicker {
     /** Highlights come out within hours of a game; a video from days later is another game's. */
     private const val MAX_DAYS_AFTER_GAME = 4.0
 
+    /** RCTV: shorter than this is a clip or a Short, not a game's recap. */
+    private const val MIN_RECAP_SECONDS = 60
+
+    /** RCTV: "#shorts" in a title: a vertical Short. */
+    private val SHORT_TAG = Regex("""#shorts?\b""", RegexOption.IGNORE_CASE)
+
+    internal fun isShortTitle(title: String): Boolean = SHORT_TAG.containsMatchIn(title)
+
     /** About how long after a game starts its highlights come out. */
     private const val HOURS_TO_HIGHLIGHTS = 4.0
 
@@ -114,7 +122,7 @@ internal object SportsRecapPicker {
         "espn", "espn fc", "fox sports", "fox soccer", "premier league", "laliga", "bundesliga",
         "serie a", "ligue 1", "mls", "major league soccer", "liga mx", "tudn", "telemundo deportes",
         "univision deportes", "ufc", "formula 1", "f1", "bein sports", "tnt sports", "dazn",
-        "house of highlights", "uefa", "concacaf", "ncaa", "big ten", "sec network",
+        "uefa", "concacaf", "ncaa", "big ten", "sec network",
         "nascar", "nascar on fox", "nascar on nbc", "wwe", "aew", "all elite wrestling", "top rank", "top rank boxing",
         "matchroom", "matchroom boxing", "premier boxing champions", "golden boy", "queensberry", "the ring", "dazn boxing"
     )
@@ -133,6 +141,19 @@ internal object SportsRecapPicker {
         "ncaa march madness", "march madness", "ncaa baseball", "d1baseball", "nbc sports", "peacock", "tnt sports",
         "the cw sports", "cw sports", "abc sports"
     ).map { SportsGameChannels.normalize(it) }.toSet()
+
+    /**
+     * RCTV (owner's rule: official recaps only): words in a channel's name that make it a fan's
+     * re-upload channel ("NBA Highlights HD", "Real Madrid Fans"), not the league's, network's or team's own.
+     */
+    private val FAN_CHANNEL_WORDS = listOf(
+        "highlights", "highlight", "fan", "fans", "hd", "4k", "clips", "edits", "daily", "mix",
+        "compilation", "compilations", "replay", "replays", "goals", "goles", "videos", "zone", "hub"
+    )
+
+    /** RCTV: a channel named as an official one ("ESPN", "ESPN Deportes", "TUDN USA"), not one that only mentions it. */
+    private fun isOfficialName(channel: String): Boolean =
+        OFFICIAL_CHANNELS.any { channel == it || channel.startsWith("$it ") }
 
     /** Words too common to stand for a team on their own ("City", "United"). */
     private val GENERIC_WORDS = setOf(
@@ -362,21 +383,25 @@ internal object SportsRecapPicker {
         val channel = SportsGameChannels.normalize(result.channel.orEmpty())
         // A live stream or a premiere to come: not highlights.
         val seconds = result.durationSeconds ?: return null
+        // RCTV (owner's rule): recaps are always 16:9, never a vertical Short (checked again before playing).
+        if (result.isShort || isShortTitle(result.title) || seconds < MIN_RECAP_SECONDS) return null
         if (NOT_HIGHLIGHTS.any { has(title, it) } || VIDEO_GAME.containsMatchIn(title)) return null
         val homeIn = home.any { hasTeam(title, it) }
         val awayIn = away.any { hasTeam(title, it) }
         if (!homeIn || !awayIn) return null
         val highlights = HIGHLIGHT_WORDS.any { has(title, it) }
-        val teamChannel = home.any { has(channel, it) } || away.any { has(channel, it) }
+        val fanChannel = FAN_CHANNEL_WORDS.any { has(channel, it) }
+        val teamChannel = !fanChannel && (home.any { has(channel, it) } || away.any { has(channel, it) })
         val official = when {
             // The league's own channel (only its videos get here).
             recapChannel != null -> true
             // A college game: the networks', conferences' and NCAA's channels, or the schools' own.
             college -> channel in COLLEGE_CHANNELS || teamChannel
-            else -> OFFICIAL_CHANNELS.any { has(channel, it) } || teamChannel
+            else -> !fanChannel && isOfficialName(channel) || teamChannel
         }
-        if (college && !official) return null
-        if (!highlights && (!official || (recapChannel != null && !recapChannel.anyVideo))) return null
+        // RCTV (owner's rule): every recap is official: the league's, a network's that shows it, or a team's own.
+        if (!official) return null
+        if (!highlights && recapChannel != null && !recapChannel.anyVideo) return null
         // When it came out: between [age] and [age] + its unit ago ("2 weeks ago": 14 to 21 days).
         val age = result.ageDays
         val ageUnit = result.ageUnitDays ?: 1.0

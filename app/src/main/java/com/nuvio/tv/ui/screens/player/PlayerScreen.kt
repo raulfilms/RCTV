@@ -162,7 +162,8 @@ fun PlayerScreen(
     onOpenLiveTitle: (itemId: String, itemType: String, season: Int?, episode: Int?) -> Unit = { _, _, _, _ -> },
     /** RCTV Live TV: "Watch From Beginning": what's on, from its sources. */
     onWatchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = {},
-    liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel()
+    liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel(),
+    gameCenterViewModel: LiveGameCenterViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val postPlayRecommendationState by viewModel.postPlayRecommendationUiState.collectAsState()
@@ -274,6 +275,30 @@ fun PlayerScreen(
     val switchToPreviousChannel: () -> Unit = {
         liveTvViewModel.previousChannel(playingLiveChannel)?.let(switchLiveChannel)
     }
+    // RCTV (game center, as YouTube TV): the live game's stats and the league's other games beside
+    // the video. The game: the one opened from Sports, or else the one the channel's program is.
+    var showGameCenter by remember { mutableStateOf(false) }
+    val gameCenterState by gameCenterViewModel.state.collectAsState()
+    val liveNowMs by liveTvViewModel.nowMs.collectAsState()
+    val liveProgramText = remember(isLiveTvChannel, playingLiveChannel, liveGuide, liveNowMs / 60_000L) {
+        val channel = playingLiveChannel
+        if (!isLiveTvChannel || channel == null) null else {
+            liveGuide.programAt(channel, System.currentTimeMillis())
+                ?.let { listOfNotNull(it.title, it.description).joinToString(" ") }
+        }
+    }
+    LaunchedEffect(isLiveTvChannel, gameMatchup?.eventId, liveProgramText) {
+        gameCenterViewModel.bindSportsGame(gameMatchup?.eventId.takeIf { isLiveTvChannel })
+        gameCenterViewModel.bindProgram(liveProgramText.takeIf { gameMatchup?.eventId == null })
+    }
+    LaunchedEffect(showGameCenter) {
+        gameCenterViewModel.setOpen(showGameCenter)
+        if (showGameCenter && uiState.showControls) viewModel.onEvent(PlayerEvent.OnToggleControls)
+    }
+    LaunchedEffect(isLiveTvChannel) { if (!isLiveTvChannel) showGameCenter = false }
+    // RCTV: opens the game center (the owner will say from where in the player).
+    @Suppress("UNUSED_VARIABLE")
+    val openGameCenter: () -> Unit = { if (isLiveTvChannel) showGameCenter = true }
     val openLiveTitle: (com.nuvio.tv.data.livetv.LiveProgramMatch) -> Unit = openLiveTitle@{ match ->
         if (exitDispatched) return@openLiveTitle
         exitDispatched = true
@@ -364,6 +389,12 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
+        // RCTV: Back on the game center closes it; the game goes on full screen.
+        if (showGameCenter) {
+            showGameCenter = false
+            runCatching { containerFocusRequester.requestFocus() }
+            return@handleBackPress
+        }
         // RCTV: Back on "Watch From Beginning" goes back to the channel.
         if (liveVodPromptVisible) {
             liveVodPromptVisible = false
@@ -845,7 +876,8 @@ fun PlayerScreen(
                         uiState.postPlayMode is PostPlayMode.StillWatching ||
                         postPlayRecommendationState.isVisible ||
                         uiState.error != null ||
-                        liveVodPromptVisible
+                        liveVodPromptVisible ||
+                        showGameCenter
                 if (panelOrDialogOpen) return@onKeyEvent false
 
                 // RCTV (live channel, controls hidden): a short OK does what it always did (on its
@@ -1067,10 +1099,24 @@ fun PlayerScreen(
             animationSpec = tween(durationMillis = POST_PLAY_RECOMMENDATION_TRANSITION_MS),
             label = "postPlayRecommendationPlayerBorderAlpha"
         )
+        // RCTV (game center, as YouTube TV): the video moves to the left, rounded, beside the panel.
+        val gameCenterProgress by animateFloatAsState(
+            targetValue = if (showGameCenter) 1f else 0f,
+            animationSpec = tween(durationMillis = GAME_CENTER_TRANSITION_MS),
+            label = "gameCenterProgress"
+        )
+        val gameCenterActive = gameCenterProgress > 0.001f
         val playerSurfaceShape = RoundedCornerShape(postPlayRecommendationPlayerCornerRadius)
         val playerSurfaceIsFullscreen = !postPlayRecommendationState.isVisible &&
-            postPlayRecommendationPlayerWidth >= 0.999f
-        val playerSurfaceModifier = Modifier
+            postPlayRecommendationPlayerWidth >= 0.999f && !gameCenterActive
+        val gameCenterSurfaceModifier = Modifier
+            .align(Alignment.CenterStart)
+            .padding(start = GAME_CENTER_VIDEO_START * gameCenterProgress)
+            .fillMaxWidth(1f - (1f - GAME_CENTER_VIDEO_WIDTH) * gameCenterProgress)
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(16.dp * gameCenterProgress))
+            .background(Color.Black)
+        val fullPlayerSurfaceModifier = Modifier
             .align(Alignment.TopEnd)
             .padding(end = postPlayRecommendationPlayerPadding, top = postPlayRecommendationPlayerPadding)
             .fillMaxWidth(postPlayRecommendationPlayerWidth)
@@ -1091,6 +1137,24 @@ fun PlayerScreen(
                     0f
                 }
             )
+
+        val playerSurfaceModifier = if (gameCenterActive) gameCenterSurfaceModifier else fullPlayerSurfaceModifier
+
+        if (gameCenterActive) {
+            // Behind the smaller video: the panel's dark backdrop.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF16161B).copy(alpha = gameCenterProgress),
+                                Color(0xFF0A0A0D).copy(alpha = gameCenterProgress)
+                            )
+                        )
+                    )
+            )
+        }
 
         if (!exitDispatched &&
             !postPlayRecommendationState.isTrailerPlaying &&
@@ -1149,6 +1213,24 @@ fun PlayerScreen(
                     )
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = showGameCenter,
+            enter = fadeIn(animationSpec = tween(GAME_CENTER_TRANSITION_MS)),
+            exit = fadeOut(animationSpec = tween(150)),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .fillMaxWidth(GAME_CENTER_PANEL_WIDTH)
+                .fillMaxHeight()
+                .zIndex(3f)
+        ) {
+            LiveGameCenterPanel(
+                state = gameCenterState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 32.dp, end = 32.dp)
+            )
         }
 
         if (!exitDispatched) {
@@ -4142,3 +4224,9 @@ private fun PlayerBufferingIndicator(
 
 /** RCTV: how long OK is held (on a live channel) to go back to the channel watched before. */
 private const val LIVE_OK_LONG_PRESS_MS = 600L
+
+/** RCTV (game center): the video's share of the screen beside the panel, where it starts, the panel's share. */
+private const val GAME_CENTER_VIDEO_WIDTH = 0.58f
+private val GAME_CENTER_VIDEO_START = 40.dp
+private const val GAME_CENTER_PANEL_WIDTH = 0.36f
+private const val GAME_CENTER_TRANSITION_MS = 280

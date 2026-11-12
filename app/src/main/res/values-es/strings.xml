@@ -1723,4 +1723,14 @@
     <string name="player_live_playing">Reproduciendo</string>
     <string name="player_live_next_program">Después: %1$s</string>
     <string name="player_live_channel_failed">No se pudo abrir %1$s. Inténtalo de nuevo.</string>
+    <string name="game_center_scores">Marcadores</string>
+    <string name="game_center_stats">Estadísticas</string>
+    <string name="game_center_key_plays">Jugadas clave</string>
+    <string name="game_center_live">EN VIVO</string>
+    <string name="game_center_final">FINAL</string>
+    <string name="game_center_loading">Cargando…</string>
+    <string name="game_center_no_stats">Todavía no hay estadísticas de este juego</string>
+    <string name="game_center_no_plays">Todavía no hay jugadas clave</string>
+    <string name="game_center_no_games">No hay más juegos hoy</string>
+    <string name="game_center_team_stats">Estadísticas de equipo</string>
 </resources>

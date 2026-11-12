@@ -209,11 +209,29 @@ class GameDetailViewModel @Inject constructor(
             }
             // RCTV Smart Player: the likeliest one, in YouTube's official player, inside RCTV. One its
             // owner keeps off other sites gives its place to the next one (never the YouTube app).
-            recapCandidates = found.toList()
-            recapAt = 0
+            recapCandidates = found.distinctBy { it.videoId }
+            // RCTV (owner's rule): always 16:9: a vertical Short gives its place to the next one.
+            recapAt = firstHorizontalFrom(0)
             showRecapCandidate()
         }
     }
+
+    /**
+     * RCTV: from [start], the first recap that YouTube doesn't say is a Short (vertical). One YouTube
+     * says nothing about is kept (a recap from an official channel, not a Short in its search).
+     */
+    private suspend fun firstHorizontalFrom(start: Int): Int {
+        var index = start
+        while (index < recapCandidates.size) {
+            val short = runCatching { youTubeSearch.isShort(recapCandidates[index].videoId) }.getOrNull()
+            ensureActiveRecap()
+            if (short != true) return index
+            index++
+        }
+        return index
+    }
+
+    private suspend fun ensureActiveRecap() = kotlinx.coroutines.currentCoroutineContext().ensureActive()
 
     /** The highlights found for the game, the likeliest first; [recapAt]: the one playing. */
     private var recapCandidates: List<com.nuvio.tv.data.trailer.YouTubeSearchResult> = emptyList()
@@ -235,8 +253,11 @@ class GameDetailViewModel @Inject constructor(
     /** RCTV: the video playing can't play here (its owner allows it only on YouTube): the next one. */
     fun recapUnplayable() {
         if (_uiState.value.recap == null) return
-        recapAt++
-        showRecapCandidate()
+        if (recapJob?.isActive == true) return
+        recapJob = viewModelScope.launch {
+            recapAt = firstHorizontalFrom(recapAt + 1)
+            showRecapCandidate()
+        }
     }
 
     fun closeRecap() {

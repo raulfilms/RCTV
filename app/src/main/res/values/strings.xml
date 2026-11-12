@@ -4445,4 +4445,14 @@
     <string name="player_live_playing">Playing</string>
     <string name="player_live_next_program">Next: %1$s</string>
     <string name="player_live_channel_failed">Couldn\'t open %1$s. Try again.</string>
+    <string name="game_center_scores">Scores</string>
+    <string name="game_center_stats">Stats</string>
+    <string name="game_center_key_plays">Key plays</string>
+    <string name="game_center_live">LIVE</string>
+    <string name="game_center_final">FINAL</string>
+    <string name="game_center_loading">Loading…</string>
+    <string name="game_center_no_stats">Stats aren\'t available for this game yet</string>
+    <string name="game_center_no_plays">No key plays yet</string>
+    <string name="game_center_no_games">No other games today</string>
+    <string name="game_center_team_stats">Team stats</string>
 </resources>

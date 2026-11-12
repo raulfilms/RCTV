@@ -37,7 +37,9 @@ data class YouTubeSearchResult(
      * RCTV: the channel's handle ("@NBA") when it's known for sure: the video came from a search
      * of that channel only, or its uploads. Null when it isn't known.
      */
-    val channelHandle: String? = null
+    val channelHandle: String? = null,
+    /** RCTV: YouTube says it's a Short (a vertical video). */
+    val isShort: Boolean = false
 ) {
     val watchUrl: String get() = "https://www.youtube.com/watch?v=$videoId"
 }
@@ -58,6 +60,48 @@ class YouTubeVideoSearch @Inject constructor() {
             .readTimeout(15, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
+    }
+
+    /** RCTV: youtube.com/shorts/ asked as is: it answers a Short there, and sends any other video to /watch. */
+    private val shortsCheckClient by lazy {
+        httpClient.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+    }
+
+    /** RCTV: what [isShort] found, by video. */
+    private val shortsChecked = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * RCTV (owner's rule: recaps always 16:9, never vertical): whether a video is a YouTube Short.
+     * youtube.com/shorts/{id} stays for a Short and sends any other video on to /watch. Null when
+     * YouTube didn't say (no connection, another answer).
+     */
+    suspend fun isShort(videoId: String): Boolean? = withContext(Dispatchers.IO) {
+        shortsChecked[videoId]?.let { return@withContext it }
+        val answer = try {
+            val request = Request.Builder()
+                .url("https://www.youtube.com/shorts/$videoId")
+                .head()
+                .header("User-Agent", SEARCH_USER_AGENT)
+                .header("Cookie", CONSENT_COOKIE)
+                .build()
+            shortsCheckClient.newCall(request).execute().use { response ->
+                when {
+                    response.code in 300..399 -> {
+                        val location = response.header("Location").orEmpty()
+                        if ("/shorts/" in location) null else false
+                    }
+                    response.isSuccessful -> true
+                    else -> null
+                }
+            }
+        } catch (error: Exception) {
+            Log.w(SEARCH_TAG, "Shorts check failed: ${error.javaClass.simpleName}")
+            null
+        }
+        answer?.also { shortsChecked[videoId] = it }
     }
 
     /**
@@ -314,13 +358,18 @@ class YouTubeVideoSearch @Inject constructor() {
         val channel = textOf(renderer.optJSONObject("ownerText")) ?: textOf(renderer.optJSONObject("longBylineText"))
         val length = textOf(renderer.optJSONObject("lengthText"))
         val published = textOf(renderer.optJSONObject("publishedTimeText"))
+        // RCTV: a Short opens at /shorts/ (or YouTube's Shorts player): a vertical video.
+        val endpoint = renderer.optJSONObject("navigationEndpoint")
+        val link = endpoint?.optJSONObject("commandMetadata")?.optJSONObject("webCommandMetadata")?.optString("url").orEmpty()
+        val short = link.startsWith("/shorts/") || endpoint?.has("reelWatchEndpoint") == true
         return YouTubeSearchResult(
             videoId = videoId,
             title = title,
             channel = channel,
             durationSeconds = length?.let(::secondsOf),
             ageDays = published?.let(::ageDaysOf),
-            ageUnitDays = published?.let(::ageUnitDaysOf)
+            ageUnitDays = published?.let(::ageUnitDaysOf),
+            isShort = short
         )
     }
 

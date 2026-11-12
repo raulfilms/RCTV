@@ -157,6 +157,8 @@ class EspnSportsClient @Inject constructor(
          * more answers at once than this, and the heavy ones (tennis, the NCAA) one at a time.
          */
         private const val MAX_FEEDS_AT_ONCE = 3
+        /** RCTV (game center): the leagues a program's game is looked for in. */
+        private const val PROGRAM_GAME_FEEDS = 4
         private val feedPermits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
         private val heavyFeedPermit = kotlinx.coroutines.sync.Semaphore(1)
 
@@ -1663,6 +1665,71 @@ class EspnSportsClient @Inject constructor(
         addFrom(competition?.optJSONArray("geoBroadcasts"))
         return names.map { it.trim() }.filter { it.isNotBlank() }
     }
+
+    /**
+     * RCTV (game center, as YouTube TV): a game's live information for the panel beside the
+     * player: its score by period, the teams' stats, the leaders, each team's box score and its
+     * key plays, from ESPN's game summary. Null for what has no such summary (golf, races, tennis,
+     * fights, the leagues read from other sources) or a game ESPN doesn't give.
+     */
+    fun fetchGameCenter(eventId: String): com.nuvio.tv.domain.model.GameCenter? {
+        val parsed = parseEventId(eventId) ?: return null
+        val sport = parsed.sportPath
+        val league = parsed.leaguePath
+        if (sport == GOLF || sport == "racing" || sport == PpvEventsSource.SPORT_PATH || sport == VirtualLeagues.TENNIS ||
+            league == BananaBallSource.LEAGUE_PATH || league in NascarSource.LEAGUE_PATHS ||
+            (sport == CflSource.SPORT_PATH && league == CflSource.LEAGUE_PATH) ||
+            (sport == MlbStatsSource.SPORT_PATH && league in MlbStatsSource.LEAGUE_PATHS) ||
+            (sport == MotoGpSource.SPORT_PATH && league == MotoGpSource.LEAGUE_PATH) ||
+            VirtualLeagues.of(sport, league) != null
+        ) {
+            return null
+        }
+        val json = JSONObject(get("$BASE_URL/$sport/$league/summary?event=${parsed.rawEventId}"))
+        return EspnGameCenterParser.parse(json, eventId, sport, league)
+    }
+
+    /** RCTV (game center's Scores): the games of [eventId]'s league today, read fresh (not the pages' copy). */
+    fun fetchLeagueGamesOf(eventId: String): List<SportsEvent> {
+        val parsed = parseEventId(eventId) ?: return emptyList()
+        val feed = feedForLeagueId("${parsed.sportPath}:${parsed.leaguePath}") ?: return emptyList()
+        return fetchFeed(feed).events
+    }
+
+    /**
+     * RCTV (game center): the live game a TV program is (a channel opened from the Guide), when both
+     * teams' names are in its title or description; null when none is.
+     */
+    fun findLiveGameForProgram(programText: String): SportsEvent? {
+        val text = programWords(programText)
+        if (text.isBlank()) return null
+        val padded = " $text "
+        fun mentions(names: List<String>): Boolean = names.asSequence()
+            .map(::programWords)
+            .filter { it.length >= 4 }
+            .any { padded.contains(" $it ") }
+        for (feed in feedsForProgram(text).take(PROGRAM_GAME_FEEDS)) {
+            val events = try {
+                fetchFeed(feed).events
+            } catch (e: Exception) {
+                continue
+            }
+            events.firstOrNull { event ->
+                event.status == SportsEventStatus.LIVE &&
+                    mentions(event.homeTeamAliases + event.homeTeamName) &&
+                    mentions(event.awayTeamAliases + event.awayTeamName)
+            }?.let { return it }
+        }
+        return null
+    }
+
+    /** Plain lowercase words: accents and symbols taken out ("Vikings @ Saints" → "vikings saints"). */
+    private fun programWords(text: String): String =
+        java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
 
     fun fetchGameSummary(sportPath: String, leaguePath: String, eventId: String): GameSummary {
         // A golf tournament has a leaderboard ([fetchGolfLeaderboard]), not team stats.
