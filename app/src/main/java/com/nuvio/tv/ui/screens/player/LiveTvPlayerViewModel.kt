@@ -158,10 +158,14 @@ class LiveTvPlayerViewModel @Inject constructor(
             } catch (e: Exception) {
                 emptyList()
             }
-            _episodes.update { it.copy(isLoading = false, seasons = seasons) }
+            // RCTV (owner's rule): it opens on the episode airing now, in its season (as YouTube TV):
+            // TMDB is given a few seconds to tell which; the latest season only when it can't.
+            val airingSoon = kotlinx.coroutines.withTimeoutOrNull(AIRING_WAIT_MS) { airingLookup.await() }
+            _episodes.update { it.copy(isLoading = false, seasons = seasons, airing = airingSoon ?: it.airing) }
             val latest = seasons.lastOrNull { it.number > 0 }?.number ?: seasons.firstOrNull()?.number
-            if (latest != null) loadSeason(latest)
-            val airing = airingLookup.await() ?: return@launch
+            val first = airingSoon?.season?.takeIf { season -> seasons.any { it.number == season } } ?: latest
+            if (first != null) loadSeason(first)
+            val airing = airingSoon ?: airingLookup.await() ?: return@launch
             _episodes.update { it.copy(airing = airing) }
             if (!seasonChosen && airing.season != _episodes.value.selectedSeason && seasons.any { it.number == airing.season }) {
                 loadSeason(airing.season)
@@ -246,3 +250,6 @@ class LiveTvPlayerViewModel @Inject constructor(
         const val VOD_TMDB_WAIT_MS = 30_000L
     }
 }
+
+/** RCTV: how long the Episodes tab waits to learn the airing episode before showing the latest season. */
+private const val AIRING_WAIT_MS = 4_000L

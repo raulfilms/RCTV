@@ -941,6 +941,18 @@ private fun EpisodesContent(
         )
         return
     }
+    val listState = rememberLazyListState()
+    val airing = state.airing
+    // RCTV (owner's rule, as YouTube TV): going into Episodes lands on the episode airing now,
+    // marked "Playing", when it's in the season shown.
+    val airingIndex = remember(state.episodes, airing) {
+        if (airing == null) -1 else state.episodes.indexOfFirst { it.season == airing.season && it.episode == airing.episode }
+    }
+    val airingInView by remember(listState, airingIndex) {
+        androidx.compose.runtime.derivedStateOf {
+            airingIndex >= 0 && listState.layoutInfo.visibleItemsInfo.any { it.index == airingIndex }
+        }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         // The seasons (all of them composed, so the chosen one can always take focus).
         Row(
@@ -953,7 +965,8 @@ private fun EpisodesContent(
                 Surface(
                     onClick = { onSelectSeason(season.number) },
                     modifier = seasonModifier
-                        .then(if (selected) Modifier.focusRequester(entry) else Modifier)
+                        // RCTV: the airing episode takes focus first when it's in view (below).
+                        .then(if (selected && !airingInView) Modifier.focusRequester(entry) else Modifier)
                         .height(28.dp)
                         .onFocusChanged {
                             if (it.isFocused) {
@@ -982,8 +995,6 @@ private fun EpisodesContent(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        val listState = rememberLazyListState()
-        val airing = state.airing
         // The episode airing now in view.
         LaunchedEffect(state.episodes, airing) {
             if (airing == null) return@LaunchedEffect
@@ -1003,12 +1014,13 @@ private fun EpisodesContent(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(horizontal = RowBleed, vertical = 6.dp)
         ) {
-            itemsIndexed(state.episodes, key = { _, item -> "${item.season}:${item.episode}" }) { _, episode ->
+            itemsIndexed(state.episodes, key = { _, item -> "${item.season}:${item.episode}" }) { index, episode ->
                 val isAiring = airing != null && airing.season == episode.season && airing.episode == episode.episode
                 Column(modifier = Modifier.width(176.dp)) {
                     Card(
                         onClick = { onChoose(episode) },
                         modifier = Modifier
+                            .then(if (index == airingIndex && airingInView) Modifier.focusRequester(entry) else Modifier)
                             .fillMaxWidth()
                             .height(99.dp)
                             .onFocusChanged { if (it.isFocused) onFocused() },
@@ -1031,6 +1043,17 @@ private fun EpisodesContent(
                                 )
                             }
                             if (isAiring) {
+                                // RCTV: "Playing" on the episode on now, as YouTube TV.
+                                Text(
+                                    text = stringResource(R.string.player_live_playing),
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.BottomStart)
