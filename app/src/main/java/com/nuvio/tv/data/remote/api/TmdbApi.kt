@@ -109,14 +109,16 @@ interface TmdbApi {
     suspend fun getMovieImages(
         @Path("movie_id") movieId: Int,
         @Query("api_key") apiKey: String,
-        @Query("include_image_language") includeImageLanguage: String = "en,null"
+        // RCTV: a Spanish (or other non-English) title's logo is in its own language only; English
+        // ones still come first where they're picked (TmdbTitleArtService, DisneyPlusRepository).
+        @Query("include_image_language") includeImageLanguage: String = IMAGE_LANGUAGES
     ): Response<TmdbImagesResponse>
 
     @GET("tv/{tv_id}/images")
     suspend fun getTvImages(
         @Path("tv_id") tvId: Int,
         @Query("api_key") apiKey: String,
-        @Query("include_image_language") includeImageLanguage: String = "en,null"
+        @Query("include_image_language") includeImageLanguage: String = IMAGE_LANGUAGES
     ): Response<TmdbImagesResponse>
 
     @GET("movie/{movie_id}/release_dates")
@@ -922,3 +924,6 @@ data class TmdbWatchProviderEntry(
     @Json(name = "logo_path") val logoPath: String? = null,
     @Json(name = "display_priority") val displayPriority: Int? = null
 )
+
+/** RCTV: the logos' and pictures' languages asked for: English, none, then the titles' own. */
+const val IMAGE_LANGUAGES = "en,null,es,pt,fr,it,de,ja,ko,zh,hi,tr"

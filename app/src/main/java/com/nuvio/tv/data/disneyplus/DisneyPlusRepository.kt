@@ -417,7 +417,10 @@ class DisneyPlusRepository @Inject constructor(
     /** TMDB's best logo among [logos] (English first, then the best rated), as a w500 picture. */
     private fun bestLogo(logos: List<com.nuvio.tv.data.remote.api.TmdbImage>): String? {
         val usable = logos.filter { !it.filePath.isNullOrBlank() }
+        // RCTV: English first, then Spanish (a telenovela's is only in Spanish), then any other.
         val best = (usable.filter { it.iso6391 == "en" }.sortedByDescending { it.voteAverage ?: 0.0 } +
+            usable.filter { it.iso6391 == "es" }.sortedByDescending { it.voteAverage ?: 0.0 } +
+            usable.filter { it.iso6391 != null }.sortedByDescending { it.voteAverage ?: 0.0 } +
             usable.sortedByDescending { it.voteAverage ?: 0.0 }).firstOrNull()
         return best?.filePath?.let { "https://image.tmdb.org/t/p/w500$it" }
     }

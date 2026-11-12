@@ -164,7 +164,11 @@ class TmdbTitleArtService @Inject constructor(
 
     private fun pick(body: TmdbImagesResponse?): TmdbTitleArt {
         val logos = body?.logos.orEmpty().filter { !it.filePath.isNullOrBlank() }
-        val logo = (logos.filter { it.iso6391 == "en" }.bestFirst() + logos.bestFirst()).firstOrNull()
+        // English first, then Spanish (a telenovela's is only in Spanish), then any other; RCTV.
+        val logo = (logos.filter { it.iso6391 == "en" }.bestFirst() +
+            logos.filter { it.iso6391 == "es" }.bestFirst() +
+            logos.filter { it.iso6391 != null }.bestFirst() +
+            logos.bestFirst()).firstOrNull()
 
         val titledBackdrops = body?.backdrops.orEmpty().filter { image ->
             !image.filePath.isNullOrBlank() &&
