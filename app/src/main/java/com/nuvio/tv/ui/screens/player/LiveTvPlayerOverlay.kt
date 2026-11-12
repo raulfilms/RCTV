@@ -100,9 +100,6 @@ import com.nuvio.tv.ui.components.tileCardBorder
 /** The live player's tabs: icons on the left, "Networks" after the divider (as on YouTube TV). */
 private enum class LiveTab { MORE, QUALITY, CAPTIONS, LIBRARY, NETWORKS, EPISODES }
 
-/** Channels in the Networks row (the one playing, the Guide's Custom ones, then the rest). */
-private const val NETWORKS_ROW_LIMIT = 60
-
 /**
  * The player's controls for a Live TV channel, in the player's own style (its circular buttons,
  * white on focus, its gradients and accent bar), laid out like YouTube TV: the channel's logo,
@@ -134,6 +131,7 @@ internal fun LiveTvPlayerOverlay(
     val nowMs by liveViewModel.nowMs.collectAsState()
     val programState by liveViewModel.program.collectAsState()
     val episodesState by liveViewModel.episodes.collectAsState()
+    val recentIds by liveViewModel.recentChannelIds.collectAsState()
     val channel = remember(guide, uiState.title, uiState.logo) {
         liveViewModel.channelFor(uiState.title, uiState.logo, guide)
     }
@@ -335,6 +333,7 @@ internal fun LiveTvPlayerOverlay(
                     LiveTab.NETWORKS -> NetworksRow(
                         guide = guide,
                         current = channel,
+                        recentIds = recentIds,
                         nowMs = nowMs,
                         entry = contentEntry,
                         itemModifier = upToTab,
@@ -528,25 +527,25 @@ private fun LiveTextTab(
     }
 }
 
-/** The Networks row: the channels and what's on them; the one playing first. */
+/**
+ * The Networks row: the channel playing (marked Playing), the recent channels, the favorites, then
+ * the rest, each with what's on (its art when the guide has it), its times, how far along and
+ * what's next. Only the cards on screen are built and load their images.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun NetworksRow(
     guide: LiveTvPlayerSession.Guide,
     current: LiveTvChannel?,
+    recentIds: List<String>,
     nowMs: Long,
     entry: FocusRequester,
     itemModifier: Modifier,
     onFocused: () -> Unit,
     onChoose: (LiveTvChannel) -> Unit
 ) {
-    val channels = remember(guide, current?.id) {
-        // Stops as soon as the row is full (a playlist can have thousands of channels).
-        val custom = guide.channels.asSequence().filter { it.id in guide.customChannelIds }
-        (listOfNotNull(current).asSequence() + custom + guide.channels.asSequence())
-            .distinctBy { it.id }
-            .take(NETWORKS_ROW_LIMIT)
-            .toList()
+    val channels = remember(guide.channels, guide.customChannelIds, current?.id, recentIds) {
+        networksOrder(guide.channels, current?.id, recentIds, guide.customChannelIds)
     }
     LazyRow(
         modifier = Modifier.bleedHorizontally(RowBleed),
@@ -555,6 +554,11 @@ private fun NetworksRow(
     ) {
         itemsIndexed(channels, key = { _, item -> item.id }) { index, item ->
             val onNow = guide.programAt(item, nowMs)
+            val next = remember(item.id, guide.epgByChannel, onNow?.endMs ?: (nowMs / 60_000L)) {
+                guide.programsOf(item).firstOrNull { it.startMs >= (onNow?.endMs ?: nowMs) }
+            }
+            val art = onNow?.imageUrl?.takeIf { it.isNotBlank() }
+            val isPlaying = item.id == current?.id
             Column(modifier = Modifier.width(176.dp)) {
                 Card(
                     onClick = { onChoose(item) },
@@ -572,7 +576,32 @@ private fun NetworksRow(
                     scale = CardDefaults.scale(focusedScale = 1.04f)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        if (!item.logoUrl.isNullOrBlank()) {
+                        if (art != null) {
+                            // What's on, darkened, with the channel's logo in the corner.
+                            AsyncImage(
+                                model = art,
+                                contentDescription = onNow?.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.35f))
+                            )
+                            if (!item.logoUrl.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = item.logoUrl,
+                                    contentDescription = item.name,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(8.dp)
+                                        .height(20.dp)
+                                        .widthIn(max = 64.dp)
+                                )
+                            }
+                        } else if (!item.logoUrl.isNullOrBlank()) {
                             AsyncImage(
                                 model = item.logoUrl,
                                 contentDescription = item.name,
@@ -599,6 +628,21 @@ private fun NetworksRow(
                                 .align(Alignment.BottomStart)
                                 .padding(start = 8.dp, bottom = 8.dp)
                         ) { LiveBadge() }
+                        if (isPlaying) {
+                            // RCTV: the channel on now, as YouTube TV.
+                            Text(
+                                text = stringResource(R.string.player_live_playing),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                         if (onNow != null) {
                             Box(
                                 modifier = Modifier
@@ -623,7 +667,7 @@ private fun NetworksRow(
                     color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
+                    maxLines = if (next != null) 1 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
@@ -633,6 +677,18 @@ private fun NetworksRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (next != null) {
+                    Text(
+                        text = stringResource(
+                            R.string.player_live_next_program,
+                            LiveProgramLibrary.cleanTitle(next.title)
+                        ),
+                        color = Color.White.copy(alpha = 0.55f),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

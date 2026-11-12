@@ -61,10 +61,17 @@ class LiveTvPlayerViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val session: LiveTvPlayerSession,
     private val liveProgramLibrary: LiveProgramLibrary,
-    private val liveVodFinder: com.nuvio.tv.data.livetv.LiveVodFinder
+    private val liveVodFinder: com.nuvio.tv.data.livetv.LiveVodFinder,
+    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore
 ) : ViewModel() {
 
     val guide: StateFlow<LiveTvPlayerSession.Guide> = session.guide
+
+    /** RCTV (Networks): the last channels watched on this profile, newest first. */
+    val recentChannelIds: StateFlow<List<String>> = liveTvDataStore.recentChannelIds
+
+    /** The channel switched to inside the player (its name alone can be on several channels). */
+    private var playingChannelId: String? = null
 
     private val _nowMs = MutableStateFlow(System.currentTimeMillis())
 
@@ -95,8 +102,30 @@ class LiveTvPlayerViewModel @Inject constructor(
 
     /** The channel playing: the player's title is its name, its logo the channel's. */
     fun channelFor(name: String, logo: String?, guide: LiveTvPlayerSession.Guide): LiveTvChannel? =
-        guide.channels.firstOrNull { it.name == name && it.logoUrl == logo }
+        playingChannelId?.let { id -> guide.channels.firstOrNull { it.id == id && it.name == name } }
+            ?: guide.channels.firstOrNull { it.name == name && it.logoUrl == logo }
             ?: guide.channels.firstOrNull { it.name == name }
+
+    /** RCTV (Networks): a channel is being switched to inside the player. */
+    fun choosingChannel(channel: LiveTvChannel) {
+        playingChannelId = channel.id
+    }
+
+    /** RCTV (Networks): a channel played; it goes first in the recent channels. */
+    fun noteWatched(channel: LiveTvChannel) {
+        if (session.guide.value.isPreview) return
+        viewModelScope.launch {
+            runCatching { liveTvDataStore.noteRecentChannel(channel.id) }
+        }
+    }
+
+    /**
+     * RCTV (long-press OK): the channel watched before [current], from the recent channels; a
+     * channel the lineup no longer has is skipped.
+     */
+    fun previousChannel(current: LiveTvChannel?): LiveTvChannel? {
+        return previousLiveChannel(session.guide.value.channels, current?.id, recentChannelIds.value)
+    }
 
     /** Looks the program on now up on TMDB (once per program). */
     fun bindProgram(program: EpgProgram?) {

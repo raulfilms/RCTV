@@ -268,6 +268,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                 url = url,
                 headers = headers
             )
+            // RCTV (Networks): a channel switched away from while this one was getting ready
+            // isn't built (two channels never start side by side).
+            if (isLiveTvPlayback && url != currentStreamUrl) return@launch
 
             val afrJob = async {
                 runAfrPreflightIfEnabled(
@@ -292,6 +295,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         Log.d(PlayerRuntimeController.TAG, "AFR display mode switched; delaying MPV start by ${MPV_AFR_SETTLE_DELAY_MS}ms")
                         delay(MPV_AFR_SETTLE_DELAY_MS)
                     }
+                    if (isLiveTvPlayback && url != currentStreamUrl) return@launch
                     setLoadingStatus(
                         phase = "mpv_buffering",
                         message = context.getString(R.string.player_loading_buffering)
@@ -1021,6 +1025,7 @@ internal fun PlayerRuntimeController.initializePlayer(
 
             disposeExoPlayerBeforeRebuild()
             delay(PLAYER_REBUILD_SETTLE_DELAY_MS)
+            if (isLiveTvPlayback && url != currentStreamUrl) return@launch
 
             _exoPlayer = if (useLibass) {
                 val playerDataSourceFactory = PlayerPlaybackNetworking.createDataSourceFactory(context, headers)

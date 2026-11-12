@@ -107,6 +107,33 @@ class LiveTvDataStore @Inject constructor(
         }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
+    /** RCTV: the last channels watched (ids, newest first), for the player's Networks row. */
+    private val recentChannelsKey = stringPreferencesKey("live_tv_recent_channel_ids")
+
+    /** The last channels watched on this profile, newest first, no repeats ([com.nuvio.tv.data.livetv.RecentLiveChannels]). */
+    val recentChannelIds: StateFlow<List<String>> = profileManager.activeProfileId.flatMapLatest { pid ->
+        factory.get(pid, FEATURE).data.map { prefs -> parseRecentChannels(prefs[recentChannelsKey]) }
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** A channel was watched: it goes first in the recent channels (once). */
+    suspend fun noteRecentChannel(channelId: String) {
+        if (channelId.isBlank()) return
+        store().edit { prefs ->
+            val current = parseRecentChannels(prefs[recentChannelsKey])
+            if (current.firstOrNull() == channelId) return@edit
+            prefs[recentChannelsKey] = JSONArray(com.nuvio.tv.data.livetv.RecentLiveChannels.after(current, channelId)).toString()
+        }
+    }
+
+    private fun parseRecentChannels(json: String?): List<String> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(json)
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+                .distinct().take(com.nuvio.tv.data.livetv.RecentLiveChannels.MAX)
+        }.getOrDefault(emptyList())
+    }
+
     /**
      * Adds the channel to the "Custom" list, or takes it out if it's already there. [info] (its
      * name and logo) is kept with it for Home.

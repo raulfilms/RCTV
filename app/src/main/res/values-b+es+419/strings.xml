@@ -3911,4 +3911,6 @@
     <string name="livetv_guide_24_7_type">Tipo de 24/7</string>
     <string name="livetv_guide_24_7_all">Todos los 24/7</string>
     <string name="player_live_playing">Reproduciendo</string>
+    <string name="player_live_next_program">Después: %1$s</string>
+    <string name="player_live_channel_failed">No se pudo abrir %1$s. Inténtalo de nuevo.</string>
 </resources>

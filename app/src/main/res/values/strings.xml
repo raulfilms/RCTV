@@ -4443,4 +4443,6 @@
     <string name="livetv_guide_24_7_type">24/7 Type</string>
     <string name="livetv_guide_24_7_all">All 24/7</string>
     <string name="player_live_playing">Playing</string>
+    <string name="player_live_next_program">Next: %1$s</string>
+    <string name="player_live_channel_failed">Couldn\'t open %1$s. Try again.</string>
 </resources>

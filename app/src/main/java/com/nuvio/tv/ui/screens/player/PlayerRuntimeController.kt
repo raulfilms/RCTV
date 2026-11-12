@@ -647,6 +647,8 @@ class PlayerRuntimeController(
     internal var liveTvHasPlayed: Boolean = false
     internal var liveTvUrl: String? = null
     internal var liveStuckSinceMs: Long = 0L
+    // RCTV: the Networks row's in-place channel switch (PlayerRuntimeControllerLiveChannels.kt).
+    internal var liveChannelSwitchJob: Job? = null
     @Volatile internal var currentPlayerSettingsForReport: PlayerSettings = PlayerSettings()
 
     internal val dv7ToHevcForcedStreamUrls: MutableSet<String> = mutableSetOf()

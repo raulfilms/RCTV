@@ -200,7 +200,8 @@ fun PlayerScreen(
     // the screen, when what's on is a movie or an episode the sources have.
     val isLiveTvChannel = uiState.contentType.equals("live", ignoreCase = true)
     // RCTV: opened for a game from Sports: its loading shows the two teams (taken once).
-    val gameMatchup = remember { LiveGameMatchup.take() }
+    // A channel switched to from Networks shows its own loading, not the game's.
+    var gameMatchup by remember { mutableStateOf(LiveGameMatchup.take()) }
     val liveVod by liveTvViewModel.vod.collectAsState()
     val liveVodOffered = isLiveTvChannel && liveVod?.let { it.status != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE } == true
     var liveVodPromptVisible by remember { mutableStateOf(false) }
@@ -218,16 +219,60 @@ fun PlayerScreen(
     }
     // Live TV: switching channels from the Networks row, and "More info" on what's on.
     val liveScope = androidx.compose.runtime.rememberCoroutineScope()
+    val liveContext = LocalContext.current
+    // RCTV (Networks): the channel switch being resolved; a newer choice cancels it.
+    val liveSwitchJob = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
     val switchLiveChannel: (com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = switchLiveChannel@{ channel ->
         if (exitDispatched) return@switchLiveChannel
-        liveScope.launch {
-            val url = liveTvViewModel.playableUrl(channel)
-            if (!exitDispatched) {
-                exitDispatched = true
-                viewModel.stopAndRelease()
-                onPlayLiveChannel(channel.copy(streamUrl = url))
+        liveSwitchJob[0]?.cancel()
+        liveSwitchJob[0] = liveScope.launch {
+            if (liveTvViewModel.guide.value.isPreview) {
+                // The sample guide's channels open the player's design view, as before.
+                val url = liveTvViewModel.playableUrl(channel)
+                if (!exitDispatched) {
+                    exitDispatched = true
+                    viewModel.stopAndRelease()
+                    onPlayLiveChannel(channel.copy(streamUrl = url))
+                }
+                return@launch
             }
+            // RCTV: the channel plays in this same player (no new screen); a channel whose address
+            // can't be had says so and the one playing goes on.
+            val url = try {
+                liveTvViewModel.playableUrl(channel).takeIf { it.isNotBlank() }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (exitDispatched) return@launch
+            if (url == null) {
+                android.widget.Toast.makeText(
+                    liveContext,
+                    liveContext.getString(R.string.player_live_channel_failed, channel.name),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                return@launch
+            }
+            gameMatchup = null
+            liveTvViewModel.choosingChannel(channel)
+            viewModel.switchLiveChannel(url, channel.name, channel.logoUrl)
         }
+    }
+    // RCTV (Networks): the channel on now; once it plays it goes first in the recent channels.
+    val liveGuide by liveTvViewModel.guide.collectAsState()
+    val playingLiveChannel = remember(isLiveTvChannel, liveGuide, uiState.title, uiState.logo) {
+        if (isLiveTvChannel) liveTvViewModel.channelFor(uiState.title, uiState.logo, liveGuide) else null
+    }
+    LaunchedEffect(playingLiveChannel?.id, uiState.isPlaying) {
+        val playing = playingLiveChannel ?: return@LaunchedEffect
+        if (uiState.isPlaying) liveTvViewModel.noteWatched(playing)
+    }
+    // RCTV: long-press OK goes back to the channel watched before (and again, back here).
+    // The OK press being timed: when it went down (0: none) and whether it was already held long.
+    val liveOkPress = remember { longArrayOf(0L, 0L) }
+    val switchToPreviousChannel: () -> Unit = {
+        liveTvViewModel.previousChannel(playingLiveChannel)?.let(switchLiveChannel)
     }
     val openLiveTitle: (com.nuvio.tv.data.livetv.LiveProgramMatch) -> Unit = openLiveTitle@{ match ->
         if (exitDispatched) return@openLiveTitle
@@ -802,6 +847,45 @@ fun PlayerScreen(
                         uiState.error != null ||
                         liveVodPromptVisible
                 if (panelOrDialogOpen) return@onKeyEvent false
+
+                // RCTV (live channel, controls hidden): a short OK does what it always did (on its
+                // release); held, it goes back to the channel watched before. Remotes that repeat
+                // a held key and ones that only send press and release both work.
+                val okKey = keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ENTER ||
+                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                if (okKey && isLiveTvChannel && !uiState.showControls && !uiState.showPauseOverlay) {
+                    val native = keyEvent.nativeKeyEvent
+                    val heldMs = native.eventTime - native.downTime
+                    when (native.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            if (native.repeatCount == 0) {
+                                liveOkPress[0] = native.downTime
+                                liveOkPress[1] = 0L
+                            } else if (liveOkPress[0] != 0L && liveOkPress[1] == 0L &&
+                                (native.isLongPress || heldMs >= LIVE_OK_LONG_PRESS_MS)
+                            ) {
+                                liveOkPress[1] = 1L
+                                switchToPreviousChannel()
+                            }
+                            return@onKeyEvent true
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            val pressed = liveOkPress[0] != 0L
+                            val longHandled = liveOkPress[1] == 1L
+                            liveOkPress[0] = 0L
+                            liveOkPress[1] = 0L
+                            if (pressed && !longHandled) {
+                                if (heldMs >= LIVE_OK_LONG_PRESS_MS) {
+                                    switchToPreviousChannel()
+                                } else {
+                                    viewModel.onEvent(PlayerEvent.OnPlayPause)
+                                }
+                            }
+                            return@onKeyEvent pressed
+                        }
+                    }
+                }
 
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
@@ -3980,3 +4064,6 @@ private fun PlayerBufferingIndicator(
         }
     }
 }
+
+/** RCTV: how long OK is held (on a live channel) to go back to the channel watched before. */
+private const val LIVE_OK_LONG_PRESS_MS = 600L

@@ -203,6 +203,11 @@ class PlayerViewModel @Inject constructor(
         controller.stopAndRelease()
     }
 
+    /** RCTV (Networks): plays another Live TV channel in this same player. */
+    fun switchLiveChannel(url: String, name: String, logo: String?) {
+        controller.switchToLiveChannel(url, name, logo)
+    }
+
     fun playPostPlayTrailer() {
         postPlayRecommendationController.playTrailer()
     }
