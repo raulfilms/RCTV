@@ -24,6 +24,6 @@ internal fun PlayerRuntimeController.requestSeekPreviewPicture(positionMs: Long)
     )
     // RCTV: a movie or an episode is asked of Seekr too (the account's key, from the website).
     val title = com.nuvio.tv.core.player.SeekrTitle.of(contentId, contentType, currentSeason, currentEpisode)
-    val durationMs = runCatching { _exoPlayer?.duration }.getOrNull()?.takeIf { it > 0L } ?: _uiState.value.duration
+    val durationMs = runCatching { _exoPlayer?.duration }.getOrNull()?.takeIf { it > 0L } ?: _playbackTimeline.value.duration
     seekPreviewFrames.show(url, currentHeaders, positionMs, eligible, title, durationMs)
 }
