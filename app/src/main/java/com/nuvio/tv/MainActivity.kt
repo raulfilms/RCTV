@@ -123,6 +123,7 @@ import androidx.core.os.ConfigurationCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.metrics.performance.JankStats
 import androidx.metrics.performance.PerformanceMetricsState
 import androidx.navigation.NavHostController
@@ -332,6 +333,10 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var liveTvGuideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader
 
+    /** RCTV Control: this TV's activation and its account's plan (Light or Full). */
+    @Inject
+    lateinit var rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -401,13 +406,22 @@ open class MainActivity : ComponentActivity() {
         val launchEpisodeTitle = intent?.getStringExtra("episodeTitle")
         captureDeepLinkIntent(intent)
 
+        // RCTV Control: the account's plan stays current while the app is on screen (on opening,
+        // every few minutes, and when a trial ends).
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { rctvAccess.keepCurrent() }
+        }
+
         setContent {
             // Every horizontal card in the app finds its title art (TMDB backdrop with the name on it),
             // and every row follows the website's layout (vertical or horizontal).
             val rowLayout by rowLayoutRepository.config.collectAsState()
+            val rctvAccessState by rctvAccess.state.collectAsState()
+            val rctvPlan = rctvAccessState.plan
             CompositionLocalProvider(
                 com.nuvio.tv.ui.components.LocalTitleArtResolver provides titleArtService,
-                com.nuvio.tv.ui.components.LocalRowLayout provides rowLayout
+                com.nuvio.tv.ui.components.LocalRowLayout provides rowLayout,
+                com.nuvio.tv.ui.components.LocalRctvPlan provides rctvPlan
             ) {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
             var startupSession by remember { mutableIntStateOf(0) }
@@ -766,6 +780,13 @@ open class MainActivity : ComponentActivity() {
 
                     if (!surfaceContentReady) {
                         // Still loading auth state; nothing to show yet.
+                    } else if (rctvAccessState.needsActivation) {
+                        // RCTV Control: first the account's code; its plan decides the menus.
+                        startupDestination = StartupDestination.Setup
+                        com.nuvio.tv.ui.screens.account.RctvActivationScreen(
+                            onActivate = { code -> rctvAccess.activate(code) },
+                            onBackPress = { finish() }
+                        )
                     } else if (
                         hasSeenAuthQrOnFirstLaunch == false &&
                         authState !is AuthState.FullAccount &&
@@ -1081,17 +1102,22 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val rootRoutes = remember(discoverLocation) {
+                    val rctvLight = rctvPlan == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
+                    val rootRoutes = remember(discoverLocation, rctvLight) {
                         buildSet {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
                             add(Screen.Library.route)
-                            add(Screen.LiveTv.route)
-                            add(Screen.Sports.route)
                             add(Screen.Settings.route)
-                            // "Movies & TV" (a copy of Home) is always in the menu. Disney+ left the
-                            // menu (it opens from the Streaming Services row, so Back returns Home).
-                            add(Screen.MoviesTv.route)
+                            // RCTV Control: Light is movies and series only (no Guide, Sports or
+                            // "Movies & TV", whose Home is already movies and series).
+                            if (!rctvLight) {
+                                add(Screen.LiveTv.route)
+                                add(Screen.Sports.route)
+                                // "Movies & TV" (a copy of Home) is always in the menu. Disney+ left the
+                                // menu (it opens from the Streaming Services row, so Back returns Home).
+                                add(Screen.MoviesTv.route)
+                            }
                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
                                 add(Screen.Discover.route)
                             }
@@ -1106,6 +1132,7 @@ open class MainActivity : ComponentActivity() {
                     val strNavMoviesTv = stringResource(R.string.nav_movies_tv)
                     val strNavSettings = stringResource(R.string.nav_settings)
                     // Apple TV order: Search, Home, Guide, Sports, Movies & TV, Library, Settings.
+                    // RCTV Control, Light: Search, Home (movies and series), Library, Settings.
                     val drawerItems = remember(
                         strNavHome,
                         strNavSearch,
@@ -1113,9 +1140,10 @@ open class MainActivity : ComponentActivity() {
                         strNavGuide,
                         strNavSports,
                         strNavMoviesTv,
-                        strNavSettings
+                        strNavSettings,
+                        rctvLight
                     ) {
-                        listOf(
+                        val everyItem = listOf(
                             DrawerItem(
                                 route = Screen.Search.route,
                                 label = strNavSearch,
@@ -1152,6 +1180,23 @@ open class MainActivity : ComponentActivity() {
                                 icon = Icons.Default.Settings
                             )
                         )
+                        if (rctvLight) everyItem.filter { it.route in RCTV_LIGHT_MENU_ROUTES } else everyItem
+                    }
+
+                    // RCTV Control: when the plan becomes Light (a trial ended, the website changed it),
+                    // whatever is Full only (the Guide, a channel, Sports, a live channel playing) closes
+                    // and Home shows.
+                    LaunchedEffect(rctvLight, actualRoute, navBackStackEntry) {
+                        if (!rctvLight) return@LaunchedEffect
+                        val route = actualRoute ?: return@LaunchedEffect
+                        val livePlaying = route == Screen.Player.route &&
+                            navBackStackEntry?.arguments?.getString("contentType") == "live"
+                        if (route in RCTV_FULL_ONLY_ROUTES || livePlaying) {
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = false }
+                                launchSingleTop = true
+                            }
+                        }
                     }
                     val selectedDrawerRoute = drawerItems.firstOrNull { item ->
                         currentRoute == item.route || currentRoute?.startsWith("${item.route}/") == true
@@ -2419,6 +2464,27 @@ private val menuOnBackRoutes: Set<String> = setOf(
     Screen.LiveTv.route,
     Screen.Sports.route,
     Screen.MoviesTv.route
+)
+
+/** RCTV Control, Light plan: the menu's only sections (Home is movies and series). */
+private val RCTV_LIGHT_MENU_ROUTES: Set<String> = setOf(
+    Screen.Search.route,
+    Screen.Home.route,
+    Screen.Library.route,
+    Screen.Settings.route
+)
+
+/** RCTV Control: pages only Full has (live TV, channels, sports); Light never stays on them. */
+private val RCTV_FULL_ONLY_ROUTES: Set<String> = setOf(
+    Screen.LiveTv.route,
+    Screen.MoviesTv.route,
+    Screen.ChannelProfile.route,
+    Screen.Sports.route,
+    Screen.SportsFavorites.route,
+    Screen.SportsTeams.route,
+    Screen.SportsLeagueDetail.route,
+    Screen.SportsTeamDetail.route,
+    Screen.SportsGameDetail.route
 )
 
 private fun navigateToDrawerRoute(

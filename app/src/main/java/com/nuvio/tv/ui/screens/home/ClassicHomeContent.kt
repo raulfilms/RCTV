@@ -540,7 +540,11 @@ fun ClassicHomeContent(
     val latestVisibleHomeRows = rememberUpdatedState(visibleHomeRows)
     val latestStreamingServices = rememberUpdatedState(streamingServices)
     // Home's TMDB rows that show (they come before the catalog rows in the list).
-    val shownDiscoverRows = discoverRows.filter { it.isShown() }
+    // RCTV Control, Light: Home is movies and series only (no Top Channels row).
+    val rctvLight = com.nuvio.tv.ui.components.LocalRctvPlan.current == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
+    val shownDiscoverRows = discoverRows.filter {
+        it.isShown() && !(rctvLight && it.spec.kind == DisneyRowKind.CHANNELS)
+    }
     val latestDiscoverItemCount = rememberUpdatedState(shownDiscoverRows.size)
     LaunchedEffect(columnListState) {
         val prefetchAhead = 1

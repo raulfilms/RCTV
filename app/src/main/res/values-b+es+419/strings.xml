@@ -3959,4 +3959,13 @@
     <string name="league_no_completed_games">Todavía no hay juegos terminados.</string>
     <string name="league_channel_failed">No se pudo abrir este canal. Inténtalo de nuevo.</string>
     <string name="player_live_game_stats">Estadísticas del juego</string>
+    <!-- RCTV Control: the TV's activation code page. -->
+    <string name="rctv_activation_title">Activa RCTV</string>
+    <string name="rctv_activation_subtitle">Escribe el código de 8 caracteres de tu cuenta de RCTV.</string>
+    <string name="rctv_activation_code_label">Código de activación</string>
+    <string name="rctv_activation_button">Activar</string>
+    <string name="rctv_activation_busy">Activando…</string>
+    <string name="rctv_activation_wrong_code">Ese código no funcionó. Revísalo y vuelve a intentar.</string>
+    <string name="rctv_activation_too_many">Demasiados intentos. Espera un minuto y vuelve a intentar.</string>
+    <string name="rctv_activation_no_connection">No se pudo conectar. Revisa el internet y vuelve a intentar.</string>
 </resources>

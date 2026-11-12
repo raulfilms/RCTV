@@ -69,7 +69,9 @@ class SearchViewModel @Inject constructor(
     // RCTV: what Search looks through besides the addons (the guide, the IPTV sources, sports); none in tests.
     private val guideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader? = null,
     private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore? = null,
-    private val sportsSearchIndex: SportsSearchIndex? = null
+    private val sportsSearchIndex: SportsSearchIndex? = null,
+    // RCTV Control: Light searches movies and series only (not the guide, channels or sports).
+    private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -735,7 +737,8 @@ class SearchViewModel @Inject constructor(
 
     /** Looks for [query] in the guide and in sports too (the guide and the sports loaded first, when they aren't). */
     private fun updateExtrasQuery(query: String) {
-        val wanted = if (query.length >= MIN_SEARCH_QUERY_LENGTH) query else ""
+        val light = rctvAccess?.state?.value?.plan == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
+        val wanted = if (query.length >= MIN_SEARCH_QUERY_LENGTH && !light) query else ""
         if (wanted.isNotEmpty()) prepareExtras()
         extrasQuery.value = wanted
     }

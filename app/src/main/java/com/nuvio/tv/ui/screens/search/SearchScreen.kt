@@ -388,9 +388,11 @@ fun SearchScreen(
     // and series, the rest under them; with no movies or series, all of them on top.
     // Like the movies and series, the last search's stay up while the next one is looked for (no
     // flashing on every letter typed); the new ones replace them, or clear them when there are none.
-    val extrasForQuery = remember(uiState.extras, trimmedSubmittedQuery, isDiscoverMode) {
+    // RCTV Control, Light: movies and series only (no channels, guide programs or sports).
+    val rctvLight = com.nuvio.tv.ui.components.LocalRctvPlan.current == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
+    val extrasForQuery = remember(uiState.extras, trimmedSubmittedQuery, isDiscoverMode, rctvLight) {
         uiState.extras.takeIf {
-            !isDiscoverMode && !it.isEmpty && trimmedSubmittedQuery.length >= MIN_SEARCH_QUERY_LENGTH
+            !rctvLight && !isDiscoverMode && !it.isEmpty && trimmedSubmittedQuery.length >= MIN_SEARCH_QUERY_LENGTH
         }
     }
     val catalogRowsShown = visibleCatalogRows.isNotEmpty()

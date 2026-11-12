@@ -127,6 +127,9 @@ android {
         // RCTV: the row layout file (vertical / horizontal rows) the TV reads online. The website can
         // publish its own copy and point here with ROW_LAYOUT_URL in local.properties.
         buildConfigField("String", "ROW_LAYOUT_URL", "\"${localProperties.getProperty("ROW_LAYOUT_URL", "https://raw.githubusercontent.com/raulfilms/RCTV/dev/app/src/main/assets/row_layout.json")}\"")
+        // RCTV Control (the owner's website): the TV activates with its account's code and gets its
+        // plan (Light or Full) here. A public address, not a key. Empty: the TV works as before (Full).
+        buildConfigField("String", "RCTV_CONTROL_URL", buildConfigString(resolveProperty(devProperties, localProperties, "RCTV_CONTROL_URL", "https://yobroxuynuhoworbclah.supabase.co/functions/v1")))
         buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
         buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
         buildConfigField("boolean", "DOVI_NATIVE_ENABLED", enableDoviNative.toString())

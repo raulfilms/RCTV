@@ -217,8 +217,14 @@ class LibraryViewModel @Inject constructor(
     private val liveTvDataStore: LiveTvDataStore,
     private val liveProgramLibrary: LiveProgramLibrary,
     private val imdbSync: com.nuvio.tv.data.imdb.ImdbSyncService,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    // RCTV Control: the account's plan (Light has no teams, leagues, games or channels); none in tests.
+    private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null
 ) : ViewModel() {
+
+    /** RCTV Control, Light: movies and series only (no sports or channel types in the Library). */
+    @Volatile
+    private var extrasHidden: Boolean = isLightPlan(rctvAccess?.state?.value?.plan)
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -1210,7 +1216,8 @@ class LibraryViewModel @Inject constructor(
             .sorted()
         countByType.putAll(imdbCounts)
         val imdbKeys = listOf(LIBRARY_TYPE_IMDB_LIST, LIBRARY_TYPE_IMDB_TV_RATED).filter { it in imdbCounts }
-        val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + imdbKeys + LIBRARY_EXTRA_TYPE_ORDER
+        val extraKeys = if (extrasHidden) emptyList() else LIBRARY_EXTRA_TYPE_ORDER
+        val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + imdbKeys + extraKeys
         val allTab = LibraryTypeTab(key = LibraryTypeTab.ALL_KEY, label = "${context.getString(R.string.library_type_all)} (${filteredItems.size})")
         return listOf(allTab) + keys.map { key ->
             LibraryTypeTab(key = key, label = "${prettifyTypeLabel(key)} (${countByType[key] ?: 0})")
@@ -1351,6 +1358,11 @@ class LibraryViewModel @Inject constructor(
                     logos["$LIBRARY_TYPE_CUSTOM_CHANNEL:${channel.id}"] = listOfNotNull(channel.logoUrl)
                 }
                 Triple(items.toList(), logos.toMap(), events.toMap())
+            }.combine(
+                rctvAccess?.state?.map { isLightPlan(it.plan) }?.distinctUntilChanged() ?: flowOf(false)
+            ) { extras, light ->
+                extrasHidden = light
+                if (light) Triple(emptyList<LibraryEntry>(), emptyMap<String, List<String>>(), emptyMap<String, SportsEvent>()) else extras
             }.collectLatest { (items, logos, events) ->
                 _uiState.update { current ->
                     current.copy(extraItems = items, extraLogos = logos, extraEvents = events).withVisibleItems()
@@ -1523,3 +1535,7 @@ private val LEADING_ARTICLE_REGEX = Regex("^(the|an|a)\\s+", RegexOption.IGNORE_
 
 private fun titleSortKey(title: String): String =
     title.trim().replace(LEADING_ARTICLE_REGEX, "").lowercase(Locale.ROOT)
+
+/** RCTV Control: Light shows movies and series only. */
+private fun isLightPlan(plan: com.nuvio.tv.core.rctvcontrol.RctvPlan?): Boolean =
+    plan == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
