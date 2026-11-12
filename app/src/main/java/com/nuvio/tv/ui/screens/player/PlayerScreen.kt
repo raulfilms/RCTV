@@ -199,6 +199,8 @@ fun PlayerScreen(
     // RCTV Live TV: Left (a channel can't go back) offers "Watch From Beginning" in the middle of
     // the screen, when what's on is a movie or an episode the sources have.
     val isLiveTvChannel = uiState.contentType.equals("live", ignoreCase = true)
+    // RCTV: opened for a game from Sports: its loading shows the two teams (taken once).
+    val gameMatchup = remember { LiveGameMatchup.take() }
     val liveVod by liveTvViewModel.vod.collectAsState()
     val liveVodOffered = isLiveTvChannel && liveVod?.let { it.status != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE } == true
     var liveVodPromptVisible by remember { mutableStateOf(false) }
@@ -1108,7 +1110,8 @@ fun PlayerScreen(
             progress = uiState.loadingProgress,
             modifier = Modifier
                 .fillMaxSize()
-                .zIndex(2f)
+                .zIndex(2f),
+            matchup = gameMatchup.takeIf { isLiveTvChannel }
         )
 
         if (uiState.playbackIssueReportsEnabled &&

@@ -59,7 +59,9 @@ fun LoadingOverlay(
     title: String? = null,
     message: String? = null,
     progress: Float? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** RCTV: a game opened from Sports: the two teams' badges and colors instead of the channel's logo. */
+    matchup: GameMatchupArt? = null
 ) {
     var logoLoadFailed by remember(logoUrl) { mutableStateOf(false) }
     val showLogo = !logoUrl.isNullOrBlank() && !logoLoadFailed
@@ -70,6 +72,10 @@ fun LoadingOverlay(
         exit = fadeOut(animationSpec = tween(200)),
         modifier = modifier
     ) {
+        if (matchup != null) {
+            GameMatchupLoadingArt(matchup)
+            return@AnimatedVisibility
+        }
         val context = LocalContext.current
         val logoAlpha by animateFloatAsState(
             targetValue = 1f,

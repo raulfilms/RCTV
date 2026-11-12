@@ -545,8 +545,15 @@ fun rememberSportsGameOpener(
                     }
                     if (!isActive) return@launch
                     if (channel != null) {
+                        // RCTV: the player loads with the two teams, not the channel's logo.
+                        com.nuvio.tv.ui.screens.player.LiveGameMatchup.set(
+                            com.nuvio.tv.ui.screens.player.GameMatchupArt.of(event)
+                        )
                         play(channel)
                     } else if (youTubeStream != null && streamPlayer != null) {
+                        com.nuvio.tv.ui.screens.player.LiveGameMatchup.set(
+                            com.nuvio.tv.ui.screens.player.GameMatchupArt.of(event)
+                        )
                         streamPlayer(youTubeStream, event)
                     } else {
                         // Only a game surely on now says it isn't on the channels.
