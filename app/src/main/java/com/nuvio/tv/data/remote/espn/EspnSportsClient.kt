@@ -232,6 +232,18 @@ class EspnSportsClient @Inject constructor(
         /** A league's page between seasons: this many of its next (or last) games. */
         private const val LEAGUE_HOME_EVENTS = 40
 
+        /** A range of days, as ESPN's scoreboards used to take it ("20261109-20261122"). */
+        private val RANGE_OF_DAYS = Regex("""^(\d{8})-(\d{8})$""")
+
+        /** A refused range this long or shorter is asked day by day; longer, month by month. */
+        private const val PIECES_BY_DAY_MAX = 16
+
+        /** Days asked at the same time. */
+        private const val PIECES_AT_ONCE = 4
+
+        /** Months asked at most (a year's). */
+        private const val PIECES_MONTHS_MAX = 13
+
         /** A race is surely over this long after its start. */
         private const val RACE_OVER_MS = 6L * 60 * 60 * 1000
 
@@ -546,6 +558,132 @@ class EspnSportsClient @Inject constructor(
     private fun subLeagueOf(feed: Feed): SportsLeague = feed.virtual()?.let { virtualLeagueOf(feed, it) } ?: ppv.league(feed.leaguePath)
 
     /** How many days an ESPN "yyyyMMdd-yyyyMMdd" range spans. */
+    /**
+     * RCTV: [base]'s scoreboard over [datesRange]. In November 2026 ESPN stopped taking a range of
+     * days ("20261109-20261122" is refused) while one day or a whole month still work, and every
+     * league's page failed with "Couldn't load this league right now". Once a range is refused, a
+     * league's page ([byPieces]) asks for it day by day (a short range) or month by month (a long
+     * one); the Sports rows (every league at once: too many requests by days) skip the range and
+     * fall back to each league's current scoreboard, as they already did when it failed.
+     */
+    private fun scoreboardJson(base: String, datesRange: String?, limit: Int?, query: String?, byPieces: Boolean): JSONObject {
+        val bounds = datesRange?.let(::rangeBounds)
+        if (bounds != null && bounds.first != bounds.second && rangesRefused) {
+            if (byPieces) return scoreboardByPieces(base, bounds.first, bounds.second, limit)
+            throw ServerAnswer(400)
+        }
+        val dates = if (bounds != null && bounds.first == bounds.second) bounds.first else datesRange
+        // A long range (a league's next or last games, months away): all of it, not ESPN's first page.
+        val url = when {
+            dates == null && query != null -> "$base?$query"
+            dates == null -> base
+            rangeDays(dates) > 31 -> "$base?dates=$dates&limit=500"
+            limit != null -> "$base?dates=$dates&limit=$limit"
+            else -> "$base?dates=$dates"
+        }
+        try {
+            return JSONObject(get(url))
+        } catch (error: ServerAnswer) {
+            if (bounds == null || bounds.first == bounds.second || error.code !in 400..499 || !byPieces) throw error
+            val pieces = scoreboardByPieces(base, bounds.first, bounds.second, limit)
+            // Its days answered where the range didn't: the range was what ESPN refused.
+            rangesRefused = true
+            return pieces
+        }
+    }
+
+    /** "20261109-20261122" as its first and last days; null when it isn't a range of days. */
+    private fun rangeBounds(datesRange: String): Pair<String, String>? {
+        val match = RANGE_OF_DAYS.matchEntire(datesRange) ?: return null
+        return match.groupValues[1] to match.groupValues[2]
+    }
+
+    /**
+     * [base]'s games from [start] to [end] (days, UTC) asked in pieces ESPN takes: each day of a
+     * short range (a few at once), else each month, the nearest first, until there are enough for a
+     * league's page ([LEAGUE_HOME_EVENTS]). One answer holds them all; a piece that failed is left out.
+     */
+    private fun scoreboardByPieces(base: String, start: String, end: String, limit: Int?): JSONObject {
+        val dayMs = 24L * 60 * 60 * 1000
+        val from = runCatching { dayFormat.parse(start)?.time }.getOrNull() ?: throw EspnException("Bad range")
+        val to = runCatching { dayFormat.parse(end)?.time }.getOrNull() ?: throw EspnException("Bad range")
+        val span = ((to - from) / dayMs).toInt()
+        if (span < 0) throw EspnException("Bad range")
+        val open = openCalls.get()
+        val answers: List<JSONObject>
+        var keepFrom = start
+        var keepTo = end
+        if (span <= PIECES_BY_DAY_MAX) {
+            val days = (0..span).map { dayFormat.format(java.util.Date(from + it * dayMs)) }
+            val limitParam = limit?.let { "&limit=$it" }.orEmpty()
+            val results = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                val gate = kotlinx.coroutines.sync.Semaphore(PIECES_AT_ONCE)
+                days.map { day ->
+                    async {
+                        gate.withPermit {
+                            if (open?.isCancelled == true) return@withPermit Result.failure(EspnException("Left"))
+                            val previous = openCalls.get()
+                            openCalls.set(open)
+                            try {
+                                runCatching { JSONObject(get("$base?dates=$day$limitParam")) }
+                            } finally {
+                                openCalls.set(previous)
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+            answers = results.mapNotNull { it.getOrNull() }
+            if (answers.isEmpty()) throw results.firstNotNullOfOrNull { it.exceptionOrNull() } ?: EspnException("No games")
+            // ESPN's day is the US one: a game that evening is the next day in UTC. Each day's games stay.
+            keepFrom = ""
+            keepTo = ""
+        } else {
+            // A month's games, kept to the range (a day either side, for the same reason).
+            keepFrom = dayFormat.format(java.util.Date(from - dayMs))
+            keepTo = dayFormat.format(java.util.Date(to + dayMs))
+            val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = from; set(Calendar.DAY_OF_MONTH, 1) }
+            val months = ArrayList<String>()
+            val last = end.take(6)
+            while (months.size < PIECES_MONTHS_MAX) {
+                val month = dayFormat.format(calendar.time).take(6)
+                months += month
+                if (month >= last) break
+                calendar.add(Calendar.MONTH, 1)
+            }
+            // Games already played (a league between seasons): its latest month first.
+            val ordered = if (end < dayFormat.format(java.util.Date())) months.reversed() else months
+            val found = ArrayList<JSONObject>()
+            var games = 0
+            var firstError: Throwable? = null
+            for (month in ordered) {
+                if (open?.isCancelled == true) break
+                val answer = runCatching { JSONObject(get("$base?dates=$month&limit=500")) }
+                    .onFailure { if (firstError == null) firstError = it }
+                    .getOrNull() ?: continue
+                found += answer
+                games += eventsWithin(answer, keepFrom, keepTo).size
+                if (games >= LEAGUE_HOME_EVENTS) break
+            }
+            if (found.isEmpty()) throw firstError ?: EspnException("No games")
+            answers = found
+        }
+        val events = JSONArray()
+        answers.forEach { answer -> eventsWithin(answer, keepFrom, keepTo).forEach(events::put) }
+        // The league's name and logo from the first answer; every piece's games.
+        return answers.first().put("events", events)
+    }
+
+    /** [answer]'s events whose day (UTC) is from [from] to [to]; every one when those are blank. */
+    private fun eventsWithin(answer: JSONObject, from: String, to: String): List<JSONObject> {
+        val array = answer.optJSONArray("events") ?: return emptyList()
+        return (0 until array.length()).mapNotNull { array.optJSONObject(it) }.filter { event ->
+            if (from.isEmpty()) return@filter true
+            val day = event.optString("date").take(10).replace("-", "")
+            day.length != 8 || (day >= from && day <= to)
+        }
+    }
+
     private fun rangeDays(datesRange: String): Long {
         val parts = datesRange.split('-')
         if (parts.size < 2) return 0
@@ -735,7 +873,9 @@ class EspnSportsClient @Inject constructor(
         val urls = buildList {
             if (startTimeMs != null) {
                 val dayMs = 24L * 60 * 60 * 1000
-                add("$base?dates=${dayFormat.format(java.util.Date(startTimeMs - 4 * dayMs))}-${dayFormat.format(java.util.Date(startTimeMs + dayMs))}")
+                if (!rangesRefused) add("$base?dates=${dayFormat.format(java.util.Date(startTimeMs - 4 * dayMs))}-${dayFormat.format(java.util.Date(startTimeMs + dayMs))}")
+                // ESPN no longer takes a range of days (Nov 2026): the race's own day.
+                add("$base?dates=${dayFormat.format(java.util.Date(startTimeMs))}")
             }
             add(base)
         }
@@ -911,7 +1051,9 @@ class EspnSportsClient @Inject constructor(
             if (startTimeMs != null) {
                 val format = SimpleDateFormat("yyyyMMdd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
                 val dayMs = 24L * 60 * 60 * 1000
-                add("$base?dates=${format.format(java.util.Date(startTimeMs))}-${format.format(java.util.Date(startTimeMs + 4 * dayMs))}")
+                if (!rangesRefused) add("$base?dates=${format.format(java.util.Date(startTimeMs))}-${format.format(java.util.Date(startTimeMs + 4 * dayMs))}")
+                // ESPN no longer takes a range of days (Nov 2026): the tournament's first day finds it too.
+                add("$base?dates=${format.format(java.util.Date(startTimeMs))}")
             }
             add(base)
         }
@@ -1040,6 +1182,9 @@ class EspnSportsClient @Inject constructor(
 
     private val openCalls = ThreadLocal<OpenCalls?>()
 
+    /** ESPN refused a range of days (since Nov 2026): ranges go by pieces (see [scoreboardJson]). */
+    @Volatile private var rangesRefused = false
+
     /** [call] run, and cancelled with the coroutine that runs [cancellableBlocking] on this thread. */
     private fun <T> executeCancellable(call: okhttp3.Call, read: (okhttp3.Response) -> T): T {
         val open = openCalls.get()
@@ -1129,7 +1274,7 @@ class EspnSportsClient @Inject constructor(
      * query format; omitted, ESPN defaults to "today" (or "this week/round" for some sports).
      */
     fun fetchFeed(feed: Feed, datesRange: String? = null): FeedResult =
-        fetchFeedRaw(feed, datesRange).deduplicated()
+        fetchFeedRaw(feed, datesRange, byPieces = true).deduplicated()
 
     /** RCTV (league page): whether [feed] is played by weeks (football: "Week 3"). */
     fun isWeekly(feed: Feed): Boolean =
@@ -1154,7 +1299,14 @@ class EspnSportsClient @Inject constructor(
     )
 
     /** [limit]: at most this many of ESPN's games (the rows need the next ones, not hundreds). */
-    private fun fetchFeedRaw(feed: Feed, datesRange: String?, limit: Int? = null, query: String? = null): FeedResult {
+    private fun fetchFeedRaw(
+        feed: Feed,
+        datesRange: String?,
+        limit: Int? = null,
+        query: String? = null,
+        /** A refused range of days asked again by days or months (a league's page; see [scoreboardJson]). */
+        byPieces: Boolean = false
+    ): FeedResult {
         if (feed.isBananaBall()) return bananaBall.fetchFeed(feed, datesRange)
         if (feed.isNascar()) return nascar.fetchFeed(feed, datesRange)
         if (feed.isPpv()) return ppv.fetchFeed(feed, datesRange)
@@ -1163,16 +1315,7 @@ class EspnSportsClient @Inject constructor(
         if (feed.isMotoGp()) return motoGp.fetchFeed(feed, datesRange)
         feed.virtual()?.let { return virtualFeed(feed, it, datesRange) }
         val base = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/scoreboard"
-        // A long range (a league's next or last games, months away): all of it, not ESPN's first page.
-        val url = when {
-            datesRange == null && query != null -> "$base?$query"
-            datesRange == null -> base
-            rangeDays(datesRange) > 31 -> "$base?dates=$datesRange&limit=500"
-            limit != null -> "$base?dates=$datesRange&limit=$limit"
-            else -> "$base?dates=$datesRange"
-        }
-        val body = get(url)
-        val json = JSONObject(body)
+        val json = scoreboardJson(base, datesRange, limit, query, byPieces)
 
         val leagueId = "${feed.sportPath}:${feed.leaguePath}"
         val leagueJson = json.optJSONArray("leagues")?.optJSONObject(0)
@@ -1415,7 +1558,12 @@ class EspnSportsClient @Inject constructor(
                                     first.getOrNull()
                                 } else {
                                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                    runCatching { cancellableBlocking { fetchFeed(feed) } }.getOrNull()
+                                    runCatching { cancellableBlocking { fetchFeed(feed) } }.getOrNull()?.also {
+                                        // ESPN refused the range but not the league: ranges are refused
+                                        // (the next leagues skip asking for it).
+                                        val refused = first.exceptionOrNull() as? ServerAnswer
+                                        if (refused != null && refused.code in 400..499) rangesRefused = true
+                                    }
                                 }
                             }
                         }
