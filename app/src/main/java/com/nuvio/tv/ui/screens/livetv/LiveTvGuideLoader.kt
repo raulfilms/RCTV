@@ -60,8 +60,19 @@ data class LiveGuideSnapshot(
     /** Why nothing (or not everything) could load. */
     val error: String? = null,
     /** When it was loaded (0 while loading for the first time). */
-    val loadedAtMs: Long = 0L
-)
+    val loadedAtMs: Long = 0L,
+    /**
+     * RCTV (owner's channel list): channels not in the Guide: leagues, game passes and events
+     * (Sports finds games and fights in them) and the other versions of the Guide's channels.
+     */
+    val hiddenChannels: List<LiveTvChannel> = emptyList(),
+    /** RCTV: sorted by the owner's channel list (US and Puerto Rico; other countries in International). */
+    val curated: Boolean = false
+) {
+    /** The Guide's channels and the leagues' and events' (not the versions): what Sports looks through. */
+    val allChannels: List<LiveTvChannel>
+        get() = if (hiddenChannels.isEmpty()) channels else channels + hiddenChannels.filter { it.versionOf == null }
+}
 
 /**
  * Loads the Guide once for the whole app and keeps it: opening the Guide or a channel's page (from
@@ -198,7 +209,11 @@ class LiveTvGuideLoader @Inject constructor(
     /** Publishes [snapshot] unless another load took over meanwhile. */
     private fun publish(key: String, snapshot: LiveGuideSnapshot) {
         synchronized(lock) {
-            if (loadKey == key) _guide.value = snapshot
+            if (loadKey == key) {
+                _guide.value = snapshot
+                // RCTV: the player turns to a channel's other version when the one playing fails.
+                LiveTvChannelVersions.update(snapshot.channels, snapshot.hiddenChannels)
+            }
         }
         // RCTV (Phase 2, F11): Search's index of an older guide isn't kept beside this one.
         if (snapshot.channels.isNotEmpty()) {
@@ -299,20 +314,26 @@ class LiveTvGuideLoader @Inject constructor(
         val previous = _guide.value?.takeIf { it.key == key && it.channels.isNotEmpty() }
         ChannelLogoLibrary.ensureReady(appContext)
         val results = sources.map { source -> source to loadSourceChannels(source) }
-        val channels = results
-            .flatMap { (_, result) -> result.getOrDefault(emptyList()) }
-            .filterNot(::isHidden)
-            .map { channel ->
-                // Country for the Guide's filter: the playlist's own, or guessed from group/name.
-                val country = LiveTvCountry.of(channel)
-                // US channels get the app's own logo when it has one (they're made for dark screens).
-                val bundledLogo = if (country == null || country == "US") {
-                    ChannelLogoLibrary.logoUriFor(LiveTvViewModel.stripCountryTag(channel.name), channel.number)
-                } else {
-                    null
-                }
-                channel.copy(country = country, logoUrl = bundledLogo ?: channel.logoUrl)
+        val loadedChannels = results.flatMap { (_, result) -> result.getOrDefault(emptyList()) }
+        // RCTV (owner's channel list): his US and Puerto Rico channels, the other countries, and
+        // the leagues and events kept for Sports; null for any other provider's playlist.
+        LiveTvCuratedGuide.ensureLoaded(appContext)
+        val curated = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-channels") {
+            LiveTvCuratedGuide.apply(loadedChannels)
+        }
+        val withLogo: (LiveTvChannel) -> LiveTvChannel = { channel ->
+            // Country for the Guide's filter: the list's, the playlist's own, or guessed from group/name.
+            val country = channel.country.takeIf { curated != null } ?: LiveTvCountry.of(channel)
+            // US channels get the app's own logo when it has one (they're made for dark screens).
+            val bundledLogo = if (country == null || country == "US") {
+                ChannelLogoLibrary.logoUriFor(LiveTvViewModel.stripCountryTag(channel.name), channel.number)
+            } else {
+                null
             }
+            channel.copy(country = country, logoUrl = bundledLogo ?: channel.logoUrl)
+        }
+        val channels = (curated?.visible ?: loadedChannels.filterNot(::isHidden)).map(withLogo)
+        val hiddenChannels = curated?.hidden.orEmpty().map(withLogo)
         val failures = results.mapNotNull { (source, result) -> result.exceptionOrNull()?.let { source.name to it } }
         if (channels.isEmpty() && previous != null) {
             // A refresh that failed: what was loaded stays.
@@ -344,7 +365,9 @@ class LiveTvGuideLoader @Inject constructor(
             epgByChannel = keptEpg,
             channelCategories = categorize(channels, keptEpg),
             error = error,
-            loadedAtMs = previous?.loadedAtMs ?: System.currentTimeMillis()
+            loadedAtMs = previous?.loadedAtMs ?: System.currentTimeMillis(),
+            hiddenChannels = hiddenChannels,
+            curated = curated != null
         )
         publish(key, withChannels)
         if (channels.isEmpty()) return
@@ -353,11 +376,18 @@ class LiveTvGuideLoader @Inject constructor(
         // blocks watching.
         // Each source's guide only for its own channels (their guide id, or their id when the
         // playlist gives none: both are looked up).
+        // RCTV (owner's channel list): only the Guide's channels and the leagues' and events'
+        // (Sports reads their programs): not the versions, nor what the list leaves out.
+        val kept: Set<String>? = curated?.let { applied ->
+            (applied.visible.asSequence() + applied.hidden.asSequence().filter { it.versionOf == null })
+                .mapTo(HashSet()) { it.id }
+        }
         val merged = HashMap<String, List<EpgProgram>>()
         for ((source, result) in results) {
             val prefix = "${source.id}:"
             val wanted = HashSet<String>()
             result.getOrNull()?.forEach { channel ->
+                if (kept != null && channel.id !in kept) return@forEach
                 channel.epgChannelId?.removePrefix(prefix)?.let(wanted::add)
                 wanted += channel.id.removePrefix(prefix)
             }
@@ -517,18 +547,9 @@ class LiveTvGuideLoader @Inject constructor(
                 out.writeBoolean(snapshot.isPreview)
                 out.writeLong(snapshot.loadedAtMs)
                 out.writeOptional(snapshot.error)
-                out.writeInt(snapshot.channels.size)
-                snapshot.channels.forEach { channel ->
-                    out.writeText(channel.id)
-                    out.writeText(channel.name)
-                    out.writeText(channel.streamUrl)
-                    out.writeOptional(channel.logoUrl)
-                    out.writeOptional(channel.groupTitle)
-                    out.writeOptional(channel.epgChannelId)
-                    out.writeOptional(channel.sourceId)
-                    out.writeOptional(channel.country)
-                    out.writeOptional(channel.number)
-                }
+                out.writeBoolean(snapshot.curated)
+                out.writeChannels(snapshot.channels)
+                out.writeChannels(snapshot.hiddenChannels)
                 out.writeInt(snapshot.groups.size)
                 snapshot.groups.forEach { out.writeText(it) }
                 val epg = snapshot.epgByChannel.mapValues { (_, list) -> list.filter { it.endMs > cutoff } }
@@ -578,19 +599,9 @@ class LiveTvGuideLoader @Inject constructor(
                 val isPreview = input.readBoolean()
                 val loadedAtMs = input.readLong()
                 val error = input.readOptional()
-                val channels = List(input.readInt()) {
-                    LiveTvChannel(
-                        id = input.readText(),
-                        name = input.readText(),
-                        streamUrl = input.readText(),
-                        logoUrl = input.readOptional(),
-                        groupTitle = input.readOptional(),
-                        epgChannelId = input.readOptional(),
-                        sourceId = input.readOptional(),
-                        country = input.readOptional(),
-                        number = input.readOptional()
-                    )
-                }
+                val curated = input.readBoolean()
+                val channels = input.readChannels()
+                val hiddenChannels = input.readChannels()
                 val groups = List(input.readInt()) { input.readText() }
                 val epg = HashMap<String, List<EpgProgram>>()
                 // A show airs many times, and categories repeat: one copy of each text.
@@ -624,13 +635,48 @@ class LiveTvGuideLoader @Inject constructor(
                     epgByChannel = epg,
                     channelCategories = categorize(channels, epg),
                     error = error,
-                    loadedAtMs = loadedAtMs
+                    loadedAtMs = loadedAtMs,
+                    hiddenChannels = hiddenChannels,
+                    curated = curated
                 )
             }
         } catch (e: Exception) {
             file.delete()
             null
         }
+    }
+
+    private fun DataOutputStream.writeChannels(channels: List<LiveTvChannel>) {
+        writeInt(channels.size)
+        channels.forEach { channel ->
+            writeText(channel.id)
+            writeText(channel.name)
+            writeText(channel.streamUrl)
+            writeOptional(channel.logoUrl)
+            writeOptional(channel.groupTitle)
+            writeOptional(channel.epgChannelId)
+            writeOptional(channel.sourceId)
+            writeOptional(channel.country)
+            writeOptional(channel.number)
+            writeOptional(channel.guideCategory)
+            writeOptional(channel.versionOf)
+        }
+    }
+
+    private fun DataInputStream.readChannels(): List<LiveTvChannel> = List(readInt()) {
+        LiveTvChannel(
+            id = readText(),
+            name = readText(),
+            streamUrl = readText(),
+            logoUrl = readOptional(),
+            groupTitle = readOptional(),
+            epgChannelId = readOptional(),
+            sourceId = readOptional(),
+            country = readOptional(),
+            number = readOptional(),
+            guideCategory = readOptional(),
+            versionOf = readOptional()
+        )
     }
 
     private fun DataOutputStream.writeText(value: String) {
@@ -674,8 +720,12 @@ class LiveTvGuideLoader @Inject constructor(
         private const val PREWARM_DELAY_MS = 1_500L
         /** The guide kept on the device (in the app's cache, so the system can clear it). */
         private const val SAVED_FILE = "live_tv_guide.bin"
-        /** 2: only the playlist's own channels' programs are kept (1 kept the provider's whole guide). */
-        private const val SAVED_VERSION = 2
+        /**
+         * 2: only the playlist's own channels' programs are kept (1 kept the provider's whole guide).
+         * 3: RCTV, the owner's channel list (each channel's category and versions, and the channels
+         * kept out of the Guide).
+         */
+        private const val SAVED_VERSION = 3
         private const val MAX_SAVED_TEXT_BYTES = 1_000_000
     }
 }
@@ -692,6 +742,8 @@ internal fun LiveGuideSnapshot.kidsOnly(): LiveGuideSnapshot {
         channels = kept,
         groups = groups.filter { group -> kept.any { it.groupTitle == group } },
         epgByChannel = epgByChannel.filterKeys { it in guideIds },
-        channelCategories = channelCategories.filterKeys { it in ids }
+        channelCategories = channelCategories.filterKeys { it in ids },
+        // Only the kept channels' other versions: no leagues or events on a Kids profile.
+        hiddenChannels = hiddenChannels.filter { it.versionOf in ids }
     )
 }

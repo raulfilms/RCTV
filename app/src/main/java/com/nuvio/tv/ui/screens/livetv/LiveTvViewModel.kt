@@ -91,8 +91,13 @@ data class LiveTvUiState(
     val previewError: String? = null,
     /** Guide's first menu: how to list channels (Live Now, A to Z, Custom) or which category. */
     val guideBrowse: GuideBrowse = GuideBrowse.LIVE_NOW,
-    /** Guide filter: ISO country code, or null for every country. */
+    /**
+     * Guide filter: ISO country code, or null for every country. RCTV (owner's channel list): the
+     * country picked in International (the Guide is the United States and Puerto Rico otherwise).
+     */
     val guideCountry: String? = null,
+    /** RCTV: the Guide follows the owner's channel list (US and Puerto Rico; other countries in International). */
+    val curatedGuide: Boolean = false,
     /** RCTV: in the 24/7 category, the type picked ("Sitcom", "Anime"), or null for every one. */
     val guide24x7Type: String? = null,
     /** Channels the user added to "Custom". */
@@ -611,6 +616,7 @@ class LiveTvViewModel @Inject constructor(
                 groups = guide.groups,
                 selectedGroup = it.selectedGroup?.takeIf { g -> g in guide.groups },
                 guideCountry = it.guideCountry?.takeIf { c -> guide.channels.any { ch -> ch.country == c } },
+                curatedGuide = guide.curated,
                 channelCategories = guide.channelCategories,
                 epgByChannel = guide.epgByChannel,
                 isEpgLoading = guide.isEpgLoading,
@@ -688,7 +694,14 @@ class LiveTvViewModel @Inject constructor(
     }
 
     fun setGuideBrowse(browse: GuideBrowse) {
-        _uiState.update { it.copy(guideBrowse = browse, guide24x7Type = null) }
+        _uiState.update {
+            it.copy(
+                guideBrowse = browse,
+                guide24x7Type = null,
+                // RCTV (owner's channel list): the country is International's own choice.
+                guideCountry = if (it.curatedGuide && browse != GuideBrowse.INTERNATIONAL) null else it.guideCountry
+            )
+        }
     }
 
     /** RCTV: the 24/7 type to list ("Sitcom"), or null for every 24/7 channel. */

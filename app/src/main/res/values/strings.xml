@@ -296,8 +296,10 @@
     <string name="livetv_guide_cat_documentaries">Documentaries &amp; Science</string>
     <string name="livetv_guide_cat_game_shows">Game Shows &amp; Classics</string>
     <string name="livetv_guide_cat_music">Music</string>
-    <string name="livetv_guide_cat_international">International &amp; Spanish</string>
+    <string name="livetv_guide_cat_international">International</string>
     <string name="livetv_guide_cat_local">Local Channels</string>
+    <string name="livetv_guide_cat_latino">Latino &amp; Specials</string>
+    <string name="livetv_guide_cat_puerto_rico">Puerto Rico</string>
     <string name="livetv_guide_custom_empty">Your Custom list is empty. Press and hold a show to add its channel.</string>
     <string name="livetv_guide_category_empty">No channels in this category.</string>
     <string name="livetv_guide_custom_added">%1$s added to Custom</string>

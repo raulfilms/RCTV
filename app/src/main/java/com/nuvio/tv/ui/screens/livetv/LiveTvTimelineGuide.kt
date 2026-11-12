@@ -217,6 +217,7 @@ internal fun LiveTvTimelineGuide(
     val channels = remember(
         uiState.channels,
         uiState.channelCategories,
+        uiState.curatedGuide,
         uiState.guideBrowse,
         uiState.guideCountry,
         uiState.guide24x7Type,
@@ -224,8 +225,21 @@ internal fun LiveTvTimelineGuide(
     ) {
         // A channel listed twice (a source with it in two groups) is shown once: two rows with
         // one key would bring the guide down.
-        val inCountry = uiState.channels.distinctBy { it.id }
-            .filter { uiState.guideCountry == null || it.country == uiState.guideCountry }
+        val distinct = uiState.channels.distinctBy { it.id }
+        val inCountry = if (uiState.curatedGuide) {
+            // RCTV (owner's channel list): the United States and Puerto Rico; International has
+            // the other countries, all or the one picked.
+            if (uiState.guideBrowse == GuideBrowse.INTERNATIONAL) {
+                distinct.filter {
+                    it.guideCategory == GuideBrowse.INTERNATIONAL.name &&
+                        (uiState.guideCountry == null || it.country == uiState.guideCountry)
+                }
+            } else {
+                distinct.filter { it.guideCategory != GuideBrowse.INTERNATIONAL.name }
+            }
+        } else {
+            distinct.filter { uiState.guideCountry == null || it.country == uiState.guideCountry }
+        }
         when (val browse = uiState.guideBrowse) {
             GuideBrowse.LIVE_NOW -> inCountry
             GuideBrowse.A_TO_Z -> {
@@ -247,8 +261,14 @@ internal fun LiveTvTimelineGuide(
     // Read by the rows' long press: only this, so a new state (the clock, details opening) doesn't
     // hand every row new actions and redraw it.
     val customChannelIds = uiState.customChannelIds
-    val countryCounts = remember(uiState.channels) {
-        uiState.channels.mapNotNull { it.country }.groupingBy { it }.eachCount()
+    val countryCounts = remember(uiState.channels, uiState.curatedGuide) {
+        // RCTV (owner's channel list): only International's countries (never the US or Puerto Rico).
+        uiState.channels
+            .asSequence()
+            .filter { !uiState.curatedGuide || it.guideCategory == GuideBrowse.INTERNATIONAL.name }
+            .mapNotNull { it.country }
+            .groupingBy { it }
+            .eachCount()
     }
 
     // Visible time window.
@@ -668,6 +688,7 @@ private fun GuideHeader(
     // Live Now / A to Z / Custom, then the categories, each with its number of channels.
     val browseSections = remember(
         uiState.guideBrowse,
+        uiState.curatedGuide,
         uiState.channels,
         uiState.channelCategories,
         uiState.customChannelIds,
@@ -697,6 +718,10 @@ private fun GuideHeader(
                 title = categoriesTitle,
                 options = GuideBrowse.entries
                     .filter { it.isCategory }
+                    // RCTV (owner's channel list): leagues and events are Sports' own, not the
+                    // Guide's; Latino and Puerto Rico only when there are some.
+                    .filterNot { uiState.curatedGuide && it == GuideBrowse.LIVE_EVENTS }
+                    .filterNot { (it == GuideBrowse.LATINO || it == GuideBrowse.PUERTO_RICO) && (categoryCounts[it] ?: 0) == 0 }
                     .map { option(it, categoryCounts[it] ?: 0) },
                 selectedValue = uiState.guideBrowse.name
             )
@@ -741,17 +766,21 @@ private fun GuideHeader(
             leadingIcon = null,
             closeOnSelect = true
         )
-        Spacer(modifier = Modifier.width(10.dp))
-        AppleFilterMenuButton(
-            label = uiState.guideCountry?.let { LiveTvCountry.displayName(it) } ?: countryTitle,
-            sections = listOf(countrySection),
-            hasActiveFilter = false,
-            clearLabel = "",
-            onSelect = { _, option -> onSetCountry(option.value) },
-            onClearAll = {},
-            leadingIcon = null,
-            closeOnSelect = true
-        )
+        // RCTV (owner's channel list): the United States and Puerto Rico always; the country
+        // button only in International (its other countries).
+        if (!uiState.curatedGuide || uiState.guideBrowse == GuideBrowse.INTERNATIONAL) {
+            Spacer(modifier = Modifier.width(10.dp))
+            AppleFilterMenuButton(
+                label = uiState.guideCountry?.let { LiveTvCountry.displayName(it) } ?: countryTitle,
+                sections = listOf(countrySection),
+                hasActiveFilter = false,
+                clearLabel = "",
+                onSelect = { _, option -> onSetCountry(option.value) },
+                onClearAll = {},
+                leadingIcon = null,
+                closeOnSelect = true
+            )
+        }
         if (typeSection != null) {
             Spacer(modifier = Modifier.width(10.dp))
             AppleFilterMenuButton(

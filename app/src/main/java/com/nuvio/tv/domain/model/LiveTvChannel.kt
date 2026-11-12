@@ -14,7 +14,11 @@ data class LiveTvChannel(
     /** ISO 3166 two-letter country code ("US"), from the playlist or guessed from the channel's name or group. */
     val country: String? = null,
     /** Channel number from the playlist or guide ("7.1" is a broadcast sub-channel). */
-    val number: String? = null
+    val number: String? = null,
+    /** RCTV (owner's channel list): its Guide category (a GuideBrowse name), or null to sort it from its programs. */
+    val guideCategory: String? = null,
+    /** RCTV: another version of the Guide's channel with this id (the player turns to it when that one fails). */
+    val versionOf: String? = null
 )
 
 /**

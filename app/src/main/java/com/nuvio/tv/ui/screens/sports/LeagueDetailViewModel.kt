@@ -372,7 +372,7 @@ class LeagueDetailViewModel @Inject constructor(
                 .distinctUntilChanged { old, new -> old.channels === new.channels && old.epgByChannel === new.epgByChannel }
                 .collectLatest { guide ->
                     val (official, replays) = withContext(Dispatchers.Default) {
-                        LeagueChannels.official(leagueId, guide.channels) to LeagueChannels.replays(leagueId, guide.channels)
+                        LeagueChannels.official(leagueId, guide.allChannels) to LeagueChannels.replays(leagueId, guide.allChannels)
                     }
                     lineupPrograms = guide.epgByChannel
                     _uiState.update {

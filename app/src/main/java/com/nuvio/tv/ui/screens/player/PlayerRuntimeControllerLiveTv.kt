@@ -40,6 +40,14 @@ internal object LiveTvPlaybackTuning {
     /** Playing this long counts as healthy again: the reconnect count starts over. */
     const val HEALTHY_RESET_MS = 20_000L
 
+    /**
+     * RCTV (owner's rule): a channel with other versions (the provider has it more than once)
+     * turns to the next one sooner, so the person doesn't sit through a stall: no new data for
+     * this long, or buffering this long even trickling.
+     */
+    const val VERSION_STALL_SWITCH_MS = 4_000L
+    const val VERSION_SLOW_STALL_SWITCH_MS = 12_000L
+
     fun reconnectDelayMs(attempt: Int): Long = when (attempt) {
         0 -> 250L
         1 -> 1_000L
@@ -96,15 +104,18 @@ internal fun PlayerRuntimeController.shouldReconnectLiveTv(error: PlaybackExcept
     if (liveReconnectAttempts >= LiveTvPlaybackTuning.MAX_RECONNECTS) return false
     val played = liveTvHasPlayed || hasRenderedFirstFrame
     val code = error.errorCode
+    // RCTV (owner's rule): another version of the channel is tried before any error shows.
+    val hasOtherVersion = com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl) != null
     return when {
         code == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> true
         code == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
             val status = error.findInvalidResponseCodeException()?.responseCode
-            // A channel that never played and answers "forbidden / not found" is off the air.
-            played || status == null || status !in setOf(401, 403, 404, 410)
+            // A channel that never played and answers "forbidden / not found" is off the air
+            // (unless it has another version).
+            played || hasOtherVersion || status == null || status !in setOf(401, 403, 404, 410)
         }
         code in 2000..2999 -> true // network and source errors
-        code in 3000..3999 -> played // a stream that played and then sent garbage
+        code in 3000..3999 -> played || hasOtherVersion // a stream that played and then sent garbage
         code == PlaybackException.ERROR_CODE_TIMEOUT -> true
         else -> false
     }
@@ -118,13 +129,34 @@ internal fun PlayerRuntimeController.shouldReconnectLiveTv(error: PlaybackExcept
 internal fun PlayerRuntimeController.reconnectLiveTv(reason: String, light: Boolean = false) {
     val attempt = liveReconnectAttempts
     liveReconnectAttempts++
-    Log.w(PlayerRuntimeController.TAG, "LIVE_RECONNECT: attempt=${attempt + 1} light=$light reason=$reason")
+    // RCTV (owner's rule): a channel the provider has more than once turns to its next version at
+    // once instead of opening the same one again (the person stays on the same channel).
+    val otherVersion = if (light) null else com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl)
+    // Never the address: it carries the IPTV login.
+    Log.w(
+        PlayerRuntimeController.TAG,
+        "LIVE_RECONNECT: attempt=${attempt + 1} light=$light otherVersion=${otherVersion != null} reason=$reason"
+    )
     errorRetryJob?.cancel()
     errorRetryJob = scope.launch {
         _uiState.update {
             it.copy(error = null, isBuffering = true, showPauseOverlay = false, playbackEnded = false)
         }
-        delay(LiveTvPlaybackTuning.reconnectDelayMs(attempt))
+        if (otherVersion != null) {
+            val request = PlayerMediaSourceFactory.normalizePlaybackRequest(otherVersion, emptyMap())
+            currentStreamUrl = request.url
+            currentHeaders = request.headers
+            currentStreamMimeType = PlayerMediaSourceFactory.inferMimeType(
+                url = request.url,
+                filename = null,
+                responseHeaders = emptyMap()
+            )
+            currentStreamResponseHeaders = emptyMap()
+            currentStreamCacheKey = null
+            _uiState.update { it.copy(currentStreamUrl = request.url) }
+        } else {
+            delay(LiveTvPlaybackTuning.reconnectDelayMs(attempt))
+        }
         val paused = userPausedManually
         if (isUsingMpvEngine()) {
             val view = mpvView
@@ -158,8 +190,10 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
     liveWatchdogJob?.cancel()
     liveWatchdogJob = null
     if (!isLiveTvPlayback) return
-    if (liveTvUrl != url) {
-        liveTvUrl = url
+    // RCTV: one channel whatever version of it plays (its reconnect count goes on across them).
+    val channelKey = com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.channelKey(url)
+    if (liveTvUrl != channelKey) {
+        liveTvUrl = channelKey
         liveTvHasPlayed = false
         liveReconnectAttempts = 0
     }
@@ -212,9 +246,11 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
                     }
                     val noDataMs = now - lastProgressAtMs
                     val stalledMs = now - stalledSinceMs
-                    if (noDataMs >= LiveTvPlaybackTuning.STALL_RECONNECT_MS ||
-                        stalledMs >= LiveTvPlaybackTuning.SLOW_STALL_RECONNECT_MS
-                    ) {
+                    // RCTV: with another version to turn to, it turns sooner.
+                    val hasOtherVersion = com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl) != null
+                    val noDataLimit = if (hasOtherVersion) LiveTvPlaybackTuning.VERSION_STALL_SWITCH_MS else LiveTvPlaybackTuning.STALL_RECONNECT_MS
+                    val stallLimit = if (hasOtherVersion) LiveTvPlaybackTuning.VERSION_SLOW_STALL_SWITCH_MS else LiveTvPlaybackTuning.SLOW_STALL_RECONNECT_MS
+                    if (noDataMs >= noDataLimit || stalledMs >= stallLimit) {
                         stalledSinceMs = 0L
                         reconnectLiveTv(reason = "stalled ${stalledMs}ms, no new data for ${noDataMs}ms")
                     }

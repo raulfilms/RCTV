@@ -290,8 +290,10 @@
     <string name="livetv_guide_cat_documentaries">Documentales y ciencia</string>
     <string name="livetv_guide_cat_game_shows">Concursos y clásicos</string>
     <string name="livetv_guide_cat_music">Música</string>
-    <string name="livetv_guide_cat_international">Internacional y en español</string>
+    <string name="livetv_guide_cat_international">Internacional</string>
     <string name="livetv_guide_cat_local">Canales locales</string>
+    <string name="livetv_guide_cat_latino">Latino y especiales</string>
+    <string name="livetv_guide_cat_puerto_rico">Puerto Rico</string>
     <string name="livetv_guide_custom_empty">Tu lista Personalizado está vacía. Mantén presionado un programa para añadir su canal.</string>
     <string name="livetv_guide_category_empty">No hay canales en esta categoría.</string>
     <string name="livetv_guide_custom_added">%1$s añadido a Personalizado</string>

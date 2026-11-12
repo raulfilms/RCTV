@@ -465,13 +465,13 @@ class SportsWatchViewModel @Inject constructor(
             }
         }
         if (networks.isEmpty()) return null
-        return withContext(Dispatchers.Default) { SportsGameChannels.byNetwork(guide.channels, networks) }
+        return withContext(Dispatchers.Default) { SportsGameChannels.byNetwork(guide.allChannels, networks) }
     }
 
     private suspend fun bestAiring(guide: LiveGuideSnapshot, event: SportsEvent, now: Long): GameAiring? {
         if (guide.isPreview || guide.channels.isEmpty()) return null
         return withContext(Dispatchers.Default) {
-            SportsGameChannels.find(guide.channels, guide.epgByChannel, event, now).firstOrNull()
+            SportsGameChannels.find(guide.allChannels, guide.epgByChannel, event, now).firstOrNull()
         }
     }
 

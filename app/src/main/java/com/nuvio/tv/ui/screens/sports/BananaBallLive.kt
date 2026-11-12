@@ -84,7 +84,7 @@ class BananaBallLive @Inject constructor(
         val guide = guideLoader.guide.value ?: return false
         if (guide.isPreview || guide.channels.isEmpty()) return false
         return withContext(Dispatchers.Default) {
-            SportsGameChannels.find(guide.channels, guide.epgByChannel, event, now).isNotEmpty()
+            SportsGameChannels.find(guide.allChannels, guide.epgByChannel, event, now).isNotEmpty()
         }
     }
 

@@ -29,8 +29,12 @@ enum class GuideBrowse(@StringRes val labelRes: Int, val isCategory: Boolean) {
     DOCUMENTARIES(R.string.livetv_guide_cat_documentaries, true),
     GAME_SHOWS_CLASSICS(R.string.livetv_guide_cat_game_shows, true),
     MUSIC(R.string.livetv_guide_cat_music, true),
-    INTERNATIONAL(R.string.livetv_guide_cat_international, true),
-    LOCAL(R.string.livetv_guide_cat_local, true)
+    /** RCTV (owner's channel list): Latino & Specials. */
+    LATINO(R.string.livetv_guide_cat_latino, true),
+    LOCAL(R.string.livetv_guide_cat_local, true),
+    /** RCTV (owner's channel list): Puerto Rico's channels. */
+    PUERTO_RICO(R.string.livetv_guide_cat_puerto_rico, true),
+    INTERNATIONAL(R.string.livetv_guide_cat_international, true)
 }
 
 /**
@@ -218,6 +222,10 @@ internal object LiveTvGuideCategories {
     }
 
     private fun classify(channel: LiveTvChannel, programs: List<EpgProgram>): Set<GuideBrowse> {
+        // RCTV (owner's channel list): the category he gave it, and only that one.
+        channel.guideCategory?.let { name ->
+            GuideBrowse.entries.firstOrNull { it.name == name }?.let { return setOf(it) }
+        }
         val result = mutableSetOf<GuideBrowse>()
 
         // Programs vote with their running time, each for its most specific category. The
