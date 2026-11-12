@@ -74,9 +74,14 @@ private const val AGREE_MS = 150L
 /** Looks with no clear match in a row before the search widens (a long scene of another cut). */
 private const val MISSES_BEFORE_WIDE = 3
 private const val WIDE_RANGE_MS = 180_000L
-/** No match yet (the stream can't be read here): tried from the sound played once this much is heard, every minute, up to... */
-private const val FIRST_MATCH_HEARD_MS = 150_000L
-private const val FIRST_MATCH_EVERY_MS = 60_000L
+/**
+ * No match yet (the stream can't be read here): tried from the sound played once this much is heard,
+ * every so often, up to... RCTV: from 1 minute, every 20 s (it was 2.5 minutes, every minute): on the
+ * Mi Box the stream is never read (Android 9), so this is the only first match there, and the lines
+ * were out of step for minutes. A match still needs the aligner's full confidence.
+ */
+private const val FIRST_MATCH_HEARD_MS = 60_000L
+private const val FIRST_MATCH_EVERY_MS = 20_000L
 private const val FIRST_MATCH_GIVE_UP_HEARD_MS = 15L * 60 * 1000
 /** Decoded sound waited for this long before the stream is read instead (passthrough). */
 private const val NO_PCM_WAIT_MS = 45_000L
