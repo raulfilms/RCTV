@@ -1238,8 +1238,25 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             val target = (basePosition + event.deltaMs)
                 .coerceAtLeast(0L)
                 .coerceAtMost(maxDuration)
+            previewSeekCommitJob?.cancel()
             pendingPreviewSeekPosition = target
             updatePlaybackTimeline(currentPosition = target)
+            requestSeekPreviewPicture(target)
+            if (_uiState.value.showControls) {
+                showControlsTemporarily()
+            } else {
+                showSeekOverlayTemporarily()
+            }
+        }
+        PlayerEvent.OnPreviewSeekReleased -> {
+            // RCTV (as YouTube TV): letting the arrows go doesn't jump yet; the preview stays
+            // while the remote keeps moving it, and the position plays after a short pause.
+            if (_playbackTimeline.value.isLive || pendingPreviewSeekPosition == null) return
+            previewSeekCommitJob?.cancel()
+            previewSeekCommitJob = scope.launch {
+                delay(PREVIEW_SEEK_COMMIT_PAUSE_MS)
+                onEvent(PlayerEvent.OnCommitPreviewSeek)
+            }
             if (_uiState.value.showControls) {
                 showControlsTemporarily()
             } else {
@@ -1247,6 +1264,8 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
             }
         }
         PlayerEvent.OnCommitPreviewSeek -> {
+            previewSeekCommitJob?.cancel()
+            previewSeekCommitJob = null
             if (_playbackTimeline.value.isLive) return
             val target = pendingPreviewSeekPosition
             if (target != null) {

@@ -299,7 +299,10 @@ sealed class PlayerEvent {
     data object OnSeekBackward : PlayerEvent()
     data class OnSeekBy(val deltaMs: Long) : PlayerEvent()
     data class OnPreviewSeekBy(val deltaMs: Long) : PlayerEvent()
+    /** The timeline's preview position is played now (OK, or the arrows' pause). */
     data object OnCommitPreviewSeek : PlayerEvent()
+    /** RCTV: the arrows were let go: the preview position plays after a short pause, if not moved again. */
+    data object OnPreviewSeekReleased : PlayerEvent()
     data class OnSeekTo(val position: Long) : PlayerEvent()
     data class OnSelectAudioTrack(val index: Int) : PlayerEvent()
     /** RCTV: English or Español: only the audio changes, never the movie. */

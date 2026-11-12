@@ -84,6 +84,13 @@
             android:exported="false"
             android:process=":speech" />
 
+        <!-- RCTV: the timeline's preview pictures are read in the same helper process, so a TV
+             whose frame reader fails on a file never closes the app or stops the movie. -->
+        <service
+            android:name=".core.player.SeekPreviewService"
+            android:exported="false"
+            android:process=":speech" />
+
         <service
             android:name=".core.player.ExternalPlaybackKeepAliveService"
             android:exported="false"

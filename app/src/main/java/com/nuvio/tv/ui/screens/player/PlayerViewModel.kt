@@ -176,6 +176,18 @@ class PlayerViewModel @Inject constructor(
     val playbackTimeline: StateFlow<PlaybackTimelineState>
         get() = controller.playbackTimeline
 
+    /**
+     * RCTV (seek preview): the window over the timeline while the remote moves it (null when it
+     * isn't being moved): where it is, its picture, and whether this movie gives pictures.
+     */
+    val seekPreview: StateFlow<SeekPreviewUi?> = combine(
+        controller.uiState.map { it.pendingPreviewSeekPosition }.distinctUntilChanged(),
+        controller.seekPreviewFrames.image,
+        controller.seekPreviewFrames.showsPictures
+    ) { position, image, showsPictures ->
+        position?.let { SeekPreviewUi(positionMs = it, image = image, showsPictures = showsPictures) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val postPlayRecommendationUiState: StateFlow<PostPlayRecommendationUiState>
         get() = postPlayRecommendationController.uiState
 

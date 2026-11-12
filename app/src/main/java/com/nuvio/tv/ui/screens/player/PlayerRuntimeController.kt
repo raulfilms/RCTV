@@ -649,6 +649,9 @@ class PlayerRuntimeController(
     internal var liveStuckSinceMs: Long = 0L
     // RCTV: the Networks row's in-place channel switch (PlayerRuntimeControllerLiveChannels.kt).
     internal var liveChannelSwitchJob: Job? = null
+    // RCTV (seek preview): the timeline's pictures, and the pause before a moved timeline plays.
+    internal val seekPreviewFrames by lazy { SeekPreviewFrames(context, scope) }
+    internal var previewSeekCommitJob: Job? = null
     @Volatile internal var currentPlayerSettingsForReport: PlayerSettings = PlayerSettings()
 
     internal val dv7ToHevcForcedStreamUrls: MutableSet<String> = mutableSetOf()
@@ -776,6 +779,8 @@ class PlayerRuntimeController(
     }
 
     fun onCleared() {
+        previewSeekCommitJob?.cancel()
+        seekPreviewFrames.close()
         releasePlayer()
         stopTorrentStream()
         startupLoadingReportJob?.cancel()

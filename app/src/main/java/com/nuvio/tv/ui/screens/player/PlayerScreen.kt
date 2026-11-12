@@ -892,7 +892,8 @@ fun PlayerScreen(
                         KeyEvent.KEYCODE_DPAD_LEFT,
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
                             if (!uiState.showControls) {
-                                viewModel.onEvent(PlayerEvent.OnCommitPreviewSeek)
+                                // RCTV: the preview stays; it plays after a short pause (or OK).
+                                viewModel.onEvent(PlayerEvent.OnPreviewSeekReleased)
                                 return@onKeyEvent true
                             }
                         }
@@ -923,7 +924,12 @@ fun PlayerScreen(
                     when (keyEvent.nativeKeyEvent.keyCode) {
                         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                             if (!uiState.showControls) {
-                                viewModel.onEvent(PlayerEvent.OnPlayPause)
+                                // RCTV (seek preview): OK plays the previewed position now.
+                                if (uiState.pendingPreviewSeekPosition != null) {
+                                    viewModel.onEvent(PlayerEvent.OnCommitPreviewSeek)
+                                } else {
+                                    viewModel.onEvent(PlayerEvent.OnPlayPause)
+                                }
                                 true
                             } else {
                                 // Let the focused button handle it
@@ -2717,6 +2723,7 @@ internal fun PlayerControlsProgressBarHost(
     whiteStyle: Boolean = false
 ) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
+    val seekPreview by viewModel.seekPreview.collectAsState()
 
     ProgressBar(
         whiteStyle = whiteStyle,
@@ -2726,6 +2733,11 @@ internal fun PlayerControlsProgressBarHost(
             viewModel.onEvent(PlayerEvent.OnPreviewSeekBy(delta))
         },
         onSeekCommit = {
+            // RCTV: letting go keeps the preview; it plays after a short pause (or OK).
+            viewModel.onEvent(PlayerEvent.OnPreviewSeekReleased)
+        },
+        preview = seekPreview,
+        onSeekConfirm = {
             viewModel.onEvent(PlayerEvent.OnCommitPreviewSeek)
         },
         focusRequester = focusRequester,
@@ -2892,6 +2904,10 @@ internal fun ControlButton(
     }
 }
 
+/**
+ * The timeline, and over it (RCTV, as YouTube TV) the seek preview window while the remote moves
+ * it. The window takes no room: the timeline itself is drawn exactly as before.
+ */
 @Composable
 private fun ProgressBar(
     currentPosition: Long,
@@ -2903,6 +2919,50 @@ private fun ProgressBar(
     downFocusRequester: FocusRequester? = null,
     onUpKey: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
+    bufferedPosition: Long = 0L,
+    whiteStyle: Boolean = false,
+    /** RCTV: the seek preview (null: the timeline isn't being moved). */
+    preview: SeekPreviewUi? = null,
+    /** RCTV: OK while the timeline is moved plays that position now. */
+    onSeekConfirm: (() -> Unit)? = null
+) {
+    Box(modifier = Modifier.fillMaxWidth().zIndex(1f)) {
+        ProgressBarTrack(
+            currentPosition = currentPosition,
+            duration = duration,
+            onSeekPreview = onSeekPreview,
+            onSeekCommit = onSeekCommit,
+            focusRequester = focusRequester,
+            upFocusRequester = upFocusRequester,
+            downFocusRequester = downFocusRequester,
+            onUpKey = onUpKey,
+            onFocused = onFocused,
+            bufferedPosition = bufferedPosition,
+            whiteStyle = whiteStyle,
+            onSeekConfirm = onSeekConfirm?.takeIf { preview != null }
+        )
+        if (preview != null && duration > 0L) {
+            SeekPreviewWindow(
+                preview = preview,
+                fraction = (preview.positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f),
+                modifier = Modifier.matchParentSize()
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProgressBarTrack(
+    currentPosition: Long,
+    duration: Long,
+    onSeekPreview: (Long) -> Unit,
+    onSeekCommit: () -> Unit,
+    focusRequester: FocusRequester? = null,
+    upFocusRequester: FocusRequester? = null,
+    downFocusRequester: FocusRequester? = null,
+    onUpKey: (() -> Unit)? = null,
+    onFocused: (() -> Unit)? = null,
+    onSeekConfirm: (() -> Unit)? = null,
     /** Position (ms) up to which content is buffered. Pass 0 to skip the overlay. */
     bufferedPosition: Long = 0L,
     /**
@@ -2968,6 +3028,17 @@ private fun ProgressBar(
                 // testing additional key handling for DPAD_LEFT and DPAD_RIGHT to allow seek in focus (check)
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_CENTER,
+                        KeyEvent.KEYCODE_ENTER,
+                        KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            // RCTV (seek preview): OK plays the previewed position now.
+                            if (onSeekConfirm != null) {
+                                onSeekConfirm()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                         KeyEvent.KEYCODE_DPAD_DOWN -> {
                             if (downFocusRequester != null) {
                                 try {
@@ -3089,7 +3160,8 @@ private fun ProgressBar(
 private fun SeekOverlay(
     currentPosition: Long,
     duration: Long,
-    bufferedPosition: Long = 0L
+    bufferedPosition: Long = 0L,
+    preview: SeekPreviewUi? = null
 ) {
     Column(
         modifier = Modifier
@@ -3102,7 +3174,8 @@ private fun SeekOverlay(
                 duration = duration,
                 onSeekPreview = {},
                 onSeekCommit = {},
-                bufferedPosition = bufferedPosition
+                bufferedPosition = bufferedPosition,
+                preview = preview
             )
 
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
@@ -3125,11 +3198,13 @@ private fun SeekOverlay(
 @Composable
 private fun SeekOverlayHost(viewModel: PlayerViewModel) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
+    val seekPreview by viewModel.seekPreview.collectAsState()
 
     SeekOverlay(
         currentPosition = playbackTimeline.currentPosition,
         duration = playbackTimeline.duration,
-        bufferedPosition = playbackTimeline.bufferedPosition
+        bufferedPosition = playbackTimeline.bufferedPosition,
+        preview = seekPreview
     )
 }
 

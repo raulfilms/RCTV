@@ -1475,6 +1475,8 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                     override fun onPlayerError(error: PlaybackException) {
                         if (isReleasingPlayer && error.errorCode == PlaybackException.ERROR_CODE_TIMEOUT) return
+                        // RCTV (seek preview): a decoder error right after a preview picture was read.
+                        if (error.errorCode in 4000..4999) seekPreviewFrames.notePlaybackDecoderError()
                         cancelFirstFrameWatchdog()
                         val detailedError = error.toDisplayMessage(context)
                         cancelStableProgressReset()
