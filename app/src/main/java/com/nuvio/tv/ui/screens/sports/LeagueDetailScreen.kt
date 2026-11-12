@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -639,9 +641,9 @@ private fun LeagueTeamsContent(
                 gridItems(uiState.teams.distinctBy { it.id }, key = { it.id }) { team ->
                     TeamGridCard(
                         team = team,
-                        isFavorite = team.id in uiState.favoriteTeamIds,
+                        isFavorite = uiState.favoriteTeamIds.hasTeam(team),
                         onClick = { onOpenTeam(team) },
-                        onToggleFavorite = { onToggleFavoriteTeam(team.id) },
+                        onToggleFavorite = { onToggleFavoriteTeam(SportsTeamKey.of(team)) },
                         onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
                     )
                 }

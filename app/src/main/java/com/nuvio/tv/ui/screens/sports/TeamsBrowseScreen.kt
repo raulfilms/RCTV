@@ -2,6 +2,8 @@
 
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -124,7 +126,7 @@ fun TeamsBrowseScreen(
             if (uiState.favoriteTeams.isEmpty()) {
                 item(key = "my_teams_hint") { FollowTeamsHintCard() }
             } else {
-                items(uiState.favoriteTeams.distinctBy { it.id }, key = { "fav_${it.id}" }) { team ->
+                items(uiState.favoriteTeams.distinctBy { SportsTeamKey.of(it) }, key = { "fav_${SportsTeamKey.of(it)}" }) { team ->
                     TeamBrowseTile(
                         team = team,
                         isFavorite = true,
@@ -155,7 +157,7 @@ fun TeamsBrowseScreen(
                 items(section.teams.distinctBy { it.id }, key = { "${section.key}_${it.id}" }) { team ->
                     TeamBrowseTile(
                         team = team,
-                        isFavorite = team.id in uiState.favoriteTeamIds,
+                        isFavorite = uiState.favoriteTeamIds.hasTeam(team),
                         subtitle = null,
                         onClick = { onTeamClick(team) },
                         onLongPress = { longPressedTeam = team }

@@ -39,7 +39,8 @@ import org.junit.Before
 import org.junit.Test
 
 private const val CATALOG_ID = "top"
-private const val ADDON_ID = "addon"
+// RCTV: Search reads only the main catalog (Cinemeta).
+private const val ADDON_ID = "com.linvo.cinemeta"
 
 /**
  * A page belongs to the search run that requested it. These cover both ways that used to break:

@@ -69,4 +69,72 @@ class RctvAccessTest {
         assertEquals(60, RctvControlParser.deviceConfig("""{"plan":"full","heartbeat_seconds":5}""")!!.checkEverySeconds)
         assertEquals(3600, RctvControlParser.deviceConfig("""{"plan":"full","heartbeat_seconds":99999}""")!!.checkEverySeconds)
     }
+
+    @Test
+    fun `services, profiles and public files from device config`() {
+        val config = RctvControlParser.deviceConfig(
+            """{"plan":"full","services":{"realdebrid":"RDKEY123456","torbox":"x","latinodebrid":"https://ld.example/manifest.json","addon_latam":"http://plain.example/manifest.json"},
+               "iptv":{"server":"http://iptv.example:8080/","username":"u","password":"p","epg_url":null},
+               "profiles":[{"slot":1,"name":"Main","is_kids":true},{"slot":2,"name":"Kid","color":"#FF0000","avatar":"default","is_kids":true},{"slot":9,"name":"Bad"}],
+               "public_urls":{"row_layout":"https://x.supabase.co/storage/v1/object/public/rctv-public/row_layout.json","announcements":"http://no"}}"""
+        )!!
+        assertEquals("RDKEY123456", config.services.realDebrid)
+        // Too short to be a key.
+        assertNull(config.services.torbox)
+        // Addons only over HTTPS.
+        assertEquals(mapOf("latinodebrid" to "https://ld.example/manifest.json"), config.services.addons)
+        assertEquals(RctvIptv("http://iptv.example:8080", "u", "p", null), config.services.iptv)
+        // The main profile is never Kids; slots are 1 to 8.
+        assertEquals(
+            listOf(RctvRemoteProfile(1, "Main"), RctvRemoteProfile(2, "Kid", color = "#FF0000", isKids = true)),
+            config.profiles
+        )
+        assertTrue(config.publicUrls.rowLayout!!.startsWith("https://"))
+        assertNull(config.publicUrls.announcements)
+        // Secrets never show in logs.
+        assertEquals(false, config.services.toString().contains("RDKEY"))
+        assertEquals("RctvIptv(hidden)", config.services.iptv.toString())
+    }
+
+    @Test
+    fun `the account's addon list keeps the website's order`() {
+        val services = RctvControlParser.deviceConfig(
+            """{"plan":"light","services":{"addon_latam":"https://latam.example/manifest.json",
+               "addon_list":["https://torrentio.example/rd=SECRETKEY/manifest.json","http://plain.example/manifest.json",
+               "https://aio.example/stremio/abc/manifest.json","https://torrentio.example/rd=SECRETKEY/manifest.json","https://bad example/x"]}}"""
+        )!!.services
+        // HTTPS only, once each, in order.
+        assertEquals(
+            listOf("https://torrentio.example/rd=SECRETKEY/manifest.json", "https://aio.example/stremio/abc/manifest.json"),
+            services.addonList
+        )
+        // The account's list first, then LatinoDebrid and Addon LATAM.
+        assertEquals(services.addonList + "https://latam.example/manifest.json", services.managedAddonUrls)
+        assertEquals(false, services.toString().contains("SECRETKEY"))
+        // On the TV: the website's addons first (its order), the TV's own after them as they were.
+        assertEquals(
+            listOf("https://b.example/k=1", "https://a.example", "https://own1.example", "https://own2.example"),
+            RctvAddonOrder.managedFirst(
+                listOf("https://own1.example", "https://a.example", "https://own2.example", "https://b.example/k=1"),
+                listOf("https://b.example/k=1/manifest.json", "https://a.example/manifest.json", "https://notyet.example")
+            )
+        )
+    }
+
+    @Test
+    fun `the guide address set on the website reaches the TV`() {
+        fun iptvWith(epg: String) = RctvControlParser.deviceConfig(
+            """{"plan":"full","iptv":{"server":"http://iptv.example:8080","username":"u","password":"p","epg_url":$epg}}"""
+        )!!.services.iptv!!
+        assertEquals("https://guide.example/epg.xml.gz", iptvWith("\"https://guide.example/epg.xml.gz\"").epgUrl)
+        // Many IPTV guides are only on HTTP.
+        assertEquals("http://iptv.example:8080/xmltv.php", iptvWith("\"http://iptv.example:8080/xmltv.php\"").epgUrl)
+        assertNull(iptvWith("\"ftp://guide.example/epg.xml\"").epgUrl)
+        assertNull(iptvWith("null").epgUrl)
+    }
+
+    @Test
+    fun `an older website without profiles leaves the TV's alone`() {
+        assertNull(RctvControlParser.deviceConfig("""{"plan":"full"}""")!!.profiles)
+    }
 }

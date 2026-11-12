@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +29,8 @@ fun SportsFavoritesScreen(
     viewModel: SportsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet()
+    // "My Teams" by team and league (a number alone is another team in another league).
+    val favoriteTeamIds = uiState.favoriteTeams.map { SportsTeamKey.of(it) }.toSet()
 
     Column(
         modifier = modifier
@@ -72,11 +75,11 @@ fun SportsFavoritesScreen(
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
             modifier = Modifier.fillMaxSize().weight(1f, fill = false)
         ) {
-            items(uiState.browsableTeams.distinctBy { it.id }, key = { "team_${it.id}" }) { team ->
+            items(uiState.browsableTeams.distinctBy { SportsTeamKey.of(it) }, key = { "team_${SportsTeamKey.of(it)}" }) { team ->
                 TeamCard(
                     team = team,
-                    isFavorite = team.id in favoriteTeamIds,
-                    onClick = { viewModel.toggleFavoriteTeam(team.id) }
+                    isFavorite = favoriteTeamIds.hasTeam(team),
+                    onClick = { viewModel.toggleFavoriteTeam(SportsTeamKey.of(team)) }
                 )
             }
         }

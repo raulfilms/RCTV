@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -109,7 +111,7 @@ class TeamDetailViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             preferences.favoriteTeamIds.collect { ids ->
-                _uiState.update { it.copy(favoriteTeamIds = ids, isInLibrary = teamId in ids) }
+                _uiState.update { it.copy(favoriteTeamIds = ids, isInLibrary = ids.hasTeam(leagueId, teamId)) }
             }
         }
         viewModelScope.launch {
@@ -313,23 +315,26 @@ class TeamDetailViewModel @Inject constructor(
     /** Add to Library: the team into My Teams (and the Library's teams), or back out. */
     fun toggleLibrary() {
         viewModelScope.launch {
-            if (teamId !in preferences.favoriteTeamIds.value) {
+            if (!preferences.favoriteTeamIds.value.hasTeam(leagueId, teamId)) {
                 runCatching { sportsLibraryStore.rememberTeams(listOf(teamForLibrary())) }
             }
-            preferences.toggleFavoriteTeam(teamId)
+            preferences.toggleFavoriteTeam(SportsTeamKey.of(leagueId, teamId))
         }
     }
 
-    fun toggleFavoriteTeam(id: String) {
+    /** "My Teams" by team and league ([SportsTeamKey]): [teamKey] is the team with its league. */
+    fun toggleFavoriteTeam(teamKey: String) {
         viewModelScope.launch {
-            if (id == teamId && id !in preferences.favoriteTeamIds.value) {
+            val saved = preferences.favoriteTeamIds.value
+            val isFavorite = teamKey in saved || SportsTeamKey.teamIdOf(teamKey) in saved
+            if (teamKey == SportsTeamKey.of(leagueId, teamId) && !isFavorite) {
                 runCatching { sportsLibraryStore.rememberTeams(listOf(teamForLibrary())) }
-            } else if (id !in preferences.favoriteTeamIds.value) {
-                _uiState.value.leagueTeams.firstOrNull { it.id == id }?.let { team ->
+            } else if (!isFavorite) {
+                _uiState.value.leagueTeams.firstOrNull { SportsTeamKey.of(it) == teamKey }?.let { team ->
                     runCatching { sportsLibraryStore.rememberTeams(listOf(team)) }
                 }
             }
-            preferences.toggleFavoriteTeam(id)
+            preferences.toggleFavoriteTeam(teamKey)
         }
     }
 

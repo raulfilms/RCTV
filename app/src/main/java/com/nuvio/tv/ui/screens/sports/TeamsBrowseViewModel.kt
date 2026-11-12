@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.local.SportsPreferencesDataStore
@@ -79,12 +81,14 @@ class TeamsBrowseViewModel @Inject constructor(
     }
 
     /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
-    fun toggleFavoriteTeam(teamId: String) {
+    fun toggleFavoriteTeam(teamKey: String) {
         val state = uiState.value
-        val team = (state.favoriteTeams + state.sections.flatMap { it.teams }).firstOrNull { it.id == teamId }
+        val team = (state.favoriteTeams + state.sections.flatMap { it.teams }).firstOrNull { SportsTeamKey.of(it) == teamKey }
         viewModelScope.launch {
-            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
-            preferences.toggleFavoriteTeam(teamId)
+            val saved = preferences.favoriteTeamIds.value
+            val isFavorite = teamKey in saved || SportsTeamKey.teamIdOf(teamKey) in saved
+            if (team != null && !isFavorite) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamKey)
         }
     }
 
@@ -171,18 +175,24 @@ class TeamsBrowseViewModel @Inject constructor(
         }
     }
 
-    /** The person's teams: as loaded with their leagues, else as the Library keeps them. */
-    private suspend fun hydrateFavoriteTeams(ids: Set<String>) {
-        if (ids.isEmpty()) {
+    /**
+     * The person's teams: as loaded with their leagues, else as the Library keeps them. RCTV: by
+     * team and league ([SportsTeamKey]): the same number is another team in another league (the
+     * Knicks' number is a soccer team's too), so a number alone never picks a team here. "My Teams"
+     * saved with the number alone are named by the Sports page; until then they show as the Library
+     * keeps them only.
+     */
+    private suspend fun hydrateFavoriteTeams(keys: Set<String>) {
+        if (keys.isEmpty()) {
             _uiState.update { it.copy(favoriteTeams = emptyList()) }
             return
         }
-        val loaded = sectionCache.values.flatten().flatMap { it.teams }.associateBy { it.id }
-        val saved = sportsLibraryStore.teams.value.associate { it.team.id to it.team }
-        val teams = ids.mapNotNull { id -> loaded[id] ?: saved[id] }
+        val loaded = sectionCache.values.flatten().flatMap { it.teams }.associateBy { SportsTeamKey.of(it) }
+        val saved = sportsLibraryStore.teams.value.associate { SportsTeamKey.of(it.team) to it.team }
+        val teams = keys.filterNot(SportsTeamKey::isLegacy).mapNotNull { key -> loaded[key] ?: saved[key] }
         _uiState.update { it.copy(favoriteTeams = teams) }
         // The Library shows "My Teams" with these names and badges: the ones it didn't have yet.
-        val newlyFound = teams.filter { it.id !in saved }
+        val newlyFound = teams.filter { SportsTeamKey.of(it) !in saved }
         if (newlyFound.isNotEmpty()) runCatching { sportsLibraryStore.rememberTeams(newlyFound) }
     }
 

@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -1013,10 +1014,11 @@ fun SportsFavoriteOptionsDialog(
         is SportsFavoriteTarget.EventTarget -> target.event.name
     }
 
-    // A team in or out of "My Teams"; going in, its name and badge are kept for the Library.
-    fun toggleTeam(team: SportsTeam?, teamId: String) {
-        if (team != null && teamId !in favoriteTeamIds) libraryViewModel.rememberTeam(team)
-        onToggleTeam(teamId)
+    // A team in or out of "My Teams" (by team and league); going in, its name and badge are kept
+    // for the Library.
+    fun toggleTeam(team: SportsTeam?, leagueId: String?, teamId: String) {
+        if (team != null && !favoriteTeamIds.hasTeam(leagueId, teamId)) libraryViewModel.rememberTeam(team)
+        onToggleTeam(com.nuvio.tv.domain.model.SportsTeamKey.of(leagueId, teamId))
     }
 
     com.nuvio.tv.ui.components.NuvioDialog(
@@ -1026,13 +1028,13 @@ fun SportsFavoriteOptionsDialog(
     ) {
         when (target) {
             is SportsFavoriteTarget.TeamTarget -> {
-                val isFavorite = target.team.id in favoriteTeamIds
+                val isFavorite = favoriteTeamIds.hasTeam(target.team)
                 FavoriteOptionButton(
                     label = stringResourceCompat(
                         if (isFavorite) R.string.sports_remove_from_my_teams else R.string.sports_add_to_my_teams
                     ),
                     onClick = {
-                        toggleTeam(target.team, target.team.id)
+                        toggleTeam(target.team, target.team.leagueId, target.team.id)
                         onDismiss()
                     }
                 )
@@ -1071,28 +1073,28 @@ fun SportsFavoriteOptionsDialog(
                 val event = target.event
                 val homeTeamId = event.homeTeamId
                 if (homeTeamId != null && homeTeamId.isNotBlank()) {
-                    val isFavorite = homeTeamId in favoriteTeamIds
+                    val isFavorite = favoriteTeamIds.hasTeam(event.leagueId, homeTeamId)
                     FavoriteOptionButton(
                         label = androidx.compose.ui.res.stringResource(
                             if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
                             event.homeTeamName
                         ),
                         onClick = {
-                            toggleTeam(event.teamOf(homeTeamId), homeTeamId)
+                            toggleTeam(event.teamOf(homeTeamId), event.leagueId, homeTeamId)
                             onDismiss()
                         }
                     )
                 }
                 val awayTeamId = event.awayTeamId
                 if (awayTeamId != null && awayTeamId.isNotBlank()) {
-                    val isFavorite = awayTeamId in favoriteTeamIds
+                    val isFavorite = favoriteTeamIds.hasTeam(event.leagueId, awayTeamId)
                     FavoriteOptionButton(
                         label = androidx.compose.ui.res.stringResource(
                             if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
                             event.awayTeamName
                         ),
                         onClick = {
-                            toggleTeam(event.teamOf(awayTeamId), awayTeamId)
+                            toggleTeam(event.teamOf(awayTeamId), event.leagueId, awayTeamId)
                             onDismiss()
                         }
                     )

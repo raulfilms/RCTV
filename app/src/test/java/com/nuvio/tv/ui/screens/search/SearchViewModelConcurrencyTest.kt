@@ -222,7 +222,7 @@ class SearchViewModelConcurrencyTest {
             extra = listOf(CatalogExtra(name = "search"))
         )
         return Addon(
-            id = "addon",
+            id = "com.linvo.cinemeta",
             name = "Addon",
             version = "1",
             description = null,

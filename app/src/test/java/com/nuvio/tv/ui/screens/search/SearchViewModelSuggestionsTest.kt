@@ -489,23 +489,24 @@ class SearchViewModelSuggestionsTest {
     }
 
     private fun searchableAddon(catalogIds: List<String> = listOf("top")): Addon {
-        val catalogs = catalogIds.map { id ->
+        // RCTV: Search reads the main catalog's first Movies and first Series catalogs.
+        val catalogs = catalogIds.mapIndexed { index, id ->
             CatalogDescriptor(
-                type = ContentType.MOVIE,
+                type = if (index == 0) ContentType.MOVIE else ContentType.SERIES,
                 id = id,
                 name = id,
                 extra = listOf(CatalogExtra(name = "search"))
             )
         }
         return Addon(
-            id = "addon",
+            id = "com.linvo.cinemeta",
             name = "Addon",
             version = "1",
             description = null,
             logo = null,
             baseUrl = "https://example.test",
             catalogs = catalogs,
-            types = listOf(ContentType.MOVIE),
+            types = listOf(ContentType.MOVIE, ContentType.SERIES),
             resources = emptyList()
         )
     }

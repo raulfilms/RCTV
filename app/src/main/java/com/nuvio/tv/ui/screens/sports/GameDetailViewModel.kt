@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -267,11 +269,15 @@ class GameDetailViewModel @Inject constructor(
     }
 
     /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
-    fun toggleFavoriteTeam(teamId: String) {
+    /** "My Teams" by team and league ([SportsTeamKey]): [teamKey] is the team with its league. */
+    fun toggleFavoriteTeam(teamKey: String) {
+        val teamId = SportsTeamKey.teamIdOf(teamKey)
         val team = event.teamOf(teamId)
         viewModelScope.launch {
-            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
-            preferences.toggleFavoriteTeam(teamId)
+            val saved = preferences.favoriteTeamIds.value
+            val isFavorite = teamKey in saved || teamId in saved
+            if (team != null && !isFavorite) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamKey)
         }
     }
 

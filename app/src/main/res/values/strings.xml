@@ -2065,6 +2065,8 @@
     <string name="search_placeholder">Search movies, series, channels &amp; sports</string>
     <string name="search_row_channels">Channels</string>
     <string name="search_row_programs">On the Guide</string>
+    <string name="search_row_movies">Movies</string>
+    <string name="search_row_series">Series</string>
     <string name="search_row_teams">Teams</string>
     <string name="search_row_leagues">Leagues</string>
     <string name="search_row_games">Games &amp; Events</string>
@@ -4471,17 +4473,41 @@
     <string name="player_live_game_stats">Game stats</string>
     <!-- RCTV Control: the TV's activation code page. -->
     <string name="rctv_activation_title">Activate RCTV</string>
-    <string name="rctv_activation_subtitle">Enter the 8-character code from your RCTV account.</string>
+    <string name="rctv_activation_subtitle">STREAM TV, MOVIES &amp; MORE</string>
     <string name="rctv_activation_code_label">Activation code</string>
-    <string name="rctv_activation_button">Activate</string>
-    <string name="rctv_activation_busy">Activating…</string>
+    <string name="rctv_activation_button">Log In</string>
+    <string name="rctv_activation_busy">Logging in…</string>
     <string name="rctv_activation_wrong_code">That code didn\'t work. Check it and try again.</string>
     <string name="rctv_activation_too_many">Too many tries. Wait a minute and try again.</string>
     <string name="rctv_activation_no_connection">Couldn\'t connect. Check the internet and try again.</string>
+    <string name="rctv_activation_placeholder">Enter your code</string>
+    <string name="rctv_activation_no_code">Don\'t have a code?\nContact your provider.</string>
+    <string name="rctv_activation_admin">Admin login</string>
+    <string name="rctv_activation_admin_hint">Manage accounts, plans and TVs from your phone or computer:</string>
+    <string name="rctv_activation_close">Close</string>
     <!-- RCTV: Kids profiles. -->
     <string name="profile_kids_label">Kids profile</string>
     <string name="profile_kids_on">Kids profile: On</string>
     <string name="profile_kids_off">Kids profile: Off</string>
     <string name="profile_kids_hint">Movies and shows for ages 13 and under. Only family and kids channels.</string>
     <string name="kids_title_blocked">This title isn\'t available on a Kids profile.</string>
+    <!-- RCTV Control: what the account's website sets. -->
+    <string name="rctv_managed_by_account">Set by your RCTV account</string>
+    <string name="rctv_iptv_managed_by_account">Live TV is set by your RCTV account.</string>
+    <string name="rctv_playback_too_many_iptv">Too many people are watching</string>
+    <string name="rctv_playback_too_many_vod">You have reached your playback limit</string>
+    <string name="rctv_playback_no_iptv">Live TV isn\'t included in your plan</string>
+    <string name="rctv_playback_plan_ended">Live TV is no longer included in your plan</string>
+    <string name="rctv_announcement_ok">OK</string>
+    <string name="rctv_banner_button_collection">See collection</string>
+    <string name="rctv_banner_button_game">See game</string>
+    <string name="rctv_banner_button_team">See team</string>
+    <string name="rctv_banner_button_league">See league</string>
+    <string name="rctv_banner_button_channel">Watch now</string>
+    <string name="rctv_banner_channel_not_found">That channel isn\'t in your guide</string>
+    <string name="rctv_collection_unavailable">This collection isn\'t available right now.</string>
+    <string name="rctv_collection_back">Go back</string>
+    <!-- RCTV: the marks on every thumbnail. -->
+    <string name="title_status_library">In your Library</string>
+    <string name="title_status_imdb">In your IMDb watchlist</string>
 </resources>

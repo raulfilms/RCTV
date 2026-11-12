@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import com.nuvio.tv.core.util.runCatchingCancellable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -84,6 +86,8 @@ data class SportsUiState(
     val favoriteLeagues: List<SportsLeague> = emptyList(),
     /** "My Teams" (also the Library's Sports Teams). */
     val favoriteTeams: List<SportsTeam> = emptyList(),
+    /** "My Teams" as saved: each team with its league ([SportsTeamKey]). */
+    val favoriteTeamKeys: Set<String> = emptySet(),
     /** Actually-playable live/upcoming events sourced from the user's installed sports addons (phase 3). Separate from the ESPN rows above, which are metadata/schedule-only. */
     val addonEvents: List<SportsAddonEvent> = emptyList(),
     val isLoadingAddonEvents: Boolean = false,
@@ -128,7 +132,7 @@ class SportsViewModel @Inject constructor(
         viewModelScope.launch {
             combine(preferences.favoriteSports, preferences.favoriteTeamIds) { sports, teamIds -> sports to teamIds }
                 .collect { (sports, teamIds) ->
-                    _uiState.update { it.copy(favoriteSportNames = sports) }
+                    _uiState.update { it.copy(favoriteSportNames = sports, favoriteTeamKeys = teamIds) }
                     refresh(favoriteTeamIds = teamIds, quiet = _uiState.value.leagues.isNotEmpty())
                 }
         }
@@ -305,12 +309,14 @@ class SportsViewModel @Inject constructor(
     }
 
     /** A team in or out of "My Teams" (and the Library); going in, its name and badge are kept. */
-    fun toggleFavoriteTeam(teamId: String) {
+    fun toggleFavoriteTeam(teamKey: String) {
         val state = uiState.value
-        val team = (state.favoriteTeams + state.teams + state.browsableTeams).firstOrNull { it.id == teamId }
+        val team = (state.favoriteTeams + state.teams + state.browsableTeams).firstOrNull { SportsTeamKey.of(it) == teamKey }
         viewModelScope.launch {
-            if (team != null && teamId !in preferences.favoriteTeamIds.value) sportsLibraryStore.rememberTeams(listOf(team))
-            preferences.toggleFavoriteTeam(teamId)
+            val saved = preferences.favoriteTeamIds.value
+            val isFavorite = teamKey in saved || SportsTeamKey.teamIdOf(teamKey) in saved
+            if (team != null && !isFavorite) sportsLibraryStore.rememberTeams(listOf(team))
+            preferences.toggleFavoriteTeam(teamKey)
         }
     }
 
@@ -406,6 +412,9 @@ class SportsViewModel @Inject constructor(
         result.onSuccess { loaded ->
             loadedAtMs = System.currentTimeMillis()
             lastLoaded = loaded to loadedAtMs
+            // RCTV: "My Teams" saved with the number alone are named with their league, as this
+            // page found them (once every league is in).
+            runCatching { preferences.qualifyLegacyTeams(loaded.legacyTeamKeys) }
             // The Library shows "My Teams" and "My Sports" with these names and badges.
             runCatching {
                 sportsLibraryStore.rememberTeams(loaded.favoriteTeams)
@@ -431,7 +440,7 @@ class SportsViewModel @Inject constructor(
                 pickedForYou = loaded.pickedForYou,
                 leagues = loaded.leagues,
                 // The marquee teams first, then every other team of the leagues followed.
-                teams = (loaded.homeTeamRowPicks + loaded.teams).distinctBy { team -> team.id },
+                teams = (loaded.homeTeamRowPicks + loaded.teams).distinctBy { team -> SportsTeamKey.of(team) },
                 browsableTeams = loaded.teams,
                 sportsTalk = mockSportsTalk(),
                 continueWatching = emptyList(),
@@ -447,7 +456,9 @@ class SportsViewModel @Inject constructor(
         val leagues: List<SportsLeague>,
         val teams: List<SportsTeam>,
         val homeTeamRowPicks: List<SportsTeam>,
-        val favoriteTeams: List<SportsTeam>
+        val favoriteTeams: List<SportsTeam>,
+        /** "My Teams" saved with the number alone, and their keys as found here. */
+        val legacyTeamKeys: Map<String, String> = emptyMap()
     )
 
     /** Fetches every curated ESPN feed and aggregates events/teams/leagues across all of them (each feed already carries its own league + team metadata, so no separate lookups are needed). */
@@ -476,7 +487,8 @@ class SportsViewModel @Inject constructor(
         // As the clock has them: games whose start time has come are live.
         val now = System.currentTimeMillis()
         val allEvents = results.flatMap { it.events }.map { it.withClock(now) }.distinctBy { it.id }
-        val allTeams = results.flatMap { it.teams }.distinctBy { it.id }
+        // RCTV: a team is its league and its number (the same number is another team elsewhere).
+        val allTeams = results.flatMap { it.teams }.distinctBy { SportsTeamKey.of(it) }
 
         val liveNow = allEvents.filter { it.status == SportsEventStatus.LIVE }
             .distinctBy { it.id }
@@ -488,11 +500,19 @@ class SportsViewModel @Inject constructor(
             .fewPerTour()
             .take(30)
 
-        val favoriteTeams = allTeams.filter { it.id in favoriteTeamIds }
+        // "My Teams" by team and league. Ones saved with the number alone take the first team
+        // with that number here (the person's leagues come first), as this page always showed them.
+        val legacyTeamKeys = SportsTeamKey.legacyResolution(favoriteTeamIds, allTeams)
+        val favoriteKeys = favoriteTeamIds.map { legacyTeamKeys[it] ?: it }.toSet()
+        val loadedFavorites = allTeams.filter { SportsTeamKey.of(it) in favoriteKeys }
+        // Teams whose league isn't loaded here: as the Library keeps them.
+        val loadedKeys = loadedFavorites.map { SportsTeamKey.of(it) }.toSet()
+        val savedFavorites = sportsLibraryStore.teams.value.map { it.team }
+            .filter { team -> SportsTeamKey.of(team).let { it in favoriteKeys && it !in loadedKeys } }
+        val favoriteTeams = (loadedFavorites + savedFavorites).distinctBy { SportsTeamKey.of(it) }
 
         val pickedForYou = if (favoriteTeams.isNotEmpty()) {
-            val favoriteTeamIdSet = favoriteTeams.map { it.id }.toSet()
-            upcomingGames.filter { it.homeTeamId in favoriteTeamIdSet || it.awayTeamId in favoriteTeamIdSet }
+            upcomingGames.filter { favoriteKeys.hasTeam(it.leagueId, it.homeTeamId) || favoriteKeys.hasTeam(it.leagueId, it.awayTeamId) }
         } else {
             upcomingGames.take(10)
         }
@@ -504,7 +524,8 @@ class SportsViewModel @Inject constructor(
             leagues = leagues,
             teams = allTeams,
             homeTeamRowPicks = homeTeamRowPicks,
-            favoriteTeams = favoriteTeams
+            favoriteTeams = favoriteTeams,
+            legacyTeamKeys = legacyTeamKeys
         )
     }
 

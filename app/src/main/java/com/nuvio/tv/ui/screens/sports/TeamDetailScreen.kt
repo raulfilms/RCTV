@@ -2,6 +2,8 @@
 
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import android.content.Intent
 import android.view.KeyEvent
 import android.net.Uri
@@ -631,7 +633,7 @@ private fun ScheduleTab(
                                 name = team.name,
                                 logoUrl = team.badgeUrl,
                                 color = sportsTeamColor(team.color, team.id),
-                                isFavorite = team.id in uiState.favoriteTeamIds,
+                                isFavorite = uiState.favoriteTeamIds.hasTeam(team),
                                 onClick = { onOpenTeam(team) },
                                 onLongPress = null,
                                 prominentName = true

@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -169,7 +171,7 @@ fun SportsScreen(
                 val eventTarget = target as? SportsFavoriteTarget.EventTarget
                 SportsFavoriteOptionsDialog(
                     target = target,
-                    favoriteTeamIds = uiState.favoriteTeams.map { it.id }.toSet(),
+                    favoriteTeamIds = uiState.favoriteTeamKeys,
                     favoriteSportNames = uiState.favoriteSportNames,
                     onToggleTeam = viewModel::toggleFavoriteTeam,
                     onToggleSport = viewModel::toggleFavoriteSport,
@@ -201,7 +203,8 @@ private fun SportsContent(
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
     onToggleLibraryEvent: (SportsEvent) -> Unit
 ) {
-    val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { it.id }.toSet() }
+    // "My Teams" by team and league (a number alone is another team in another league).
+    val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { SportsTeamKey.of(it) }.toSet() }
     val favoriteLeagueIds = remember(uiState.favoriteLeagues) { uiState.favoriteLeagues.map { it.id }.toSet() }
     val heroRequester = remember { FocusRequester() }
     val requester: (String) -> FocusRequester = { key -> rowRequesters.getOrPut(key) { FocusRequester() } }
@@ -530,7 +533,7 @@ private fun TeamsRow(
         title = title,
         count = teams.size.coerceAtMost(SPORTS_ROW_MAX),
         hasSeeAll = teams.size > SPORTS_ROW_MAX,
-        keyOf = { teams[it].id },
+        keyOf = { SportsTeamKey.of(teams[it]) },
         rowFocusRequester = rowFocusRequester,
         seeAllWidth = SportsTileWidth,
         seeAllHeight = SportsTileHeight,
@@ -572,7 +575,7 @@ private fun TeamTile(
         name = team.name,
         logoUrl = team.badgeUrl,
         color = sportsTeamColor(team.color, team.id),
-        isFavorite = team.id in favoriteTeamIds,
+        isFavorite = favoriteTeamIds.hasTeam(team),
         onClick = { onClick(team) },
         onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
         modifier = modifier,
@@ -592,7 +595,8 @@ private fun SportsSeeAllPage(
     onShowFavoriteOptions: (SportsFavoriteTarget) -> Unit,
     onLoadMoreTalk: () -> Unit
 ) {
-    val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { it.id }.toSet() }
+    // "My Teams" by team and league (a number alone is another team in another league).
+    val favoriteTeamIds = remember(uiState.favoriteTeams) { uiState.favoriteTeams.map { SportsTeamKey.of(it) }.toSet() }
     val favoriteLeagueIds = remember(uiState.favoriteLeagues) { uiState.favoriteLeagues.map { it.id }.toSet() }
     when (which) {
         SportsSeeAll.LIVE, SportsSeeAll.UPCOMING, SportsSeeAll.PICKED -> {
@@ -649,7 +653,7 @@ private fun SportsSeeAllPage(
                 title = stringResource(R.string.sports_row_my_teams),
                 count = teams.size,
                 columns = 4,
-                keyOf = { teams[it].id }
+                keyOf = { SportsTeamKey.of(teams[it]) }
             ) { index, itemModifier ->
                 TeamTile(
                     team = teams[index],

@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.sports
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -122,25 +124,25 @@ fun GameDetailScreen(
                     onClick = viewModel::toggleLibrary
                 )
                 event.homeTeamId?.let { homeTeamId ->
-                    val isFavorite = homeTeamId in uiState.favoriteTeamIds
+                    val isFavorite = uiState.favoriteTeamIds.hasTeam(event.leagueId, homeTeamId)
                     GameActionButton(
                         label = stringResource(
                             if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
                             event.homeTeamName
                         ),
                         icon = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                        onClick = { viewModel.toggleFavoriteTeam(homeTeamId) }
+                        onClick = { viewModel.toggleFavoriteTeam(SportsTeamKey.of(event.leagueId, homeTeamId)) }
                     )
                 }
                 event.awayTeamId?.let { awayTeamId ->
-                    val isFavorite = awayTeamId in uiState.favoriteTeamIds
+                    val isFavorite = uiState.favoriteTeamIds.hasTeam(event.leagueId, awayTeamId)
                     GameActionButton(
                         label = stringResource(
                             if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
                             event.awayTeamName
                         ),
                         icon = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                        onClick = { viewModel.toggleFavoriteTeam(awayTeamId) }
+                        onClick = { viewModel.toggleFavoriteTeam(SportsTeamKey.of(event.leagueId, awayTeamId)) }
                     )
                 }
             }

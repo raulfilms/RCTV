@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -54,6 +55,10 @@ class DebridSettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(DebridSettingsUiState())
     val uiState: StateFlow<DebridSettingsUiState> = _uiState.asStateFlow()
+
+    /** RCTV Control: providers whose key the website sets (shown as such, not changeable here). */
+    val managedProviderIds: StateFlow<Set<String>> = dataStore.managedProviderIds
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptySet())
 
     private val _validating = MutableStateFlow(false)
     val validating: StateFlow<Boolean> = _validating.asStateFlow()
