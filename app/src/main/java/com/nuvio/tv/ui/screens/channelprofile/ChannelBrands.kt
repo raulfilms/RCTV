@@ -353,6 +353,30 @@ object ChannelBrands {
     private fun belongsTo(brand: ChannelBrand, channel: LiveTvChannel): Boolean = brandOf(channel).key == brand.key
 
     /**
+     * RCTV: false when a channel named [normalized] can't land on [brand] whatever the other brands
+     * are ([brandOf] gives it a brand only by its patterns, its first word as a station, or its
+     * shared word), so the full check is skipped for it.
+     */
+    private fun couldBelong(brand: ChannelBrand, normalized: String): Boolean {
+        if (brand.baseWord != null) return baseWord(normalized) == brand.baseWord
+        if (brand.family.any { it.matches(normalized) }) return true
+        return brand.affiliate != null && normalized.substringBefore(' ') == brand.affiliate
+    }
+
+    /** RCTV: the guide's channel names, normalized once per guide (every profile page reads them). */
+    private val namesLock = Any()
+    private var namesFor: List<LiveTvChannel>? = null
+    private var namesCache: Array<String> = emptyArray()
+
+    private fun normalizedNames(channels: List<LiveTvChannel>): Array<String> = synchronized(namesLock) {
+        if (namesFor !== channels || namesCache.size != channels.size) {
+            namesCache = Array(channels.size) { normalize(channels[it].name) }
+            namesFor = channels
+        }
+        namesCache
+    }
+
+    /**
      * The brand's channels in [channels]: main channels in family order and locals (by name),
      * each listed once ("ESPN" and "ESPN HD" are the same channel: the one with a guide wins).
      * [selected] comes first among the locals when it is one.
@@ -365,9 +389,14 @@ object ChannelBrands {
     ): ChannelBrandMembers {
         val live = ArrayList<Pair<Int, LiveTvChannel>>()
         val locals = ArrayList<LiveTvChannel>()
-        for (channel in channels) {
+        val names = normalizedNames(channels)
+        for ((position, channel) in channels.withIndex()) {
+            val normalized = names[position]
+            // RCTV: a quick look first (the brand's own names, its stations' first word, or the word
+            // its channels share), so only those few get the full check against every brand: with a
+            // provider's thousands of channels, the page opens at once instead of loading.
+            if (!couldBelong(brand, normalized)) continue
             if (!belongsTo(brand, channel)) continue
-            val normalized = normalize(channel.name)
             val index = familyIndex(brand, normalized)
             when {
                 index >= 0 -> live += index to channel
