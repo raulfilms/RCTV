@@ -171,7 +171,9 @@ class LiveTvGuideLoader @Inject constructor(
                     // The guide kept on the device shows at once; it's loaded again only when old.
                     val saved = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-read") { readSaved(key) }
                     if (saved != null) {
-                        publish(key, saved)
+                        // RCTV: kept without its programs (the app closed before they came): they're
+                        // on their way now, and the Guide says so.
+                        publish(key, if (saved.isStale() && saved.epgByChannel.isEmpty()) saved.copy(isEpgLoading = true) else saved)
                         if (!saved.isStale()) return@launch
                     }
                 }

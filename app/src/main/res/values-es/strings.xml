@@ -1177,6 +1177,7 @@
     <string name="livetv_guide_live_badge">En vivo</string>
     <string name="livetv_guide_today">Hoy</string>
     <string name="livetv_guide_no_info">Sin información</string>
+    <string name="livetv_guide_loading_info">Cargando la guía…</string>
     <string name="livetv_guide_channels">Canales</string>
     <string name="livetv_guide_live_now">En vivo ahora</string>
     <string name="livetv_guide_a_to_z">De la A a la Z</string>

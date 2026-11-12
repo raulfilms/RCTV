@@ -281,6 +281,7 @@
     <string name="livetv_guide_live_badge">Live</string>
     <string name="livetv_guide_today">Today</string>
     <string name="livetv_guide_no_info">No information</string>
+    <string name="livetv_guide_loading_info">Loading the guide…</string>
     <string name="livetv_guide_channels">Channels</string>
     <string name="livetv_guide_live_now">Live Now</string>
     <string name="livetv_guide_a_to_z">A to Z</string>

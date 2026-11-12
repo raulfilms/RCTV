@@ -489,7 +489,10 @@ internal fun LiveTvTimelineGuide(
 
     val liveLabel = stringResource(R.string.livetv_guide_live_badge)
     val nowLabel = stringResource(R.string.livetv_guide_now)
-    val noInfoLabel = stringResource(R.string.livetv_guide_no_info)
+    // RCTV: while the programs are still on their way, the rows say so (not "No information").
+    val noInfoLabel = stringResource(
+        if (uiState.isEpgLoading && !uiState.hasEpg) R.string.livetv_guide_loading_info else R.string.livetv_guide_no_info
+    )
 
     Box(
         modifier = modifier

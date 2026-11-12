@@ -621,8 +621,10 @@ class LiveTvViewModel @Inject constructor(
                 epgByChannel = guide.epgByChannel,
                 isEpgLoading = guide.isEpgLoading,
                 nowMs = System.currentTimeMillis(),
-                // With programs, the Guide page opens on them.
-                showGuide = if (guide.epgByChannel.isNotEmpty() && !it.hasEpg) true else it.showGuide
+                // With programs, the Guide page opens on them. RCTV: the owner's guide opens on the
+                // Guide page right away, with its channels and logos (the programs fill in as they
+                // load: a provider's guide can take minutes).
+                showGuide = if ((guide.epgByChannel.isNotEmpty() && !it.hasEpg) || (guide.curated && !it.curatedGuide)) true else it.showGuide
             )
         }
     }
