@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.player
 
+import com.nuvio.tv.core.player.LastPlaybackDiagnostics
 import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
