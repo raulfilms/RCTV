@@ -487,7 +487,19 @@ class LiveProgramLibrary @Inject constructor(
         } ?: return null
         if (seasons <= 0) return null
         val newestFirst = (seasons downTo 1).toList()
-        val subtitle = program.subtitle?.let(::cleanTitle)?.takeIf { it.isNotBlank() }
+        // RCTV: the guide's own numbers when it gives them ("(S1, ep 8)", "S01E08"): that episode.
+        episodeNumbersOf(program)?.let { (season, number) ->
+            if (season in 1..seasons) {
+                seasonEpisodes(tvId, season, language)
+                    .firstOrNull { it.episodeNumber == number }
+                    ?.toLiveEpisode(season)
+                    ?.let { return it }
+            }
+        }
+        // RCTV: guides without an episode title often start the description with it ("The Space
+        // Rock: Trouble follows Henry..."): looked up by that name the same way.
+        val subtitle = (program.subtitle ?: episodeTitleOf(program.description))
+            ?.let(::cleanTitle)?.takeIf { it.isNotBlank() }
         val airDay = Instant.ofEpochMilli(program.startMs).atZone(ZoneId.systemDefault()).toLocalDate()
 
         // By name: a few seasons at a time, newest first, stopping at the first match.
@@ -629,6 +641,41 @@ class LiveProgramLibrary @Inject constructor(
             "sports", "noinformation", "noprogram", "nodata", "specialprogramming"
         )
         private val BRACKET_TAGS = Regex("""\s*\[\s*(new|live)\s*]""", RegexOption.IGNORE_CASE)
+
+        /** RCTV: a season and episode written in a guide ("(S1, ep 8)", "S01E08", "Season 2, Episode 5"). */
+        private val EPISODE_NUMBERS = listOf(
+            Regex("""(?i)\bS(\d{1,2})\s*[,.]?\s*E(?:p(?:isode)?)?\.?\s*(\d{1,3})\b"""),
+            Regex("""(?i)\bseason\s+(\d{1,2})\s*[,.]?\s*episode\s+(\d{1,3})\b""")
+        )
+
+        /** RCTV: words a description can start with that aren't an episode's name ("New: ..."). */
+        private val NOT_EPISODE_NAMES = setOf(
+            "new", "live", "premiere", "series premiere", "season premiere", "season finale",
+            "series finale", "finale", "breaking", "replay", "encore", "special", "rerun", "repeat"
+        )
+
+        /** RCTV: the season and episode the guide gives for [program], if it gives them. */
+        fun episodeNumbersOf(program: EpgProgram): Pair<Int, Int>? {
+            for (text in listOfNotNull(program.subtitle, program.description, program.title)) {
+                for (pattern in EPISODE_NUMBERS) {
+                    val found = pattern.find(text) ?: continue
+                    val season = found.groupValues[1].toIntOrNull() ?: continue
+                    val episode = found.groupValues[2].toIntOrNull() ?: continue
+                    if (season >= 1 && episode >= 1) return season to episode
+                }
+            }
+            return null
+        }
+
+        /** RCTV: "The Space Rock: Trouble follows Henry..." -> "The Space Rock"; null when it doesn't start so. */
+        fun episodeTitleOf(description: String?): String? {
+            val text = description?.trim() ?: return null
+            val colon = text.indexOf(": ")
+            if (colon !in 2..80) return null
+            val name = text.substring(0, colon).trim()
+            if (name.lowercase(Locale.ROOT) in NOT_EPISODE_NAMES || name.none { it.isLetter() }) return null
+            return name
+        }
 
         /** A guide title without its badges and leading symbols ("🏈 Show [NEW]" -> "Show"). */
         fun cleanTitle(raw: String): String {

@@ -86,7 +86,8 @@ fun LiveTvScreen(
     /** Opens a channel's profile page (from its logo in the guide). */
     onOpenChannelProfile: (LiveTvChannel) -> Unit = {},
     /** Opens a movie's or series' page (from a later show's details: "View movie", "Browse episodes"). */
-    onOpenTitle: (itemId: String, itemType: String) -> Unit = { _, _ -> },
+    /** A program's page; RCTV: on the episode airing ([season] and [episode]) when it could be told. */
+    onOpenTitle: (itemId: String, itemType: String, season: Int?, episode: Int?) -> Unit = { _, _, _, _ -> },
     /**
      * RCTV: a program's movie or episode from its sources: "Watch From Beginning" (on now,
      * [fromBeginning]) or "Watch VOD" (later).
@@ -265,7 +266,7 @@ fun LiveTvScreen(
                 tmdb = programTmdb,
                 onAddToLibrary = viewModel::addProgramDetailsToLibrary,
                 // Its page, like any title; Back comes back to these details.
-                onOpenTitle = { match -> onOpenTitle(match.itemId, match.itemType) },
+                onOpenTitle = { match -> onOpenTitle(match.itemId, match.itemType, match.episode?.season, match.episode?.episode) },
                 // Sample guide channels have no stream: Watch opens the player's screen (no video).
                 onWatch = if (uiState.isPreviewGuide) {
                     {

@@ -171,6 +171,9 @@ fun ChannelProfileScreen(
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String) -> Unit,
     onPlayTitle: (MetaPreview) -> Unit,
     onContinueWatchingClick: (ContinueWatchingItem) -> Unit,
+    /** RCTV: a live program's page, on the episode airing when it could be told. */
+    onOpenLiveTitle: (itemId: String, itemType: String, season: Int?, episode: Int?) -> Unit =
+        { itemId, itemType, _, _ -> onNavigateToDetail(itemId, itemType, "") },
     viewModel: ChannelProfileViewModel = hiltViewModel(),
     posterOptionsViewModel: PosterOptionsViewModel = hiltViewModel()
 ) {
@@ -366,7 +369,7 @@ fun ChannelProfileScreen(
                 tmdb = programTmdb,
                 onAddToLibrary = liveTvViewModel::addProgramDetailsToLibrary,
                 // Its page, like any title; Back comes back to these details.
-                onOpenTitle = { match -> onNavigateToDetail(match.itemId, match.itemType, "") },
+                onOpenTitle = { match -> onOpenLiveTitle(match.itemId, match.itemType, match.episode?.season, match.episode?.episode) },
                 onWatch = if (liveState.isPreviewGuide) {
                     {
                         liveTvViewModel.dismissProgramDetails()

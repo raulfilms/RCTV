@@ -1261,7 +1261,9 @@ private fun PlaybackNavHost(
                             itemId = itemId,
                             itemType = itemType,
                             returnFocusSeason = season,
-                            returnFocusEpisode = episode
+                            returnFocusEpisode = episode,
+                            // RCTV: on that very episode (not the next one to watch).
+                            exactEpisode = season != null && episode != null
                         )
                     ) {
                         popUpTo(Screen.Player.route) { inclusive = true }
@@ -1451,9 +1453,18 @@ private fun PlaybackNavHost(
                 onOpenChannelProfile = { channel ->
                     navController.navigate(Screen.ChannelProfile.createRoute(channel.id))
                 },
-                // A later show's "View movie" / "Browse episodes": its page, like any title.
-                onOpenTitle = { itemId, itemType ->
-                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType))
+                // A later show's "View movie" / "Browse episodes": its page, like any title (RCTV:
+                // on the episode airing, when it could be told).
+                onOpenTitle = { itemId, itemType, season, episode ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(
+                            itemId = itemId,
+                            itemType = itemType,
+                            returnFocusSeason = season,
+                            returnFocusEpisode = episode,
+                            exactEpisode = season != null && episode != null
+                        )
+                    )
                 },
                 // RCTV: "Watch From Beginning" / "Watch VOD": from its sources (Back returns to the Guide).
                 onWatchVod = { target, fromBeginning ->
@@ -1562,6 +1573,18 @@ private fun PlaybackNavHost(
                         return@onContinueWatchingClick
                     }
                     navController.navigate(disneyContinueWatchingRoute(item))
+                },
+                // RCTV: a live program's page, on the episode airing when it could be told.
+                onOpenLiveTitle = { itemId, itemType, season, episode ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(
+                            itemId = itemId,
+                            itemType = itemType,
+                            returnFocusSeason = season,
+                            returnFocusEpisode = episode,
+                            exactEpisode = season != null && episode != null
+                        )
+                    )
                 }
             )
         }

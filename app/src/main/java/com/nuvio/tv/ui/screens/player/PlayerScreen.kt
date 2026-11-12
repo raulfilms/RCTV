@@ -307,7 +307,8 @@ fun PlayerScreen(
         if (exitDispatched) return@openLiveTitle
         exitDispatched = true
         viewModel.stopAndRelease()
-        onOpenLiveTitle(match.itemId, match.itemType, null, null)
+        // RCTV: on the episode airing, when it could be told.
+        onOpenLiveTitle(match.itemId, match.itemType, match.episode?.season, match.episode?.episode)
     }
     val openLiveEpisode: (com.nuvio.tv.data.livetv.LiveProgramMatch, com.nuvio.tv.data.livetv.LiveEpisode) -> Unit =
         openLiveEpisode@{ match, episode ->
