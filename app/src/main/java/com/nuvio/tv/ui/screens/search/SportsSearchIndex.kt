@@ -76,6 +76,10 @@ class SportsSearchIndex @Inject constructor(
         }
     }
 
+    /** RCTV: the teams or the games are loading ("Creating Your Experience" waits for them). */
+    val isLoading: Boolean
+        get() = synchronized(lock) { teamsJob?.isActive == true || gamesJob?.isActive == true }
+
     /** Loads what's missing or old (in the background); nothing when it's all there. */
     fun ensure() {
         val now = System.currentTimeMillis()

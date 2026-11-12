@@ -350,9 +350,12 @@ private fun AdminDialog(onDismiss: () -> Unit) {
     }
 }
 
-/** The page's purple and pink glows and soft curves (as in the owner's design). */
+/**
+ * The page's purple and pink glows and soft curves (as in the owner's design). Also behind
+ * "Creating Your Experience" ([com.nuvio.tv.ui.components.RctvExperienceScreen]).
+ */
 @Composable
-private fun GlowBackground() {
+internal fun GlowBackground() {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height

@@ -1774,6 +1774,7 @@
     <!-- RCTV Control: the TV's activation code page. -->
     <string name="rctv_activation_title">Activa RCTV</string>
     <string name="rctv_activation_subtitle">TV, PELÍCULAS Y MÁS</string>
+    <string name="rctv_experience_title">Creando tu experiencia…</string>
     <string name="rctv_activation_code_label">Código de activación</string>
     <string name="rctv_activation_button">Entrar</string>
     <string name="rctv_activation_busy">Entrando…</string>

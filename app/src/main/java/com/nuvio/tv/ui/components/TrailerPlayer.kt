@@ -72,9 +72,11 @@ fun TrailerPlayer(
     // addresses RCTV reads off YouTube: YouTube's official player gave sound and no picture on the
     // Mi Box. A video that can't be read here is told to [onYouTubeError] (else it just ends).
     val youTubeId = remember(trailerUrl) { com.nuvio.tv.data.trailer.YouTubeVideo.idOf(trailerUrl) }
+    // RCTV: nothing plays behind "Creating Your Experience".
+    val playing = isPlaying && !LocalStartupCovering.current
     if (youTubeId == null) {
         ExoTrailerPlayer(
-            trailerUrl = trailerUrl, trailerAudioUrl = trailerAudioUrl, isPlaying = isPlaying, isPaused = isPaused,
+            trailerUrl = trailerUrl, trailerAudioUrl = trailerAudioUrl, isPlaying = playing, isPaused = isPaused,
             onEnded = onEnded, onFirstFrameRendered = onFirstFrameRendered, muted = muted,
             seekRequestToken = seekRequestToken, seekDeltaMs = seekDeltaMs, onProgressChanged = onProgressChanged,
             onRemoteKey = onRemoteKey, cropToFill = cropToFill, overscanZoom = overscanZoom, modifier = modifier,
@@ -89,8 +91,8 @@ fun TrailerPlayer(
     var source by remember(youTubeId) { mutableStateOf<com.nuvio.tv.data.trailer.TrailerPlaybackSource?>(null) }
     val currentOnYouTubeError by rememberUpdatedState(onYouTubeError)
     val currentOnEnded by rememberUpdatedState(onEnded)
-    LaunchedEffect(youTubeId, isPlaying) {
-        if (!isPlaying || source != null) return@LaunchedEffect
+    LaunchedEffect(youTubeId, playing) {
+        if (!playing || source != null) return@LaunchedEffect
         val found = try {
             extractor.extractPlaybackSource(com.nuvio.tv.data.trailer.YouTubeVideo.watchUrl(youTubeId))
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -106,7 +108,7 @@ fun TrailerPlayer(
     }
     val playable = source ?: return
     ExoTrailerPlayer(
-        trailerUrl = playable.videoUrl, trailerAudioUrl = playable.audioUrl, isPlaying = isPlaying, isPaused = isPaused,
+        trailerUrl = playable.videoUrl, trailerAudioUrl = playable.audioUrl, isPlaying = playing, isPaused = isPaused,
         onEnded = onEnded, onFirstFrameRendered = onFirstFrameRendered, muted = muted,
         seekRequestToken = seekRequestToken, seekDeltaMs = seekDeltaMs, onProgressChanged = onProgressChanged,
         onRemoteKey = onRemoteKey, cropToFill = cropToFill, overscanZoom = overscanZoom, modifier = modifier,

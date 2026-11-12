@@ -360,6 +360,10 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var rctvWatchSync: com.nuvio.tv.core.rctvcontrol.RctvWatchSync
 
+    /** RCTV: what loads behind "Creating Your Experience" (Live TV channels and guide, sports). */
+    @Inject
+    lateinit var experiencePreparer: com.nuvio.tv.core.rctvcontrol.RctvExperiencePreparer
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -504,6 +508,8 @@ open class MainActivity : ComponentActivity() {
             val activeProfileId by profileManager.activeProfileId.collectAsState()
             val startupSplashEnabled by profileManager.startupSplashEnabled.collectAsState()
             val startupLoadingState = remember(activeProfileId, startupSession) { StartupLoadingState() }
+            // RCTV: "Creating Your Experience" is on the screen (Home loads behind it).
+            var startupCovering by remember { mutableStateOf(false) }
             val profiles by profileManager.profiles.collectAsState()
             val hasEverSelectedProfile by profileManager.hasEverSelectedProfile.collectAsState()
             val rememberLastProfileEnabled by profileManager.rememberLastProfileEnabled.collectAsState()
@@ -794,7 +800,8 @@ open class MainActivity : ComponentActivity() {
                     com.nuvio.tv.core.player.LocalTrailerPlayerPool provides trailerPlayerPool,
                     LocalSplashBackground provides splashBackground,
                     LocalStartupLoadingState provides startupLoadingState,
-                    LocalStartupSplashEnabled provides startupSplashEnabled
+                    LocalStartupSplashEnabled provides startupSplashEnabled,
+                    com.nuvio.tv.ui.components.LocalStartupCovering provides startupCovering
                 ) {
                 val transparentPlayerBackdrop = PlayerWindowBackdrop.isTransparentRequested
                 Surface(
@@ -811,7 +818,9 @@ open class MainActivity : ComponentActivity() {
                 ) {
                     // Wrap everything in a Box. This prevents any black flash between
                     // profile selection and the home content
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    // RCTV: while "Creating Your Experience" covers Home, the remote does nothing
+                    // (nothing opens unseen behind it).
+                    Box(modifier = Modifier.fillMaxSize().onPreviewKeyEvent { startupCovering }) {
 
                     var startupDestination = StartupDestination.Loading
                     val surfaceContentReady = hasSeenAuthQrOnFirstLaunch != null &&
@@ -1389,11 +1398,52 @@ open class MainActivity : ComponentActivity() {
                     LaunchedEffect(startupDestination, startupLoadingState) {
                         if (startupDestination == StartupDestination.Content) {
                             startupLoadingState.complete = true
+                            startupLoadingState.experienceReady = true
                         }
+                    }
+                    // RCTV, "Creating Your Experience": besides Home's rows, the Live TV channels and
+                    // guide and the sports load behind it; its bar fills as they come in, and it goes
+                    // when they're all in (or after MAX_WAIT_MS: the rest keeps loading).
+                    val experienceShowing = startupSplashEnabled &&
+                        (startupDestination == StartupDestination.Loading || startupDestination == StartupDestination.Home)
+                    LaunchedEffect(startupLoadingState, experienceShowing) {
+                        if (!experienceShowing || startupLoadingState.experienceReady) return@LaunchedEffect
+                        val startedAt = android.os.SystemClock.elapsedRealtime()
+                        var loaded = 0f
+                        val preparing = launch {
+                            // A load that fails must never keep the screen up: it just counts as done.
+                            try {
+                                experiencePreparer.prepare { loaded = it }
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                            }
+                        }
+                        try {
+                            while (true) {
+                                val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+                                val homeReady = startupLoadingState.complete
+                                // Home has no steps to count: its half creeps up until it's in.
+                                val home = if (homeReady) 1f else (elapsed / EXPERIENCE_HOME_EXPECTED_MS.toFloat()).coerceAtMost(0.85f)
+                                val rest = if (preparing.isCompleted) 1f else loaded
+                                startupLoadingState.progress = maxOf(startupLoadingState.progress, ((home + rest) / 2f).coerceAtMost(0.96f))
+                                if ((homeReady && preparing.isCompleted) ||
+                                    elapsed >= com.nuvio.tv.core.rctvcontrol.RctvExperiencePreparer.MAX_WAIT_MS
+                                ) break
+                                delay(EXPERIENCE_TICK_MS)
+                            }
+                        } finally {
+                            preparing.cancel()
+                            experiencePreparer.finish()
+                        }
+                        startupLoadingState.progress = 1f
+                        // The bar fills before it goes.
+                        delay(EXPERIENCE_FILL_MS)
+                        startupLoadingState.experienceReady = true
                     }
                     val showSplash = shouldShowStartupSplash(
                         enabled = startupSplashEnabled,
-                        complete = startupLoadingState.complete,
+                        complete = startupLoadingState.complete && startupLoadingState.experienceReady,
                         destination = startupDestination
                     )
                     val animatedSplashAlpha by animateFloatAsState(
@@ -1410,13 +1460,12 @@ open class MainActivity : ComponentActivity() {
                             focusedSplashTheme = null
                         }
                     }
+                    SideEffect { startupCovering = splashAlpha > 0f }
                     if (splashAlpha > 0f) {
-                        com.nuvio.tv.ui.components.StartupSplashScreen(
-                            profileColorHex = splashBackground.profileColorHex,
-                            profileBackgroundUrl = splashBackground.backgroundUrl,
-                            backgroundCacheKey = splashBackground.backgroundCacheKey,
-                            skipGradient = splashBackground.skipGradient,
-                            brandWordmarkRes = splashBackground.brandWordmarkRes,
+                        // RCTV (owner's design): "Creating Your Experience" with the RCTV logo and a
+                        // bar that fills as everything loads (it replaced the plain splash).
+                        com.nuvio.tv.ui.components.RctvExperienceScreen(
+                            progress = startupLoadingState.progress,
                             modifier = Modifier.graphicsLayer { alpha = splashAlpha }
                         )
                     }
@@ -2673,3 +2722,10 @@ object LocaleCache {
     @Volatile
     var localeTag: String = UNSET
 }
+
+/** RCTV, "Creating Your Experience": how long Home's rows usually take (its half of the bar creeps up meanwhile). */
+private const val EXPERIENCE_HOME_EXPECTED_MS = 8_000L
+/** How often the bar is updated. */
+private const val EXPERIENCE_TICK_MS = 150L
+/** How long the full bar shows before the screen goes. */
+private const val EXPERIENCE_FILL_MS = 500L
