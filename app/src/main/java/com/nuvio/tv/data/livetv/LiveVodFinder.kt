@@ -32,7 +32,9 @@ import javax.inject.Singleton
  */
 data class LiveVodTarget(
     val match: LiveProgramMatch,
-    val imdbId: String
+    val imdbId: String,
+    /** RCTV: the title's logo, shown while it looks for a source and as it loads (never its name as text). */
+    val logo: String? = null
 ) {
     val isMovie: Boolean get() = match.isMovie
     val contentType: String get() = if (match.isMovie) "movie" else "series"

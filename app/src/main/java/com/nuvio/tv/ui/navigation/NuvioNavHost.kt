@@ -113,6 +113,7 @@ private fun liveVodRoute(target: com.nuvio.tv.data.livetv.LiveVodTarget, fromBeg
         title = target.title,
         poster = target.match.poster,
         backdrop = target.match.backdrop,
+        logo = target.logo,
         season = target.season,
         episode = target.episode,
         episodeName = target.episodeName,

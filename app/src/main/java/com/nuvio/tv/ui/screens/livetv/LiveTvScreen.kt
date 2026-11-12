@@ -282,8 +282,20 @@ fun LiveTvScreen(
                 } else {
                     ({ target ->
                         val fromBeginning = selectedProgram.isAiringAt(System.currentTimeMillis())
+                        val program = selectedProgram
                         viewModel.dismissProgramDetails()
-                        onWatchVod(target, fromBeginning)
+                        // RCTV (owner's rule): the title's logo goes with it (already looked up for the
+                        // guide, or looked up now), so its logo shows while it loads, never its name.
+                        coroutineScope.launch {
+                            val logo = viewModel.cachedProgramArt(program)?.logo ?: try {
+                                viewModel.programArt(program).logo
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                null
+                            }
+                            onWatchVod(target.copy(logo = logo), fromBeginning)
+                        }
                     })
                 },
                 // RCTV: what's on now (chosen in the guide): only "Watch Live" and "Watch From Beginning".
