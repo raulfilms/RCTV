@@ -71,7 +71,9 @@ class SearchViewModel @Inject constructor(
     private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore? = null,
     private val sportsSearchIndex: SportsSearchIndex? = null,
     // RCTV Control: Light searches movies and series only (not the guide, channels or sports).
-    private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null
+    private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null,
+    // RCTV, Kids profiles: only titles for children up to 13 (no channels or sports); none in tests.
+    private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -738,7 +740,8 @@ class SearchViewModel @Inject constructor(
     /** Looks for [query] in the guide and in sports too (the guide and the sports loaded first, when they aren't). */
     private fun updateExtrasQuery(query: String) {
         val light = rctvAccess?.state?.value?.plan == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
-        val wanted = if (query.length >= MIN_SEARCH_QUERY_LENGTH && !light) query else ""
+        val kids = kidsGate?.isActive == true
+        val wanted = if (query.length >= MIN_SEARCH_QUERY_LENGTH && !light && !kids) query else ""
         if (wanted.isNotEmpty()) prepareExtras()
         extrasQuery.value = wanted
     }
@@ -877,7 +880,7 @@ class SearchViewModel @Inject constructor(
                         type = catalog.apiType,
                         catalogId = catalog.id
                     )
-                    catalogsMap[key] = result.data
+                    catalogsMap[key] = kidsOnly(result.data)
                     pendingCatalogResponses = (pendingCatalogResponses - 1).coerceAtLeast(0)
                     scheduleCatalogRowsUpdate()
                 }
@@ -895,6 +898,13 @@ class SearchViewModel @Inject constructor(
                 }
             }
         } }
+    }
+
+    /** RCTV, Kids profile: a row's titles for children up to 13 (all of them on other profiles). */
+    private suspend fun kidsOnly(row: CatalogRow): CatalogRow {
+        val gate = kidsGate ?: return row
+        if (!gate.isActive) return row
+        return row.copy(items = gate.keep(row.items))
     }
 
     private fun isCurrentSearch(generation: Long, query: String): Boolean =
@@ -948,7 +958,7 @@ class SearchViewModel @Inject constructor(
                     is NetworkResult.Success -> {
                         if (!isCurrentSearch(generation, query)) return@collect
                         val latestRow = catalogsMap[key] ?: return@collect
-                        catalogsMap[key] = latestRow.mergeCatalogPage(result.data)
+                        catalogsMap[key] = latestRow.mergeCatalogPage(kidsOnly(result.data))
                         scheduleCatalogRowsUpdate()
                     }
                     is NetworkResult.Error -> {
@@ -1221,7 +1231,8 @@ class SearchViewModel @Inject constructor(
                 if (_uiState.value.discoverLocation == DiscoverLocation.OFF) return@collect
                 when (result) {
                     is NetworkResult.Success -> {
-                        val incoming = result.data.items
+                        // RCTV, Kids profile: only its titles.
+                        val incoming = kidsGate?.keep(result.data.items) ?: result.data.items
                         val existing = if (reset) {
                             emptyList()
                         } else {

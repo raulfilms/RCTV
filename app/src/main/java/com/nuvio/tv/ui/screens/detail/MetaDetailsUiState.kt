@@ -29,6 +29,10 @@ data class MetaDetailsUiState(
     val isLoading: Boolean = true,
     val meta: Meta? = null,
     val error: String? = null,
+    /** RCTV, Kids profile: the title's age rating is being checked (nothing plays until it is). */
+    val kidsPending: Boolean = false,
+    /** RCTV, Kids profile: the title isn't for children up to 13 (it can't be watched here). */
+    val kidsBlocked: Boolean = false,
     val selectedSeason: Int = 1,
     val seasons: List<Int> = emptyList(),
     val episodesForSeason: List<Video> = emptyList(),

@@ -98,6 +98,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -563,13 +564,14 @@ fun ProfileSelectionScreen(
                 avatarCatalog = avatarCatalog,
                 isCreating = isCreating,
                 onDismiss = { if (!isCreating) showCreateProfile = false },
-                onCreateProfile = { name, colorHex, avatarId, copyFromProfileId, copyProviderCredentials ->
+                onCreateProfile = { name, colorHex, avatarId, copyFromProfileId, copyProviderCredentials, isKids ->
                     viewModel.createProfile(
                         name = name,
                         avatarColorHex = colorHex,
                         avatarId = avatarId,
                         copyFromProfileId = copyFromProfileId,
-                        copyProviderCredentials = copyProviderCredentials
+                        copyProviderCredentials = copyProviderCredentials,
+                        isKids = isKids
                     ) { result ->
                         when (result) {
                             is CreateProfileResult.Created -> {
@@ -1432,12 +1434,15 @@ private fun CreateProfileOverlay(
         colorHex: String,
         avatarId: String?,
         copyFromProfileId: Int?,
-        copyProviderCredentials: Boolean
+        copyProviderCredentials: Boolean,
+        isKids: Boolean
     ) -> Unit
 ) {
     BackHandler(onBack = onDismiss)
 
     var profileName by remember { mutableStateOf("") }
+    // RCTV: a Kids profile (movies and shows up to 13, family and kids channels).
+    var isKids by remember { mutableStateOf(false) }
     var selectedColorHex by remember { mutableStateOf("#1E88E5") }
     var selectedAvatarId by remember { mutableStateOf<String?>(null) }
     var focusedAvatarName by remember { mutableStateOf<String?>(null) }
@@ -1523,7 +1528,8 @@ private fun CreateProfileOverlay(
                                 selectedColorHex,
                                 selectedAvatarId,
                                 selectedCopySourceId,
-                                copyProviderCredentials
+                                copyProviderCredentials,
+                                isKids
                             )
                         }
                     )
@@ -1587,6 +1593,22 @@ private fun CreateProfileOverlay(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isCreating,
                         onClick = { showSettingsSourceDialog = true }
+                    )
+
+                    // RCTV: Kids profile, on or off.
+                    OverlayButton(
+                        text = stringResource(if (isKids) R.string.profile_kids_on else R.string.profile_kids_off),
+                        isPrimary = isKids,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isCreating,
+                        onClick = { isKids = !isKids }
+                    )
+                    Text(
+                        text = stringResource(R.string.profile_kids_hint),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = NuvioTheme.colors.TextTertiary,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
                     )
 
                 }
@@ -1796,6 +1818,8 @@ private fun EditProfileOverlay(
     }
     var selectedEditorTab by remember(profile.id) { mutableStateOf(ProfileEditorTab.Avatar) }
     var focusedAvatarName by remember { mutableStateOf<String?>(null) }
+    // RCTV: a Kids profile (not the main profile).
+    var isKids by remember(profile.id, profile.isKids) { mutableStateOf(profile.isKids) }
     val selectedAvatar = remember(avatarCatalog, selectedAvatarId) {
         avatarCatalog.find { it.id == selectedAvatarId }
     }
@@ -1824,7 +1848,8 @@ private fun EditProfileOverlay(
                 avatarId = if (selectedAvatarUrl != null) null else selectedAvatarId,
                 avatarUrl = selectedAvatarUrl,
                 profileBackgroundId = selectedBackgroundId,
-                profileBackgroundUrl = selectedBackgroundUrl
+                profileBackgroundUrl = selectedBackgroundUrl,
+                isKids = isKids && !profile.isPrimary
             )
         )
     }
@@ -1969,6 +1994,14 @@ private fun EditProfileOverlay(
                                 icon = Icons.Default.LockOpen,
                                 title = stringResource(R.string.profile_pin_remove),
                                 onClick = onRemovePin
+                            )
+                        }
+                        if (!profile.isPrimary) {
+                            EditSettingRow(
+                                icon = Icons.Default.ChildCare,
+                                title = stringResource(R.string.profile_kids_label),
+                                value = stringResource(if (isKids) R.string.profile_edit_on else R.string.profile_edit_off),
+                                onClick = { isKids = !isKids }
                             )
                         }
                         if (canCopySettings) {

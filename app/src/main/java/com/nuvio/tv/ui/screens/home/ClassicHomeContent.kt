@@ -344,9 +344,11 @@ fun ClassicHomeContent(
         discoverRows.none { it.isLoading } &&
             discoverRows.none { it.spec.kind == DisneyRowKind.CATALOG && it.isShown() }
         )
-    val visibleHomeRows = remember(uiState.homeRows, uiState.catalogRows, tmdbRowsFailed) {
+    // RCTV, Kids profile: only the TMDB rows (checked for children up to 13), never the addons' rows.
+    val kidsProfile = com.nuvio.tv.ui.components.LocalKidsProfile.current
+    val visibleHomeRows = remember(uiState.homeRows, uiState.catalogRows, tmdbRowsFailed, kidsProfile) {
         when {
-            !tmdbRowsFailed -> emptyList<HomeRow>()
+            !tmdbRowsFailed || kidsProfile -> emptyList<HomeRow>()
             uiState.homeRows.isNotEmpty() -> uiState.homeRows
             else -> uiState.catalogRows.filter { it.items.isNotEmpty() }.map { HomeRow.Catalog(it) }
         }

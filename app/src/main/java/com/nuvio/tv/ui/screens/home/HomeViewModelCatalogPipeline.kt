@@ -582,11 +582,18 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             val custom = titlesSnapshot[key]
             if (!custom.isNullOrBlank()) row.copy(catalogName = custom) else row
         }
-        val orderedRows = if (hideUnreleased) {
+        val releasedRows = if (hideUnreleased) {
             val today = LocalDate.now()
             rawRows.map { it.filterReleasedItems(today) }
         } else {
             rawRows
+        }
+        // RCTV, Kids profile: the rows and the hero keep only titles for children up to 13.
+        val gate = kidsGate
+        val orderedRows = if (gate != null && gate.isActive) {
+            releasedRows.map { row -> row.copy(items = gate.keep(row.items)) }
+        } else {
+            releasedRows
         }
         val selectedHeroCatalogSet = heroCatalogKeys.toSet()
         val orderedKeySet = orderedKeys.toSet()

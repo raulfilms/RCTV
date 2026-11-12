@@ -57,6 +57,13 @@ class ProfileManager @Inject constructor(
             UserProfile(id = 1, name = context.getString(R.string.profile_default_name, 1), avatarColorHex = "#1E88E5")
         ))
 
+    /** RCTV: true while the profile watching is a Kids profile (see KidsContentGate). */
+    val kidsProfileActive: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(
+        profileDataStore.profilesList,
+        profileDataStore.activeProfileId
+    ) { list, id -> list.firstOrNull { it.id == id }?.isKids == true }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
     val activeProfile: UserProfile?
         get() = profiles.value.find { it.id == activeProfileId.value }
 
@@ -90,7 +97,8 @@ class ProfileManager @Inject constructor(
         avatarColorHex: String,
         usesPrimaryAddons: Boolean = false,
         usesPrimaryPlugins: Boolean = false,
-        avatarId: String? = null
+        avatarId: String? = null,
+        isKids: Boolean = false
     ): UserProfile? {
         val current = profiles.value
         if (current.size >= MAX_PROFILES) return null
@@ -104,7 +112,8 @@ class ProfileManager @Inject constructor(
             avatarColorHex = avatarColorHex,
             usesPrimaryAddons = usesPrimaryAddons,
             usesPrimaryPlugins = usesPrimaryPlugins,
-            avatarId = avatarId
+            avatarId = avatarId,
+            isKids = isKids
         )
         factory.markProfileCreated(nextId)
         profileDataStore.upsertProfile(profile)

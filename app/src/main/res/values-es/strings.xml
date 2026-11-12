@@ -1778,4 +1778,10 @@
     <string name="rctv_activation_wrong_code">Ese código no funcionó. Revísalo y vuelve a intentar.</string>
     <string name="rctv_activation_too_many">Demasiados intentos. Espera un minuto y vuelve a intentar.</string>
     <string name="rctv_activation_no_connection">No se pudo conectar. Revisa el internet y vuelve a intentar.</string>
+    <!-- RCTV: Kids profiles. -->
+    <string name="profile_kids_label">Perfil Kids</string>
+    <string name="profile_kids_on">Perfil Kids: Sí</string>
+    <string name="profile_kids_off">Perfil Kids: No</string>
+    <string name="profile_kids_hint">Películas y series para 13 años o menos. Solo canales de familia y niños.</string>
+    <string name="kids_title_blocked">Este título no está disponible en un perfil Kids.</string>
 </resources>

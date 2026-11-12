@@ -418,10 +418,13 @@ open class MainActivity : ComponentActivity() {
             val rowLayout by rowLayoutRepository.config.collectAsState()
             val rctvAccessState by rctvAccess.state.collectAsState()
             val rctvPlan = rctvAccessState.plan
+            // RCTV: a Kids profile (movies and shows up to 13, family and kids channels, no Sports).
+            val kidsProfileActive by profileManager.kidsProfileActive.collectAsState()
             CompositionLocalProvider(
                 com.nuvio.tv.ui.components.LocalTitleArtResolver provides titleArtService,
                 com.nuvio.tv.ui.components.LocalRowLayout provides rowLayout,
-                com.nuvio.tv.ui.components.LocalRctvPlan provides rctvPlan
+                com.nuvio.tv.ui.components.LocalRctvPlan provides rctvPlan,
+                com.nuvio.tv.ui.components.LocalKidsProfile provides kidsProfileActive
             ) {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
             var startupSession by remember { mutableIntStateOf(0) }
@@ -1103,7 +1106,7 @@ open class MainActivity : ComponentActivity() {
                     }
 
                     val rctvLight = rctvPlan == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
-                    val rootRoutes = remember(discoverLocation, rctvLight) {
+                    val rootRoutes = remember(discoverLocation, rctvLight, kidsProfileActive) {
                         buildSet {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
@@ -1113,7 +1116,8 @@ open class MainActivity : ComponentActivity() {
                             // "Movies & TV", whose Home is already movies and series).
                             if (!rctvLight) {
                                 add(Screen.LiveTv.route)
-                                add(Screen.Sports.route)
+                                // A Kids profile has no Sports (its games play on sports channels).
+                                if (!kidsProfileActive) add(Screen.Sports.route)
                                 // "Movies & TV" (a copy of Home) is always in the menu. Disney+ left the
                                 // menu (it opens from the Streaming Services row, so Back returns Home).
                                 add(Screen.MoviesTv.route)
@@ -1141,7 +1145,8 @@ open class MainActivity : ComponentActivity() {
                         strNavSports,
                         strNavMoviesTv,
                         strNavSettings,
-                        rctvLight
+                        rctvLight,
+                        kidsProfileActive
                     ) {
                         val everyItem = listOf(
                             DrawerItem(
@@ -1180,18 +1185,25 @@ open class MainActivity : ComponentActivity() {
                                 icon = Icons.Default.Settings
                             )
                         )
-                        if (rctvLight) everyItem.filter { it.route in RCTV_LIGHT_MENU_ROUTES } else everyItem
+                        val planItems = if (rctvLight) everyItem.filter { it.route in RCTV_LIGHT_MENU_ROUTES } else everyItem
+                        if (kidsProfileActive) planItems.filterNot { it.route == Screen.Sports.route } else planItems
                     }
 
                     // RCTV Control: when the plan becomes Light (a trial ended, the website changed it),
                     // whatever is Full only (the Guide, a channel, Sports, a live channel playing) closes
                     // and Home shows.
-                    LaunchedEffect(rctvLight, actualRoute, navBackStackEntry) {
-                        if (!rctvLight) return@LaunchedEffect
+                    LaunchedEffect(rctvLight, kidsProfileActive, actualRoute, navBackStackEntry) {
+                        if (!rctvLight && !kidsProfileActive) return@LaunchedEffect
                         val route = actualRoute ?: return@LaunchedEffect
                         val livePlaying = route == Screen.Player.route &&
                             navBackStackEntry?.arguments?.getString("contentType") == "live"
-                        if (route in RCTV_FULL_ONLY_ROUTES || livePlaying) {
+                        val leave = if (rctvLight) {
+                            route in RCTV_FULL_ONLY_ROUTES || livePlaying
+                        } else {
+                            // A Kids profile: no Sports pages.
+                            route in KIDS_HIDDEN_ROUTES
+                        }
+                        if (leave) {
                             navController.navigate(Screen.Home.route) {
                                 popUpTo(navController.graph.startDestinationId) { saveState = false }
                                 launchSingleTop = true
@@ -2472,6 +2484,16 @@ private val RCTV_LIGHT_MENU_ROUTES: Set<String> = setOf(
     Screen.Home.route,
     Screen.Library.route,
     Screen.Settings.route
+)
+
+/** RCTV: a Kids profile has no Sports pages (their games play on sports channels). */
+private val KIDS_HIDDEN_ROUTES: Set<String> = setOf(
+    Screen.Sports.route,
+    Screen.SportsFavorites.route,
+    Screen.SportsTeams.route,
+    Screen.SportsLeagueDetail.route,
+    Screen.SportsTeamDetail.route,
+    Screen.SportsGameDetail.route
 )
 
 /** RCTV Control: pages only Full has (live TV, channels, sports); Light never stays on them. */

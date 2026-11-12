@@ -257,6 +257,10 @@ interface TmdbApi {
         @Query("release_date.lte") anyReleaseDateLte: String? = null,
         @Query("with_release_type") withReleaseType: String? = null,
         @Query("region") region: String? = null,
+        /** RCTV, Kids profiles: only movies rated up to [certificationLte] in [certificationCountry]. */
+        @Query("certification_country") certificationCountry: String? = null,
+        @Query("certification.gte") certificationGte: String? = null,
+        @Query("certification.lte") certificationLte: String? = null,
         /**
          * RCTV: TMDB leaves out titles it flags as "video" (shorts and specials released on video,
          * like Walt Disney Animation's) unless asked; its company and network pages count them, so

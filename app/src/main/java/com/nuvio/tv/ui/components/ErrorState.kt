@@ -32,7 +32,9 @@ import com.nuvio.tv.R
 fun ErrorState(
     message: String,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The button's text ("Retry" when none). */
+    actionLabel: String? = null
 ) {
     val displayMessage = buildErrorStatePresentation(
         message = message,
@@ -61,7 +63,7 @@ fun ErrorState(
             ),
             shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
         ) {
-            Text(stringResource(R.string.action_retry))
+            Text(actionLabel ?: stringResource(R.string.action_retry))
         }
     }
 }

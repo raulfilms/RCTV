@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -76,15 +77,23 @@ class LiveTvGuideLoader @Inject constructor(
     private val liveTvDataStore: LiveTvDataStore,
     private val xtreamClient: XtreamClient,
     private val stalkerClient: StalkerClient,
-    @Named("addon") private val okHttpClient: OkHttpClient
+    @Named("addon") private val okHttpClient: OkHttpClient,
+    /** RCTV, Kids profiles: only family and kids channels. */
+    private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
 
     private val _guide = MutableStateFlow<LiveGuideSnapshot?>(null)
 
-    /** The guide last loaded (or loading), for the sources in its [LiveGuideSnapshot.key]. */
-    val guide: StateFlow<LiveGuideSnapshot?> = _guide.asStateFlow()
+    /**
+     * The guide last loaded (or loading), for the sources in its [LiveGuideSnapshot.key]. On a Kids
+     * profile only its family and kids channels are in it (the Guide, a channel's page, the player's
+     * channel up / down, Search, Home's Top Channels all read it).
+     */
+    val guide: StateFlow<LiveGuideSnapshot?> = kotlinx.coroutines.flow.combine(_guide, kidsGate.active) { g, kids ->
+        if (kids) g?.kidsOnly() else g
+    }.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, null)
 
     init {
         // RCTV (MEM-09): the guide's size and state in the session notes (counts only).
@@ -656,4 +665,20 @@ class LiveTvGuideLoader @Inject constructor(
         private const val SAVED_VERSION = 2
         private const val MAX_SAVED_TEXT_BYTES = 1_000_000
     }
+}
+
+/**
+ * RCTV, Kids profiles: the guide with only its family and kids channels (the Guide's Kids category:
+ * their programs or their names, see [LiveTvGuideCategories]).
+ */
+internal fun LiveGuideSnapshot.kidsOnly(): LiveGuideSnapshot {
+    val kept = channels.filter { GuideBrowse.KIDS in channelCategories[it.id].orEmpty() }
+    val ids = kept.mapTo(HashSet()) { it.id }
+    val guideIds = kept.mapNotNullTo(HashSet(ids)) { it.epgChannelId }
+    return copy(
+        channels = kept,
+        groups = groups.filter { group -> kept.any { it.groupTitle == group } },
+        epgByChannel = epgByChannel.filterKeys { it in guideIds },
+        channelCategories = channelCategories.filterKeys { it in ids }
+    )
 }

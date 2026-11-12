@@ -13,6 +13,7 @@ import com.nuvio.tv.domain.model.AuthState
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.addJsonObject
@@ -114,8 +115,12 @@ class ProfileSyncService @Inject constructor(
 
                 Log.d(TAG, "pullFromRemote: fetched ${remote.size} profiles from Supabase")
 
+                // RCTV: Kids is kept on this TV (the remote profiles don't have it).
+                val kidsIds = runCatching { profileDataStore.profilesList.first() }.getOrDefault(emptyList())
+                    .filter { it.isKids }.map { it.id }.toSet()
                 val profiles = remote.map { entry ->
                     UserProfile(
+                        isKids = entry.profileIndex in kidsIds,
                         id = entry.profileIndex,
                         name = entry.name,
                         avatarColorHex = entry.avatarColorHex,

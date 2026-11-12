@@ -81,7 +81,9 @@ class HomeViewModel @Inject constructor(
     internal val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     internal val cwEnrichmentCache: ContinueWatchingEnrichmentCache,
     internal val profileManager: com.nuvio.tv.core.profile.ProfileManager,
-    internal val tvRecommendationManager: TvRecommendationManager
+    internal val tvRecommendationManager: TvRecommendationManager,
+    /** RCTV, Kids profiles: only titles for children up to 13 (none in tests). */
+    internal val kidsGate: com.nuvio.tv.core.kids.KidsContentGate? = null
 ) : ViewModel() {
     companion object {
         internal const val TAG = "HomeViewModel"

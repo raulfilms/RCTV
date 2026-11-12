@@ -124,7 +124,9 @@ internal object LiveTvGuideCategories {
         GuideBrowse.KIDS to words(
             "disney", "disney jr", "disney xd", "nick", "nickelodeon", "nick jr", "nicktoons", "teennick",
             "cartoon", "boomerang", "pbs kids", "baby", "kids", "universal kids", "discovery family",
-            "babyfirst", "duck tv"
+            "babyfirst", "duck tv",
+            // RCTV: family and kids channels in English and Spanish (Kids profiles only see these).
+            "family", "familia", "infantil", "niños", "ninos", "cartoonito", "discovery kids", "boing", "clan"
         ),
         GuideBrowse.DOCUMENTARIES to words(
             "discovery", "nat geo", "national geographic", "history", "smithsonian", "science",

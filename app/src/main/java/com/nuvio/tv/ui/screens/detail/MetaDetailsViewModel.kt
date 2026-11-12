@@ -64,6 +64,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -112,6 +113,8 @@ class MetaDetailsViewModel @Inject constructor(
     private val addonRepository: com.nuvio.tv.domain.repository.AddonRepository,
     private val streamRepository: com.nuvio.tv.domain.repository.StreamRepository,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
+    /** RCTV, Kids profiles: only titles for children up to 13. */
+    private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val itemId: String = savedStateHandle["itemId"] ?: ""
@@ -164,6 +167,7 @@ class MetaDetailsViewModel @Inject constructor(
 
     init {
         posterOptions.bind(viewModelScope)
+        checkKidsRating()
         observeMetaViewSettings()
         observeTrailerAutoplaySettings()
         observeTraktCommentsAvailability()
@@ -688,6 +692,21 @@ class MetaDetailsViewModel @Inject constructor(
                     if (state.showFullReleaseDate == enabled) state else state.copy(showFullReleaseDate = enabled)
                 }
             }
+        }
+    }
+
+    /**
+     * RCTV, Kids profile: the page shows (and plays) only once the title's age rating is checked,
+     * and only when it's for children up to 13.
+     */
+    private fun checkKidsRating() {
+        if (!kidsGate.isActive) return
+        _uiState.update { it.copy(kidsPending = true) }
+        viewModelScope.launch {
+            val meta = uiState.map { it.meta }.filterNotNull().first()
+            val isTv = itemType.equals("series", true) || itemType.equals("tv", true)
+            val allowed = kidsGate.allows(meta.id.ifBlank { itemId }, isTv, meta.genres, meta.imdbId)
+            _uiState.update { it.copy(kidsPending = false, kidsBlocked = !allowed) }
         }
     }
 
@@ -1337,12 +1356,14 @@ class MetaDetailsViewModel @Inject constructor(
             }
 
             val pattern = layoutPreferenceDataStore.customPosterUrlPattern.first()
-            val recommendations = if (hideUnreleasedContent) {
-                val today = LocalDate.now()
-                rawRecommendations.filterNot { it.isUnreleased(today) }
-            } else {
-                rawRecommendations
-            }.withCustomPosterUrls(pattern)
+            val recommendations = kidsGate.keep(
+                if (hideUnreleasedContent) {
+                    val today = LocalDate.now()
+                    rawRecommendations.filterNot { it.isUnreleased(today) }
+                } else {
+                    rawRecommendations
+                }
+            ).withCustomPosterUrls(pattern)
 
             _uiState.update { state ->
                 if (state.meta == null || state.meta.id == meta.id) {
@@ -1395,7 +1416,7 @@ class MetaDetailsViewModel @Inject constructor(
                 collection.items.filterNot { it.isUnreleased(today) }
             } else {
                 collection.items
-            }.withCustomPosterUrls(collectionPattern)
+            }.let { kidsGate.keep(it) }.withCustomPosterUrls(collectionPattern)
 
             _uiState.update { state ->
                 state.copy(

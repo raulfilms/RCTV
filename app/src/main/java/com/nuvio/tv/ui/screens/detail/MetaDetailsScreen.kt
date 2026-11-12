@@ -672,11 +672,23 @@ fun MetaDetailsScreen(
                     MetaDetailsSkeleton(backdropAware = !heroBackdropUrl.isNullOrBlank())
                 }
             }
+            // RCTV, Kids profile: a title that isn't for children up to 13 can't be watched here.
+            uiState.kidsBlocked -> {
+                ErrorState(
+                    message = stringResource(R.string.kids_title_blocked),
+                    onRetry = onBackPress,
+                    actionLabel = stringResource(R.string.action_back)
+                )
+            }
             uiState.error != null -> {
                 ErrorState(
                     message = uiState.error ?: stringResource(R.string.error_generic),
                     onRetry = { viewModel.onEvent(MetaDetailsEvent.OnRetry) }
                 )
+            }
+            // RCTV, Kids profile: still checking the title's age rating (nothing plays yet).
+            uiState.kidsPending && uiState.meta != null -> {
+                MetaDetailsSkeleton(backdropAware = false)
             }
             uiState.meta != null -> {
                 val meta = uiState.meta!!

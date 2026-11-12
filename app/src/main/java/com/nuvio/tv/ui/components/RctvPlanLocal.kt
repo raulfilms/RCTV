@@ -8,3 +8,9 @@ import com.nuvio.tv.core.rctvcontrol.RctvPlan
  * channels or sports anywhere); Full shows everything. Full where nothing provides it.
  */
 val LocalRctvPlan = compositionLocalOf { RctvPlan.FULL }
+
+/**
+ * RCTV: true while a Kids profile is watching (movies and shows up to 13, family and kids channels,
+ * no Sports).
+ */
+val LocalKidsProfile = compositionLocalOf { false }

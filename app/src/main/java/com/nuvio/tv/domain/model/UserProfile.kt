@@ -9,7 +9,12 @@ data class UserProfile(
     val avatarId: String? = null,
     val avatarUrl: String? = null,
     val profileBackgroundId: String? = null,
-    val profileBackgroundUrl: String? = null
+    val profileBackgroundUrl: String? = null,
+    /**
+     * RCTV: a Kids profile only shows movies and shows for children up to 13, and only family and
+     * kids channels (see KidsContentGate).
+     */
+    val isKids: Boolean = false
 ) {
     val isPrimary: Boolean get() = id == 1
 }

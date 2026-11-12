@@ -41,6 +41,9 @@ import javax.inject.Singleton
 
 private const val TAG = "DisneyPlusRepository"
 private const val ROW_ITEM_CAP = 30
+/** RCTV, Kids profiles: movies rated up to this (US); shows of TMDB's Kids or Family genres. */
+private const val KIDS_MOVIE_CERTIFICATION = "PG-13"
+private const val KIDS_TV_GENRES = "10762|10751"
 /** TMDB release types: theatrical (limited, then wide). */
 private const val THEATRICAL_RELEASE_TYPES = "2|3"
 private const val HERO_ITEM_COUNT = 6
@@ -72,7 +75,9 @@ class DisneyPlusRepository @Inject constructor(
     private val tmdbService: TmdbService,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val titleArt: TmdbTitleArtService,
-    private val titleSpotlight: com.nuvio.tv.core.tmdb.TmdbTitleSpotlightService
+    private val titleSpotlight: com.nuvio.tv.core.tmdb.TmdbTitleSpotlightService,
+    /** RCTV, Kids profiles: only titles for children up to 13. */
+    private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
 
@@ -129,7 +134,8 @@ class DisneyPlusRepository @Inject constructor(
         forceRefresh: Boolean = false
     ): CatalogRow? =
         withContext(Dispatchers.IO) {
-            val cacheKey = "${hub.key}:${spec.id}"
+            // A Kids profile's rows are its own (kids' queries).
+            val cacheKey = "${hub.key}:${spec.id}" + if (kidsGate.isActive) ":kids" else ""
             val cached = if (forceRefresh) null else rowCache[cacheKey]
             val items = cached ?: run {
                 val language = language()
@@ -167,7 +173,9 @@ class DisneyPlusRepository @Inject constructor(
             }
             // The row shows as soon as its titles are known; each horizontal card finds its title art
             // as it appears on screen (LocalTitleArtResolver), so nothing waits on those lookups.
-            if (items.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, items)
+            // RCTV, Kids profile: only its titles.
+            val shownItems = kidsGate.keep(items)
+            if (shownItems.isEmpty()) null else buildRow("disney_${hub.key}_${spec.id}", title, shownItems)
         }
 
     /** The service's titles in the genres the person watches most. Falls back to its best-rated titles. */
@@ -213,8 +221,9 @@ class DisneyPlusRepository @Inject constructor(
                 }
             }.awaitAll()
         }
-        val items = interleave(perSource)
-            .filterNot { it.id in watchedTmdbIds || it.id in excludeIds }
+        val items = kidsGate.keep(
+            interleave(perSource).filterNot { it.id in watchedTmdbIds || it.id in excludeIds }
+        )
         if (items.isEmpty()) null else buildRow("disney_${hub.key}_recommended", title, items)
     }
 
@@ -295,7 +304,8 @@ class DisneyPlusRepository @Inject constructor(
             // scroll instead of treating it as the end of the list.
             if (failures == jobCount) throw java.io.IOException("Row ${spec.id}: nothing could be loaded")
             if (localFailures == 0) localPending = false
-            interleave(perSource, cap = Int.MAX_VALUE)
+            // RCTV, Kids profile: only its titles.
+            kidsGate.keep(interleave(perSource, cap = Int.MAX_VALUE))
         }
     }
 
@@ -925,6 +935,10 @@ class DisneyPlusRepository @Inject constructor(
             .filter { it.isNotBlank() }
             .joinToString("|")
             .ifBlank { null }
+        // RCTV, Kids profile: movies rated G to PG-13 (US); shows of TMDB's Kids or Family genres
+        // when the query has no genre of its own. Every title is then checked (KidsContentGate).
+        val kids = kidsGate.isActive
+        val tvGenres = if (kids && source.genres.isNullOrBlank()) KIDS_TV_GENRES else source.genres
         val response = when (source.mediaType) {
             TmdbCollectionMediaType.MOVIE -> tmdbApi.discoverMovies(
                 apiKey = apiKey,
@@ -953,7 +967,11 @@ class DisneyPlusRepository @Inject constructor(
                 withRuntimeGte = source.runtimeGte,
                 withRuntimeLte = source.runtimeLte,
                 withOriginalLanguage = source.originalLanguage,
-                withoutCompanies = source.withoutCompanies
+                withoutCompanies = source.withoutCompanies,
+                // G to PG-13: never "NR" (unrated). Each title is still checked (KidsContentGate).
+                certificationCountry = if (kids) "US" else null,
+                certificationGte = if (kids) "G" else null,
+                certificationLte = if (kids) KIDS_MOVIE_CERTIFICATION else null
             )
             TmdbCollectionMediaType.TV -> tmdbApi.discoverTv(
                 apiKey = apiKey,
@@ -964,7 +982,7 @@ class DisneyPlusRepository @Inject constructor(
                 withNetworks = networks,
                 firstAirDateLte = releaseLte,
                 voteCountGte = source.voteCountGte,
-                withGenres = source.genres,
+                withGenres = tvGenres,
                 firstAirDateGte = releaseGte,
                 voteCountLte = source.voteCountLte,
                 voteAverageGte = source.voteAverageGte,
