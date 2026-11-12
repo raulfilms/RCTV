@@ -13,8 +13,17 @@ import com.nuvio.tv.domain.model.SportsNewsArticle
 import com.nuvio.tv.domain.model.SportsStandingsGroup
 import com.nuvio.tv.domain.model.SportsTeam
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -23,8 +32,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-/** Which section of a league's page is showing, mirroring the tab bar in the mockup. */
-enum class LeagueDetailTab { HOME, GAMES, TEAMS, STANDINGS, SCHEDULE, NEWS, HIGHLIGHTS, VIDEOS }
+/**
+ * Which section of a league's page is showing (RCTV, owner's menu: Home, Games, Teams, Standings,
+ * News, Highlights; the schedule is Games' "By week").
+ */
+enum class LeagueDetailTab { HOME, GAMES, TEAMS, STANDINGS, NEWS, HIGHLIGHTS }
+
+/** RCTV: the Games tab's filters. */
+enum class LeagueGamesFilter { LIVE, UPCOMING, COMPLETED, BY_WEEK }
 
 data class LeagueDetailUiState(
     val isLoading: Boolean = true,
@@ -48,11 +63,31 @@ data class LeagueDetailUiState(
     val isLoadingStandings: Boolean = false,
     val standingsLoaded: Boolean = false,
 
-    // Schedule tab (lazy, week-by-week).
+    /** RCTV: the Games tab's filter (null: Live when games are on, else Upcoming). */
+    val gamesFilter: LeagueGamesFilter? = null,
+    /** RCTV: the games played lately, the latest first (Games' Completed). */
+    val completedEvents: List<SportsEvent> = emptyList(),
+
+    // Schedule by week (Home's schedule row and Games' By week).
     val scheduleWeekOffset: Int = 0,
+    /** A football league's week and season part (1 pre, 2 regular, 3 post), as ESPN numbers them. */
+    val scheduleWeekNumber: Int? = null,
+    val scheduleSeasonType: Int? = null,
+    /** The week's first and last day shown (leagues not played by weeks). */
+    val scheduleRangeStartMs: Long? = null,
     val scheduleEvents: List<SportsEvent> = emptyList(),
     val isLoadingSchedule: Boolean = false,
     val scheduleLoaded: Boolean = false,
+
+    // RCTV (owner's rows): the league's channels and game replays in the IPTV lineup, and what's on them.
+    val channels: List<LeagueChannelItem> = emptyList(),
+    val replays: List<LeagueChannelItem> = emptyList(),
+    val channelPrograms: Map<String, String> = emptyMap(),
+
+    // RCTV: the league's latest official highlights (YouTube).
+    val highlights: List<com.nuvio.tv.data.trailer.YouTubeSearchResult> = emptyList(),
+    val isLoadingHighlights: Boolean = false,
+    val highlightsLoaded: Boolean = false,
 
     // News tab (lazy).
     val news: List<SportsNewsArticle> = emptyList(),
@@ -76,6 +111,9 @@ class LeagueDetailViewModel @Inject constructor(
     private val libraryPreferences: LibraryPreferences,
     private val sportsLibraryStore: com.nuvio.tv.data.local.SportsLibraryStore,
     private val bananaBallLive: BananaBallLive,
+    private val guideLoader: com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader,
+    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore,
+    private val youTubeSearch: com.nuvio.tv.data.trailer.YouTubeVideoSearch,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -114,6 +152,7 @@ class LeagueDetailViewModel @Inject constructor(
             }
         }
         loadHome()
+        watchLineup()
     }
 
     private fun loadHome() {
@@ -137,6 +176,8 @@ class LeagueDetailViewModel @Inject constructor(
                     .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
                 val upcomingEvents = feedResult.events.filter { it.status == SportsEventStatus.UPCOMING }
                     .sortedBy { it.startTimeMs ?: Long.MAX_VALUE }
+                val completedEvents = feedResult.events.filter { it.status == SportsEventStatus.FINISHED }
+                    .sortedByDescending { it.startTimeMs ?: Long.MIN_VALUE }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -145,9 +186,13 @@ class LeagueDetailViewModel @Inject constructor(
                         featuredEvent = liveEvents.firstOrNull() ?: upcomingEvents.firstOrNull(),
                         liveEvents = liveEvents,
                         upcomingEvents = upcomingEvents,
+                        completedEvents = completedEvents,
                         allEvents = feedResult.events.sortedBy { event -> event.startTimeMs ?: Long.MAX_VALUE }
                     )
                 }
+                // RCTV (owner's rows): Home shows the week's schedule and the league's highlights too.
+                loadScheduleIfNeeded()
+                loadHighlightsIfNeeded()
             }.onFailure { throwable ->
                 _uiState.update { it.copy(isLoading = false, error = throwable.message ?: "error") }
             }
@@ -161,10 +206,17 @@ class LeagueDetailViewModel @Inject constructor(
         when (tab) {
             LeagueDetailTab.TEAMS -> loadTeamsIfNeeded()
             LeagueDetailTab.STANDINGS -> loadStandingsIfNeeded()
-            LeagueDetailTab.SCHEDULE -> loadScheduleIfNeeded()
+            LeagueDetailTab.GAMES -> loadScheduleIfNeeded()
             LeagueDetailTab.NEWS -> loadNewsIfNeeded()
+            LeagueDetailTab.HIGHLIGHTS -> loadHighlightsIfNeeded()
             else -> Unit
         }
+    }
+
+    /** RCTV: the Games tab's filter. */
+    fun selectGamesFilter(filter: LeagueGamesFilter) {
+        _uiState.update { it.copy(gamesFilter = filter) }
+        if (filter == LeagueGamesFilter.BY_WEEK) loadScheduleIfNeeded()
     }
 
     private fun loadTeamsIfNeeded() {
@@ -205,6 +257,12 @@ class LeagueDetailViewModel @Inject constructor(
 
     private fun loadScheduleIfNeeded() {
         if (uiState.value.scheduleLoaded || uiState.value.isLoadingSchedule) return
+        // RCTV: football is played by weeks ("Week 3"): ESPN's current week.
+        val currentFeed = feed
+        if (currentFeed != null && client.isWeekly(currentFeed)) {
+            loadFootballWeek(week = null, seasonType = null)
+            return
+        }
         var weekOffset = uiState.value.scheduleWeekOffset
         // Between seasons: the schedule opens on the week its next game is in (else its last game's).
         if (weekOffset == 0) {
@@ -224,13 +282,54 @@ class LeagueDetailViewModel @Inject constructor(
 
     /** Moves the Schedule tab by [delta] weeks (e.g. -1/+1 for the mockup's "< WEEK >" control) and reloads. */
     fun changeScheduleWeek(delta: Int) {
-        loadScheduleWeek(uiState.value.scheduleWeekOffset + delta)
+        val state = uiState.value
+        val currentFeed = feed
+        val week = state.scheduleWeekNumber
+        if (currentFeed != null && client.isWeekly(currentFeed) && week != null) {
+            val (nextWeek, nextType) = FootballWeeks.step(currentFeed.leaguePath, week, state.scheduleSeasonType ?: 2, delta)
+            if (nextWeek != week || nextType != state.scheduleSeasonType) loadFootballWeek(nextWeek, nextType)
+            return
+        }
+        loadScheduleWeek(state.scheduleWeekOffset + delta)
+    }
+
+    private var scheduleJob: kotlinx.coroutines.Job? = null
+
+    /** A football league's [week] of [seasonType] (null: the current one), as ESPN numbers them. */
+    private fun loadFootballWeek(week: Int?, seasonType: Int?) {
+        val currentFeed = feed ?: return
+        scheduleJob?.cancel()
+        _uiState.update { it.copy(isLoadingSchedule = true, scheduleWeekNumber = week ?: it.scheduleWeekNumber, scheduleSeasonType = seasonType ?: it.scheduleSeasonType) }
+        scheduleJob = viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { client.fetchFeedWeek(currentFeed, week, seasonType) }.getOrNull()
+            }
+            val now = System.currentTimeMillis()
+            _uiState.update {
+                it.copy(
+                    isLoadingSchedule = false,
+                    scheduleLoaded = true,
+                    scheduleWeekNumber = result?.weekNumber ?: week ?: it.scheduleWeekNumber,
+                    scheduleSeasonType = result?.seasonType ?: seasonType ?: it.scheduleSeasonType,
+                    scheduleEvents = result?.events.orEmpty()
+                        .map { event -> event.withClock(now) }
+                        .sortedBy { event -> event.startTimeMs ?: Long.MAX_VALUE }
+                )
+            }
+        }
     }
 
     private fun loadScheduleWeek(weekOffset: Int) {
         val currentFeed = feed ?: return
-        _uiState.update { it.copy(isLoadingSchedule = true, scheduleWeekOffset = weekOffset) }
-        viewModelScope.launch {
+        scheduleJob?.cancel()
+        _uiState.update {
+            it.copy(
+                isLoadingSchedule = true,
+                scheduleWeekOffset = weekOffset,
+                scheduleRangeStartMs = System.currentTimeMillis() + weekOffset * WEEK_MS
+            )
+        }
+        scheduleJob = viewModelScope.launch {
             val startDay = weekOffset * 7
             val range = client.dateRange(startDay, startDay + 6)
             val events = withContext(Dispatchers.IO) {
@@ -248,6 +347,102 @@ class LeagueDetailViewModel @Inject constructor(
         }
     }
 
+    // ------------------------------------------------------------------ RCTV: channels and replays
+
+    /** The IPTV sources the lineup came from (to play a channel). */
+    private var lineupSources: List<com.nuvio.tv.domain.model.LiveTvSource> = emptyList()
+    private var lineupPrograms: Map<String, List<com.nuvio.tv.domain.model.EpgProgram>> = emptyMap()
+
+    /**
+     * The league's official channels and replay channels in the IPTV lineup (none: no IPTV, or the
+     * league has none). The lineup is the Guide's own (loaded once for the whole app).
+     */
+    private fun watchLineup() {
+        if (!LeagueChannels.hasOfficialChannels(leagueId) && !LeagueChannels.hasReplays(leagueId)) return
+        viewModelScope.launch {
+            val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
+            if (sources.isEmpty()) return@launch
+            lineupSources = sources
+            guideLoader.ensure(sources)
+            guideLoader.guide
+                .filterNotNull()
+                .filter { !it.isPreview && it.channels.isNotEmpty() }
+                .distinctUntilChanged { old, new -> old.channels === new.channels && old.epgByChannel === new.epgByChannel }
+                .collectLatest { guide ->
+                    val (official, replays) = withContext(Dispatchers.Default) {
+                        LeagueChannels.official(leagueId, guide.channels) to LeagueChannels.replays(leagueId, guide.channels)
+                    }
+                    lineupPrograms = guide.epgByChannel
+                    _uiState.update {
+                        it.copy(
+                            channels = official,
+                            replays = replays,
+                            channelPrograms = programsNow(official + replays, System.currentTimeMillis())
+                        )
+                    }
+                }
+        }
+    }
+
+    /** What's on each channel now (by channel id). */
+    private fun programsNow(items: List<LeagueChannelItem>, now: Long): Map<String, String> =
+        items.mapNotNull { item ->
+            val channel = item.channel
+            lineupPrograms[channel.epgChannelId ?: channel.id]
+                ?.firstOrNull { it.isAiringAt(now) }
+                ?.title
+                ?.let { channel.id to it }
+        }.toMap()
+
+    /** [item]'s channel, ready to play; null when its address can't be had. */
+    suspend fun playable(item: LeagueChannelItem): com.nuvio.tv.domain.model.LiveTvChannel? {
+        val sources = lineupSources.ifEmpty { return null }
+        return try {
+            val url = guideLoader.resolvePlaybackUrl(item.channel, sources)
+            item.channel.copy(streamUrl = url).takeIf { url.isNotBlank() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ------------------------------------------------------------------ RCTV: highlights
+
+    /**
+     * The league's latest official highlights: its own YouTube channel's newest (NFL, NBA, LaLiga...),
+     * else a YouTube search kept to official channels. Never Shorts (16:9 only).
+     */
+    private fun loadHighlightsIfNeeded() {
+        val state = uiState.value
+        if (state.highlightsLoaded || state.isLoadingHighlights) return
+        _uiState.update { it.copy(isLoadingHighlights = true) }
+        viewModelScope.launch {
+            val channel = OfficialRecapChannels.ofLeague(leagueId)
+            val leagueName = uiState.value.league?.name?.takeIf { it.isNotBlank() } ?: leagueNameArg
+            val spanish = channel?.spanish ?: (uiState.value.allEvents.firstOrNull()?.let(SportsRecapPicker::isSpanish) == true)
+            val results = try {
+                if (channel != null) {
+                    youTubeSearch.latestOfChannel(channel.handle)
+                } else {
+                    youTubeSearch.search("$leagueName ${if (spanish) "resumen" else "highlights"}", spanish = spanish)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            val picked = SportsRecapPicker.leagueHighlights(results, channel)
+            // RCTV (owner's rule): 16:9 only: YouTube is asked whether each is a Short.
+            val horizontal = coroutineScope {
+                picked.map { video ->
+                    async { video to runCatching { youTubeSearch.isShort(video.videoId) }.getOrNull() }
+                }.awaitAll()
+            }.filter { (_, short) -> short != true }.map { it.first }
+            _uiState.update { it.copy(highlights = horizontal, isLoadingHighlights = false, highlightsLoaded = true) }
+        }
+    }
+
     /** While the page shows (call it from the page): games whose start time has come go live. */
     suspend fun keepCurrent() {
         while (true) {
@@ -255,6 +450,13 @@ class LeagueDetailViewModel @Inject constructor(
             // Banana Ball's games on now (on TV, or streaming on YouTube).
             runCatching { _uiState.value.let { bananaBallLive.refresh(it.upcomingEvents + it.scheduleEvents + it.liveEvents) } }
             val now = System.currentTimeMillis()
+            // RCTV: what's on the league's channels now.
+            _uiState.value.let { state ->
+                if (state.channels.isNotEmpty() || state.replays.isNotEmpty()) {
+                    val programs = programsNow(state.channels + state.replays, now)
+                    if (programs != state.channelPrograms) _uiState.update { it.copy(channelPrograms = programs) }
+                }
+            }
             _uiState.update { state ->
                 val started = state.upcomingEvents.filter { it.isLiveAt(now) }
                 val scheduleStarted = state.scheduleEvents.any { it.status == SportsEventStatus.UPCOMING && it.isLiveAt(now) }

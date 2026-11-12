@@ -1591,7 +1591,21 @@ private fun PlaybackNavHost(
             val openGame = rememberGameOpener(navController)
             LeagueDetailScreen(
                 onPlayEvent = openGame,
-                onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } }
+                onOpenTeam = { team -> teamDetailRoute(team)?.let { navController.navigate(it) } },
+                // RCTV (owner's rows): a league channel or replay channel plays on the Live TV player.
+                onPlayChannel = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    )
+                },
+                // RCTV: the league's highlights play inside RCTV (YouTube's official player).
+                onPlayVideo = { videoId, title -> navController.navigate(Screen.YouTubeWatch.createRoute(videoId, title)) }
             )
         }
 

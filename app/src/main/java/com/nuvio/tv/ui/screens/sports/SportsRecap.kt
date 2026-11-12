@@ -60,6 +60,9 @@ internal object OfficialRecapChannels {
     /** The league's own channel; null for a league that has none on the list (YouTube's search then). */
     fun of(event: SportsEvent): RecapChannel? = event.leagueId?.lowercase(Locale.ROOT)?.let { BY_LEAGUE[it] }
 
+    /** RCTV (league page): [leagueId]'s own channel, as [of]. */
+    fun ofLeague(leagueId: String): RecapChannel? = BY_LEAGUE[leagueId.lowercase(Locale.ROOT)]
+
     fun isCollege(event: SportsEvent): Boolean = event.leagueId?.lowercase(Locale.ROOT) in COLLEGE
 }
 
@@ -337,6 +340,39 @@ internal object SportsRecapPicker {
             from = at + 1
         }
     }
+
+    /**
+     * RCTV (league page's Highlights): a league's latest highlights, the newest first: from its own
+     * [channel] (titled highlights, unless any of its videos will do), else official channels only
+     * (the league's, a network's, a team's). Never Shorts, reactions, previews or video games; a
+     * highlights' length; out in the last [MAX_LEAGUE_HIGHLIGHT_DAYS] days.
+     */
+    fun leagueHighlights(results: List<YouTubeSearchResult>, channel: RecapChannel?): List<YouTubeSearchResult> =
+        results.asSequence()
+            .filter { channel == null || it.channelHandle == null || it.channelHandle.equals(channel.handle, ignoreCase = true) }
+            .filter { result ->
+                val seconds = result.durationSeconds ?: return@filter false
+                if (result.isShort || isShortTitle(result.title)) return@filter false
+                if (seconds < MIN_RECAP_SECONDS || seconds > MAX_LEAGUE_HIGHLIGHT_SECONDS) return@filter false
+                if ((result.ageDays ?: 0.0) > MAX_LEAGUE_HIGHLIGHT_DAYS) return@filter false
+                val title = SportsGameChannels.canonical(SportsGameChannels.normalize(result.title))
+                if (NOT_HIGHLIGHTS.any { has(title, it) } || VIDEO_GAME.containsMatchIn(title)) return@filter false
+                val highlights = HIGHLIGHT_WORDS.any { has(title, it) }
+                if (channel != null) {
+                    highlights || channel.anyVideo
+                } else {
+                    val name = SportsGameChannels.normalize(result.channel.orEmpty())
+                    highlights && FAN_CHANNEL_WORDS.none { has(name, it) } && isOfficialName(name)
+                }
+            }
+            .distinctBy { it.videoId }
+            .sortedBy { it.ageDays ?: Double.MAX_VALUE }
+            .take(MAX_LEAGUE_HIGHLIGHTS)
+            .toList()
+
+    private const val MAX_LEAGUE_HIGHLIGHTS = 20
+    private const val MAX_LEAGUE_HIGHLIGHT_DAYS = 21.0
+    private const val MAX_LEAGUE_HIGHLIGHT_SECONDS = 40 * 60
 
     /**
      * The videos that are this game's highlights, the likeliest first. [week]: the game's week

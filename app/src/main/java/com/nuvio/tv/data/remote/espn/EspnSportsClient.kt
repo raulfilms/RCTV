@@ -74,7 +74,10 @@ class EspnSportsClient @Inject constructor(
         val feed: Feed,
         val league: SportsLeague,
         val events: List<SportsEvent>,
-        val teams: List<SportsTeam>
+        val teams: List<SportsTeam>,
+        /** RCTV (league page): the scoreboard's week (football: "Week 3") and season part (1 pre, 2 regular, 3 post). */
+        val weekNumber: Int? = null,
+        val seasonType: Int? = null
     )
 
     companion object {
@@ -157,6 +160,8 @@ class EspnSportsClient @Inject constructor(
          * more answers at once than this, and the heavy ones (tennis, the NCAA) one at a time.
          */
         private const val MAX_FEEDS_AT_ONCE = 3
+        /** RCTV (league page): the football leagues played by weeks. */
+        private val WEEKLY_FOOTBALL = setOf("nfl", "college-football", "ufl")
         /** RCTV (game center): the leagues a program's game is looked for in. */
         private const val PROGRAM_GAME_FEEDS = 4
         private val feedPermits = kotlinx.coroutines.sync.Semaphore(MAX_FEEDS_AT_ONCE)
@@ -1126,6 +1131,19 @@ class EspnSportsClient @Inject constructor(
     fun fetchFeed(feed: Feed, datesRange: String? = null): FeedResult =
         fetchFeedRaw(feed, datesRange).deduplicated()
 
+    /** RCTV (league page): whether [feed] is played by weeks (football: "Week 3"). */
+    fun isWeekly(feed: Feed): Boolean =
+        feed.sportPath == "football" && feed.leaguePath in WEEKLY_FOOTBALL && !feed.isCfl() && feed.virtual() == null
+
+    /**
+     * RCTV (league page, by week): [feed]'s games of [week] of [seasonType] (1 preseason, 2 regular
+     * season, 3 postseason); without them, the current week. The result says which week it is.
+     */
+    fun fetchFeedWeek(feed: Feed, week: Int? = null, seasonType: Int? = null): FeedResult {
+        val query = if (week != null) "week=$week&seasontype=${seasonType ?: 2}" else null
+        return fetchFeedRaw(feed, null, query = query).deduplicated()
+    }
+
     /**
      * A game or a team a source lists twice (a postponed game on its old and new days) is one:
      * the pages key their cards by id, and a repeated one would bring them down.
@@ -1136,7 +1154,7 @@ class EspnSportsClient @Inject constructor(
     )
 
     /** [limit]: at most this many of ESPN's games (the rows need the next ones, not hundreds). */
-    private fun fetchFeedRaw(feed: Feed, datesRange: String?, limit: Int? = null): FeedResult {
+    private fun fetchFeedRaw(feed: Feed, datesRange: String?, limit: Int? = null, query: String? = null): FeedResult {
         if (feed.isBananaBall()) return bananaBall.fetchFeed(feed, datesRange)
         if (feed.isNascar()) return nascar.fetchFeed(feed, datesRange)
         if (feed.isPpv()) return ppv.fetchFeed(feed, datesRange)
@@ -1147,6 +1165,7 @@ class EspnSportsClient @Inject constructor(
         val base = "$BASE_URL/${feed.sportPath}/${feed.leaguePath}/scoreboard"
         // A long range (a league's next or last games, months away): all of it, not ESPN's first page.
         val url = when {
+            datesRange == null && query != null -> "$base?$query"
             datesRange == null -> base
             rangeDays(datesRange) > 31 -> "$base?dates=$datesRange&limit=500"
             limit != null -> "$base?dates=$datesRange&limit=$limit"
@@ -1263,7 +1282,14 @@ class EspnSportsClient @Inject constructor(
             )
         }
 
-        return FeedResult(feed = feed, league = league, events = events, teams = teams.values.toList())
+        return FeedResult(
+            feed = feed,
+            league = league,
+            events = events,
+            teams = teams.values.toList(),
+            weekNumber = json.optJSONObject("week")?.optInt("number", 0)?.takeIf { it > 0 },
+            seasonType = json.optJSONObject("season")?.optInt("type", 0)?.takeIf { it > 0 }
+        )
     }
 
     /**

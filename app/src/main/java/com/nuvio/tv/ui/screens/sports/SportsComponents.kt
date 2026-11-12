@@ -275,7 +275,7 @@ private fun statusLine(event: SportsEvent): String {
 }
 
 @Composable
-private fun LiveBadge() {
+internal fun LiveBadge() {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
