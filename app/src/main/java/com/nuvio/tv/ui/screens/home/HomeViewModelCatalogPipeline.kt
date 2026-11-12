@@ -575,6 +575,15 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
     val heroSectionEnabled = _uiState.value.heroSectionEnabled
     val hideUnreleased = _uiState.value.hideUnreleasedContent
     val titlesSnapshot = customCatalogTitles
+    // RCTV: the hero's chosen catalogs are on no installed addon any more (their addon was replaced
+    // or removed, e.g. by the account's addons from the website): the hero takes the rows' titles
+    // instead of disappearing.
+    val heroCatalogsGone = heroCatalogKeys.isNotEmpty() && addonsCache.isNotEmpty() && run {
+        val chosen = heroCatalogKeys.toSet()
+        addonsCache.none { addon ->
+            addon.catalogs.any { catalog -> catalogKey(addonId = addon.id, type = catalog.apiType, catalogId = catalog.id) in chosen }
+        }
+    }
 
     val (displayRows, baseHeroItems, baseGridItems, fullRowsFiltered) = withContext(Dispatchers.Default) {
         val rawRows = orderedKeys.mapNotNull { key ->
@@ -676,7 +685,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
         val computedHeroItems = when {
             heroItemsFromSelectedCatalogs.isNotEmpty() -> heroItemsFromSelectedCatalogs
             fallbackHeroItemsFromSelectedCatalogs.isNotEmpty() -> fallbackHeroItemsFromSelectedCatalogs
-            selectedHeroCatalogSet.isNotEmpty() -> emptyList()
+            selectedHeroCatalogSet.isNotEmpty() && !heroCatalogsGone -> emptyList()
             fallbackHeroItemsWithArtwork.isNotEmpty() -> fallbackHeroItemsWithArtwork
             else -> emptyList()
         }

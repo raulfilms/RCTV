@@ -371,6 +371,10 @@ class LiveTvGuideLoader @Inject constructor(
         )
         publish(key, withChannels)
         if (channels.isEmpty()) return
+        // RCTV: the channels are kept on the TV right away, not only once the programs are in (a
+        // provider's guide can take minutes, and the app may close first): next time they show at
+        // once. Kept as old, so that time they load again in the background, programs and all.
+        com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("guide-save") { save(withChannels.copy(loadedAtMs = 0L)) }
 
         // The programs are a nice-to-have on top of the channels: none (or a failed load) never
         // blocks watching.
