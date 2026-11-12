@@ -237,7 +237,10 @@ fun LiveTvScreen(
                         stringResource(R.string.livetv_change_playlist_btn)
                     },
                     onManageSources = onManageSources,
-                    onToggleGuide = if (uiState.hasEpg) { { viewModel.setShowGuide(true) } } else null
+                    // RCTV: the owner's guide has its Guide page even before the programs are in.
+                    onToggleGuide = if (uiState.hasEpg || uiState.curatedGuide) { { viewModel.setShowGuide(true) } } else null,
+                    // RCTV: holding OK on a channel opens its profile (as its logo does in the Guide).
+                    onOpenChannelProfile = if (uiState.isPreviewGuide) null else onOpenChannelProfile
                 )
             }
         }
@@ -612,7 +615,8 @@ private fun LiveTvChannelBrowser(
     onDisconnect: () -> Unit,
     disconnectLabel: String,
     onManageSources: () -> Unit,
-    onToggleGuide: (() -> Unit)?
+    onToggleGuide: (() -> Unit)?,
+    onOpenChannelProfile: ((LiveTvChannel) -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         if (uiState.isPreviewGuide) LiveTvPreviewNote()
@@ -686,7 +690,8 @@ private fun LiveTvChannelBrowser(
                             channel = channel,
                             currentProgram = uiState.currentProgram(channel),
                             nowMs = uiState.nowMs,
-                            onClick = { onPlayChannel(channel) }
+                            onClick = { onPlayChannel(channel) },
+                            onLongClick = onOpenChannelProfile?.let { open -> { open(channel) } }
                         )
                     }
                 }
@@ -880,10 +885,12 @@ private fun LiveTvChannelCard(
     channel: LiveTvChannel,
     currentProgram: EpgProgram?,
     nowMs: Long,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     Surface(
         onClick = onClick,
+        onLongClick = onLongClick,
         colors = ClickableSurfaceDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.FocusBackground
