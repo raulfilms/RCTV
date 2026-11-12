@@ -11,6 +11,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.CacheControl
 import okhttp3.OkHttpClient
@@ -31,7 +34,9 @@ import javax.inject.Singleton
 @Singleton
 class RowLayoutRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    okHttpClient: OkHttpClient
+    okHttpClient: OkHttpClient,
+    /** RCTV Control: the file the owner publishes on the website, once the TV is activated. */
+    private val managedServices: com.nuvio.tv.core.rctvcontrol.RctvManagedServices
 ) {
     private val httpClient = okHttpClient.newBuilder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -52,6 +57,14 @@ class RowLayoutRepository @Inject constructor(
             loadLocal()?.let { _config.value = it }
             fetchRemote()
         }
+        // The website's address arrives (or changes) with the account: read it then.
+        scope.launch {
+            managedServices.publicUrls
+                .map { it.rowLayout }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { fetchRemote() }
+        }
     }
 
     /** Reads the online file again (skipped when it was read less than a minute ago, unless [force]). */
@@ -71,7 +84,8 @@ class RowLayoutRepository @Inject constructor(
     }
 
     private fun fetchRemote() {
-        val url = BuildConfig.ROW_LAYOUT_URL.trim()
+        // RCTV Control: the website's published file first; else the built-in address.
+        val url = managedServices.publicUrls.value.rowLayout?.trim() ?: BuildConfig.ROW_LAYOUT_URL.trim()
         if (url.isEmpty()) return
         if (!fetching.compareAndSet(false, true)) return
         try {

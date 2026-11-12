@@ -54,11 +54,28 @@ class SportsPreferencesDataStore @Inject constructor(
         }
     }
 
-    suspend fun toggleFavoriteTeam(teamId: String) {
+    /**
+     * A team in or out of "My Teams". [teamKey] is the team with its league
+     * ([com.nuvio.tv.domain.model.SportsTeamKey]): a number alone is a different team in another league.
+     */
+    suspend fun toggleFavoriteTeam(teamKey: String) {
         store().edit { prefs ->
             val current = prefs[favoriteTeamIdsKey]?.toSet() ?: emptySet()
-            val updated = if (teamId in current) current - teamId else current + teamId
+            // Saved before teams had their league: the number alone counts as this team too.
+            val legacy = com.nuvio.tv.domain.model.SportsTeamKey.teamIdOf(teamKey)
+            val isFavorite = teamKey in current || legacy in current
+            val updated = if (isFavorite) current - teamKey - legacy else current + teamKey
             prefs[favoriteTeamIdsKey] = updated.serialize()
+        }
+    }
+
+    /** "My Teams" saved with the number alone, named with their league ([resolved]: number to key). */
+    suspend fun qualifyLegacyTeams(resolved: Map<String, String>) {
+        if (resolved.isEmpty()) return
+        store().edit { prefs ->
+            val current = prefs[favoriteTeamIdsKey]?.toSet() ?: emptySet()
+            val updated = current.map { resolved[it] ?: it }.toSet()
+            if (updated != current) prefs[favoriteTeamIdsKey] = updated.serialize()
         }
     }
 

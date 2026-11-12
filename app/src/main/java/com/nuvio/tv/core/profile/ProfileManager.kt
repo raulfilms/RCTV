@@ -130,6 +130,16 @@ class ProfileManager @Inject constructor(
         return true
     }
 
+    /**
+     * RCTV Control: a profile of the account (the same on every TV) put on this TV in its place
+     * ([UserProfile.id] is its slot, 1 to [MAX_PROFILES]).
+     */
+    suspend fun applyAccountProfile(profile: UserProfile) {
+        if (profile.id !in 1..MAX_PROFILES) return
+        if (profiles.value.none { it.id == profile.id }) factory.markProfileCreated(profile.id)
+        profileDataStore.upsertProfile(profile)
+    }
+
     suspend fun updateProfile(profile: UserProfile): Boolean {
         if (profiles.value.none { it.id == profile.id }) return false
         profileDataStore.upsertProfile(profile)

@@ -46,8 +46,14 @@ class WatchProgressSyncService @Inject constructor(
     private val traktSettingsDataStore: TraktSettingsDataStore,
     private val profileManager: ProfileManager,
     private val syncClientIdentity: SyncClientIdentity,
-    private val mutationStore: WatchStateMutationStore
+    private val mutationStore: WatchStateMutationStore,
+    /** RCTV Control: the RCTV account instead of Nuvio's cloud when the TV is activated (tests leave it out). */
+    private val syncRpc: SyncRpc? = null
 ) {
+    /** A sync call: to the RCTV account when the TV is activated with one, else to Nuvio's cloud. */
+    private suspend fun rpc(name: String, params: kotlinx.serialization.json.JsonObject): SyncRpcResult =
+        syncRpc?.rpc(name, params) ?: SyncRpcResult(postgrest.rpc(name, params), null)
+
     private val deltaSyncMutex = Mutex()
     private val outboundSyncMutexes = ConcurrentHashMap<Int, Mutex>()
 
@@ -81,7 +87,7 @@ class WatchProgressSyncService @Inject constructor(
             put("p_profile_id", profileId)
         }
         return withJwtRefreshRetry {
-            postgrest.rpc("sync_get_watch_progress_delta_cursor", params).decodeAs<Long>()
+            rpc("sync_get_watch_progress_delta_cursor", params).decodeAs<Long>()
         }.also { cursor ->
             Log.d(TAG, "fetchDeltaCursor: cursor=$cursor for profile $profileId")
         }
@@ -95,7 +101,7 @@ class WatchProgressSyncService @Inject constructor(
             put("p_limit", WATCH_PROGRESS_DELTA_PAGE_SIZE)
         }
         return withJwtRefreshRetry {
-            postgrest.rpc("sync_pull_watch_progress_delta", params).decodeList<SupabaseWatchProgressEvent>()
+            rpc("sync_pull_watch_progress_delta", params).decodeList<SupabaseWatchProgressEvent>()
         }.also { events ->
             val firstEvent = events.firstOrNull()?.eventId
             val lastEvent = events.lastOrNull()?.eventId
@@ -135,7 +141,7 @@ class WatchProgressSyncService @Inject constructor(
                 putSyncOriginClientId(syncClientIdentity)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_delete_watch_progress", params)
+                rpc("sync_delete_watch_progress", params)
             }
             mutationStore.acknowledgeProgressDeletes(distinctKeys, profileId)
             Log.d(TAG, "Deleted ${distinctKeys.size} watch progress entries from remote for profile $profileId")
@@ -190,7 +196,7 @@ class WatchProgressSyncService @Inject constructor(
                     putSyncOriginClientId(syncClientIdentity)
                 }
                 withJwtRefreshRetry {
-                    postgrest.rpc("sync_push_watch_progress", params)
+                    rpc("sync_push_watch_progress", params)
                 }
             }
 
@@ -247,7 +253,7 @@ class WatchProgressSyncService @Inject constructor(
                 putSyncOriginClientId(syncClientIdentity)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_push_watch_progress", params)
+                rpc("sync_push_watch_progress", params)
             }
 
             mutationStore.acknowledgeProgressUpserts(mapOf(key to progress), profileId)
@@ -293,7 +299,7 @@ class WatchProgressSyncService @Inject constructor(
                 }
             }
             val response = withJwtRefreshRetry {
-                postgrest.rpc("sync_pull_watch_progress", params)
+                rpc("sync_pull_watch_progress", params)
             }
             val remote = response.decodeList<SupabaseWatchProgress>()
 

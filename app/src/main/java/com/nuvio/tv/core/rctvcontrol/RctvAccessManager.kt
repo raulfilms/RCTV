@@ -13,6 +13,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -44,7 +45,9 @@ data class RctvAccessState(
 @Singleton
 class RctvAccessManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    okHttpClient: OkHttpClient
+    okHttpClient: OkHttpClient,
+    /** The account's services, profiles' links and public files (kept sealed on the TV). */
+    private val managed: RctvManagedServices
 ) {
     private val baseUrl: String? = BuildConfig.RCTV_CONTROL_URL.trim().trimEnd('/')
         .takeIf { it.startsWith("https://") }
@@ -65,8 +68,18 @@ class RctvAccessManager @Inject constructor(
 
     private val checking = Mutex()
 
+    /** For what must finish after a screen closes (telling the website playback stopped). */
+    private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
     private val _state = MutableStateFlow(stateNow())
     val state: StateFlow<RctvAccessState> = _state.asStateFlow()
+
+    private val _remoteProfiles = MutableStateFlow<List<RctvRemoteProfile>?>(null)
+    /**
+     * The account's profiles as the website last sent them (the same on every TV); null until it
+     * answers, or from a website without them.
+     */
+    val remoteProfiles: StateFlow<List<RctvRemoteProfile>?> = _remoteProfiles.asStateFlow()
 
     /** Enters the account's code. On success the app opens with the account's plan. */
     suspend fun activate(rawCode: String): RctvActivation {
@@ -145,6 +158,8 @@ class RctvAccessManager @Inject constructor(
         when (outcome) {
             is Outcome.Got -> {
                 saveAccount(outcome.config.account)
+                managed.save(outcome.config.services, outcome.config.publicUrls)
+                outcome.config.profiles?.let { _remoteProfiles.value = it }
                 publish()
                 nextWaitSeconds(outcome.config.checkEverySeconds.toLong(), outcome.config.account)
             }
@@ -158,10 +173,108 @@ class RctvAccessManager @Inject constructor(
         }
     }
 
-    /** Forgets this TV's activation (the code page shows again). */
+    /** Forgets this TV's activation (the code page shows again) and everything of its account. */
     fun forget() {
         prefs.edit().clear().apply()
+        managed.clear()
+        _remoteProfiles.value = null
         publish()
+    }
+
+    /** Saves a profile of this TV on its account (made or changed here). */
+    suspend fun upsertProfile(profile: RctvRemoteProfile): Boolean {
+        val body = JSONObject()
+            .put("action", "upsert")
+            .put("slot", profile.slot)
+            .put("name", profile.name)
+            .put("color", profile.color)
+            .put("avatar", profile.avatar ?: "default")
+            .put("avatar_url", profile.avatarUrl ?: JSONObject.NULL)
+            .put("is_kids", profile.isKids)
+        return post("profiles", body)?.first == 200
+    }
+
+    /** Deletes a profile deleted on this TV from its account (never the main one). */
+    suspend fun removeProfile(slot: Int): Boolean {
+        if (slot == RctvProfileSyncPlanner.MAIN_SLOT) return false
+        return post("profiles", JSONObject().put("action", "remove").put("slot", slot))?.first == 200
+    }
+
+    /**
+     * Something starts playing: live TV ("iptv") or a movie or episode ("vod"). The website says
+     * whether this account has room for it. When it can't be asked (no connection, not activated),
+     * it plays.
+     */
+    /**
+     * True while this TV's profiles keep their library, watched titles and progress in its RCTV
+     * account (every TV of the account shares them) instead of Nuvio's cloud.
+     */
+    val watchSyncActive: Boolean
+        get() = isEnabled && !_state.value.needsActivation && readToken() != null
+
+    /**
+     * A library, watched or progress sync call ([rpc], the same as Nuvio's) for this TV's account:
+     * the answer's JSON ("null" when it has none). Throws when the website can't be reached or says no.
+     */
+    suspend fun watchSync(rpc: String, paramsJson: String): String {
+        val body = JSONObject().put("rpc", rpc).put("params", JSONObject(paramsJson))
+        val (status, text) = post("watch-sync", body) ?: throw java.io.IOException("RCTV Control unavailable")
+        if (status != 200) throw java.io.IOException("RCTV Control watch-sync $status")
+        val answer = runCatching { JSONObject(text.orEmpty()) }.getOrNull()
+            ?: throw java.io.IOException("RCTV Control watch-sync: unreadable answer")
+        return if (!answer.has("data") || answer.isNull("data")) "null" else answer.get("data").toString()
+    }
+
+    suspend fun startPlayback(kind: String, title: String): RctvPlaybackStart {
+        val body = JSONObject().put("action", "start").put("kind", kind).put("title", title.take(200))
+        val (status, text) = post("playback", body) ?: return RctvPlaybackStart.Unchecked
+        return RctvControlParser.playbackStart(status, text)
+    }
+
+    /** Still playing (every 30 s): "OK", "ENDED" (start again) or "PLAN_ENDED" (stop); null without an answer. */
+    suspend fun beatPlayback(sessionId: String): String? {
+        val (status, text) = post("playback", JSONObject().put("action", "beat").put("session_id", sessionId)) ?: return null
+        if (status != 200) return null
+        return runCatching { JSONObject(text.orEmpty()).optString("status").takeIf { it.isNotBlank() } }.getOrNull()
+    }
+
+    /** Stopped playing. */
+    suspend fun stopPlayback(sessionId: String) {
+        post("playback", JSONObject().put("action", "stop").put("session_id", sessionId))
+    }
+
+    /** Stopped playing (the player closed): told to the website in the background. */
+    fun releasePlayback(sessionId: String) {
+        backgroundScope.launch { stopPlayback(sessionId) }
+    }
+
+    /** A request with this TV's token to one of the website's functions; null when it couldn't be made. */
+    private suspend fun post(path: String, body: JSONObject): Pair<Int, String?>? {
+        val url = baseUrl ?: return null
+        val token = readToken() ?: return null
+        return withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$url/$path")
+                .header("Authorization", "Bearer $token")
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.code == 401) {
+                        // Disconnected from its account: the code page again.
+                        forget()
+                        null
+                    } else {
+                        response.code to response.body?.string()
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "RCTV Control $path failed: ${e.javaClass.simpleName}")
+                null
+            }
+        }
     }
 
     private fun nextWaitSeconds(every: Long, account: RctvAccount?): Long {

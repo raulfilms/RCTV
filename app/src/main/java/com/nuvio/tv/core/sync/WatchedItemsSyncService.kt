@@ -48,8 +48,14 @@ class WatchedItemsSyncService @Inject constructor(
     private val traktSettingsDataStore: TraktSettingsDataStore,
     private val profileManager: ProfileManager,
     private val syncClientIdentity: SyncClientIdentity,
-    private val mutationStore: WatchStateMutationStore
+    private val mutationStore: WatchStateMutationStore,
+    /** RCTV Control: the RCTV account instead of Nuvio's cloud when the TV is activated (tests leave it out). */
+    private val syncRpc: SyncRpc? = null
 ) {
+    /** A sync call: to the RCTV account when the TV is activated with one, else to Nuvio's cloud. */
+    private suspend fun rpc(name: String, params: kotlinx.serialization.json.JsonObject): SyncRpcResult =
+        syncRpc?.rpc(name, params) ?: SyncRpcResult(postgrest.rpc(name, params), null)
+
     private val deltaSyncMutex = Mutex()
     private val outboundSyncMutexes = ConcurrentHashMap<Int, Mutex>()
 
@@ -82,7 +88,7 @@ class WatchedItemsSyncService @Inject constructor(
             put("p_profile_id", profileId)
         }
         return withJwtRefreshRetry {
-            postgrest.rpc("sync_get_watched_items_delta_cursor", params).decodeAs<Long>()
+            rpc("sync_get_watched_items_delta_cursor", params).decodeAs<Long>()
         }.also { cursor ->
             Log.d(TAG, "fetchDeltaCursor: cursor=$cursor for profile $profileId")
         }
@@ -96,7 +102,7 @@ class WatchedItemsSyncService @Inject constructor(
             put("p_limit", WATCHED_ITEMS_DELTA_PAGE_SIZE)
         }
         return withJwtRefreshRetry {
-            postgrest.rpc("sync_pull_watched_items_delta", params).decodeList<SupabaseWatchedItemEvent>()
+            rpc("sync_pull_watched_items_delta", params).decodeList<SupabaseWatchedItemEvent>()
         }.also { events ->
             val firstEvent = events.firstOrNull()?.eventId
             val lastEvent = events.lastOrNull()?.eventId
@@ -165,7 +171,7 @@ class WatchedItemsSyncService @Inject constructor(
                 putSyncOriginClientId(syncClientIdentity)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_push_watched_items", params)
+                rpc("sync_push_watched_items", params)
             }
 
             mutationStore.acknowledgeWatchedUpserts(items, profileId)
@@ -199,7 +205,7 @@ class WatchedItemsSyncService @Inject constructor(
                     put("p_page_size", WATCHED_ITEMS_PAGE_SIZE)
                 }
                 val response = withJwtRefreshRetry {
-                    postgrest.rpc("sync_pull_watched_items", params)
+                    rpc("sync_pull_watched_items", params)
                 }
                 val remote = response.decodeList<SupabaseWatchedItem>()
 
@@ -450,7 +456,7 @@ class WatchedItemsSyncService @Inject constructor(
                 putSyncOriginClientId(syncClientIdentity)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_delete_watched_items", params)
+                rpc("sync_delete_watched_items", params)
             }
 
             mutationStore.acknowledgeWatchedDeletes(distinctKeys, profileId)

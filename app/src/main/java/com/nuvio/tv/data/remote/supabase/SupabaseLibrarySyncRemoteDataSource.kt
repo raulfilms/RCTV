@@ -26,8 +26,14 @@ import javax.inject.Singleton
 class SupabaseLibrarySyncRemoteDataSource @Inject constructor(
     private val authManager: AuthManager,
     private val postgrest: Postgrest,
-    private val syncClientIdentity: SyncClientIdentity
+    private val syncClientIdentity: SyncClientIdentity,
+    /** RCTV Control: the RCTV account instead of Nuvio's cloud when the TV is activated. */
+    private val syncRpc: com.nuvio.tv.core.sync.SyncRpc? = null
 ) : LibrarySyncRemoteDataSource {
+    /** A sync call: to the RCTV account when the TV is activated with one, else to Nuvio's cloud. */
+    private suspend fun rpc(name: String, params: kotlinx.serialization.json.JsonObject): com.nuvio.tv.core.sync.SyncRpcResult =
+        syncRpc?.rpc(name, params) ?: com.nuvio.tv.core.sync.SyncRpcResult(postgrest.rpc(name, params), null)
+
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -44,7 +50,7 @@ class SupabaseLibrarySyncRemoteDataSource @Inject constructor(
                 put("p_offset", offset)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_pull_library", params)
+                rpc("sync_pull_library", params)
                     .decodeList<LibrarySnapshotDto>()
             }.map(LibrarySnapshotDto::toSavedLibraryItem)
         }
@@ -54,7 +60,7 @@ class SupabaseLibrarySyncRemoteDataSource @Inject constructor(
             put("p_profile_id", profileId)
         }
         return withJwtRefreshRetry {
-            postgrest.rpc("sync_get_library_delta_cursor", params).decodeAs<Long>()
+            rpc("sync_get_library_delta_cursor", params).decodeAs<Long>()
         }
     }
 
@@ -69,7 +75,7 @@ class SupabaseLibrarySyncRemoteDataSource @Inject constructor(
             put("p_limit", limit)
         }
         return withJwtRefreshRetry {
-            postgrest.rpc("sync_pull_library_delta", params)
+            rpc("sync_pull_library_delta", params)
                 .decodeList<LibraryDeltaDto>()
         }.map { event ->
             LibraryDeltaEvent(
@@ -94,7 +100,7 @@ class SupabaseLibrarySyncRemoteDataSource @Inject constructor(
                 putSyncOriginClientId(syncClientIdentity)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_push_library_items", params)
+                rpc("sync_push_library_items", params)
             }
         }
     }
@@ -113,7 +119,7 @@ class SupabaseLibrarySyncRemoteDataSource @Inject constructor(
                 putSyncOriginClientId(syncClientIdentity)
             }
             withJwtRefreshRetry {
-                postgrest.rpc("sync_delete_library_items", params)
+                rpc("sync_delete_library_items", params)
             }
         }
     }

@@ -46,13 +46,79 @@ sealed interface RctvActivation {
     data object NoConnection : RctvActivation
 }
 
-/** The account as `device-config` sends it, and how often to ask again. */
-data class RctvDeviceConfig(val account: RctvAccount, val checkEverySeconds: Int)
-
 /**
- * Reads the website's answers. Only the plan fields: the rest of `device-config` (the account's
- * services and IPTV) is never read, kept or logged here.
+ * The account's services set on the website (they win over the TV's own): the debrid keys, the
+ * addons (LatinoDebrid, Addon LATAM) and the IPTV login. Never logged ([toString] hides them).
  */
+data class RctvServices(
+    val realDebrid: String? = null,
+    val torbox: String? = null,
+    val premiumize: String? = null,
+    /** Addon manifest addresses by the website's service ("latinodebrid", "addon_latam"). */
+    val addons: Map<String, String> = emptyMap(),
+    val iptv: RctvIptv? = null,
+    /** The account's addons (Torrentio, AIOStreams...), in the website's order. They carry keys. */
+    val addonList: List<String> = emptyList()
+) {
+    val isEmpty: Boolean get() =
+        realDebrid == null && torbox == null && premiumize == null && addons.isEmpty() && addonList.isEmpty() && iptv == null
+
+    /** Every addon the website sets, in its order: the account's list, then LatinoDebrid and Addon LATAM. */
+    val managedAddonUrls: List<String> get() =
+        (addonList + RctvControlParser.ADDON_SERVICES.mapNotNull { addons[it] }).distinct()
+
+    override fun toString(): String =
+        "RctvServices(debrid=${listOfNotNull(realDebrid?.let { "rd" }, torbox?.let { "tb" }, premiumize?.let { "pm" })}, addons=${addons.keys}, addonList=${addonList.size}, iptv=${iptv != null})"
+}
+
+/** The account's Xtream Codes login (only with Full). Never logged. */
+data class RctvIptv(val server: String, val username: String, val password: String, val epgUrl: String? = null) {
+    override fun toString(): String = "RctvIptv(hidden)"
+}
+
+/** A profile of the account, the same on every TV: its place (1 to 8, 1 the main one) and look. */
+data class RctvRemoteProfile(
+    val slot: Int,
+    val name: String,
+    val color: String = DEFAULT_COLOR,
+    val avatar: String? = null,
+    val avatarUrl: String? = null,
+    val isKids: Boolean = false
+) {
+    companion object {
+        const val DEFAULT_COLOR = "#1E88E5"
+    }
+}
+
+/** The public files the owner publishes on the website (rows, streaming services, announcements, banners, collections). */
+data class RctvPublicUrls(
+    val rowLayout: String? = null,
+    val streamingServices: String? = null,
+    val announcements: String? = null,
+    val banners: String? = null,
+    val collections: String? = null
+)
+
+/** What the website said when something started playing. */
+sealed interface RctvPlaybackStart {
+    data class Allowed(val sessionId: String, val beatSeconds: Int) : RctvPlaybackStart
+    /** "TOO_MANY_IPTV", "TOO_MANY_VOD" or "NO_IPTV_IN_PLAN". */
+    data class Denied(val reason: String) : RctvPlaybackStart
+    /** It couldn't be asked (no connection, not activated): it plays. */
+    data object Unchecked : RctvPlaybackStart
+}
+
+/** The account as `device-config` sends it, and how often to ask again. */
+data class RctvDeviceConfig(
+    val account: RctvAccount,
+    val checkEverySeconds: Int,
+    val services: RctvServices = RctvServices(),
+    /** The account's profiles; null from a website without them (the TV's profiles stay as they are). */
+    val profiles: List<RctvRemoteProfile>? = null,
+    val publicUrls: RctvPublicUrls = RctvPublicUrls()
+)
+
+/** Reads the website's answers. The account's services are read here but never logged. */
 object RctvControlParser {
     /** The device token's shape (the server's own check). */
     private val TOKEN = Regex("^[A-Za-z0-9_-]{42,90}$")
@@ -91,8 +157,107 @@ object RctvControlParser {
         val master = json.optBoolean("master", false)
         val every = json.optInt("heartbeat_seconds", DEFAULT_CHECK_SECONDS)
             .coerceIn(MIN_CHECK_SECONDS, MAX_CHECK_SECONDS)
-        return RctvDeviceConfig(RctvAccount(basePlan = base, master = master, trialEndsAtMs = trialEnds), every)
+        return RctvDeviceConfig(
+            account = RctvAccount(basePlan = base, master = master, trialEndsAtMs = trialEnds),
+            checkEverySeconds = every,
+            services = servicesOf(json),
+            profiles = json.optJSONArray("profiles")?.let(::profilesOf),
+            publicUrls = json.optJSONObject("public_urls")?.let { urls ->
+                val announcements = urls.optStringOrNull("announcements")?.takeIf(::isHttps)
+                RctvPublicUrls(
+                    rowLayout = urls.optStringOrNull("row_layout")?.takeIf(::isHttps),
+                    streamingServices = urls.optStringOrNull("streaming_services")?.takeIf(::isHttps),
+                    announcements = announcements,
+                    // A website from before banners doesn't send them: they sit next to the announcements.
+                    banners = urls.optStringOrNull("banners")?.takeIf(::isHttps) ?: siblingOf(announcements, "banners.json"),
+                    collections = urls.optStringOrNull("collections")?.takeIf(::isHttps) ?: siblingOf(announcements, "collections.json")
+                )
+            } ?: RctvPublicUrls()
+        )
     }
+
+    fun playbackStart(status: Int, body: String?): RctvPlaybackStart {
+        if (status != 200) return RctvPlaybackStart.Unchecked
+        val json = body?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return RctvPlaybackStart.Unchecked
+        return if (json.optBoolean("allowed", false)) {
+            val id = json.optStringOrNull("session_id") ?: return RctvPlaybackStart.Unchecked
+            RctvPlaybackStart.Allowed(id, json.optInt("beat_seconds", 30).coerceIn(10, 120))
+        } else {
+            RctvPlaybackStart.Denied(json.optStringOrNull("reason") ?: "UNKNOWN")
+        }
+    }
+
+    /** The website's services: debrid keys, addons (HTTPS only) and the Xtream login (only with Full). */
+    fun servicesOf(json: JSONObject): RctvServices {
+        val services = json.optJSONObject("services")
+        fun key(name: String) = services?.optStringOrNull(name)?.trim()?.takeIf { it.length in 8..200 }
+        val addons = buildMap {
+            ADDON_SERVICES.forEach { name ->
+                services?.optStringOrNull(name)?.trim()?.takeIf(::isHttps)?.let { put(name, it) }
+            }
+        }
+        // The account's addons, in order (HTTPS only).
+        val addonList = services?.optJSONArray("addon_list")?.let { list ->
+            (0 until list.length()).mapNotNull { i ->
+                list.optString(i, "").trim().takeIf { url ->
+                    url.startsWith("https://") && url.length <= MAX_ADDON_URL && url.none(Char::isWhitespace)
+                }
+            }.distinct().take(MAX_ADDONS)
+        }.orEmpty()
+        val iptv = json.optJSONObject("iptv")?.let { x ->
+            val server = x.optStringOrNull("server")?.trim()?.trimEnd('/')
+            val username = x.optStringOrNull("username")
+            val password = x.optStringOrNull("password")
+            // Many IPTV servers only have HTTP: an address the owner typed, used as it is.
+            if (server != null && username != null && password != null &&
+                (server.startsWith("https://") || server.startsWith("http://"))
+            ) {
+                RctvIptv(server, username, password, x.optStringOrNull("epg_url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") })
+            } else {
+                null
+            }
+        }
+        return RctvServices(
+            realDebrid = key("realdebrid"),
+            torbox = key("torbox"),
+            premiumize = key("premiumize"),
+            addons = addons,
+            iptv = iptv,
+            addonList = addonList
+        )
+    }
+
+    fun profilesOf(array: org.json.JSONArray): List<RctvRemoteProfile> = buildList {
+        for (i in 0 until array.length()) {
+            val p = array.optJSONObject(i) ?: continue
+            val slot = p.optInt("slot", 0).takeIf { it in 1..8 } ?: continue
+            val name = p.optStringOrNull("name")?.trim()?.take(60) ?: continue
+            add(
+                RctvRemoteProfile(
+                    slot = slot,
+                    name = name,
+                    color = p.optStringOrNull("color")?.takeIf { COLOR.matches(it) } ?: RctvRemoteProfile.DEFAULT_COLOR,
+                    avatar = p.optStringOrNull("avatar")?.takeUnless { it == "default" },
+                    avatarUrl = p.optStringOrNull("avatar_url")?.takeIf(::isHttps),
+                    isKids = slot != 1 && p.optBoolean("is_kids", false)
+                )
+            )
+        }
+    }.distinctBy { it.slot }.sortedBy { it.slot }
+
+    private fun isHttps(value: String): Boolean = value.startsWith("https://") && value.length <= 500
+
+    /** [name] in the same folder as [url] (".../rctv-public/announcements.json" -> ".../rctv-public/banners.json"). */
+    private fun siblingOf(url: String?, name: String): String? {
+        val folder = url?.substringBeforeLast('/', "")?.takeIf { it.startsWith("https://") } ?: return null
+        return "$folder/$name"
+    }
+
+    /** The website's addon services. */
+    val ADDON_SERVICES = listOf("latinodebrid", "addon_latam")
+    const val MAX_ADDONS = 30
+    private const val MAX_ADDON_URL = 4000
+    private val COLOR = Regex("^#[0-9A-Fa-f]{6}$")
 
     /** "2026-11-12T03:00:00.123456+00:00" or "…Z" as milliseconds; null when it isn't a time. */
     fun epochMsOf(value: String): Long? =

@@ -337,6 +337,29 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager
 
+    /** RCTV Control: the account's profiles, the same on every TV. */
+    @Inject
+    lateinit var rctvProfileSync: com.nuvio.tv.core.rctvcontrol.RctvProfileSyncService
+
+    /** RCTV: watched, in the Library, in the IMDb watchlist, for the marks on every thumbnail. */
+    @Inject
+    lateinit var titleStatusService: com.nuvio.tv.core.titlestatus.TitleStatusService
+
+    /** RCTV Control: the public files the owner publishes (Streaming Services order, announcements). */
+    @Inject
+    lateinit var rctvPublicFiles: com.nuvio.tv.core.rctvcontrol.RctvPublicFiles
+
+    @Inject
+    lateinit var rctvHomeBanners: com.nuvio.tv.core.rctvcontrol.RctvHomeBanners
+
+    /** RCTV Control: the account's addons (LatinoDebrid, Addon LATAM) on the profile watching. */
+    @Inject
+    lateinit var rctvManagedAddons: com.nuvio.tv.core.rctvcontrol.RctvManagedAddons
+
+    /** RCTV Control: each profile's library, watched titles and progress in its account (not Nuvio's cloud). */
+    @Inject
+    lateinit var rctvWatchSync: com.nuvio.tv.core.rctvcontrol.RctvWatchSync
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -409,7 +432,14 @@ open class MainActivity : ComponentActivity() {
         // RCTV Control: the account's plan stays current while the app is on screen (on opening,
         // every few minutes, and when a trial ends).
         lifecycleScope.launch {
-            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { rctvAccess.keepCurrent() }
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                launch { rctvAccess.keepCurrent() }
+                // The account's profiles and addons follow the website.
+                launch { rctvProfileSync.run() }
+                launch { rctvManagedAddons.run() }
+                // The library, watched titles and progress follow the account on every TV.
+                launch { rctvWatchSync.run() }
+            }
         }
 
         setContent {
@@ -420,11 +450,17 @@ open class MainActivity : ComponentActivity() {
             val rctvPlan = rctvAccessState.plan
             // RCTV: a Kids profile (movies and shows up to 13, family and kids channels, no Sports).
             val kidsProfileActive by profileManager.kidsProfileActive.collectAsState()
+            val titleStatus by titleStatusService.status.collectAsState()
+            // RCTV Control: the website's Home banners this profile sees now.
+            val homeBannersNow by rctvHomeBanners.visible.collectAsState()
             CompositionLocalProvider(
+                com.nuvio.tv.ui.components.LocalTitleStatus provides titleStatus,
                 com.nuvio.tv.ui.components.LocalTitleArtResolver provides titleArtService,
                 com.nuvio.tv.ui.components.LocalRowLayout provides rowLayout,
                 com.nuvio.tv.ui.components.LocalRctvPlan provides rctvPlan,
-                com.nuvio.tv.ui.components.LocalKidsProfile provides kidsProfileActive
+                com.nuvio.tv.ui.components.LocalKidsProfile provides kidsProfileActive,
+                com.nuvio.tv.ui.components.LocalRctvHomeBanners provides homeBannersNow,
+                com.nuvio.tv.ui.components.LocalRctvAccess provides rctvAccess
             ) {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
             var startupSession by remember { mutableIntStateOf(0) }
@@ -1307,6 +1343,30 @@ open class MainActivity : ComponentActivity() {
                                 )
                             }
 
+                            // RCTV Control: a message the owner published on the website, shown once on Home.
+                            val rctvAnnouncements by rctvPublicFiles.announcements.collectAsState()
+                            val rctvDismissed by rctvPublicFiles.dismissed.collectAsState()
+                            val rctvAnnouncement = remember(rctvAnnouncements, rctvDismissed, currentRoute) {
+                                if (currentRoute != Screen.Home.route) {
+                                    null
+                                } else {
+                                    rctvAnnouncements.firstOrNull {
+                                        it.id !in rctvDismissed && it.isShownAt(System.currentTimeMillis())
+                                    }
+                                }
+                            }
+                            rctvAnnouncement?.let { announcement ->
+                                com.nuvio.tv.ui.components.NuvioDialog(
+                                    onDismiss = { rctvPublicFiles.dismiss(announcement.id) },
+                                    title = announcement.title,
+                                    subtitle = announcement.body.takeIf { it.isNotBlank() }
+                                ) {
+                                    androidx.tv.material3.Button(onClick = { rctvPublicFiles.dismiss(announcement.id) }) {
+                                        androidx.tv.material3.Text(stringResource(R.string.rctv_announcement_ok))
+                                    }
+                                }
+                            }
+
                             val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
                             autoNextOverlay?.let { ov ->
                                 com.nuvio.tv.ui.screens.player.LoadingOverlay(
@@ -1382,6 +1442,8 @@ open class MainActivity : ComponentActivity() {
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
         // Picks up row layout changes made on the website (vertical / horizontal rows).
         rowLayoutRepository.refresh()
+        // RCTV Control: the Streaming Services order and announcements published on the website.
+        rctvPublicFiles.refresh()
         memberAccessRepository.refreshIfStale()
         lifecycleScope.launch {
             deviceSessionRegistration.requestForegroundRegistration()
@@ -2493,7 +2555,9 @@ private val KIDS_HIDDEN_ROUTES: Set<String> = setOf(
     Screen.SportsTeams.route,
     Screen.SportsLeagueDetail.route,
     Screen.SportsTeamDetail.route,
-    Screen.SportsGameDetail.route
+    Screen.SportsGameDetail.route,
+    // A Home banner's Live TV channel.
+    Screen.RctvLiveChannel.route
 )
 
 /** RCTV Control: pages only Full has (live TV, channels, sports); Light never stays on them. */
@@ -2506,7 +2570,9 @@ private val RCTV_FULL_ONLY_ROUTES: Set<String> = setOf(
     Screen.SportsTeams.route,
     Screen.SportsLeagueDetail.route,
     Screen.SportsTeamDetail.route,
-    Screen.SportsGameDetail.route
+    Screen.SportsGameDetail.route,
+    // A Home banner's Live TV channel.
+    Screen.RctvLiveChannel.route
 )
 
 private fun navigateToDrawerRoute(

@@ -50,8 +50,13 @@ class LibrarySyncService @Inject constructor(
         }
     }
 
+    /**
+     * [forceSnapshot]: read the whole library again even when changes alone would do (RCTV Control: the
+     * first sync with an RCTV account, whose changes don't continue Nuvio's).
+     */
     suspend fun syncFromRemote(
-        profileId: Int
+        profileId: Int,
+        forceSnapshot: Boolean = false
     ): Result<LibraryRemoteSyncResult> = withContext(Dispatchers.IO) {
         syncMutex.withLock {
             try {
@@ -61,7 +66,7 @@ class LibrarySyncService @Inject constructor(
                 var appliedUpserts = 0
                 var appliedDeletes = 0
 
-                if (!state.deltaInitialized) {
+                if (forceSnapshot || !state.deltaInitialized) {
                     val cursorBeforeSnapshot = remoteDataSource.getDeltaCursor(profileId)
                     val remoteItems = remoteDataSource.pullSnapshot(
                         profileId = profileId,

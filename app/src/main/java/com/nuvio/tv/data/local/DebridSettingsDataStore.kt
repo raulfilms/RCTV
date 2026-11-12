@@ -23,6 +23,7 @@ import com.nuvio.tv.domain.model.DebridStreamVisualTag
 import com.nuvio.tv.domain.model.normalizeDebridInstantPlaybackPreparationLimit
 import com.nuvio.tv.domain.model.normalizeDebridStreamMaxResults
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -31,7 +32,9 @@ import javax.inject.Singleton
 @Singleton
 class DebridSettingsDataStore @Inject constructor(
     private val factory: ProfileDataStoreFactory,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    /** RCTV Control: the account's debrid keys set on the website win over the TV's (every profile). */
+    private val managedServices: com.nuvio.tv.core.rctvcontrol.RctvManagedServices
 ) {
     private val gson = Gson()
 
@@ -62,9 +65,23 @@ class DebridSettingsDataStore @Inject constructor(
     /** RCTV (SEC-03): the providers' API keys, kept sealed. */
     private val secrets = SecretPreferences(FEATURE, listOf(torboxApiKeyKey, premiumizeApiKeyKey, realDebridApiKeyKey))
 
+    /** RCTV Control: the providers whose key comes from the website (it can't be changed on the TV). */
+    val managedProviderIds: Flow<Set<String>> = managedServices.services.map { managed ->
+        buildSet {
+            if (managed.realDebrid != null) add(DebridProviders.REAL_DEBRID_ID)
+            if (managed.torbox != null) add(DebridProviders.TORBOX_ID)
+            if (managed.premiumize != null) add(DebridProviders.PREMIUMIZE_ID)
+        }
+    }
+
     val settings: Flow<DebridSettings> = profileManager.activeProfileId.flatMapLatest { pid ->
-        factory.get(pid, FEATURE).data.map { prefs ->
+        kotlinx.coroutines.flow.combine(factory.get(pid, FEATURE).data, managedServices.services) { prefs, managed ->
             secrets.sealInBackground(pid, prefs) { factory.get(pid, FEATURE) }
+            // RCTV Control: the website's keys first.
+            val torboxKey = managed.torbox ?: secrets.read(prefs, torboxApiKeyKey).orEmpty()
+            val premiumizeKey = managed.premiumize ?: secrets.read(prefs, premiumizeApiKeyKey).orEmpty()
+            val realDebridKey = managed.realDebrid ?: secrets.read(prefs, realDebridApiKeyKey).orEmpty()
+            val anyManaged = managed.torbox != null || managed.premiumize != null || managed.realDebrid != null
             val storedStreamSortMode = enumValueOrDefault(
                 prefs[streamSortModeKey],
                 DebridStreamSortMode.DEFAULT
@@ -80,16 +97,16 @@ class DebridSettingsDataStore @Inject constructor(
                 )
             val streamSortMode = legacyModeForSortCriteria(streamPreferences.sortCriteria)
             DebridSettings(
-                enabled = prefs[enabledKey] ?: false,
+                enabled = anyManaged || (prefs[enabledKey] ?: false),
                 cloudLibraryEnabled = prefs[cloudLibraryEnabledKey] ?: true,
-                torboxApiKey = secrets.read(prefs, torboxApiKeyKey).orEmpty(),
-                premiumizeApiKey = secrets.read(prefs, premiumizeApiKeyKey).orEmpty(),
-                realDebridApiKey = secrets.read(prefs, realDebridApiKeyKey).orEmpty(),
+                torboxApiKey = torboxKey,
+                premiumizeApiKey = premiumizeKey,
+                realDebridApiKey = realDebridKey,
                 preferredResolverProviderId = preferredResolverProviderId(
                     stored = prefs[preferredResolverProviderIdKey],
-                    torboxApiKey = secrets.read(prefs, torboxApiKeyKey).orEmpty(),
-                    premiumizeApiKey = secrets.read(prefs, premiumizeApiKeyKey).orEmpty(),
-                    realDebridApiKey = secrets.read(prefs, realDebridApiKeyKey).orEmpty()
+                    torboxApiKey = torboxKey,
+                    premiumizeApiKey = premiumizeKey,
+                    realDebridApiKey = realDebridKey
                 ),
                 instantPlaybackPreparationLimit = normalizeDebridInstantPlaybackPreparationLimit(
                     prefs[instantPlaybackPreparationLimitKey] ?: 0
@@ -136,6 +153,8 @@ class DebridSettingsDataStore @Inject constructor(
 
     suspend fun setProviderApiKey(providerId: String, apiKey: String) {
         val provider = DebridProviders.byId(providerId) ?: return
+        // RCTV Control: a key set on the website can't be changed on the TV.
+        if (provider.id in managedProviderIds.first()) return
         val normalized = apiKey.trim()
         store().edit { prefs ->
             providerKey(provider.id)?.let { key -> prefs[key] = secrets.seal(key, normalized) }

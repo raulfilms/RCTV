@@ -40,12 +40,37 @@ import javax.inject.Singleton
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class LiveTvDataStore @Inject constructor(
     private val factory: ProfileDataStoreFactory,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    /** RCTV Control: the account's IPTV set on the website wins over the TV's (every profile). */
+    private val managedServices: com.nuvio.tv.core.rctvcontrol.RctvManagedServices
 ) {
     companion object {
         private const val FEATURE = "live_tv"
         private const val DEFAULT_SOURCE_ID = "default"
+        /** RCTV Control: the account's IPTV (set on the website). */
+        const val ACCOUNT_SOURCE_ID = "rctv-account"
     }
+
+    /** RCTV Control: the account's IPTV as a source; null when the website has none for it. */
+    private val accountSource = managedServices.services.map { services ->
+        services.iptv?.let { iptv ->
+            LiveTvSource(
+                id = ACCOUNT_SOURCE_ID,
+                name = "RCTV",
+                connection = LiveTvConnection.Xtream(
+                    serverUrl = iptv.server,
+                    username = iptv.username,
+                    password = iptv.password,
+                    // The guide set on the website, when there is one.
+                    epgUrl = iptv.epgUrl
+                ),
+                enabled = true
+            )
+        }
+    }
+
+    /** True while the IPTV comes from the account's website (the TV's own sources aren't used or changed). */
+    val managedByAccount: Boolean get() = managedServices.services.value.iptv != null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -77,17 +102,25 @@ class LiveTvDataStore @Inject constructor(
     private val secrets = SecretPreferences(FEATURE, listOf(sourcesJsonKey, legacyXtreamPassKey))
 
     /** Every configured source (enabled or not), newest multi-source format first, falling back to a migrated legacy single connection. */
-    val sources: StateFlow<List<LiveTvSource>> = profileManager.activeProfileId.flatMapLatest { pid ->
-        factory.get(pid, FEATURE).data.map { prefs ->
-            secrets.sealInBackground(pid, prefs) { factory.get(pid, FEATURE) }
-            sourcesFromPrefs(prefs)
-        }
-    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+    val sources: StateFlow<List<LiveTvSource>> = kotlinx.coroutines.flow.combine(
+        profileManager.activeProfileId.flatMapLatest { pid ->
+            factory.get(pid, FEATURE).data.map { prefs ->
+                secrets.sealInBackground(pid, prefs) { factory.get(pid, FEATURE) }
+                sourcesFromPrefs(prefs)
+            }
+        },
+        accountSource
+    ) { stored, account -> if (account != null) listOf(account) else stored }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     /** The first enabled source's connection, or null - kept for callers built before multi-source support. */
-    val connection: StateFlow<LiveTvConnection?> = profileManager.activeProfileId.flatMapLatest { pid ->
-        factory.get(pid, FEATURE).data.map { prefs -> sourcesFromPrefs(prefs).firstOrNull { it.enabled }?.connection }
-    }.stateIn(scope, SharingStarted.Eagerly, null)
+    val connection: StateFlow<LiveTvConnection?> = kotlinx.coroutines.flow.combine(
+        profileManager.activeProfileId.flatMapLatest { pid ->
+            factory.get(pid, FEATURE).data.map { prefs -> sourcesFromPrefs(prefs).firstOrNull { it.enabled }?.connection }
+        },
+        accountSource
+    ) { stored, account -> account?.connection ?: stored }
+        .stateIn(scope, SharingStarted.Eagerly, null)
 
     /** Ids of the channels in the Guide's "Custom" list. */
     val customChannelIds: StateFlow<Set<String>> = profileManager.activeProfileId.flatMapLatest { pid ->
@@ -236,11 +269,13 @@ class LiveTvDataStore @Inject constructor(
     }
 
     private suspend fun replaceWithSingleSource(connection: LiveTvConnection) {
+        if (managedByAccount) return
         val source = LiveTvSource(id = DEFAULT_SOURCE_ID, name = "Default", connection = connection, enabled = true)
         store().edit { prefs -> prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(listOf(source))) }
     }
 
     suspend fun clearConnection() {
+        if (managedByAccount) return
         store().edit { prefs ->
             prefs.remove(sourcesJsonKey)
             prefs.remove(legacyMethodKey)
@@ -258,6 +293,8 @@ class LiveTvDataStore @Inject constructor(
 
     /** Adds a new source, or replaces the existing one with the same [LiveTvSource.id]. */
     suspend fun addSource(source: LiveTvSource) {
+        // RCTV Control: the account's IPTV is set on the website, not on the TV.
+        if (managedByAccount || source.id == ACCOUNT_SOURCE_ID) return
         store().edit { prefs ->
             val current = sourcesFromPrefs(prefs)
             prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(current.filterNot { it.id == source.id } + source))
@@ -268,6 +305,7 @@ class LiveTvDataStore @Inject constructor(
     suspend fun updateSource(source: LiveTvSource) = addSource(source)
 
     suspend fun removeSource(id: String) {
+        if (managedByAccount) return
         store().edit { prefs ->
             val current = sourcesFromPrefs(prefs)
             prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(current.filterNot { it.id == id }))
@@ -275,6 +313,7 @@ class LiveTvDataStore @Inject constructor(
     }
 
     suspend fun setSourceEnabled(id: String, enabled: Boolean) {
+        if (managedByAccount) return
         store().edit { prefs ->
             val current = sourcesFromPrefs(prefs)
             prefs[sourcesJsonKey] = secrets.seal(sourcesJsonKey, encodeSources(current.map { if (it.id == id) it.copy(enabled = enabled) else it }))

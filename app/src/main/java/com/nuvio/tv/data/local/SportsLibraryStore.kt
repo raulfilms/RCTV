@@ -74,12 +74,14 @@ class SportsLibraryStore @Inject constructor(
         if (teams.isEmpty()) return
         store().edit { prefs ->
             val current = readTeams(prefs)
+            // RCTV: by team and league (the same number is another team in another league).
             val byId = LinkedHashMap<String, SavedSportsTeam>()
-            current.forEach { byId[it.team.id] = it }
+            current.forEach { byId[com.nuvio.tv.domain.model.SportsTeamKey.of(it.team)] = it }
             val now = System.currentTimeMillis()
             teams.forEach { team ->
-                val known = byId[team.id]
-                byId[team.id] = SavedSportsTeam(
+                val key = com.nuvio.tv.domain.model.SportsTeamKey.of(team)
+                val known = byId[key]
+                byId[key] = SavedSportsTeam(
                     team = if (known == null) team else team.copy(badgeUrl = team.badgeUrl ?: known.team.badgeUrl),
                     addedAt = known?.addedAt ?: now
                 )
@@ -93,9 +95,10 @@ class SportsLibraryStore @Inject constructor(
         }
     }
 
-    suspend fun removeTeam(teamId: String) {
+    /** [teamKey]: the team with its league ([com.nuvio.tv.domain.model.SportsTeamKey]). */
+    suspend fun removeTeam(teamKey: String) {
         store().edit { prefs ->
-            val updated = readTeams(prefs).filterNot { it.team.id == teamId }
+            val updated = readTeams(prefs).filterNot { com.nuvio.tv.domain.model.SportsTeamKey.of(it.team) == teamKey }
             prefs[teamsKey] = JSONArray().apply {
                 updated.forEach { put(teamJson(it.team).put("addedAt", it.addedAt)) }
             }.toString()
