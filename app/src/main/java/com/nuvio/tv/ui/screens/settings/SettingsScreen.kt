@@ -1210,6 +1210,8 @@ private fun AccountSettingsInline(
     val imdbAccount by imdbViewModel.account.collectAsStateWithLifecycle()
     var showImdb by remember { mutableStateOf(false) }
     var focusImdbRow by remember { mutableStateOf(false) }
+    // RCTV Control, Light: IMDb can't be linked.
+    val rctvLight = com.nuvio.tv.ui.components.LocalRctvPlan.current == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
     val imdbRowFocusRequester = remember { FocusRequester() }
     val imdbPageFocusRequester = remember { FocusRequester() }
 
@@ -1218,7 +1220,7 @@ private fun AccountSettingsInline(
         focusImdbRow = true
     }
 
-    if (showImdb) {
+    if (showImdb && !rctvLight) {
         LaunchedEffect(Unit) {
             withFrameNanos { }
             runCatching { imdbPageFocusRequester.requestFocus() }
@@ -1258,7 +1260,7 @@ private fun AccountSettingsInline(
                 initialFocusRequester = initialFocusRequester
             )
         }
-        SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
+        if (!rctvLight) SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsActionRow(
                 title = stringResource(R.string.imdb_title),
                 subtitle = stringResource(R.string.account_imdb_subtitle),
@@ -1288,6 +1290,8 @@ private fun IntegrationSettingsContent(
     }
     val hubEntryFocusRequester = initialFocusRequester ?: hubFocusRequester
     val imdbFocusRequester = remember { FocusRequester() }
+    // RCTV Control, Light: IMDb can't be linked.
+    val rctvLight = com.nuvio.tv.ui.components.LocalRctvPlan.current == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
 
     LaunchedEffect(selectedSection, autoFocusEnabled) {
         if (!autoFocusEnabled) return@LaunchedEffect
@@ -1346,7 +1350,7 @@ private fun IntegrationSettingsContent(
                                     onClick = { onSelectSection(IntegrationSettingsSection.MdbList) }
                                 )
                             }
-                            item(key = "integration_hub_imdb") {
+                            if (!rctvLight) item(key = "integration_hub_imdb") {
                                 SettingsActionRow(
                                     title = stringResource(R.string.imdb_title),
                                     subtitle = stringResource(R.string.settings_imdb_subtitle),
@@ -1386,9 +1390,11 @@ private fun IntegrationSettingsContent(
         }
 
         IntegrationSettingsSection.Imdb -> {
-            ImdbSettingsContent(
-                initialFocusRequester = imdbFocusRequester
-            )
+            if (!rctvLight) {
+                ImdbSettingsContent(
+                    initialFocusRequester = imdbFocusRequester
+                )
+            }
         }
 
         IntegrationSettingsSection.AnimeSkip -> {

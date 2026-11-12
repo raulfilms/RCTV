@@ -222,9 +222,12 @@ class LibraryViewModel @Inject constructor(
     private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null
 ) : ViewModel() {
 
-    /** RCTV Control, Light: movies and series only (no sports or channel types in the Library). */
+    /**
+     * RCTV Control, Light: the Library has only All, Movies and Shows (no sports, channels, IMDb
+     * lists or other types).
+     */
     @Volatile
-    private var extrasHidden: Boolean = isLightPlan(rctvAccess?.state?.value?.plan)
+    private var lightPlan: Boolean = isLightPlan(rctvAccess?.state?.value?.plan)
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -954,7 +957,10 @@ class LibraryViewModel @Inject constructor(
 
     private fun LibraryUiState.withVisibleItems(): LibraryUiState {
         // Games bookmarked locally come in with the extra types, not with the titles.
-        val titleItems = allItems.filterNot { it.isLibraryExtra() }
+        // RCTV Control, Light: movies and shows only.
+        val titleItems = allItems.filterNot { it.isLibraryExtra() }.filter { entry ->
+            !lightPlan || entry.libraryTypeKey().let { it == LIBRARY_TYPE_MOVIE || it == LIBRARY_TYPE_SHOW }
+        }
         val listFiltered = if (sourceMode.providerId != null) {
             val listKey = selectedListKey ?: ""
             titleItems.filter { entry -> entry.listKeys.contains(listKey) }
@@ -964,7 +970,10 @@ class LibraryViewModel @Inject constructor(
 
         // Step 2: Type filter. Teams, leagues, events and custom channels aren't in any list, and
         // have no genres, years or watched state to filter by.
-        val selectedTypeKey = selectedTypeTab?.key
+        // RCTV Control, Light: only All, Movies and Shows can be chosen.
+        val selectedTypeKey = selectedTypeTab?.key?.takeUnless { key ->
+            lightPlan && key != LibraryTypeTab.ALL_KEY && key != LIBRARY_TYPE_MOVIE && key != LIBRARY_TYPE_SHOW
+        }
         val extraSelected = selectedTypeKey != null && selectedTypeKey in LIBRARY_EXTRA_TYPES
         // The IMDb watchlist and rated series: titles of their own, not the Library's.
         val imdbSelected = selectedTypeKey in LIBRARY_IMDB_TYPES
@@ -1097,7 +1106,7 @@ class LibraryViewModel @Inject constructor(
             (selectedGenre == null || entry.genres.any { it.equals(selectedGenre, ignoreCase = true) }) &&
                 (selectedYear == null || entry.extractYear() == selectedYear)
         }
-        val imdbCounts = if (imdbConnected) {
+        val imdbCounts = if (imdbConnected && !lightPlan) {
             mapOf(
                 LIBRARY_TYPE_IMDB_LIST to imdbItems.countMatching(),
                 LIBRARY_TYPE_IMDB_TV_RATED to imdbRatedSeries.countMatching()
@@ -1129,6 +1138,12 @@ class LibraryViewModel @Inject constructor(
         return copy(
             visibleItems = sorted.withCustomPosterUrls(customPosterUrlPattern),
             availableTypeTabs = typeTabsWithCounts,
+            // RCTV Control, Light: a type Light doesn't have (chosen before) goes back to All.
+            selectedTypeTab = if (selectedTypeTab != null && selectedTypeKey == null) {
+                typeTabsWithCounts.firstOrNull() ?: selectedTypeTab
+            } else {
+                selectedTypeTab
+            },
             availableGenres = genreOptions,
             availableYears = yearOptions,
             availableTitleTypes = titleTypeOptions,
@@ -1216,8 +1231,11 @@ class LibraryViewModel @Inject constructor(
             .sorted()
         countByType.putAll(imdbCounts)
         val imdbKeys = listOf(LIBRARY_TYPE_IMDB_LIST, LIBRARY_TYPE_IMDB_TV_RATED).filter { it in imdbCounts }
-        val extraKeys = if (extrasHidden) emptyList() else LIBRARY_EXTRA_TYPE_ORDER
-        val keys = listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + imdbKeys + extraKeys
+        val keys = if (lightPlan) {
+            listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW)
+        } else {
+            listOf(LIBRARY_TYPE_MOVIE, LIBRARY_TYPE_SHOW) + otherTitleTypes + imdbKeys + LIBRARY_EXTRA_TYPE_ORDER
+        }
         val allTab = LibraryTypeTab(key = LibraryTypeTab.ALL_KEY, label = "${context.getString(R.string.library_type_all)} (${filteredItems.size})")
         return listOf(allTab) + keys.map { key ->
             LibraryTypeTab(key = key, label = "${prettifyTypeLabel(key)} (${countByType[key] ?: 0})")
@@ -1227,7 +1245,8 @@ class LibraryViewModel @Inject constructor(
     // ── The IMDb watchlist ──
 
     private fun observeImdbList() {
-        imdbSync.syncIfStale()
+        // RCTV Control, Light: no IMDb.
+        if (!lightPlan) imdbSync.syncIfStale()
         viewModelScope.launch {
             combine(imdbSync.account, imdbSync.watchlistLinked, imdbSync.ratedSeriesLinked) { account, watchlist, ratedSeries ->
                 ImdbLibraryLists(
@@ -1361,7 +1380,7 @@ class LibraryViewModel @Inject constructor(
             }.combine(
                 rctvAccess?.state?.map { isLightPlan(it.plan) }?.distinctUntilChanged() ?: flowOf(false)
             ) { extras, light ->
-                extrasHidden = light
+                lightPlan = light
                 if (light) Triple(emptyList<LibraryEntry>(), emptyMap<String, List<String>>(), emptyMap<String, SportsEvent>()) else extras
             }.collectLatest { (items, logos, events) ->
                 _uiState.update { current ->
