@@ -465,16 +465,20 @@ class LiveTvGuideLoader @Inject constructor(
         } }
         return runCatching {
             val programs: List<EpgProgram> = when (connection) {
-                is LiveTvConnection.Xtream -> xtreamClient.streamXmltv(connection, read)
-                is LiveTvConnection.M3u -> {
-                    val epgUrl = connection.epgUrl ?: return emptyMap()
-                    // Gzip-aware too (an .xml.gz guide).
-                    val request = Request.Builder().url(epgUrl).build()
-                    okHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) error("HTTP ${response.code}")
-                        read(response.body?.byteStream() ?: error("Empty response"))
+                // RCTV Control: the guide set on the website for the account first; the provider's own
+                // when it has none, can't be read, or has nothing for these channels.
+                is LiveTvConnection.Xtream -> connection.epgUrl
+                    ?.let { url ->
+                        try {
+                            downloadXmltv(url, read).takeIf { it.isNotEmpty() }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
-                }
+                    ?: xtreamClient.streamXmltv(connection, read)
+                is LiveTvConnection.M3u -> downloadXmltv(connection.epgUrl ?: return emptyMap(), read)
                 is LiveTvConnection.Stalker -> return emptyMap()
             }
             // Stopped part way (another load took over): what was read is incomplete.
@@ -483,6 +487,15 @@ class LiveTvGuideLoader @Inject constructor(
                 .groupBy { "${source.id}:${it.channelId}" }
                 .mapValues { (_, list) -> list.sortedBy { it.startMs } }
         }.onFailure { if (it is CancellationException) throw it }.getOrDefault(emptyMap())
+    }
+
+    /** An XMLTV guide at [url] (gzip-aware too: an .xml.gz guide). The address is never logged. */
+    private fun <T> downloadXmltv(url: String, read: (java.io.InputStream) -> T): T {
+        val request = Request.Builder().url(url).build()
+        return okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("HTTP ${response.code}")
+            read(response.body?.byteStream() ?: error("Empty response"))
+        }
     }
 
     // ------------------------------------------------------------------ Kept on the device

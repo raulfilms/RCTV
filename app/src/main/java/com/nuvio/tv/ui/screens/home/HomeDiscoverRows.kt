@@ -81,6 +81,9 @@ sealed interface HomeLink {
 
     /** A live channel's page (one of the Guide's "Custom" channels, from Top Channels). */
     data class LiveChannel(val channelId: String) : HomeLink
+
+    /** RCTV Control: a website banner's button (a collection, a game, a team, a league or a channel). */
+    data class Banner(val action: com.nuvio.tv.core.rctvcontrol.RctvBannerAction) : HomeLink
 }
 
 private val GenreTileWidth: Dp = AppleTvSpacing.Col5

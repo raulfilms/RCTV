@@ -102,6 +102,16 @@ fun IptvSourcesScreen(
         }
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
+        // RCTV Control: the account's IPTV comes from the website (no address or login shown here).
+        if (uiState.managedByAccount) {
+            Text(
+                text = stringResource(R.string.rctv_iptv_managed_by_account),
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary
+            )
+            return@Column
+        }
+
         if (uiState.sources.isEmpty() && !uiState.isAdding) {
             Text(
                 text = stringResource(R.string.iptv_sources_empty),

@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.components
 
 import androidx.compose.runtime.compositionLocalOf
+import com.nuvio.tv.core.rctvcontrol.RctvBanner
 import com.nuvio.tv.core.rctvcontrol.RctvPlan
 
 /**
@@ -14,3 +15,9 @@ val LocalRctvPlan = compositionLocalOf { RctvPlan.FULL }
  * no Sports).
  */
 val LocalKidsProfile = compositionLocalOf { false }
+
+/**
+ * RCTV Control: the website's Home banners this profile sees right now (plan, Kids, dates), in
+ * Home's order. None where nothing provides them.
+ */
+val LocalRctvHomeBanners = compositionLocalOf { emptyList<RctvBanner>() }

@@ -930,7 +930,8 @@ fun SearchScreen(
                                 showSeeAll = hasEnoughForSeeAll,
                                 showPosterLabels = uiState.posterLabelsEnabled,
                                 showAddonName = uiState.catalogAddonNameEnabled,
-                                showCatalogTypeSuffix = uiState.catalogTypeSuffixEnabled,
+                                // RCTV: the rows are already called "Movies" and "Series".
+                                showCatalogTypeSuffix = false,
                                 enableRowFocusRestorer = true,
                                 rowFocusRequester = rowFocusRequester,
                                 entryFocusRequester = entryFocusRequester,

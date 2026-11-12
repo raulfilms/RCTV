@@ -90,6 +90,8 @@ fun DebridSettingsContent(
     initialFocusRequester: FocusRequester? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // RCTV Control: keys set on the website (not shown, not changeable on the TV).
+    val managedProviders by viewModel.managedProviderIds.collectAsStateWithLifecycle()
     // The first two rows are gated on a connected provider and cannot take focus without one,
     // so the entry requester goes to the first row that can accept it. Left on a gated row the
     // request is declined, focus stays on the category rail, and the next press walks the rail
@@ -207,13 +209,18 @@ fun DebridSettingsContent(
                                 } else {
                                     stringResource(R.string.debrid_provider_description, provider.displayName)
                                 },
-                                value = providerCredentialStatus(
-                                    provider = provider,
-                                    credential = uiState.apiKeyFor(provider.id),
-                                    notSetLabel = stringResource(R.string.debrid_not_set),
-                                    connectedLabel = stringResource(R.string.debrid_connected)
-                                ),
+                                value = if (provider.id in managedProviders) {
+                                    stringResource(R.string.rctv_managed_by_account)
+                                } else {
+                                    providerCredentialStatus(
+                                        provider = provider,
+                                        credential = uiState.apiKeyFor(provider.id),
+                                        notSetLabel = stringResource(R.string.debrid_not_set),
+                                        connectedLabel = stringResource(R.string.debrid_connected)
+                                    )
+                                },
                                 onClick = {
+                                    if (provider.id in managedProviders) return@SettingsActionRow
                                     when (provider.authMethod) {
                                         DebridProviderAuthMethod.DeviceCode -> activeDeviceAuthDialog = provider.id
                                         DebridProviderAuthMethod.ApiKey -> activeApiKeyDialog = provider.id

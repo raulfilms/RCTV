@@ -1351,13 +1351,14 @@ fun AppleLandscapeCard(
                         .padding(start = 8.dp, top = 8.dp)
                 )
             }
-            if (isWatched) {
-                WatchedMarker(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(end = 8.dp, top = 8.dp)
-                )
-            }
+            // RCTV: watched (blue eye), in the Library (black check), in the IMDb watchlist (yellow check).
+            TitleStatusBadges(
+                item = item,
+                watched = isWatched,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 8.dp, top = 8.dp)
+            )
         }
     }
 }

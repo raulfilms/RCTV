@@ -559,14 +559,15 @@ fun ContentCard(
                             .zIndex(2f)
                     )
                 }
-                if (isWatched) {
-                    WatchedMarker(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = NuvioTheme.spacing.sm, top = NuvioTheme.spacing.sm)
-                            .zIndex(2f)
-                    )
-                }
+                // RCTV: watched (blue eye), in the Library (black check), in the IMDb watchlist (yellow check).
+                TitleStatusBadges(
+                    item = item,
+                    watched = isWatched,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = NuvioTheme.spacing.sm, top = NuvioTheme.spacing.sm)
+                        .zIndex(2f)
+                )
             }
         }
 

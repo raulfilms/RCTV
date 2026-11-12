@@ -1,5 +1,7 @@
 package com.nuvio.tv.ui.screens.library
 
+import com.nuvio.tv.domain.model.hasTeam
+import com.nuvio.tv.domain.model.SportsTeamKey
 import com.nuvio.tv.ui.screens.sports.isLiveAt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -1324,8 +1326,9 @@ class LibraryViewModel @Inject constructor(
     private fun observeLibraryExtras() {
         viewModelScope.launch {
             // Sports Teams are "My Teams", Sports Leagues "My Sports" (as on the Sports page).
+            // RCTV: by team and league (the same number is another team in another league).
             val myTeams = combine(sportsLibraryStore.teams, sportsPreferences.favoriteTeamIds) { teams, ids ->
-                teams.filter { it.team.id in ids }
+                teams.filter { ids.hasTeam(it.team) }.distinctBy { SportsTeamKey.of(it.team) }
             }
             combine(
                 myTeams,
@@ -1334,18 +1337,19 @@ class LibraryViewModel @Inject constructor(
                 libraryPreferences.libraryItems,
                 liveTvDataStore.customChannels
             ) { teams, leagues, eventDetails, saved, channels ->
-                libraryTeams = teams.associate { it.team.id to it.team }
+                libraryTeams = teams.associate { SportsTeamKey.of(it.team) to it.team }
                 libraryLeagues = leagues.associate { it.league.id to it.league }
                 libraryEvents = eventDetails
                 val items = mutableListOf<LibraryEntry>()
                 val logos = mutableMapOf<String, List<String>>()
                 val events = mutableMapOf<String, SportsEvent>()
                 teams.forEach { (team, addedAt) ->
+                    val teamKey = SportsTeamKey.of(team)
                     items += extraEntry(
-                        id = team.id, type = LIBRARY_TYPE_SPORTS_TEAM, name = team.name,
+                        id = teamKey, type = LIBRARY_TYPE_SPORTS_TEAM, name = team.name,
                         description = team.leagueName, genre = team.sportName, art = team.badgeUrl, addedAt = addedAt
                     )
-                    logos["$LIBRARY_TYPE_SPORTS_TEAM:${team.id}"] = listOfNotNull(team.badgeUrl)
+                    logos["$LIBRARY_TYPE_SPORTS_TEAM:$teamKey"] = listOfNotNull(team.badgeUrl)
                 }
                 leagues.forEach { (league, addedAt) ->
                     items += extraEntry(
@@ -1468,7 +1472,9 @@ class LibraryViewModel @Inject constructor(
                     if (entry.id in liveTvDataStore.customChannelIds.value) liveTvDataStore.toggleCustomChannel(entry.id)
                 }
                 LIBRARY_TYPE_SPORTS_TEAM -> {
-                    if (entry.id in sportsPreferences.favoriteTeamIds.value) sportsPreferences.toggleFavoriteTeam(entry.id)
+                    // entry.id is the team with its league ([SportsTeamKey]).
+                    val saved = sportsPreferences.favoriteTeamIds.value
+                    if (entry.id in saved || SportsTeamKey.teamIdOf(entry.id) in saved) sportsPreferences.toggleFavoriteTeam(entry.id)
                 }
                 LIBRARY_TYPE_SPORTS_LEAGUE -> sportsLibraryStore.removeLeague(entry.id)
                 LIBRARY_TYPE_EVENT -> {

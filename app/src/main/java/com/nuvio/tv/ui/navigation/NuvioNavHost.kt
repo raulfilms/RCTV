@@ -123,6 +123,46 @@ private fun liveVodRoute(target: com.nuvio.tv.data.livetv.LiveVodTarget, fromBeg
         startFromBeginning = fromBeginning
     )
 
+/** RCTV Control: where a Home banner's button goes. */
+private fun rctvBannerRoute(action: com.nuvio.tv.core.rctvcontrol.RctvBannerAction): String = when (action) {
+    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Collection -> Screen.RctvCollection.createRoute(action.collectionId)
+    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Game -> {
+        // The game's page reads the score and the rest itself; until then, by its start time.
+        val now = System.currentTimeMillis()
+        val start = action.startMs
+        val status = when {
+            start == null || start > now -> com.nuvio.tv.domain.model.SportsEventStatus.UPCOMING
+            now - start < 4L * 60 * 60 * 1000 -> com.nuvio.tv.domain.model.SportsEventStatus.LIVE
+            else -> com.nuvio.tv.domain.model.SportsEventStatus.FINISHED
+        }
+        gameDetailRoute(
+            SportsEvent(
+                id = action.eventId,
+                name = action.name,
+                sportName = action.sportName.ifBlank { null },
+                leagueId = action.leagueId,
+                leagueName = action.leagueName.ifBlank { null },
+                homeTeamId = action.home?.id,
+                homeTeamName = action.home?.name.orEmpty(),
+                homeTeamBadgeUrl = action.home?.logoUrl,
+                awayTeamId = action.away?.id,
+                awayTeamName = action.away?.name.orEmpty(),
+                awayTeamBadgeUrl = action.away?.logoUrl,
+                homeScore = null,
+                awayScore = null,
+                startTimeMs = start,
+                venue = null,
+                status = status
+            )
+        )
+    }
+    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Team ->
+        Screen.SportsTeamDetail.createRoute(action.leagueId, action.teamId, action.name, action.logoUrl, action.color)
+    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.League ->
+        Screen.SportsLeagueDetail.createRoute(action.leagueId, action.name, action.sportName, action.logoUrl)
+    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Channel -> Screen.RctvLiveChannel.createRoute(action.name)
+}
+
 private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetail.createRoute(
     eventId = event.id,
     name = event.name,
@@ -950,6 +990,20 @@ private fun PlaybackNavHost(
                 }
             }
 
+            // RCTV Control: the account's limits (live TV on 2 TVs at once; movies and series as the
+            // owner set). No room: the player closes with the message.
+            val guardContext = androidx.compose.ui.platform.LocalContext.current
+            val guardArgs = backStackEntry.arguments
+            com.nuvio.tv.ui.components.RctvPlaybackGuard(
+                kind = if (guardArgs?.getString("contentType").equals("live", ignoreCase = true)) "iptv" else "vod",
+                title = guardArgs?.getString("contentName")?.takeIf { it.isNotBlank() }
+                    ?: guardArgs?.getString("title").orEmpty(),
+                onStop = { messageRes ->
+                    android.widget.Toast.makeText(guardContext, messageRes, android.widget.Toast.LENGTH_LONG).show()
+                    navController.popBackStack()
+                }
+            )
+
             PlayerScreen(
                 onBackPress = { currentVideoId, currentSeason, currentEpisode, autoPlayEnabled, playbackCompleted ->
                     val args = backStackEntry.arguments
@@ -1404,6 +1458,62 @@ private fun PlaybackNavHost(
                 // RCTV: "Watch From Beginning" / "Watch VOD": from its sources (Back returns to the Guide).
                 onWatchVod = { target, fromBeginning ->
                     navController.navigate(liveVodRoute(target, fromBeginning))
+                }
+            )
+        }
+
+        // RCTV Control: a website collection (from a Home banner).
+        composable(
+            route = Screen.RctvCollection.route,
+            arguments = listOf(navArgument("collectionId") { type = NavType.StringType })
+        ) {
+            com.nuvio.tv.ui.screens.rctvcollection.RctvCollectionScreen(
+                onItemClick = { item ->
+                    navController.navigate(
+                        Screen.Detail.createRoute(itemId = item.id, itemType = item.apiType, addonBaseUrl = "")
+                    )
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // RCTV Control: a banner's Live TV channel: found in the guide by its name and played.
+        composable(
+            route = Screen.RctvLiveChannel.route,
+            arguments = listOf(navArgument("name") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val wanted = backStackEntry.arguments?.getString("name")
+                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+                .orEmpty()
+            val liveTvEntry = androidx.compose.runtime.remember(backStackEntry) {
+                runCatching { navController.getBackStackEntry(Screen.LiveTv.route) }.getOrNull()
+            }
+            val liveTvViewModel: LiveTvViewModel = if (liveTvEntry != null) {
+                androidx.hilt.navigation.compose.hiltViewModel(liveTvEntry)
+            } else {
+                androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
+            }
+            com.nuvio.tv.ui.screens.rctvcollection.RctvLiveChannelLink(
+                wanted = wanted,
+                liveTvViewModel = liveTvViewModel,
+                onPlay = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    ) {
+                        popUpTo(Screen.RctvLiveChannel.route) { inclusive = true }
+                    }
+                },
+                onNotFound = {
+                    Toast.makeText(context, R.string.rctv_banner_channel_not_found, Toast.LENGTH_LONG).show()
+                    navController.navigate(Screen.LiveTv.route) {
+                        popUpTo(Screen.RctvLiveChannel.route) { inclusive = true }
+                    }
                 }
             )
         }
@@ -2076,6 +2186,8 @@ private fun HomeRouteContent(
                 is com.nuvio.tv.ui.screens.home.HomeLink.LiveChannel -> navController.navigate(
                     Screen.ChannelProfile.createRoute(link.channelId)
                 )
+                // RCTV Control: a website banner's button.
+                is com.nuvio.tv.ui.screens.home.HomeLink.Banner -> navController.navigate(rctvBannerRoute(link.action))
             }
         },
         onOpenStreamingService = { service ->

@@ -132,6 +132,11 @@ class SearchViewModel @Inject constructor(
         const val DISCOVER_INITIAL_LIMIT = 100
         const val DISCOVER_SHOW_MORE_BATCH = 50
         const val SUGGESTION_DEBOUNCE_MS = 150L
+        /** RCTV: Search's titles come from this catalog only (the app's default one, Cinemeta). */
+        const val MAIN_CATALOG_ID = "com.linvo.cinemeta"
+        const val MAIN_CATALOG_URL = "https://v3-cinemeta.strem.io"
+        /** RCTV: Search shows Movies, then Series. */
+        val SEARCH_TYPES = listOf("movie", "series")
 
         /**
          * Live search fires while typing, but each run fans out to every enabled addon catalog, so
@@ -382,9 +387,7 @@ class SearchViewModel @Inject constructor(
                 return@launch
             }
 
-            val allTargets = buildSearchTargets(addons)
-            val firstAddonId = allTargets.firstOrNull()?.first?.id
-            val searchTargets = if (firstAddonId != null) allTargets.filter { it.first.id == firstAddonId } else emptyList()
+            val searchTargets = buildSearchTargets(addons)
             if (searchTargets.isEmpty()) {
                 _uiState.update { it.copy(suggestions = emptyList()) }
                 return@launch
@@ -588,6 +591,7 @@ class SearchViewModel @Inject constructor(
             if (generation != searchGeneration || activeSearchQuery != query) return@launch
 
             val searchTargets = buildSearchTargets(addons)
+            if (generation != searchGeneration || activeSearchQuery != query) return@launch
 
             // Same query against the same catalogs, and that run either finished or is still
             // arriving, so there is nothing new to fetch. Without this, pressing Done after live
@@ -674,7 +678,7 @@ class SearchViewModel @Inject constructor(
                     addonName = addon.displayName,
                     addonBaseUrl = addon.baseUrl,
                     catalogId = catalog.id,
-                    catalogName = catalog.name,
+                    catalogName = searchRowName(catalog.apiType),
                     type = ContentType.fromString(catalog.apiType),
                     rawType = catalog.apiType,
                     items = fakeItems,
@@ -864,7 +868,7 @@ class SearchViewModel @Inject constructor(
             addonId = addon.id,
             addonName = addon.displayName,
             catalogId = catalog.id,
-            catalogName = catalog.name,
+            catalogName = searchRowName(catalog.apiType),
             type = catalog.apiType,
             skip = 0,
             skipStep = skipStep,
@@ -1301,15 +1305,38 @@ class SearchViewModel @Inject constructor(
         return filtered.firstOrNull { it.key == preferredKey } ?: filtered.firstOrNull()
     }
 
-    private fun buildSearchTargets(addons: List<Addon>): List<Pair<Addon, CatalogDescriptor>> {
-        val allSearchTargets = addons.flatMap { addon ->
-            addon.catalogs
-                .filter { catalog -> catalog.isSearchable() }
-                .map { catalog -> addon to catalog }
-        }
+    /**
+     * RCTV: what Search looks in for titles: Movies and Series, one row each, from the main catalog
+     * (Cinemeta, the app's default). Never the debrid libraries or any other addon's catalogs. If
+     * Cinemeta isn't installed (or is off) on this profile, its address is used all the same, so
+     * Search always has the two rows. Teams, leagues, channels, games and the guide come apart
+     * ([findExtras]).
+     */
+    /** Cinemeta read from its address once (when it isn't installed on this profile). */
+    @Volatile
+    private var mainCatalogFallback: Addon? = null
 
-        return allSearchTargets
+    private suspend fun buildSearchTargets(addons: List<Addon>): List<Pair<Addon, CatalogDescriptor>> {
+        val source = addons.firstOrNull { it.isMainCatalog() }
+            ?: mainCatalogFallback
+            ?: (addonRepository.fetchAddon(MAIN_CATALOG_URL) as? NetworkResult.Success)?.data
+                ?.also { mainCatalogFallback = it }
+            ?: return emptyList()
+        return SEARCH_TYPES.mapNotNull { type ->
+            source.catalogs
+                .firstOrNull { catalog -> catalog.apiType.equals(type, ignoreCase = true) && catalog.isSearchable() }
+                ?.let { catalog -> source to catalog }
+        }
     }
+
+    private fun Addon.isMainCatalog(): Boolean =
+        id == MAIN_CATALOG_ID || baseUrl.trim().trimEnd('/').removeSuffix("/manifest.json")
+            .equals(MAIN_CATALOG_URL, ignoreCase = true)
+
+    /** A search row's name: "Movies" or "Series" (never the catalog's own, like "Popular"). */
+    private fun searchRowName(apiType: String): String = context.getString(
+        if (apiType.equals("series", ignoreCase = true)) R.string.search_row_series else R.string.search_row_movies
+    )
 
     /**
      * A catalog is only searchable if a search is all it needs. One that also requires something we

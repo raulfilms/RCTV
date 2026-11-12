@@ -108,6 +108,8 @@ private const val STREAMING_SERVICES_ROW_KEY = "streaming_services"
 private const val STREAMING_SERVICES_ROW_INDEX = -3
 // Saved-focus row index for Home's TMDB rows: -100, -101... (never a catalog row's index).
 private const val DISCOVER_ROW_INDEX_BASE = -100
+/** RCTV Control: the website's banners between the rows (their own focus slots). */
+private const val BANNER_ROW_INDEX_BASE = -300
 private const val DISCOVER_ROW_KEY_PREFIX = "home_discover_"
 private val CLASSIC_IMMERSIVE_FADE_DISTANCE = 180.dp
 
@@ -285,6 +287,7 @@ fun ClassicHomeContent(
     val servicesRowFocusRequester = remember { FocusRequester() }
     // Home's TMDB rows, by their list key ("home_discover_<row id>").
     val discoverRowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val bannerFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val discoverRowStates = remember { mutableMapOf<String, LazyListState>() }
     val upcomingRowFocusRequester = remember { FocusRequester() }
     // Saveable so the rows come back where they were left after navigating away and
@@ -410,7 +413,7 @@ fun ClassicHomeContent(
                         topKey == "continue_watching" -> cwRowFocusRequester
                         topKey == STREAMING_SERVICES_ROW_KEY -> servicesRowFocusRequester
                         topKey == "upcoming_section" -> upcomingRowFocusRequester
-                        else -> discoverRowFocusRequesters[topKey] ?: rowFocusRequesters[topKey]
+                        else -> discoverRowFocusRequesters[topKey] ?: bannerFocusRequesters[topKey] ?: rowFocusRequesters[topKey]
                             ?: rowFocusRequesters[topKey.substringBeforeLast('_')]
                     }
                 }
@@ -548,6 +551,15 @@ fun ClassicHomeContent(
         it.isShown() && !(rctvLight && it.spec.kind == DisneyRowKind.CHANNELS)
     }
     val latestDiscoverItemCount = rememberUpdatedState(shownDiscoverRows.size)
+    // RCTV Control: the website's banners this profile sees, by the row they follow (Continue
+    // Watching, Streaming Services or a TMDB row). They all come before the catalog rows.
+    val homeBanners = com.nuvio.tv.ui.components.LocalRctvHomeBanners.current
+    val latestBannerCount = rememberUpdatedState(homeBanners.size)
+    val discoverRowOrder = discoverRows.map { it.spec.id }
+    val shownDiscoverRowIds = shownDiscoverRows.mapTo(HashSet()) { it.spec.id }
+    val bannersBySlot = remember(homeBanners, discoverRowOrder, shownDiscoverRowIds) {
+        com.nuvio.tv.core.rctvcontrol.RctvBannerParser.slots(homeBanners, discoverRowOrder, shownDiscoverRowIds)
+    }
     LaunchedEffect(columnListState) {
         val prefetchAhead = 1
         snapshotFlow {
@@ -565,7 +577,7 @@ fun ClassicHomeContent(
             val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
             val cwOffset = if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) 1 else 0
             val servicesOffset = if (latestStreamingServices.value.isNotEmpty()) 1 else 0
-            val rowsOffset = heroOffset + cwOffset + servicesOffset + latestDiscoverItemCount.value
+            val rowsOffset = heroOffset + cwOffset + servicesOffset + latestDiscoverItemCount.value + latestBannerCount.value
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAhead)) {
                 val rowIdx = idx - rowsOffset
                 val row = rows.getOrNull(rowIdx) ?: continue
@@ -676,6 +688,7 @@ fun ClassicHomeContent(
                         k == "hero_carousel" -> heroFocusRequester
                         k == STREAMING_SERVICES_ROW_KEY -> servicesRowFocusRequester
                         discoverRowFocusRequesters.containsKey(k) -> discoverRowFocusRequesters[k]
+                        bannerFocusRequesters.containsKey(k) -> bannerFocusRequesters[k]
                         rowFocusRequesters.containsKey(k) -> rowFocusRequesters[k]
                         else -> {
                             val baseKey = k.substringBeforeLast('_')
@@ -809,6 +822,31 @@ fun ClassicHomeContent(
             }
         }
 
+        // RCTV Control: a banner from the website (picture, title, one button).
+        val addBanners: androidx.compose.foundation.lazy.LazyListScope.(String) -> Unit = { slot ->
+            bannersBySlot[slot].orEmpty().forEach { banner ->
+                val bannerKey = rctvBannerKey(banner)
+                val bannerIndex = homeBanners.indexOf(banner)
+                item(key = bannerKey, contentType = "rctv_banner") {
+                    RctvHomeBanner(
+                        banner = banner,
+                        focusRequester = bannerFocusRequesters.getOrPut(bannerKey) { FocusRequester() },
+                        requestFocus = restoringFocus && focusState.focusedRowKey == bannerKey,
+                        onClick = { onOpenHomeLink(HomeLink.Banner(banner.action)) },
+                        onFocused = {
+                            if (restoringFocus) restoringFocus = false
+                            currentFocusSnapshot.rowIndex = BANNER_ROW_INDEX_BASE - bannerIndex
+                            currentFocusSnapshot.itemIndex = 0
+                            currentFocusSnapshot.rowKey = bannerKey
+                            activeRowKeyState.value = null
+                            onFocusedRowKeyChanged(null)
+                        }
+                    )
+                }
+            }
+        }
+        addBanners(com.nuvio.tv.core.rctvcontrol.RctvBanner.AFTER_CONTINUE_WATCHING)
+
         // Streaming services, right under Continue Watching.
         if (streamingServices.isNotEmpty()) {
             item(key = STREAMING_SERVICES_ROW_KEY, contentType = "streaming_services") {
@@ -832,6 +870,8 @@ fun ClassicHomeContent(
             }
         }
 
+
+        addBanners(com.nuvio.tv.core.rctvcontrol.RctvBanner.AFTER_STREAMING_SERVICES)
 
         // Home's TMDB rows, right under the streaming services: Trending Now, New Releases, Premieres...
         shownDiscoverRows.forEachIndexed { discoverIndex, rowState ->
@@ -919,6 +959,7 @@ fun ClassicHomeContent(
                     }
                 }
             }
+            addBanners(spec.id)
         }
 
         if (tmdbRowsFailed && uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) {

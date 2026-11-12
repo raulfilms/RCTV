@@ -295,6 +295,18 @@ sealed class Screen(val route: String) {
 
     data object Collections : Screen("collections")
 
+    /** RCTV Control: a collection the owner published on the website (opened from a Home banner). */
+    data object RctvCollection : Screen("rctv_collection/{collectionId}") {
+        fun createRoute(collectionId: String): String =
+            "rctv_collection/" + URLEncoder.encode(collectionId, "UTF-8").replace("+", "%20")
+    }
+
+    /** RCTV Control: a Home banner's Live TV channel, found in the guide by [name] and played. */
+    data object RctvLiveChannel : Screen("rctv_live_channel/{name}") {
+        fun createRoute(name: String): String =
+            "rctv_live_channel/" + URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+    }
+
     data object CollectionEditor : Screen("collection_editor?collectionId={collectionId}") {
         fun createRoute(collectionId: String? = null): String {
             return "collection_editor?collectionId=${collectionId ?: ""}"

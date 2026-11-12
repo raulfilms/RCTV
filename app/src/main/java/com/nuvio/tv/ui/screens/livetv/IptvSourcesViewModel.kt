@@ -17,6 +17,8 @@ import javax.inject.Inject
 enum class IptvSourceType { M3U, XTREAM, STALKER }
 
 data class IptvSourcesUiState(
+    /** RCTV Control: the IPTV is set on the account's website (nothing to add or change here). */
+    val managedByAccount: Boolean = false,
     val sources: List<LiveTvSource> = emptyList(),
     val isAdding: Boolean = false,
     val addType: IptvSourceType = IptvSourceType.M3U,
@@ -49,7 +51,7 @@ class IptvSourcesViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             liveTvDataStore.sources.collectLatest { sources ->
-                _uiState.update { it.copy(sources = sources) }
+                _uiState.update { it.copy(sources = sources, managedByAccount = liveTvDataStore.managedByAccount) }
             }
         }
     }
