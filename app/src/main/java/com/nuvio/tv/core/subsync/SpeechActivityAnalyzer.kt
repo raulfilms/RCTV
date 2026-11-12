@@ -26,6 +26,11 @@ internal object SpeechActivityAnalyzer {
 
     /** Whether [url] can be read here (a file on a server, not a playlist, not this device's own torrent server). */
     fun canAnalyze(url: String?): Boolean {
+        // RCTV: on Android 9 and older (the Mi Box) the TV's own file reader closed the whole app
+        // while reading a movie's sound from the internet (Che: Part One, then an H.264/AAC 5.1
+        // movie, the crash report said so): the file is never read there; the sync hears the
+        // sound the player plays instead.
+        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) return false
         if (url.isNullOrBlank()) return false
         val lower = url.lowercase()
         if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false

@@ -21,6 +21,8 @@ internal object SpeechReadGuard {
 
     /** [read] when the file may be read on this TV; null when it may not, or another read is on. */
     fun <T> reading(context: Context, read: () -> T?): T? {
+        // RCTV: never on Android 9 and older (see SpeechActivityAnalyzer.canAnalyze).
+        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) return null
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!readingNow.compareAndSet(0, 1)) return null
         try {
