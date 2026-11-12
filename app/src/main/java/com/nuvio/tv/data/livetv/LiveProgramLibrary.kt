@@ -103,7 +103,7 @@ class LiveProgramLibrary @Inject constructor(
      */
     suspend fun match(program: EpgProgram): LiveProgramMatch? = withContext(Dispatchers.IO) {
         val language = language()
-        val key = "${program.title}|${program.subtitle}|${program.startMs / DAY_MS}|$language"
+        val key = "${program.title}|${program.subtitle}|${program.description?.hashCode() ?: 0}|${program.startMs / DAY_MS}|$language"
         matchCache[key]?.let { return@withContext it.value }
 
         val rawTitle = cleanTitle(program.title)
@@ -111,12 +111,7 @@ class LiveProgramLibrary @Inject constructor(
         val title = rawTitle.replace(TRAILING_YEAR, "").trim()
         if (title.length < 2) return@withContext null
 
-        val looksLikeMovie = program.categoryWords().any { "movie" in it || "film" in it }
-        val found = if (looksLikeMovie) {
-            search(title, year, isTv = false, language) ?: search(title, year, isTv = true, language)
-        } else {
-            search(title, year, isTv = true, language) ?: search(title, year, isTv = false, language)
-        }
+        val found = bestTitle(program, title, year, language)
         val match = if (found != null && !found.isMovie) {
             found.copy(episode = runCatching { findEpisode(found.tmdbId, program, language) }
                 .onFailure { if (it is CancellationException) throw it }
@@ -140,7 +135,8 @@ class LiveProgramLibrary @Inject constructor(
         val title = rawTitle.replace(TRAILING_YEAR, "").trim()
         if (title.length < 2 || normalize(title) in GENERIC_TITLES) return@withContext null
         val looksLikeMovie = program.categoryWords().any { "movie" in it || "film" in it }
-        val key = "${normalize(title)}|$year|$looksLikeMovie"
+        // RCTV: what the guide says of it picks among the titles of its name (see bestTitle).
+        val key = "${normalize(title)}|$year|$looksLikeMovie|${program.subtitle}|${program.description?.hashCode() ?: 0}"
         titleCache[key]?.let { return@withContext it.value }
         // TMDB didn't answer for this title a moment ago: not asked again for every focus or open
         // (it's asked again in a minute; nothing is remembered as "not on TMDB").
@@ -149,11 +145,7 @@ class LiveProgramLibrary @Inject constructor(
         }
         val language = language()
         val found = try {
-            if (looksLikeMovie) {
-                search(title, year, isTv = false, language) ?: search(title, year, isTv = true, language)
-            } else {
-                search(title, year, isTv = true, language) ?: search(title, year, isTv = false, language)
-            }
+            bestTitle(program, title, year, language)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -395,7 +387,50 @@ class LiveProgramLibrary @Inject constructor(
 
     // ------------------------------------------------------------------ TMDB
 
-    private suspend fun search(title: String, year: Int?, isTv: Boolean, language: String): LiveProgramMatch? {
+    /**
+     * RCTV (owner's rule): of the movies and series named [title] (of [year] when the title says it),
+     * the one this program is, by what the guide says of it (LiveTitleClues): a movie or an episode,
+     * a year it mentions, its description against each title's summary, a cast member it names.
+     * Not the most popular of the name: "Dead Heat" with Kiefer Sutherland isn't the 1988 one.
+     */
+    private suspend fun bestTitle(program: EpgProgram, title: String, year: Int?, language: String): LiveProgramMatch? {
+        val all = candidates(title, year, isTv = false, language).map { it to false } +
+            candidates(title, year, isTv = true, language).map { it to true }
+        if (all.isEmpty()) return null
+        val chosen = if (all.size == 1) {
+            all.single()
+        } else {
+            val clues = LiveTitleClues.of(
+                program.title, program.subtitle, program.description, program.categoryWords(), program.startMs, program.endMs
+            )
+            fun scoreOf(result: TmdbDiscoverResult, isTv: Boolean, cast: List<String>?) = clues.score(
+                isTv = isTv,
+                year = (if (isTv) result.firstAirDate else result.releaseDate)?.take(4)?.toIntOrNull(),
+                overview = result.overview,
+                voteCount = result.voteCount,
+                cast = cast
+            )
+            var scored = all.map { (result, isTv) -> Triple(result, isTv, scoreOf(result, isTv, null)) }
+                .sortedByDescending { it.third }
+            if (clues.names.isNotEmpty() && scored[0].third - scored[1].third < LiveTitleClues.CLEAR_LEAD) {
+                val looked = scored.take(MAX_CAST_LOOKUPS).map { (result, isTv, _) ->
+                    Triple(result, isTv, scoreOf(result, isTv, castOf(result.id, isTv)))
+                }
+                scored = (looked + scored.drop(MAX_CAST_LOOKUPS)).sortedByDescending { it.third }
+            }
+            scored.first().let { it.first to it.second }
+        }
+        val (result, isTv) = chosen
+        return result.toMatch(isMovie = !isTv, genres = genreNames(isTv, result.genreIds.orEmpty(), language))
+    }
+
+    private val searchCache = ConcurrentHashMap<String, List<TmdbDiscoverResult>>()
+    private val castCache = ConcurrentHashMap<String, List<String>>()
+
+    /** The movies (or series) named exactly [title]; throws when TMDB can't be reached. */
+    private suspend fun candidates(title: String, year: Int?, isTv: Boolean, language: String): List<TmdbDiscoverResult> {
+        val key = "${if (isTv) "tv" else "movie"}|${normalize(title)}|$year|$language"
+        searchCache[key]?.let { return it }
         val results = limiter.withPermit {
             val response = if (isTv) {
                 tmdbApi.searchTv(apiKey, title, language, firstAirDateYear = year)
@@ -406,14 +441,26 @@ class LiveProgramLibrary @Inject constructor(
             response.body()?.results.orEmpty()
         }
         val wanted = normalize(title)
-        val best = results
-            .filter { result ->
-                normalize(result.title ?: result.name ?: "") == wanted ||
-                    normalize(result.originalTitle ?: result.originalName ?: "") == wanted
-            }
-            .maxByOrNull { it.voteCount ?: 0 }
-            ?: return null
-        return best.toMatch(isMovie = !isTv, genres = genreNames(isTv, best.genreIds.orEmpty(), language))
+        val exact = results.filter { result ->
+            normalize(result.title ?: result.name ?: "") == wanted ||
+                normalize(result.originalTitle ?: result.originalName ?: "") == wanted
+        }
+        searchCache[key] = exact
+        return exact
+    }
+
+    /** A title's cast, as LiveTitleClues compares names; empty when TMDB can't tell. */
+    private suspend fun castOf(tmdbId: Int, isTv: Boolean): List<String> {
+        val key = "${if (isTv) "tv" else "movie"}:$tmdbId"
+        castCache[key]?.let { return it }
+        val cast = runCatching {
+            limiter.withPermit {
+                (if (isTv) tmdbApi.getTvCredits(tmdbId, apiKey) else tmdbApi.getMovieCredits(tmdbId, apiKey))
+                    .body()?.cast.orEmpty()
+            }.take(MAX_CAST_NAMES).mapNotNull { it.name?.let(LiveTitleClues::normalizeName) }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull() ?: return emptyList()
+        castCache[key] = cast
+        return cast
     }
 
     private suspend fun genreNames(isTv: Boolean, ids: List<Int>, language: String): List<String> {
@@ -556,6 +603,10 @@ class LiveProgramLibrary @Inject constructor(
         (categories + listOfNotNull(category)).map { it.lowercase(Locale.ROOT) }
 
     companion object {
+        /** RCTV: titles of the same name whose cast is looked up when the guide names someone. */
+        private const val MAX_CAST_LOOKUPS = 3
+        private const val MAX_CAST_NAMES = 20
+
         /** The library type of an episode saved from the guide. */
         const val EPISODE_TYPE = "episode"
         private const val DAY_MS = 24L * 60 * 60 * 1000
