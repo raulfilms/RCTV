@@ -94,7 +94,9 @@ internal object ChannelLogoLibrary {
         "msnbc" to "ms-now", "fox-news-channel" to "fox-news", "turner-classic-movies" to "tcm",
         "own" to "oprah-winfrey-network", "gsn" to "game-show-network",
         "cnn-headline-news" to "hln", "headline-news" to "hln", "fox-deportes" to "fox-sports-deportes",
-        "home-shopping-network" to "hsn", "nbc-sport-network" to "nbc-sports"
+        "home-shopping-network" to "hsn", "nbc-sport-network" to "nbc-sports",
+        // RCTV: the CBS eye (the pack names it so); the Guide's "CBS" and CBS stations without their own.
+        "cbs" to "cbs-logo"
     )
 
     /** Broadcast networks whose logo stands in for a local affiliate. */
