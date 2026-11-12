@@ -51,7 +51,9 @@ class ProfileSelectionViewModel @Inject constructor(
     private val profileBackgroundRepository: ProfileBackgroundRepository,
     memberAccessRepository: MemberAccessRepository,
     private val profileLockStateDataStore: ProfileLockStateDataStore,
-    private val themeDataStore: com.nuvio.tv.data.local.ThemeDataStore
+    private val themeDataStore: com.nuvio.tv.data.local.ThemeDataStore,
+    /** RCTV: a new profile goes through "Customize your experience" the first time it opens. */
+    private val rctvCustomize: com.nuvio.tv.core.rctvcontrol.RctvCustomizeStore
 ) : ViewModel() {
     val activeProfileId: StateFlow<Int> = profileManager.activeProfileId
     val profiles: StateFlow<List<UserProfile>> = profileManager.profiles
@@ -200,6 +202,7 @@ class ProfileSelectionViewModel @Inject constructor(
                     isKids = isKids
                 )
                 if (profile != null) {
+                    rctvCustomize.forget(profile.id)
                     profileSyncService.pushToRemote()
                     val copyResult = copyFromProfileId?.let { sourceProfileId ->
                         profileSettingsSyncService.copyProfileSetup(
@@ -261,6 +264,7 @@ class ProfileSelectionViewModel @Inject constructor(
     fun deleteProfile(id: Int) {
         viewModelScope.launch {
             profileManager.deleteProfile(id)
+            rctvCustomize.forget(id)
             profileSyncService.deleteProfileData(id)
             profileSyncService.pushToRemote()
             refreshProfilePinStates()

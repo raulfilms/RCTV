@@ -364,6 +364,10 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var experiencePreparer: com.nuvio.tv.core.rctvcontrol.RctvExperiencePreparer
 
+    /** RCTV: the profiles of this TV that already went through "Customize your experience". */
+    @Inject
+    lateinit var rctvCustomize: com.nuvio.tv.core.rctvcontrol.RctvCustomizeStore
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -517,6 +521,11 @@ open class MainActivity : ComponentActivity() {
                 profiles.firstOrNull { it.id == activeProfileId }
             }
             var profilePinStates by remember { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
+            // RCTV (owner's design): the first time a profile opens on this TV with the Full plan,
+            // "Customize your experience" (leagues, teams, networks, series) before Home. Decided
+            // once each time a profile opens (null: not yet).
+            val customizeDone by rctvCustomize.done.collectAsState()
+            var customizeNow by remember(activeProfileId, startupSession) { mutableStateOf<Boolean?>(null) }
 
             LaunchedEffect(authState, profiles) {
                 if (authState is AuthState.FullAccount) {
@@ -960,6 +969,15 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    if (customizeNow == null) {
+                        val done = customizeDone
+                        val profile = activeProfile
+                        if (done != null && profile != null) {
+                            customizeNow = rctvPlan == com.nuvio.tv.core.rctvcontrol.RctvPlan.FULL &&
+                                !profile.isKids && profile.id !in done
+                        }
+                    }
+
                     if (needsEssentialAddonSetup) {
                         startupDestination = StartupDestination.Setup
                         EssentialAddonSetupScreen(
@@ -969,6 +987,16 @@ open class MainActivity : ComponentActivity() {
                                 }
                             }
                         )
+                    } else if (customizeNow != false) {
+                        // RCTV: "Customize your experience"; Finish or Skip, and Home opens behind
+                        // "Creating Your Experience". Still deciding (a moment): nothing yet.
+                        if (customizeNow == true) {
+                            startupDestination = StartupDestination.Setup
+                            com.nuvio.tv.ui.screens.customize.RctvCustomizeScreen(
+                                profileId = activeProfileId,
+                                onDone = { customizeNow = false }
+                            )
+                        }
                     } else {
                     val sidebarCollapsed = mainUiPrefs.sidebarCollapsed
                     val modernSidebarEnabled = mainUiPrefs.modernSidebarEnabled
