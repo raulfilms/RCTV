@@ -71,9 +71,20 @@ class SeekrPreviews @Inject constructor(
         val h: Int
     )
 
-    /** One title's pictures, in timeline order. */
-    class Track internal constructor(internal val cues: List<Cue>, internal val loadedAtMs: Long) {
+    /**
+     * One title's pictures, in timeline order. RCTV: Seekr's addresses are signed until
+     * [expiresAtMs] (their "exp"): the title is looked up again a minute before, else its pictures
+     * stopped partway through a movie.
+     */
+    class Track internal constructor(
+        internal val cues: List<Cue>,
+        internal val loadedAtMs: Long,
+        internal val expiresAtMs: Long = loadedAtMs + TRACK_TTL_MS
+    ) {
         private val starts = LongArray(cues.size) { cues[it].startMs }
+
+        /** Its addresses still work for a while. */
+        fun isFresh(nowMs: Long = System.currentTimeMillis()): Boolean = nowMs < expiresAtMs - EXPIRY_MARGIN_MS
 
         internal fun cueAt(positionMs: Long): Cue? {
             if (cues.isEmpty()) return null
@@ -136,7 +147,7 @@ class SeekrPreviews @Inject constructor(
         if (now < waitUntilMs) return null
         val cacheKey = "${title.key}|${durationMs / 1000}"
         synchronized(tracks) {
-            tracks[cacheKey]?.takeIf { now - it.loadedAtMs < TRACK_TTL_MS }?.let { return it }
+            tracks[cacheKey]?.takeIf { it.isFresh(now) }?.let { return it }
         }
         noneUntil[title.key]?.let { if (now < it) return null }
         val vttUrl = lookup(title, durationMs, key) ?: return null
@@ -148,7 +159,13 @@ class SeekrPreviews @Inject constructor(
             noneUntil[title.key] = now + NONE_RETRY_MS
             return null
         }
-        val track = Track(cues, now)
+        // RCTV: the earliest "exp" of the list's and its sheets' signed addresses (else 30 min).
+        val expires = (listOf(vttUrl) + cues.map { it.sheetUrl }.distinct())
+            .mapNotNull(::expiryOf)
+            .minOrNull()
+            ?.coerceAtMost(now + TRACK_TTL_MS)
+            ?: (now + TRACK_TTL_MS)
+        val track = Track(cues, now, expires)
         synchronized(tracks) { tracks[cacheKey] = track }
         return track
     }
@@ -249,6 +266,8 @@ class SeekrPreviews @Inject constructor(
         private const val TRACK_TTL_MS = 30L * 60 * 1000
         /** A title without pictures isn't asked about again for this long. */
         private const val NONE_RETRY_MS = 6L * 60 * 60 * 1000
+        /** A track is looked up again this long before its addresses expire. */
+        private const val EXPIRY_MARGIN_MS = 60_000L
         private const val DEFAULT_WAIT_S = 60L
         private const val MAX_WAIT_S = 3_600L
 
@@ -292,6 +311,10 @@ class SeekrPreviews @Inject constructor(
             if (!sheetUrl.startsWith("https://")) return null
             return Cue(start, end, sheetUrl, numbers[0]!!, numbers[1]!!, numbers[2]!!, numbers[3]!!)
         }
+
+        /** A signed address's "exp" (Unix seconds) in milliseconds; null without one. */
+        internal fun expiryOf(url: String): Long? =
+            url.toHttpUrlOrNull()?.queryParameter("exp")?.toLongOrNull()?.takeIf { it > 0 }?.times(1000)
 
         /** "01:02:03.500" or "02:03.500" in milliseconds. */
         private fun timeOf(text: String): Long? {

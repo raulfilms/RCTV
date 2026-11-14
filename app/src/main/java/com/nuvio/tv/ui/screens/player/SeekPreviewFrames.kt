@@ -84,6 +84,8 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
     private var seekrLookup: Job? = null
     /** Seekr was asked about this movie (whatever it answered). */
     private var seekrAsked = false
+    /** RCTV: Seekr gave nothing: asked again after this (a missed answer isn't the movie's last word). */
+    private var seekrRetryAtMs = 0L
     private var seekrWanted: Long? = null
     private var seekrReading = false
 
@@ -153,6 +155,7 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
         seekrLookup = null
         seekrTrack = null
         seekrAsked = false
+        seekrRetryAtMs = 0L
         seekrWanted = null
         streamUrl = url
         streamHeaders = headers
@@ -176,6 +179,11 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
         val client = seekr ?: return false
         if (title == null || durationMs <= 0L || !client.hasKey) return false
         seekrWanted = positionMs
+        val now = SystemClock.elapsedRealtime()
+        // RCTV: its signed addresses about to expire: looked up again (the pictures went on stopping).
+        seekrTrack?.let { current -> if (!current.isFresh()) { seekrTrack = null; seekrAsked = false } }
+        // Nothing came last time: asked again a while later (Seekr itself remembers the titles it hasn't).
+        if (seekrAsked && seekrTrack == null && now >= seekrRetryAtMs) seekrAsked = false
         val track = seekrTrack
         if (track == null) {
             if (!seekrAsked && seekrLookup == null) {
@@ -190,6 +198,7 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
                     seekrAsked = true
                     seekrLookup = null
                     seekrTrack = found
+                    if (found == null) seekrRetryAtMs = SystemClock.elapsedRealtime() + SEEKR_RETRY_MS
                     // The timeline is still out: its picture from Seekr now.
                     if (found != null && seekrWanted != null) readSeekr(client, found)
                 }
@@ -391,6 +400,8 @@ internal class SeekPreviewFrames(context: Context, private val scope: CoroutineS
         private const val CACHE_SIZE = 36
         private const val NEAR_MS = 60_000L
         private const val FIRST_PICTURE_TIMEOUT_MS = 12_000L
+        /** RCTV: Seekr gave nothing for this movie: asked again after this (when the timeline moves). */
+        private const val SEEKR_RETRY_MS = 30_000L
         private const val PICTURE_TIMEOUT_MS = 8_000L
         private const val MAX_TIMEOUTS = 2
         private const val MAX_FAILURES = 3
