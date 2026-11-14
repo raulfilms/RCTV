@@ -273,7 +273,7 @@ object AutoStreamEngine {
         if (scored.rejection in WRONG_CONTENT) return AutoStreamReject.WRONG_CONTENT
         val source = scored.source
         val release = scored.release
-        if (request.isEpisode && !episodeIdentified(source)) return AutoStreamReject.EPISODE_NOT_IDENTIFIED
+        if (request.isEpisode && !episodeIdentified(source, request)) return AutoStreamReject.EPISODE_NOT_IDENTIFIED
         if (!source.isPlayable) return AutoStreamReject.NOT_PLAYABLE
         if (release.source.isLowQuality) return AutoStreamReject.LOW_QUALITY_SOURCE
         val size = fileSize(release, request)
@@ -314,10 +314,15 @@ object AutoStreamEngine {
      * number with no season isn't this exact episode. A file that says nothing of either is the
      * addon's answer for this episode's id.
      */
-    private fun episodeIdentified(source: NormalizedSource): Boolean {
+    private fun episodeIdentified(source: NormalizedSource, request: SmartSourceRequest): Boolean {
         val release = source.release
         if (release.seasons.isNotEmpty() && release.episodes.isNotEmpty()) return true
         if (release.isSeasonPack) return source.fileIdx != null
+        // RCTV: a Spanish server's link that says only "Episodio 45" (telenovelas): its answer for
+        // this episode's id, when the number is the one asked for.
+        if (source.isSpanishServer && release.seasons.isEmpty() && release.episodes.isNotEmpty()) {
+            return request.episode in release.episodes || release.episodes.any { it in request.equivalentEpisodes }
+        }
         // RCTV (owner's rule): a file that says nothing is an addon's answer for this episode's id; a
         // local plugin's scrapers find theirs by name, so one may be a movie of the same name.
         return release.episodes.isEmpty() && source.stream.pluginRepository == null

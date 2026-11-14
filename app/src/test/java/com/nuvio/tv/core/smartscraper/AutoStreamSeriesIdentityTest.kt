@@ -102,6 +102,38 @@ class AutoStreamSeriesIdentityTest {
         assertEquals(AutoStreamReject.WRONG_CONTENT, reason(result, "season"))
     }
 
+    @Test
+    fun `a telenovela's Spanish server link that says only its episode number plays when it's the one asked for`() {
+        val novela = SmartSourceRequest(
+            title = "El Señor de los Cielos", year = 2013, isSeries = true, season = 9, episode = 45,
+            runtimeMinutes = 45, originalLanguage = AudioLanguage.SPANISH
+        )
+        val result = rank(
+            novela,
+            latam("e45", "El Señor de los Cielos - Episodio 45 1080p"),
+            latam("e46", "El Señor de los Cielos - Episodio 46 1080p")
+        )
+        assertEquals(listOf("https://example.com/e45"), result.candidates.map { it.stream.url })
+        assertTrue(result.candidates.single().scored.source.isSpanishServer)
+    }
+
+    private fun latam(id: String, title: String) = Stream(
+        name = "LATAM\n1080p",
+        title = title,
+        description = null,
+        url = "https://example.com/$id",
+        ytId = null,
+        infoHash = null,
+        fileIdx = null,
+        externalUrl = null,
+        behaviorHints = StreamBehaviorHints(
+            notWebReady = null, bingeGroup = null, countryWhitelist = null, proxyHeaders = null,
+            filename = title.replace(' ', '.') + ".mp4"
+        ),
+        addonName = "Addon LATAM",
+        addonLogo = null
+    )
+
     private fun streams(vararg streams: Stream) = streams.map(SourceProviderAdapters::normalize)
 
     private fun rank(request: SmartSourceRequest, vararg streams: Stream) =
