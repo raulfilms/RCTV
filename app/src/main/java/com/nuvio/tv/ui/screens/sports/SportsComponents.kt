@@ -261,7 +261,7 @@ private fun ScoreOrTimeColumn(event: SportsEvent) {
     }
 }
 
-private fun statusLine(event: SportsEvent): String {
+internal fun statusLine(event: SportsEvent): String {
     if (event.isGolf()) return golfStatusText(event)
     if (event.status == SportsEventStatus.LIVE) {
         return event.statusDetail?.takeIf { it.isNotBlank() } ?: "Live"

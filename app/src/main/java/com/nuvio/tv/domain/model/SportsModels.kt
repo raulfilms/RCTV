@@ -70,7 +70,9 @@ data class SportsEvent(
     /** When a tournament (golf: four days) ends. */
     val endTimeMs: Long? = null,
     /** A picture of the event (a fight's poster), when the source has one. */
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    /** RCTV: the TV networks that carry it ("FOX", "CBS • NFL+"), when the source says. */
+    val broadcast: String? = null
 )
 
 /** A driver's place in a race: in its results once it's run, in the running order while it's on. */

@@ -4581,4 +4581,7 @@
     <string name="player_live_game_audio">Audio</string>
     <string name="player_live_no_spanish">This game isn\'t on a Spanish channel right now.</string>
     <string name="player_live_no_english">This game isn\'t on an English channel right now.</string>
+    <string name="league_game_of_week">%1$s Game of the Week</string>
+    <string name="league_live_now">Live Now</string>
+    <string name="league_watch">Watch</string>
 </resources>

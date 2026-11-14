@@ -1398,6 +1398,20 @@ class EspnSportsClient @Inject constructor(
             }
 
             val (status, statusDetail) = statusFrom(raw.optJSONObject("status")?.optJSONObject("type"))
+            // RCTV: the networks that carry it (the league page's cards say them), when ESPN says.
+            val broadcast = competition.optJSONArray("broadcasts")?.let { list ->
+                val names = LinkedHashSet<String>()
+                for (i in 0 until list.length()) {
+                    val entry = list.optJSONObject(i) ?: continue
+                    val listed = entry.optJSONArray("names")
+                    if (listed != null) {
+                        for (j in 0 until listed.length()) listed.optString(j).trim().takeIf { it.isNotBlank() }?.let(names::add)
+                    } else {
+                        entry.optJSONObject("media")?.optString("shortName")?.trim()?.takeIf { it.isNotBlank() }?.let(names::add)
+                    }
+                }
+                names.take(2).joinToString(" • ").takeIf { it.isNotBlank() }
+            }
 
             events += SportsEvent(
                 id = "espn:${feed.sportPath}:${feed.leaguePath}:${raw.optString("id")}",
@@ -1424,7 +1438,8 @@ class EspnSportsClient @Inject constructor(
                 homeTeamColor = colorOf(homeTeamJson),
                 awayTeamColor = colorOf(awayTeamJson),
                 homeTeamAliases = teamAliasesOf(homeTeamJson),
-                awayTeamAliases = teamAliasesOf(awayTeamJson)
+                awayTeamAliases = teamAliasesOf(awayTeamJson),
+                broadcast = broadcast
             )
         }
 

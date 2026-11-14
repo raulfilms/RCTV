@@ -87,7 +87,8 @@ fun LeagueDetailScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // RCTV (owner's design): the page on the new Home's navy.
+    Box(modifier = modifier.fillMaxSize().background(LeaguePageBackground)) {
         Column(modifier = Modifier.fillMaxSize()) {
             when {
                 uiState.isLoading && uiState.featuredEvent == null && uiState.allEvents.isEmpty() -> {
@@ -109,21 +110,37 @@ fun LeagueDetailScreen(
                     }
                 }
                 else -> {
-                    uiState.featuredEvent?.let { featured ->
-                        SportsHeroBanner(
-                            event = featured,
-                            onWatchLive = { onPlayEvent(featured) },
-                            isInLibrary = featured.id in uiState.libraryEventIds,
-                            onToggleLibrary = { viewModel.toggleLibraryEvent(featured) },
+                    // RCTV (owner's design): the game of the week, the live games in turn. A golf
+                    // tournament, a race or a fight keeps its own banner.
+                    val heroEvents = androidx.compose.runtime.remember(uiState.liveEvents, uiState.featuredEvent) {
+                        uiState.liveEvents.filterNot { it.isSoloEvent() }.distinctBy { it.id }.take(HERO_GAMES)
+                            .ifEmpty { listOfNotNull(uiState.featuredEvent) }
+                    }
+                    val first = heroEvents.firstOrNull()
+                    when {
+                        first == null -> uiState.league?.let { league ->
+                            LeagueSimpleHeader(name = league.name, badgeUrl = league.badgeUrl)
+                        }
+                        first.isSoloEvent() -> SportsHeroBanner(
+                            event = first,
+                            onWatchLive = { onPlayEvent(first) },
+                            isInLibrary = first.id in uiState.libraryEventIds,
+                            onToggleLibrary = { viewModel.toggleLibraryEvent(first) },
                             modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.md)
                         )
-                    } ?: uiState.league?.let { league ->
-                        LeagueSimpleHeader(name = league.name, badgeUrl = league.badgeUrl)
+                        else -> LeagueHero(
+                            events = heroEvents,
+                            leagueName = uiState.league?.name.orEmpty(),
+                            leagueBadgeUrl = uiState.league?.badgeUrl,
+                            libraryEventIds = uiState.libraryEventIds,
+                            onWatch = onPlayEvent,
+                            onToggleLibrary = viewModel::toggleLibraryEvent
+                        )
                     }
 
-                    LeagueTabRow(selectedTab = uiState.selectedTab, onSelectTab = viewModel::selectTab)
+                    LeagueTabBar(tabs = LEAGUE_TABS, selected = uiState.selectedTab, onSelect = viewModel::selectTab)
 
-                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Box(modifier = Modifier.fillMaxSize()) {
                         when (uiState.selectedTab) {
@@ -201,47 +218,23 @@ private fun LeagueSimpleHeader(name: String, badgeUrl: String?) {
     }
 }
 
-@Composable
-private fun LeagueTabRow(selectedTab: LeagueDetailTab, onSelectTab: (LeagueDetailTab) -> Unit) {
-    // RCTV (owner's menu): no Schedule (it's Games' By week) and no Videos.
-    val tabs = listOf(
-        LeagueDetailTab.HOME to R.string.league_tab_home,
-        LeagueDetailTab.GAMES to R.string.league_tab_games,
-        LeagueDetailTab.TEAMS to R.string.league_tab_teams,
-        LeagueDetailTab.STANDINGS to R.string.league_tab_standings,
-        LeagueDetailTab.NEWS to R.string.league_tab_news,
-        LeagueDetailTab.HIGHLIGHTS to R.string.league_tab_highlights
-    )
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
-        contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg)
-    ) {
-        items(tabs, key = { it.first.name }) { (tab, labelRes) ->
-            val selected = tab == selectedTab
-            Surface(
-                onClick = { onSelectTab(tab) },
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = if (selected) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.BackgroundElevated,
-                    contentColor = if (selected) NuvioTheme.colors.TextInverse else NuvioTheme.colors.TextSecondary,
-                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = NuvioTheme.colors.Primary
-                ),
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.full)),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f)
-            ) {
-                Text(
-                    text = stringResource(labelRes).uppercase(),
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.xs)
-                )
-            }
-        }
-    }
-}
+/** RCTV (owner's menu): no Schedule (it's Games' By week) and no Videos. */
+private val LEAGUE_TABS = listOf(
+    LeagueDetailTab.HOME to R.string.league_tab_home,
+    LeagueDetailTab.GAMES to R.string.league_tab_games,
+    LeagueDetailTab.TEAMS to R.string.league_tab_teams,
+    LeagueDetailTab.STANDINGS to R.string.league_tab_standings,
+    LeagueDetailTab.NEWS to R.string.league_tab_news,
+    LeagueDetailTab.HIGHLIGHTS to R.string.league_tab_highlights
+)
+
+/** The hero's live games, in turn (the dots under it). */
+private const val HERO_GAMES = 4
 
 /**
- * RCTV (owner's rows, every league): Live, Schedule (by week), Channels, Game Replays, Highlights.
- * A league without official channels, replay channels or highlights has no such row.
+ * RCTV (owner's design, every league): Live, Schedule (by week), Channels, Game Replays, Highlights,
+ * each title on the left. A league without official channels, replay channels or highlights has no
+ * such row.
  */
 @Composable
 private fun LeagueHomeContent(
@@ -256,15 +249,15 @@ private fun LeagueHomeContent(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = NuvioTheme.spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item(key = "live") {
-            SportsRowSection(title = stringResource(R.string.league_row_live, leagueName).uppercase()) {
+            LeagueHomeRow(title = stringResource(R.string.league_row_live, leagueName).uppercase(), height = 56.dp) {
                 if (uiState.liveEvents.isEmpty()) {
-                    item(key = "live_empty") { LeagueEmptyRowNote(stringResource(R.string.league_no_live_games)) }
+                    item(key = "live_empty") { LeagueRowNote(stringResource(R.string.league_no_live_games)) }
                 } else {
                     items(uiState.liveEvents.distinctBy { it.id }, key = { "live_${it.id}" }) { event ->
-                        ScoreboardCard(
+                        LeagueLiveGameTile(
                             event = event,
                             onClick = { onPlayEvent(event) },
                             onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
@@ -274,57 +267,55 @@ private fun LeagueHomeContent(
             }
         }
         item(key = "schedule") {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                LeagueWeekHeader(
-                    title = stringResource(R.string.league_row_schedule, leagueName).uppercase(),
-                    weekLabel = scheduleWeekLabel(uiState),
-                    onChangeWeek = onChangeWeek
-                )
-                Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                    contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    when {
-                        uiState.isLoadingSchedule && uiState.scheduleEvents.isEmpty() ->
-                            item(key = "schedule_loading") { LeagueEmptyRowNote(stringResource(R.string.league_loading)) }
-                        uiState.scheduleEvents.isEmpty() ->
-                            item(key = "schedule_empty") { LeagueEmptyRowNote(stringResource(R.string.league_no_games_scheduled)) }
-                        else -> items(uiState.scheduleEvents.distinctBy { it.id }, key = { "week_${it.id}" }) { event ->
-                            ScoreboardCard(
-                                event = event,
-                                onClick = { onPlayEvent(event) },
-                                onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
-                            )
-                        }
+            val weekLabel = scheduleWeekLabel(uiState)
+            LeagueHomeRow(
+                title = stringResource(R.string.league_row_schedule, leagueName).uppercase(),
+                height = 50.dp,
+                header = { LeagueWeekSelector(label = weekLabel, onChangeWeek = onChangeWeek) }
+            ) {
+                when {
+                    uiState.isLoadingSchedule && uiState.scheduleEvents.isEmpty() ->
+                        item(key = "schedule_loading") { LeagueRowNote(stringResource(R.string.league_loading)) }
+                    uiState.scheduleEvents.isEmpty() ->
+                        item(key = "schedule_empty") { LeagueRowNote(stringResource(R.string.league_no_games_scheduled)) }
+                    else -> items(uiState.scheduleEvents.distinctBy { it.id }, key = { "week_${it.id}" }) { event ->
+                        LeagueScheduleTile(
+                            event = event,
+                            onClick = { onPlayEvent(event) },
+                            onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
+                        )
                     }
                 }
             }
         }
         if (uiState.channels.isNotEmpty()) {
             item(key = "channels") {
-                SportsRowSection(title = stringResource(R.string.league_row_channels, leagueName).uppercase()) {
-                    items(uiState.channels, key = { "ch_${it.channel.id}" }) { item ->
-                        LeagueChannelCard(item = item, program = uiState.channelPrograms[item.channel.id], onClick = { onPlayChannel(item) })
+                LeagueHomeRow(title = stringResource(R.string.league_row_channels, leagueName).uppercase(), height = 38.dp) {
+                    itemsIndexed(uiState.channels, key = { _, it -> "ch_${it.channel.id}" }) { index, item ->
+                        LeagueChannelTile(
+                            item = item,
+                            program = uiState.channelPrograms[item.channel.id],
+                            index = index,
+                            onClick = { onPlayChannel(item) }
+                        )
                     }
                 }
             }
         }
         if (uiState.replays.isNotEmpty()) {
             item(key = "replays") {
-                SportsRowSection(title = stringResource(R.string.league_row_replays, leagueName).uppercase()) {
+                LeagueHomeRow(title = stringResource(R.string.league_row_replays, leagueName).uppercase(), height = 50.dp) {
                     items(uiState.replays, key = { "rp_${it.channel.id}" }) { item ->
-                        LeagueChannelCard(item = item, program = uiState.channelPrograms[item.channel.id], onClick = { onPlayChannel(item) })
+                        LeagueReplayTile(item = item, program = uiState.channelPrograms[item.channel.id], onClick = { onPlayChannel(item) })
                     }
                 }
             }
         }
         if (uiState.highlights.isNotEmpty()) {
             item(key = "highlights") {
-                SportsRowSection(title = stringResource(R.string.league_row_highlights, leagueName).uppercase()) {
+                LeagueHomeRow(title = stringResource(R.string.league_row_highlights, leagueName).uppercase(), height = 46.dp) {
                     items(uiState.highlights, key = { "hl_${it.videoId}" }) { video ->
-                        HighlightVideoCard(video = video, onClick = { onPlayVideo(video.videoId, video.title) })
+                        LeagueHighlightTile(video = video, onClick = { onPlayVideo(video.videoId, video.title) })
                     }
                 }
             }
@@ -379,71 +370,6 @@ private fun LeagueWeekHeader(title: String, weekLabel: String, onChangeWeek: (In
         )
         Spacer(modifier = Modifier.width(NuvioTheme.spacing.xs))
         WeekNavButton(label = ">", onClick = { onChangeWeek(1) })
-    }
-}
-
-/** RCTV: one of the league's channels (or replay channels): its logo, LIVE, its name and what's on. */
-@Composable
-private fun LeagueChannelCard(item: LeagueChannelItem, program: String?, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            focusedContainerColor = NuvioTheme.colors.FocusBackground
-        ),
-        border = tileSurfaceBorder(RoundedCornerShape(NuvioTheme.radii.md)),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-        modifier = Modifier.width(260.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(124.dp)
-                    .background(NuvioTheme.colors.BackgroundElevated)
-            ) {
-                val logo = item.channel.logoUrl
-                if (!logo.isNullOrBlank()) {
-                    AsyncImage(
-                        model = logo,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 56.dp, vertical = 26.dp)
-                    )
-                } else {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = NuvioTheme.colors.TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = NuvioTheme.spacing.md)
-                    )
-                }
-                Box(modifier = Modifier.align(Alignment.TopStart).padding(10.dp)) { LiveBadge() }
-            }
-            Column(modifier = Modifier.padding(NuvioTheme.spacing.md)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = NuvioTheme.colors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = program.orEmpty(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NuvioTheme.colors.TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
     }
 }
 
