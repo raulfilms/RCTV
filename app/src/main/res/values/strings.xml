@@ -4577,4 +4577,8 @@
     <string name="main_home_cat_movies">Movies</string>
     <string name="main_home_cat_documentaries">Documentaries</string>
     <string name="main_home_cat_kids">Kids</string>
+    <!-- RCTV: a La Liga or Champions League game in English or Spanish. -->
+    <string name="player_live_game_audio">Audio</string>
+    <string name="player_live_no_spanish">This game isn\'t on a Spanish channel right now.</string>
+    <string name="player_live_no_english">This game isn\'t on an English channel right now.</string>
 </resources>

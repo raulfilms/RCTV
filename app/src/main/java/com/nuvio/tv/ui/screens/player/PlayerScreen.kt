@@ -203,6 +203,11 @@ fun PlayerScreen(
     // RCTV: opened for a game from Sports: its loading shows the two teams (taken once).
     // A channel switched to from Networks shows its own loading, not the game's.
     var gameMatchup by remember { mutableStateOf(LiveGameMatchup.take()) }
+    // RCTV (owner): a La Liga or Champions League game can be watched in English or Spanish.
+    var languageGame by remember {
+        mutableStateOf(gameMatchup?.event?.takeIf { com.nuvio.tv.ui.screens.sports.SportsGameChannels.hasSpanish(it) })
+    }
+    var gameSpanish by remember { mutableStateOf(false) }
     val liveVod by liveTvViewModel.vod.collectAsState()
     val liveVodOffered = isLiveTvChannel && liveVod?.let { it.status != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE } == true
     var liveVodPromptVisible by remember { mutableStateOf(false) }
@@ -256,8 +261,37 @@ fun PlayerScreen(
                 return@launch
             }
             gameMatchup = null
+            languageGame = null
             liveTvViewModel.choosingChannel(channel)
             viewModel.switchLiveChannel(url, channel.name, channel.logoUrl)
+        }
+    }
+    // RCTV (owner): the game's audio: the same game on a channel in English or in Spanish.
+    val sportsWatch: com.nuvio.tv.ui.screens.sports.SportsWatchViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val chooseGameLanguage: (Boolean) -> Unit = { spanish ->
+        languageGame?.let { event ->
+            liveSwitchJob[0]?.cancel()
+            liveSwitchJob[0] = liveScope.launch {
+                val found = try {
+                    sportsWatch.liveChannelFor(event, spanish)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                if (exitDispatched) return@launch
+                if (found == null || found.streamUrl.isBlank()) {
+                    android.widget.Toast.makeText(
+                        liveContext,
+                        liveContext.getString(if (spanish) R.string.player_live_no_spanish else R.string.player_live_no_english),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    return@launch
+                }
+                gameSpanish = spanish
+                liveTvViewModel.choosingChannel(found)
+                viewModel.switchLiveChannel(found.streamUrl, found.name, found.logoUrl)
+            }
         }
     }
     // RCTV (Networks): the channel on now; once it plays it goes first in the recent channels.
@@ -1573,7 +1607,8 @@ fun PlayerScreen(
                     onPlayChannel = switchLiveChannel,
                     onOpenTitle = openLiveTitle,
                     onOpenEpisode = openLiveEpisode,
-                    onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable }
+                    onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable },
+                    gameLanguage = languageGame?.let { LiveGameLanguage(spanish = gameSpanish, onChoose = chooseGameLanguage) }
                 )
             } else if (uiState.usesTitleControls) {
                 // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).

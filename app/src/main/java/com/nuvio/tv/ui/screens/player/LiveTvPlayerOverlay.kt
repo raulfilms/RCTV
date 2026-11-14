@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.automirrored.filled.List
@@ -98,7 +99,13 @@ import java.util.Locale
 import com.nuvio.tv.ui.components.tileCardBorder
 
 /** The live player's tabs: icons on the left, "Networks" after the divider (as on YouTube TV). */
-private enum class LiveTab { MORE, QUALITY, CAPTIONS, LIBRARY, NETWORKS, EPISODES }
+private enum class LiveTab { MORE, QUALITY, AUDIO, CAPTIONS, LIBRARY, NETWORKS, EPISODES }
+
+/**
+ * RCTV (owner): a La Liga or Champions League game's audio: English (its channel in English) or
+ * Español (the same game on a Spanish channel). Every other game is in English only.
+ */
+internal class LiveGameLanguage(val spanish: Boolean, val onChoose: (spanish: Boolean) -> Unit)
 
 /**
  * The player's controls for a Live TV channel, in the player's own style (its circular buttons,
@@ -127,7 +134,9 @@ internal fun LiveTvPlayerOverlay(
     onOpenTitle: (LiveProgramMatch) -> Unit,
     onOpenEpisode: (LiveProgramMatch, LiveEpisode) -> Unit,
     /** RCTV: the game center (YouTube TV's stats panel); null when what's on isn't a known game. */
-    onOpenGameCenter: (() -> Unit)? = null
+    onOpenGameCenter: (() -> Unit)? = null,
+    /** RCTV: English or Español, for a La Liga or Champions League game; null for any other. */
+    gameLanguage: LiveGameLanguage? = null
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
@@ -311,6 +320,15 @@ internal fun LiveTvPlayerOverlay(
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.QUALITY)
                 )
+                if (gameLanguage != null) {
+                    LiveIconTab(
+                        icon = Icons.Default.Language,
+                        contentDescription = stringResource(R.string.player_live_game_audio),
+                        selected = shownTab == LiveTab.AUDIO,
+                        onClick = { runCatching { contentEntry.requestFocus() } },
+                        modifier = tabModifier(LiveTab.AUDIO)
+                    )
+                }
                 LiveIconTab(
                     icon = Icons.Default.ClosedCaption,
                     contentDescription = stringResource(R.string.cd_subtitles),
@@ -388,6 +406,19 @@ internal fun LiveTvPlayerOverlay(
                         onFocused = onResetHideTimer,
                         onAdd = liveViewModel::addToLibrary,
                         onMoreInfo = onOpenTitle
+                    )
+                    LiveTab.AUDIO -> OptionsRow(
+                        options = listOf(
+                            LiveOption(glyph = "EN", label = "English", checked = gameLanguage?.spanish == false) {
+                                if (gameLanguage?.spanish == true) gameLanguage.onChoose(false)
+                            },
+                            LiveOption(glyph = "ES", label = "Español", checked = gameLanguage?.spanish == true) {
+                                if (gameLanguage?.spanish == false) gameLanguage.onChoose(true)
+                            }
+                        ),
+                        entry = contentEntry,
+                        itemModifier = upToTab,
+                        onFocused = onResetHideTimer
                     )
                     LiveTab.CAPTIONS -> OptionsRow(
                         options = buildList {

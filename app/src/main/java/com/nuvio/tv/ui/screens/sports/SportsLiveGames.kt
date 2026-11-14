@@ -153,7 +153,7 @@ internal object SportsGameChannels {
      * provider's guide doesn't name the game: a US channel first, then any. Over-the-air networks
      * match their local stations ("FOX 5 New York" for FOX), never their other channels.
      */
-    fun byNetwork(channels: List<LiveTvChannel>, networks: List<String>): LiveTvChannel? {
+    fun byNetwork(channels: List<LiveTvChannel>, networks: List<String>, spanish: Boolean = false): LiveTvChannel? {
         for (network in networks) {
             val wanted = networkKey(network)
             if (wanted.length < 2) continue
@@ -171,7 +171,7 @@ internal object SportsGameChannels {
             }
             if (matches.isEmpty()) continue
             // RCTV (owner): in English, the US's first (never another language's).
-            val english = matches.mapNotNull { m -> languageRank(m, emptyList(), emptyList())?.let { m to it } }
+            val english = matches.mapNotNull { m -> languageRank(m, emptyList(), emptyList(), spanish)?.let { m to it } }
             english.minByOrNull { it.second }?.first?.let { return it }
         }
         return null
@@ -276,7 +276,9 @@ internal object SportsGameChannels {
         channels: List<LiveTvChannel>,
         epgByChannel: Map<String, List<EpgProgram>>,
         event: SportsEvent,
-        now: Long
+        now: Long,
+        /** RCTV (owner): La Liga's or the Champions League's game in Spanish (else in English). */
+        spanish: Boolean = false
     ): List<GameAiring> {
         val home = teamNames(event.homeTeamName, event.homeTeamAliases)
         val away = teamNames(event.awayTeamName, event.awayTeamAliases)
@@ -316,7 +318,7 @@ internal object SportsGameChannels {
         // named after the game), then the UK's, then other English-speaking countries'; never a
         // channel in another language (a Brazilian SporTV for Thursday Night Football).
         return found
-            .mapNotNull { airing -> languageRank(airing.channel, home, away)?.let { airing to it } }
+            .mapNotNull { airing -> languageRank(airing.channel, home, away, spanish)?.let { airing to it } }
             .sortedWith(compareBy<Pair<GameAiring, Int>> { it.second }.thenByDescending { it.first.score })
             .map { it.first }
     }
@@ -326,7 +328,8 @@ internal object SportsGameChannels {
      * the provider's English event channels are), 1 the UK's or a country it doesn't say, 2 another
      * English-speaking country's; null for another language's, never shown for a game.
      */
-    internal fun languageRank(channel: LiveTvChannel, home: List<String>, away: List<String>): Int? {
+    internal fun languageRank(channel: LiveTvChannel, home: List<String>, away: List<String>, spanish: Boolean = false): Int? {
+        if (spanish) return spanishRank(channel)
         val country = countryOf(channel)
         if (country != null) return ENGLISH_COUNTRIES[country]
         val name = canonical(normalize(channel.name))
@@ -334,6 +337,41 @@ internal object SportsGameChannels {
         if (NOT_ENGLISH.any { has(name, it) || has(group, it) }) return null
         return if (teamIn(name, home) > 0 && teamIn(name, away) > 0) 0 else 1
     }
+
+    /**
+     * RCTV (owner): a channel for a game in Spanish (La Liga, the Champions League): 0 the US's
+     * Spanish networks (ESPN Deportes, TUDN, Univision...), 1 Spain's, 2 Latin America's; null for
+     * any other (an English one).
+     */
+    private fun spanishRank(channel: LiveTvChannel): Int? {
+        val name = canonical(normalize(channel.name))
+        val group = canonical(normalize(channel.groupTitle.orEmpty()))
+        val saysSpanish = SPANISH_NETWORKS.any { has(name, it) || has(group, it) }
+        val country = countryOf(channel)
+        return when {
+            saysSpanish && (country == null || country == "US") -> 0
+            country == "ES" -> 1
+            country in LATIN_AMERICA -> 2
+            saysSpanish -> 2
+            else -> null
+        }
+    }
+
+    /** The leagues whose games can also be watched in Spanish. */
+    private val SPANISH_LEAGUES = setOf("esp.1", "uefa.champions")
+
+    /** Whether [event] can be watched in Spanish too (La Liga, the Champions League). */
+    fun hasSpanish(event: SportsEvent): Boolean =
+        event.leagueId?.substringAfter(':')?.lowercase() in SPANISH_LEAGUES
+
+    private val SPANISH_NETWORKS = listOf(
+        "espn deportes", "fox deportes", "deportes", "espanol", "en espanol", "tudn", "univision", "unimas",
+        "telemundo", "universo", "galavision", "movistar", "laliga tv", "gol", "vix", "bein sports xtra espanol"
+    )
+
+    private val LATIN_AMERICA = setOf(
+        "MX", "AR", "CO", "CL", "PE", "VE", "EC", "UY", "PY", "BO", "CR", "PA", "DO", "GT", "HN", "SV", "NI", "PR"
+    )
 
     private fun countryOf(channel: LiveTvChannel): String? {
         channel.country?.let { com.nuvio.tv.ui.screens.livetv.LiveTvCountry.normalize(it) }?.let { return it }
@@ -519,22 +557,22 @@ class SportsWatchViewModel @Inject constructor(
     suspend fun youTubeStreamFor(event: SportsEvent): String? = bananaBallLive.youTubeStreamFor(event)
 
     /** The channel showing [event] now, ready to play; null when no channel is showing it. */
-    suspend fun liveChannelFor(event: SportsEvent): LiveTvChannel? {
+    suspend fun liveChannelFor(event: SportsEvent, spanish: Boolean = false): LiveTvChannel? {
         val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
         if (sources.isEmpty()) return null
         guideLoader.ensure(sources)
         val now = System.currentTimeMillis()
         // On the guide as it is; else once its programs have loaded (a little while at most).
-        var airing = guideLoader.guide.value?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, now) } }
+        var airing = guideLoader.guide.value?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, now, spanish) } }
         if (airing == null) {
             val loaded = withTimeoutOrNull(GUIDE_WAIT_MS) {
                 guideLoader.guide.first { guide -> guide != null && !guide.isLoading && !guide.isEpgLoading }
             } ?: guideLoader.guide.value
-            airing = loaded?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, System.currentTimeMillis()) } }
+            airing = loaded?.let { guide -> com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("game-channels") { bestAiring(guide, event, System.currentTimeMillis(), spanish) } }
         }
         // RCTV (owner's rule): the provider's guide doesn't name the game: the channel of the network
         // showing it (ESPN, TNT, FOX...), as ESPN says.
-        val channel = airing?.channel ?: networkChannelFor(event) ?: return null
+        val channel = airing?.channel ?: networkChannelFor(event, spanish) ?: return null
         // RCTV (owner): the player's Networks row has the Guide's channels even when Live TV wasn't
         // opened first (it was empty from a game).
         guideLoader.guide.value?.takeIf { !it.isPreview && it.channels.isNotEmpty() }?.let { guide ->
@@ -551,7 +589,7 @@ class SportsWatchViewModel @Inject constructor(
         return channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources))
     }
 
-    private suspend fun networkChannelFor(event: SportsEvent): LiveTvChannel? {
+    private suspend fun networkChannelFor(event: SportsEvent, spanish: Boolean = false): LiveTvChannel? {
         val guide = guideLoader.guide.value ?: return null
         if (guide.isPreview || guide.channels.isEmpty()) return null
         val networks = withContext(Dispatchers.IO) {
@@ -564,13 +602,13 @@ class SportsWatchViewModel @Inject constructor(
             }
         }
         if (networks.isEmpty()) return null
-        return withContext(Dispatchers.Default) { SportsGameChannels.byNetwork(guide.allChannels, networks) }
+        return withContext(Dispatchers.Default) { SportsGameChannels.byNetwork(guide.allChannels, networks, spanish) }
     }
 
-    private suspend fun bestAiring(guide: LiveGuideSnapshot, event: SportsEvent, now: Long): GameAiring? {
+    private suspend fun bestAiring(guide: LiveGuideSnapshot, event: SportsEvent, now: Long, spanish: Boolean = false): GameAiring? {
         if (guide.isPreview || guide.channels.isEmpty()) return null
         return withContext(Dispatchers.Default) {
-            SportsGameChannels.find(guide.allChannels, guide.epgByChannel, event, now).firstOrNull()
+            SportsGameChannels.find(guide.allChannels, guide.epgByChannel, event, now, spanish).firstOrNull()
         }
     }
 
