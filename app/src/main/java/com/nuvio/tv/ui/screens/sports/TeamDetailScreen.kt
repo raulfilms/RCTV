@@ -772,20 +772,22 @@ private fun TeamGameCard(
                     Spacer(modifier = Modifier.height(10.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val awayWon = isFinal && (event.awayScore ?: 0) > (event.homeScore ?: 0)
-                    val homeWon = isFinal && (event.homeScore ?: 0) > (event.awayScore ?: 0)
+                    // RCTV: with the scores hidden, neither who won.
+                    val scoresHidden = rememberScoresHidden()
+                    val awayWon = !scoresHidden && isFinal && (event.awayScore ?: 0) > (event.homeScore ?: 0)
+                    val homeWon = !scoresHidden && isFinal && (event.homeScore ?: 0) > (event.awayScore ?: 0)
                     TeamLogo(url = event.awayTeamBadgeUrl, size = 62.dp)
                     Spacer(modifier = Modifier.width(16.dp))
                     CardTeamScore(
                         abbreviation = event.awayTeamAbbreviation ?: event.awayTeamName.take(3).uppercase(),
-                        score = event.awayScore,
+                        score = event.awayScore.takeUnless { scoresHidden },
                         dimmed = homeWon,
                         scoreFirst = false
                     )
                     CardMiddle(event = event, broadcast = game.broadcast)
                     CardTeamScore(
                         abbreviation = event.homeTeamAbbreviation ?: event.homeTeamName.take(3).uppercase(),
-                        score = event.homeScore,
+                        score = event.homeScore.takeUnless { scoresHidden },
                         dimmed = awayWon,
                         scoreFirst = true
                     )

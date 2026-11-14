@@ -35,6 +35,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.SportsBasketball
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
@@ -325,8 +327,9 @@ internal fun SportsHeroCarousel(
             Spacer(modifier = Modifier.height(10.dp))
             val home = shortTeamName(event, home = true)
             val away = shortTeamName(event, home = false)
+            val scoresHidden = rememberScoresHidden()
             Text(
-                text = if (event.homeScore != null && event.awayScore != null && event.status != SportsEventStatus.UPCOMING) {
+                text = if (!scoresHidden && event.homeScore != null && event.awayScore != null && event.status != SportsEventStatus.UPCOMING) {
                     "$home ${event.homeScore}  |  $away ${event.awayScore}"
                 } else {
                     "$home  |  $away"
@@ -366,7 +369,15 @@ internal fun SportsHeroCarousel(
                     text = stringResource(if (inLibrary) R.string.livetv_details_in_library else R.string.hero_add_to_library),
                     icon = if (inLibrary) Icons.Default.Check else Icons.Default.Add,
                     primary = false,
-                    onClick = { onToggleLibrary(event) },
+                    onClick = { onToggleLibrary(event) }
+                )
+                // RCTV (owner): hide or show every score in the app (kept on the TV).
+                val scoresContext = androidx.compose.ui.platform.LocalContext.current
+                HeroPillButton(
+                    text = stringResource(if (scoresHidden) R.string.sports_show_scores else R.string.sports_hide_scores),
+                    icon = if (scoresHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                    primary = false,
+                    onClick = { SportsScoreVisibility.toggle(scoresContext) },
                     modifier = Modifier.onPreviewKeyEvent { key ->
                         if (key.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
                             key.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && events.size > 1
@@ -638,7 +649,7 @@ internal fun SportsGameCard(
                         modifier = Modifier.weight(1f)
                     )
                     val showScore = event.status != SportsEventStatus.UPCOMING &&
-                        event.homeScore != null && event.awayScore != null
+                        event.homeScore != null && event.awayScore != null && !rememberScoresHidden()
                     Text(
                         text = if (showScore) "${event.homeScore} - ${event.awayScore}" else stringResource(R.string.sports_vs),
                         color = Color.White,

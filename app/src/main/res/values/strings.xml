@@ -4554,4 +4554,7 @@
     <!-- RCTV: the marks on every thumbnail. -->
     <string name="title_status_library">In your Library</string>
     <string name="title_status_imdb">In your IMDb watchlist</string>
+    <!-- RCTV: the Sports page's switch for every score in the app. -->
+    <string name="sports_hide_scores">Hide scores</string>
+    <string name="sports_show_scores">Show scores</string>
 </resources>

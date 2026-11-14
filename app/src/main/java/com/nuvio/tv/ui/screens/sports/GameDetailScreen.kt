@@ -253,10 +253,12 @@ private fun GameDetailHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // RCTV: "Hide scores" (Sports page).
+            val scoresHidden = rememberScoresHidden()
             GameDetailTeam(
                 name = event.homeTeamName,
                 badgeUrl = event.homeTeamBadgeUrl,
-                score = event.homeScore,
+                score = event.homeScore.takeUnless { scoresHidden },
                 modifier = Modifier.weight(1f)
             )
             Text(
@@ -268,7 +270,7 @@ private fun GameDetailHeader(
             GameDetailTeam(
                 name = event.awayTeamName,
                 badgeUrl = event.awayTeamBadgeUrl,
-                score = event.awayScore,
+                score = event.awayScore.takeUnless { scoresHidden },
                 modifier = Modifier.weight(1f)
             )
         }

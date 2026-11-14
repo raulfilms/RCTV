@@ -245,7 +245,7 @@ private fun TeamColumn(name: String, badgeUrl: String?, modifier: Modifier = Mod
 @Composable
 private fun ScoreOrTimeColumn(event: SportsEvent) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(56.dp)) {
-        if (event.homeScore != null && event.awayScore != null) {
+        if (event.homeScore != null && event.awayScore != null && !rememberScoresHidden()) {
             Text(
                 text = "${event.homeScore} - ${event.awayScore}",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
@@ -563,13 +563,14 @@ fun SportsHeroBanner(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xl)
         ) {
-            HeroTeam(name = event.homeTeamName, badgeUrl = event.homeTeamBadgeUrl, score = event.homeScore)
+            val scoresHidden = rememberScoresHidden()
+            HeroTeam(name = event.homeTeamName, badgeUrl = event.homeTeamBadgeUrl, score = event.homeScore.takeUnless { scoresHidden })
             Text(
                 text = statusLine(event),
                 style = MaterialTheme.typography.titleSmall,
                 color = if (event.status == SportsEventStatus.LIVE) NuvioTheme.colors.Error else NuvioTheme.colors.TextSecondary
             )
-            HeroTeam(name = event.awayTeamName, badgeUrl = event.awayTeamBadgeUrl, score = event.awayScore)
+            HeroTeam(name = event.awayTeamName, badgeUrl = event.awayTeamBadgeUrl, score = event.awayScore.takeUnless { scoresHidden })
         }
 
         Row(
