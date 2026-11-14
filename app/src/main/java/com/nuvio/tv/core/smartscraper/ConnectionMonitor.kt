@@ -126,6 +126,9 @@ class ConnectionMonitor @Inject constructor(
         prefs.edit().putFloat(KEY_MEASURED, next.toFloat()).putLong(KEY_MEASURED_AT, System.currentTimeMillis()).apply()
     }
 
+    /** RCTV: the app's last speed test (any age), or null. */
+    fun lastTestedMbps(): Double? = freshTest(Long.MAX_VALUE)
+
     /** A file of [bitrateMbps] kept buffering: files like it are ranked down for a while. */
     fun recordRebuffering(bitrateMbps: Double) {
         if (bitrateMbps <= 0 || bitrateMbps.isNaN()) return

@@ -109,8 +109,9 @@ class RctvExperiencePreparer @Inject constructor(
 
     /**
      * What's on now and next on the Guide's first channels, looked up on TMDB (kept by
-     * [LiveProgramLibrary]: the Guide's pictures and the program's page then need no wait). At
-     * most [TITLES_MAX_MS]; a title TMDB doesn't answer for is simply asked again in the Guide.
+     * [LiveProgramLibrary]: the Guide's pictures and the program's page then need no wait). RCTV:
+     * a series on now also gets its episode found (its page opens with it, no "Looking for TMDB").
+     * At most [TITLES_MAX_MS]; what TMDB doesn't answer for is simply asked again in the Guide.
      */
     private suspend fun lookUpTitles(guide: LiveGuideSnapshot) {
         val now = System.currentTimeMillis()
@@ -121,6 +122,8 @@ class RctvExperiencePreparer @Inject constructor(
                     .filter { it.endMs > now }
                     .take(2)
             }
+            // What's on now first (the episodes looked up are those).
+            .sortedBy { if (it.startMs <= now) 0 else 1 }
             .distinctBy { LiveProgramLibrary.cleanTitle(it.title).lowercase(java.util.Locale.ROOT) }
             .toList()
         if (programs.isEmpty()) return
@@ -131,7 +134,8 @@ class RctvExperiencePreparer @Inject constructor(
                     async {
                         gate.withPermit {
                             try {
-                                programLibrary.findTitle(program)
+                                val found = programLibrary.findTitle(program)
+                                if (found != null && !found.isMovie && program.startMs <= now) programLibrary.match(program)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (_: Exception) {
@@ -164,7 +168,7 @@ class RctvExperiencePreparer @Inject constructor(
         /** The Guide's first channels whose programs are looked up on TMDB. */
         private const val TITLE_CHANNELS = 40
         private const val TITLES_AT_ONCE = 4
-        private const val TITLES_MAX_MS = 20_000L
+        private const val TITLES_MAX_MS = 30_000L
 
         /** The longest the screen waits for the sports. */
         private const val SPORTS_MAX_MS = 60_000L

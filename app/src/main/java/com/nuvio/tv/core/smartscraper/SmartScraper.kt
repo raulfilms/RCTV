@@ -40,7 +40,10 @@ class SmartScraper @Inject constructor(
             delay(STARTUP_MEASURE_DELAY_MS)
             while (isActive) {
                 if (settings.config.value.connectionAware && !TvRecommendationManager.isPlaybackActive.value) {
-                    connection.measure(maxAgeMs = STARTUP_TEST_MAX_AGE_MS)
+                    // A low reading may have been the app's own loading (the guide's programs): asked
+                    // again within the hour, not kept for hours.
+                    val low = connection.lastTestedMbps()?.let { it < LOW_READING_MBPS } == true
+                    connection.measure(maxAgeMs = if (low) LOW_RETEST_MS else STARTUP_TEST_MAX_AGE_MS)
                 }
                 delay(RETEST_CHECK_MS)
             }
@@ -225,6 +228,8 @@ class SmartScraper @Inject constructor(
         /** RCTV: after the start's own loading (guide, EPG), which made the test read low. */
         const val STARTUP_MEASURE_DELAY_MS = 45_000L
         const val RETEST_CHECK_MS = 10L * 60 * 1000
+        const val LOW_READING_MBPS = 25.0
+        const val LOW_RETEST_MS = 60L * 60 * 1000
 
         /**
          * RCTV (PERF-05): the measurement made when the app starts is skipped when there's one from the

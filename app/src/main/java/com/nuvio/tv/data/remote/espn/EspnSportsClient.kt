@@ -241,6 +241,8 @@ class EspnSportsClient @Inject constructor(
         /** A refused range this long or shorter is asked day by day; longer, month by month. */
         private const val PIECES_BY_DAY_MAX = 16
 
+        /** RCTV: the rows' days asked one by one when ESPN refuses ranges: the first day and the next two ([shortRange] adds these days). */
+        private const val ROWS_PIECES_DAYS = 2
         /** Days asked at the same time. */
         private const val PIECES_AT_ONCE = 4
 
@@ -566,8 +568,8 @@ class EspnSportsClient @Inject constructor(
      * days ("20261109-20261122" is refused) while one day or a whole month still work, and every
      * league's page failed with "Couldn't load this league right now". Once a range is refused, a
      * league's page ([byPieces]) asks for it day by day (a short range) or month by month (a long
-     * one); the Sports rows (every league at once: too many requests by days) skip the range and
-     * fall back to each league's current scoreboard, as they already did when it failed.
+     * one); the Sports rows (every league at once) ask only their first three days one by one
+     * ([fetchFixturesInRange]), else each league's current scoreboard.
      */
     private fun scoreboardJson(base: String, datesRange: String?, limit: Int?, query: String?, byPieces: Boolean): JSONObject {
         val bounds = datesRange?.let(::rangeBounds)
@@ -1576,11 +1578,24 @@ class EspnSportsClient @Inject constructor(
                                     first.getOrNull()
                                 } else {
                                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                    runCatching { cancellableBlocking { fetchFeed(feed) } }.getOrNull()?.also {
+                                    val refused = (first.exceptionOrNull() as? ServerAnswer)?.code?.let { it in 400..499 } == true
+                                    // RCTV: ESPN refuses ranges of days (13-nov-2026): the next days asked
+                                    // one by one (the rows' Up Next and every sport with games soon, not
+                                    // only today's); a league played by weeks (the NFL) gets its week.
+                                    val byDays = if (refused && !isWeekly(feed)) {
+                                        runCatching {
+                                            cancellableBlocking {
+                                                fetchFeedRaw(feed, shortRange(feedRange, ROWS_PIECES_DAYS), limit = ROWS_EVENT_LIMIT, byPieces = true)
+                                                    .deduplicated()
+                                            }
+                                        }.getOrNull()
+                                    } else {
+                                        null
+                                    }
+                                    (byDays ?: runCatching { cancellableBlocking { fetchFeed(feed) } }.getOrNull())?.also {
                                         // ESPN refused the range but not the league: ranges are refused
                                         // (the next leagues skip asking for it).
-                                        val refused = first.exceptionOrNull() as? ServerAnswer
-                                        if (refused != null && refused.code in 400..499) rangesRefused = true
+                                        if (refused) rangesRefused = true
                                     }
                                 }
                             }

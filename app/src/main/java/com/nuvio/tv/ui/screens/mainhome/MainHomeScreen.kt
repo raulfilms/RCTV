@@ -74,6 +74,7 @@ import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.screens.home.RctvHomeBanner
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -119,8 +120,22 @@ fun MainHomeScreen(
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
-    // RCTV (owner): the app left on a channel opens on it again.
+    // RCTV: "Creating Your Experience" waits for this Home (the old Home said when it was in; this
+    // one says it once TMDB's rows are in, or after a while), then for the rest it loads.
+    val startupLoading = com.nuvio.tv.ui.components.LocalStartupLoadingState.current
+    val rowsIn = state.trending.isNotEmpty() || state.popular.isNotEmpty() || state.recentlyAdded.isNotEmpty()
+    LaunchedEffect(startupLoading, rowsIn) {
+        val loading = startupLoading ?: return@LaunchedEffect
+        if (loading.complete) return@LaunchedEffect
+        if (!rowsIn) delay(HOME_READY_MAX_MS)
+        loading.complete = true
+    }
+    // RCTV (owner): the app left on a channel opens on it again, once "Creating Your Experience" is gone.
+    val splashOn = com.nuvio.tv.ui.components.LocalStartupSplashEnabled.current
     LaunchedEffect(Unit) {
+        startupLoading?.let { loading ->
+            androidx.compose.runtime.snapshotFlow { loading.complete && (loading.experienceReady || !splashOn) }.first { it }
+        }
         viewModel.resumeChannel()?.let(onPlayChannel)
     }
 
@@ -669,3 +684,6 @@ private fun isSeriesOf(item: ContinueWatchingItem): Boolean = when (item) {
     is ContinueWatchingItem.InProgress -> item.progress.contentType.equals("series", ignoreCase = true)
     is ContinueWatchingItem.NextUp -> true
 }
+
+/** The longest "Creating Your Experience" waits for this Home's rows. */
+private const val HOME_READY_MAX_MS = 20_000L

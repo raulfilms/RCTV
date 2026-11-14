@@ -125,7 +125,7 @@ internal fun LiveTvBackgroundVideo(
 
     AndroidView(
         factory = { ctx ->
-            (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null) as PlayerView).apply {
+            (LayoutInflater.from(ctx).inflate(R.layout.live_background_player_view, null) as PlayerView).apply {
                 this.player = player
                 // The Guide keeps the remote: the picture never takes focus.
                 isFocusable = false
