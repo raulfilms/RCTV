@@ -62,7 +62,15 @@ object SmartScoreEngine {
         val metadata = if (ExtraContent.wordIn(source, request) != null) {
             MetadataCheck(0f, RejectReason.WRONG_TYPE)
         } else {
-            checkMetadata(release, titleMatch, request, config)
+            checkMetadata(release, titleMatch, request, config).let { checked ->
+                // RCTV: a cartoon told in halves: a file of another episode's halves isn't this one
+                // (see EpisodeOrderRegistry.fileFits).
+                if (checked.rejection == null && request.isEpisode && fitsAnotherEpisode(source, request)) {
+                    MetadataCheck(0f, RejectReason.WRONG_EPISODE)
+                } else {
+                    checked
+                }
+            }
         }
         val bitrate = bitrateOf(release, request)
         val required = (bitrate ?: defaultMbps(release.resolution)) * HEADROOM
@@ -93,6 +101,19 @@ object SmartScoreEngine {
     // ==================================================================== Metadata (hard checks first)
 
     private data class MetadataCheck(val score: Float, val rejection: RejectReason?)
+
+    /** RCTV: the file is another episode's of a cartoon told in halves (its name or its numbers say so). */
+    private fun fitsAnotherEpisode(source: NormalizedSource, request: SmartSourceRequest): Boolean {
+        val showId = request.imdbId?.takeIf { it.startsWith("tt") }
+            ?: request.tmdbId?.let { "tmdb:" + it.removePrefix("tmdb:") }
+            ?: return false
+        val stream = source.stream
+        val text = listOfNotNull(stream.behaviorHints?.filename, stream.title, stream.description, stream.name)
+            .joinToString("\n")
+        return com.nuvio.tv.core.imdb.EpisodeOrderRegistry.fileFits(
+            showId, request.season, request.episode, source.release.episodes.toSet(), text
+        ) == false
+    }
 
     private fun checkMetadata(
         release: ParsedRelease,

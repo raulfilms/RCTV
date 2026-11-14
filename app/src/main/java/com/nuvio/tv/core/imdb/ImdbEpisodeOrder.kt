@@ -66,7 +66,7 @@ class ImdbEpisodeOrder @Inject constructor(
         val cached = known[imdbId]?.takeIf { now - it.savedAtMs < KNOWN_MAX_AGE_MS }
         val episodes = when {
             cached != null -> cached.episodes
-            (failedAtMs[imdbId]?.let { now - it < RETRY_AFTER_MS } == true) -> return meta to true
+            (failedAtMs[imdbId]?.let { now - it < RETRY_AFTER_MS } == true) -> return byAirDate(meta, imdbId)
             else -> {
                 val lookup = synchronized(inFlight) {
                     inFlight[imdbId]?.takeIf { !it.isCompleted } ?: scope.async(start = CoroutineStart.LAZY) {
@@ -79,17 +79,34 @@ class ImdbEpisodeOrder @Inject constructor(
                 val result = withTimeoutOrNull(WAIT_MS) { lookup.await() }
                 when {
                     result != null -> result
-                    lookup.isCompleted -> return meta to true // IMDb couldn't be asked: as the addon has it
+                    lookup.isCompleted -> return byAirDate(meta, imdbId) // IMDb couldn't be asked
                     else -> return meta to false
                 }
             }
         }
-        if (episodes.isEmpty()) return meta to true
+        if (episodes.isEmpty()) return byAirDate(meta, imdbId)
         val (videos, orders) = runCatching { ImdbEpisodeOrderMatcher.reorder(meta.videos, episodes) }
             .onFailure { Log.w(TAG, "Couldn't line up $imdbId: ${it.message}") }
             .getOrNull() ?: return meta to true
         if (orders.isEmpty()) return meta to true
         Log.i(TAG, "${meta.name} ($imdbId): seasons ${orders.keys} as IMDb has them")
+        register(meta, imdbId, orders)
+        return meta.copy(videos = videos) to true
+    }
+
+    /**
+     * RCTV: IMDb couldn't be asked (it turns away some devices): the halves that went on the air
+     * the same day are put together instead (SpongeBob's "Help Wanted", "Reef Blower" and "Tea at
+     * the Treedome", all three on May 1, 1999), which is how IMDb and the files tell most such
+     * cartoons. A season with no such days, or whose episodes all came out together, stays as it is.
+     */
+    private fun byAirDate(meta: Meta, imdbId: String): Pair<Meta, Boolean> {
+        val episodes = AirDateGroups.episodes(meta.videos) ?: return meta to true
+        val (videos, orders) = runCatching { ImdbEpisodeOrderMatcher.reorder(meta.videos, episodes) }
+            .onFailure { Log.w(TAG, "Couldn't line up $imdbId by air date: ${it.message}") }
+            .getOrNull() ?: return meta to true
+        if (orders.isEmpty()) return meta to true
+        Log.i(TAG, "${meta.name} ($imdbId): seasons ${orders.keys} by air date (IMDb not reached)")
         register(meta, imdbId, orders)
         return meta.copy(videos = videos) to true
     }
@@ -236,6 +253,41 @@ object EpisodeOrderRegistry {
             ?: return emptySet()
         return orders[season]?.groups?.firstOrNull { it.imdbEpisode == episode }?.episodes?.toSet().orEmpty()
     }
+
+    /**
+     * RCTV: whether a file ([fileEpisodes]: the numbers its name says; [text]: its name) is [episode]
+     * of [season] of a cartoon told in halves; null when the show isn't (nothing to say). The files
+     * come numbered both ways: "S01E01-E03 Help Wanted & Reef Blower & Tea at the Treedome" (the
+     * halves' numbers) and "S01E02 Bubblestand - Ripped Pants" (the TV episode's), so a file "S01E02"
+     * or "S01E01-E03" can be IMDb's episode 1 or 2. The halves' names in it settle it; else a file of
+     * several numbers is this episode only when they're all its halves'.
+     */
+    fun fileFits(showId: String?, season: Int?, episode: Int?, fileEpisodes: Set<Int>, text: String): Boolean? {
+        if (showId.isNullOrBlank() || season == null || episode == null) return null
+        val orders = byImdb[showId.substringBefore(':')]
+            ?: byTmdb[showId.removePrefix("tmdb:").substringBefore(':')]
+            ?: return null
+        val groups = orders[season]?.groups ?: return null
+        val group = groups.firstOrNull { it.imdbEpisode == episode } ?: return null
+        val name = " " + ImdbEpisodeOrderMatcher.normalize(text) + " "
+        fun named(title: String) = ImdbEpisodeOrderMatcher.segmentsOf(title)
+            .filter { it.length >= MIN_NAME_LENGTH }
+        val ours = named(group.imdbTitle).toSet()
+        val others = groups.filter { it !== group }.flatMap { named(it.imdbTitle) }.toSet() - ours
+        val saysOurs = ours.any { name.contains(" $it ") }
+        if (saysOurs) return true
+        if (others.any { name.contains(" $it ") }) return false
+        if (fileEpisodes.isEmpty()) return null
+        val halves = group.episodes.toSet()
+        return if (fileEpisodes.size > 1) {
+            fileEpisodes.all { it in halves || it == episode }
+        } else {
+            fileEpisodes.single() == episode || fileEpisodes.single() in halves
+        }
+    }
+
+    /** A half's name this long or longer is looked for in a file's name (shorter ones say too little). */
+    private const val MIN_NAME_LENGTH = 5
 
     /**
      * TMDB's episodes of [tmdbId] ([episodes], by season and number) with each rebuilt season's told
