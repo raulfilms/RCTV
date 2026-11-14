@@ -203,6 +203,8 @@ internal fun LiveTvTimelineGuide(
      * ahead, so choosing it can offer "Watch From Beginning" at once).
      */
     onProgramFocusSettled: (EpgProgram) -> Unit = {},
+    /** RCTV: the channel just left plays behind the Guide: it shows through (more at the top). */
+    translucent: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -497,7 +499,17 @@ internal fun LiveTvTimelineGuide(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(GuideBackground)
+            .then(
+                if (translucent) {
+                    Modifier.background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(GuideBackground.copy(alpha = 0.55f), GuideBackground.copy(alpha = 0.88f))
+                        )
+                    )
+                } else {
+                    Modifier.background(GuideBackground)
+                }
+            )
             .padding(start = AppleTvSpacing.SafeX, end = AppleTvSpacing.SafeX, top = topInset)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {

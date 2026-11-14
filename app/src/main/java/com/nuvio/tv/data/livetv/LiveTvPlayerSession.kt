@@ -44,4 +44,20 @@ class LiveTvPlayerSession @Inject constructor() {
     var resolver: (suspend (LiveTvChannel) -> String)? = null
 
     suspend fun playableUrl(channel: LiveTvChannel): String = resolver?.invoke(channel) ?: channel.streamUrl
+
+    /** RCTV: the channel the player was showing when it was left (the Guide keeps it playing behind). */
+    @Volatile private var leftChannel: LiveTvChannel? = null
+    @Volatile private var leftAtMs: Long = 0L
+
+    fun noteLeft(channel: LiveTvChannel) {
+        leftChannel = channel
+        leftAtMs = System.currentTimeMillis()
+    }
+
+    /** The channel just left, once (null when it was left more than [maxAgeMs] ago). */
+    fun takeLeftChannel(maxAgeMs: Long): LiveTvChannel? {
+        val channel = leftChannel ?: return null
+        leftChannel = null
+        return channel.takeIf { System.currentTimeMillis() - leftAtMs <= maxAgeMs }
+    }
 }

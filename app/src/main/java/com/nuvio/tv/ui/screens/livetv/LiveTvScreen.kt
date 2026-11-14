@@ -99,11 +99,16 @@ fun LiveTvScreen(
     val coroutineScope = rememberCoroutineScope()
     // RCTV: what's on now being chosen (its "Watch From Beginning" is looked up): one at a time.
     var liveChoiceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // RCTV (owner): back from the player, its channel goes on playing behind the Guide.
+    var backgroundChannel by remember { mutableStateOf<LiveTvChannel?>(null) }
+    LaunchedEffect(Unit) { backgroundChannel = viewModel.takeBackgroundChannel() }
 
     // Stalker channels carry a short-lived "cmd" token as streamUrl instead of a real URL, so it
     // must be resolved to a playable one right before navigating to the player. A no-op for
     // M3U/Xtream channels (see LiveTvViewModel.resolvePlaybackUrl).
     val resolvingPlayChannel: (LiveTvChannel) -> Unit = { channel ->
+        // The channel behind lets its stream go first (IPTV providers often allow one at a time).
+        backgroundChannel = null
         coroutineScope.launch {
             val resolvedUrl = viewModel.resolvePlaybackUrl(channel)
             onPlayChannel(channel.copy(streamUrl = resolvedUrl))
@@ -130,9 +135,25 @@ fun LiveTvScreen(
         uiState.previewError == null &&
         !(uiState.error != null && uiState.channels.isEmpty())
 
+    val playingBehind = backgroundChannel?.takeIf { showTimeline }
+
     Box(modifier = Modifier.fillMaxSize()) {
+        playingBehind?.let { channel ->
+            LiveTvBackgroundVideo(
+                channel = channel,
+                resolveUrl = viewModel::resolvePlaybackUrl,
+                onFailed = { backgroundChannel = null }
+            )
+            // It counts as this TV watching live TV (the account's 2 at once).
+            com.nuvio.tv.ui.components.RctvPlaybackGuard(
+                kind = "iptv",
+                title = channel.name,
+                onStop = { backgroundChannel = null }
+            )
+        }
         if (showTimeline) {
             LiveTvTimelineGuide(
+                translucent = playingBehind != null,
                 uiState = uiState,
                 // Below the floating "‹ Guide" pill when it's shown.
                 topInset = if (showBuiltInHeader) NuvioTheme.spacing.lg else 56.dp,

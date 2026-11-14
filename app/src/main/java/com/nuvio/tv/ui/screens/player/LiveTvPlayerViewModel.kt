@@ -106,6 +106,12 @@ class LiveTvPlayerViewModel @Inject constructor(
             ?: guide.channels.firstOrNull { it.name == name && it.logoUrl == logo }
             ?: guide.channels.firstOrNull { it.name == name }
 
+    /** RCTV: the player is being left on this channel: the Guide keeps it playing behind. */
+    fun noteLeaving(name: String, logo: String?) {
+        if (session.guide.value.isPreview) return
+        channelFor(name, logo, session.guide.value)?.let(session::noteLeft)
+    }
+
     /** RCTV (Networks): a channel is being switched to inside the player. */
     fun choosingChannel(channel: LiveTvChannel) {
         playingChannelId = channel.id

@@ -557,6 +557,10 @@ class LiveTvViewModel @Inject constructor(
         super.onCleared()
     }
 
+    /** RCTV: the channel the player was just left on (played behind the Guide), once. */
+    fun takeBackgroundChannel(): LiveTvChannel? =
+        if (uiState.value.isPreviewGuide) null else playerSession.takeLeftChannel(BACKGROUND_PICKUP_MS)
+
     suspend fun resolvePlaybackUrl(channel: LiveTvChannel): String =
         guideLoader.resolvePlaybackUrl(channel, currentSources)
 
@@ -907,6 +911,8 @@ class LiveTvViewModel @Inject constructor(
         private const val CLICK_SOURCES_WAIT_MS = 1_500L
         /** A program's details: how long TMDB is waited for its movie or episode. */
         private const val DETAILS_TMDB_WAIT_MS = 20_000L
+        /** RCTV: the player left this long ago at most: its channel goes on behind the Guide. */
+        private const val BACKGROUND_PICKUP_MS = 20_000L
         /**
          * "US - FOX News Detroit" -> "FOX News Detroit"; "MTV - Music Television" stays (MTV isn't a
          * country). RCTV (MEM-07): read without a regular expression (it runs for every channel).

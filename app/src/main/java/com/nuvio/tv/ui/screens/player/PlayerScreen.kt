@@ -216,6 +216,8 @@ fun PlayerScreen(
         if (exitDispatched) return@exitPlayer
         exitDispatched = true
         val timeline = viewModel.playbackTimeline.value
+        // RCTV: back to the Guide, the channel goes on playing behind it.
+        if (isLiveTvChannel) runCatching { liveTvViewModel.noteLeaving(uiState.title, uiState.logo) }
         viewModel.stopAndRelease()
         val completed = postPlayRecommendationState.isVisible || uiState.playbackEnded ||
             (!timeline.isLive &&
