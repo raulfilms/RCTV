@@ -308,13 +308,15 @@ fun SettingsScreen(
 
     val allSectionSpecs = rememberSettingsSectionSpecs()
     val isGlassStyle = NuvioTheme.settingsUiStyle == SettingsUiStyle.GLASS
-    val visibleSections = remember(isPrimaryProfileActive, isEssentialMode, allSectionSpecs, isGlassStyle) {
+    // RCTV: Account holds only IMDb now, which Light doesn't have.
+    val rctvLightPlan = com.nuvio.tv.ui.components.LocalRctvPlan.current == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
+    val visibleSections = remember(isPrimaryProfileActive, isEssentialMode, allSectionSpecs, isGlassStyle, rctvLightPlan) {
         allSectionSpecs.filter { section ->
             when (section.category) {
                 SettingsCategory.EXPERIENCE -> false
                 SettingsCategory.DEBUG -> BuildConfig.IS_DEBUG_BUILD && !isEssentialMode
                 SettingsCategory.PROFILES -> isPrimaryProfileActive
-                SettingsCategory.ACCOUNT -> isPrimaryProfileActive
+                SettingsCategory.ACCOUNT -> isPrimaryProfileActive && !rctvLightPlan
                 SettingsCategory.LAYOUT -> true
                 SettingsCategory.CONTENT_DISCOVERY -> true
                 SettingsCategory.INTEGRATION -> true
@@ -1248,18 +1250,8 @@ private fun AccountSettingsInline(
             title = stringResource(R.string.settings_account),
             subtitle = stringResource(R.string.settings_account_section_subtitle)
         )
-        SettingsGroupCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            com.nuvio.tv.ui.screens.account.AccountSettingsContent(
-                uiState = accountUiState,
-                viewModel = accountViewModel,
-                onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn,
-                initialFocusRequester = initialFocusRequester
-            )
-        }
+        // RCTV (owner): no Nuvio account here (signing in, its sync): the account, its profiles and
+        // its library are RCTV's website's. IMDb stays.
         if (!rctvLight) SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsActionRow(
                 title = stringResource(R.string.imdb_title),
@@ -1267,7 +1259,9 @@ private fun AccountSettingsInline(
                 value = imdbAccount.nickname ?: imdbAccount.userId ?: stringResource(R.string.imdb_not_linked),
                 onClick = { showImdb = true },
                 leadingRawIconRes = R.raw.imdb_logo_2016,
-                modifier = Modifier.focusRequester(imdbRowFocusRequester)
+                modifier = Modifier
+                    .focusRequester(imdbRowFocusRequester)
+                    .then(if (initialFocusRequester != null) Modifier.focusRequester(initialFocusRequester) else Modifier)
             )
         }
     }
