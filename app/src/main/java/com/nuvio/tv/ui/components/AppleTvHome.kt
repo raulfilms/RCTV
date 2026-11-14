@@ -241,7 +241,9 @@ fun AppleHeroCarousel(
     playFocusRequester: FocusRequester? = null,
     initialActiveIndex: Int = 0,
     onItemFocus: (MetaPreview) -> Unit = {},
-    onActiveItemChanged: (MetaPreview) -> Unit = {}
+    onActiveItemChanged: (MetaPreview) -> Unit = {},
+    /** RCTV: the (+) Library button, for the slides that are titles (Home's live ones and banners have none). */
+    showLibraryButton: (MetaPreview) -> Boolean = { true }
 ) {
     if (items.isEmpty()) return
 
@@ -352,10 +354,12 @@ fun AppleHeroCarousel(
                         )
                     }
                 }
-                AppleGlassIconButton(
-                    icon = if (isInLibrary(activeItem)) Icons.Filled.Check else Icons.Filled.Add,
-                    onClick = { onToggleLibrary(activeItem) }
-                )
+                if (showLibraryButton(activeItem)) {
+                    AppleGlassIconButton(
+                        icon = if (isInLibrary(activeItem)) Icons.Filled.Check else Icons.Filled.Add,
+                        onClick = { onToggleLibrary(activeItem) }
+                    )
+                }
                 AppleGlassIconButton(
                     icon = Icons.Outlined.Info,
                     onClick = { onDetails(activeItem) }

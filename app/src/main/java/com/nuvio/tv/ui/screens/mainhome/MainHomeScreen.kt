@@ -1,7 +1,6 @@
 package com.nuvio.tv.ui.screens.mainhome
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,11 +20,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChildCare
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Newspaper
@@ -37,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,8 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -59,7 +53,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Surface
@@ -73,6 +66,32 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.screens.home.RctvHomeBanner
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.nuvio.tv.core.poster.withCustomPosterUrls
+import com.nuvio.tv.domain.model.ContentType
+import com.nuvio.tv.domain.model.PosterShape
+import com.nuvio.tv.ui.components.AppleHeroCarousel
+import com.nuvio.tv.ui.components.AppleLandscapeCard
+import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
+import com.nuvio.tv.ui.components.AppleRowTitle
+import com.nuvio.tv.ui.components.AppleTvCardSpacing
+import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.AppleTvContentStart
+import com.nuvio.tv.ui.components.AppleTvFocusGlow
+import com.nuvio.tv.ui.components.AppleTvFocusScale
+import com.nuvio.tv.ui.components.AppleTvRadius
+import com.nuvio.tv.ui.components.AppleTvSpacing
+import com.nuvio.tv.ui.components.AppleTvType
+import com.nuvio.tv.ui.components.ContinueWatchingSection
+import com.nuvio.tv.ui.components.LocalTitleArtResolver
+import com.nuvio.tv.ui.components.tileSurfaceBorder
+import com.nuvio.tv.ui.screens.home.HomeUiState
+import com.nuvio.tv.ui.screens.home.homeItemStatusKey
+import com.nuvio.tv.ui.util.asStable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -90,25 +109,37 @@ enum class MainHomeCategory(@StringRes val label: Int, val icon: ImageVector, va
     KIDS(R.string.main_home_cat_kids, Icons.Default.ChildCare, Color(0xFF1659B8))
 }
 
-private val Background = Color(0xFF070B18)
-private val CardColor = Color(0xFF151C2E)
-private val CardBorder = Color(0x33FFFFFF)
 private val LiveRed = Color(0xFFE5232B)
 private val Dim = Color(0xB3FFFFFF)
-private const val HERO_EVERY_MS = 8_000L
+
+/** How far the page scrolls before the banner's picture has faded away (as on Movies & TV). */
+private val HERO_FADE_DISTANCE = 200.dp
+
+/** Keys of the banner's slides that aren't titles (live channels, the website's banners). */
+private const val HERO_SLIDE_PREFIX = "rctv_home_slide:"
 
 /**
- * RCTV (owner): the whole app's Home, laid out like the owner's design: a big banner on top (what's
- * on now, featured titles and the website's banners, in turn) with the next one beside it, then
- * Live Now, Continue Watching, Recommended for You, Browse by Category, Trending on RCTV, Recently
- * Added, Favorite Networks, Popular on RCTV and a Featured Collection; the website's banners go
- * after the row each one names. Movies & TV keeps the Home of movies and series.
+ * RCTV (owner): the whole app's Home, as Movies & TV looks (its big banner with the picture behind
+ * the page, its rows and cards): the banner (what's on now, featured titles and the website's
+ * banners, in turn), then Live Now, Continue Watching, Recommended for You, Browse by Category,
+ * Trending on RCTV, Recently Added, a row per Guide category live now (Entertainment, Movies &
+ * Events, News & Information, Family & Kids, Latino, Sports, Premium), Favorite Networks, Popular
+ * on RCTV and a Featured Collection; the website's banners go after the row each one names. Every
+ * card of a movie or series shows its TMDB title art (its name on the picture), as on Movies & TV;
+ * live channels show their own picture and logo.
  */
 @Composable
 fun MainHomeScreen(
-    continueWatching: List<ContinueWatchingItem>,
+    homeState: HomeUiState,
     onOpenTitle: (MetaPreview) -> Unit,
+    /** The banner's Play on a title: its page, playing. */
+    onPlayTitle: (MetaPreview) -> Unit,
+    onToggleLibrary: (MetaPreview) -> Unit,
+    onTitleShown: (MetaPreview) -> Unit,
     onContinueWatching: (ContinueWatchingItem) -> Unit,
+    onContinueWatchingDetails: (ContinueWatchingItem) -> Unit,
+    onContinueWatchingFromBeginning: (ContinueWatchingItem) -> Unit,
+    onRemoveContinueWatching: (ContinueWatchingItem) -> Unit,
     onOpenGame: (SportsEvent) -> Unit,
     onPlayChannel: (LiveTvChannel) -> Unit,
     onOpenChannelProfile: (LiveTvChannel) -> Unit,
@@ -120,6 +151,7 @@ fun MainHomeScreen(
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
+    val continueWatching = if (homeState.continueWatchingEnabled) homeState.continueWatchingItems else emptyList()
     // RCTV: "Creating Your Experience" waits for this Home (the old Home said when it was in; this
     // one says it once TMDB's rows are in, or after a while), then for the rest it loads.
     val startupLoading = com.nuvio.tv.ui.components.LocalStartupLoadingState.current
@@ -144,12 +176,6 @@ fun MainHomeScreen(
     LaunchedEffect(last?.let(::contentIdOf)) {
         viewModel.recommendFor(last?.let(::contentIdOf), last?.let(::isSeriesOf) ?: false)
     }
-    LaunchedEffect(Unit) {
-        repeat(6) {
-            delay(150)
-            if (runCatching { firstFocus.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
-        }
-    }
 
     fun playLive(card: LiveNowCard) {
         when (card) {
@@ -158,105 +184,228 @@ fun MainHomeScreen(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Background),
-        contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(26.dp)
-    ) {
-        if (state.hero.isNotEmpty()) {
-            item(key = "hero") {
-                HeroSection(
-                    slides = state.hero,
-                    firstFocus = firstFocus,
-                    onSlide = { slide ->
-                        when (slide) {
-                            is HeroSlide.Live -> playLive(slide.card)
-                            is HeroSlide.Title -> onOpenTitle(slide.item)
-                            is HeroSlide.Banner -> onBannerAction(slide.banner.action)
+    // The banner, as Movies & TV's: each slide a picture with its name (a title's logo) and buttons.
+    val liveLabel = stringResource(R.string.main_home_live)
+    val heroSlides = remember(state.hero) { state.hero.filter { it.heroPicture() != null } }
+    val heroItems = remember(heroSlides, liveLabel) { heroSlides.map { it.asHeroItem(liveLabel) } }
+    fun slideOf(item: MetaPreview): HeroSlide? =
+        if (item.id.startsWith(HERO_SLIDE_PREFIX)) heroSlides.firstOrNull { it.key == item.id.removePrefix(HERO_SLIDE_PREFIX) } else null
+    val heroVisible = heroItems.isNotEmpty()
+
+    LaunchedEffect(heroVisible) {
+        if (!heroVisible) return@LaunchedEffect
+        repeat(8) {
+            delay(150)
+            if (runCatching { firstFocus.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val fadePx = remember(density) { with(density) { HERO_FADE_DISTANCE.toPx() } }
+    val heroScrollFraction: () -> Float = remember(listState, fadePx) {
+        {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else (listState.firstVisibleItemScrollOffset / fadePx).coerceIn(0f, 1f)
+        }
+    }
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    // Like Movies & TV: the banner fills most of the screen and the first row peeks in at the bottom.
+    val heroHeight = remember(screenHeight) { (screenHeight - 140.dp).coerceAtLeast(300.dp) }
+    val titleArt = viewModel.titleArt
+
+    Box(modifier = Modifier.fillMaxSize().background(AppleTvColors.Background)) {
+        CompositionLocalProvider(LocalTitleArtResolver provides titleArt) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = if (heroVisible) 0.dp else AppleTvSpacing.SafeY, bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(26.dp)
+            ) {
+                if (heroVisible) {
+                    item(key = "hero") {
+                        AppleHeroCarousel(
+                            items = heroItems.asStable(),
+                            heroHeight = heroHeight,
+                            imageHeight = screenHeight,
+                            scrollFraction = heroScrollFraction,
+                            playFocusRequester = firstFocus,
+                            onPlay = { item ->
+                                when (val slide = slideOf(item)) {
+                                    is HeroSlide.Live -> playLive(slide.card)
+                                    is HeroSlide.Banner -> onBannerAction(slide.banner.action)
+                                    else -> onPlayTitle(item)
+                                }
+                            },
+                            onDetails = { item ->
+                                when (val slide = slideOf(item)) {
+                                    is HeroSlide.Live -> when (val card = slide.card) {
+                                        is LiveNowCard.Game -> onOpenGame(card.event)
+                                        is LiveNowCard.Channel -> onOpenChannelProfile(card.channel)
+                                    }
+                                    is HeroSlide.Banner -> onBannerAction(slide.banner.action)
+                                    else -> onOpenTitle(item)
+                                }
+                            },
+                            onToggleLibrary = { item -> if (slideOf(item) == null) onToggleLibrary(item) },
+                            isInLibrary = { item ->
+                                homeState.posterLibraryMembership[homeItemStatusKey(item.id, item.apiType)] == true
+                            },
+                            showLibraryButton = { item -> slideOf(item) == null },
+                            onActiveItemChanged = { item -> if (slideOf(item) == null) onTitleShown(item) }
+                        )
+                    }
+                }
+                rowWithBanners(MainHomeRows.LIVE_NOW, state.banners, onBannerAction) {
+                    if (state.liveNow.isNotEmpty()) {
+                        item(key = "live_now") {
+                            HomeRow(stringResource(R.string.main_home_live_now), state.liveNow, { it.key }) { card, modifier ->
+                                LiveCard(card, modifier, onClick = { playLive(card) })
+                            }
                         }
                     }
-                )
-            }
-        }
-        rowWithBanners(MainHomeRows.LIVE_NOW, state.banners, onBannerAction) {
-            if (state.liveNow.isNotEmpty()) {
-                item(key = "live_now") {
-                    HomeRow(stringResource(R.string.main_home_live_now), state.liveNow, { it.key }) { card, modifier ->
-                        LiveCard(card, modifier, onClick = { playLive(card) })
+                }
+                rowWithBanners(MainHomeRows.CONTINUE_WATCHING, state.banners, onBannerAction) {
+                    if (continueWatching.isNotEmpty()) {
+                        item(key = "continue_watching") {
+                            // Movies & TV's own row: the title's logo on its picture and the progress on it.
+                            ContinueWatchingSection(
+                                items = continueWatching.withCustomPosterUrls(homeState.customPosterUrlPattern),
+                                title = stringResource(R.string.main_home_continue_watching),
+                                onItemClick = onContinueWatching,
+                                onDetailsClick = onContinueWatchingDetails,
+                                onStartFromBeginning = onContinueWatchingFromBeginning,
+                                onRemoveItem = onRemoveContinueWatching,
+                                blurUnwatchedEpisodes = homeState.blurUnwatchedEpisodes,
+                                useEpisodeThumbnails = homeState.useEpisodeThumbnailsInCw,
+                                cardWidth = AppleLandscapeCardWidth,
+                                imageHeight = AppleLandscapeCardHeight,
+                                cardStyle = homeState.continueWatchingCardStyle,
+                                cornerRadius = AppleTvRadius.Poster,
+                                appleStyle = true
+                            )
+                        }
                     }
                 }
-            }
-        }
-        rowWithBanners(MainHomeRows.CONTINUE_WATCHING, state.banners, onBannerAction) {
-            if (continueWatching.isNotEmpty()) {
-                item(key = "continue_watching") {
-                    HomeRow(stringResource(R.string.main_home_continue_watching), continueWatching, { "cw_${contentIdOf(it)}_${videoIdOf(it)}" }) { item, modifier ->
-                        ContinueCard(item, modifier, onClick = { onContinueWatching(item) })
+                titlesRow(MainHomeRows.RECOMMENDED, R.string.main_home_recommended, state.recommended, state.banners, onOpenTitle, onBannerAction)
+                rowWithBanners(MainHomeRows.CATEGORIES, state.banners, onBannerAction) {
+                    item(key = "categories") {
+                        val categories = MainHomeCategory.entries.filter { state.withLiveTv || (it != MainHomeCategory.LIVE_TV && it != MainHomeCategory.NEWS) }
+                        HomeRow(stringResource(R.string.main_home_categories), categories, { it.name }) { category, modifier ->
+                            CategoryTile(category, modifier, onClick = { onCategory(category) })
+                        }
                     }
                 }
-            }
-        }
-        titlesRow(MainHomeRows.RECOMMENDED, R.string.main_home_recommended, state.recommended, state.banners, onOpenTitle, onBannerAction)
-        rowWithBanners(MainHomeRows.CATEGORIES, state.banners, onBannerAction) {
-            item(key = "categories") {
-                val categories = MainHomeCategory.entries.filter { state.withLiveTv || (it != MainHomeCategory.LIVE_TV && it != MainHomeCategory.NEWS) }
-                HomeRow(stringResource(R.string.main_home_categories), categories, { it.name }) { category, modifier ->
-                    CategoryTile(category, modifier, onClick = { onCategory(category) })
-                }
-            }
-        }
-        titlesRow(MainHomeRows.TRENDING, R.string.main_home_trending, state.trending, state.banners, onOpenTitle, onBannerAction)
-        titlesRow(MainHomeRows.RECENTLY_ADDED, R.string.main_home_recently_added, state.recentlyAdded, state.banners, onOpenTitle, onBannerAction)
-        rowWithBanners(MainHomeRows.FAVORITE_NETWORKS, state.banners, onBannerAction) {
-            if (state.favoriteNetworks.isNotEmpty()) {
-                item(key = "favorite_networks") {
-                    HomeRow(stringResource(R.string.main_home_favorite_networks), state.favoriteNetworks, { "fav_${it.channel.id}" }) { card, modifier ->
-                        NetworkTile(
-                            card,
-                            modifier,
-                            onClick = { scope.launch { onPlayChannel(viewModel.playable(card.channel)) } },
-                            onLongClick = { onOpenChannelProfile(card.channel) }
-                        )
+                titlesRow(MainHomeRows.TRENDING, R.string.main_home_trending, state.trending, state.banners, onOpenTitle, onBannerAction)
+                titlesRow(MainHomeRows.RECENTLY_ADDED, R.string.main_home_recently_added, state.recentlyAdded, state.banners, onOpenTitle, onBannerAction)
+                // RCTV (owner, like YouTube TV's Home): a row per Guide category with its channels live now,
+                // in the Guide's order (Entertainment, Movies & Events, News & Information, Family & Kids,
+                // Latino, Sports, Premium).
+                state.liveCategories.forEach { row ->
+                    item(key = "live_${row.category.name}") {
+                        HomeRow(
+                            stringResource(R.string.main_home_live_category, stringResource(row.category.labelRes)),
+                            row.cards,
+                            { "live_${row.category.name}_${it.channel.id}" }
+                        ) { card, modifier ->
+                            LiveCard(
+                                card,
+                                modifier,
+                                onClick = { scope.launch { onPlayChannel(viewModel.playable(card.channel)) } },
+                                onLongClick = { onOpenChannelProfile(card.channel) },
+                                channelLogo = true
+                            )
+                        }
                     }
                 }
-            }
-        }
-        // RCTV (owner, like YouTube TV's Home): a row per Guide category with its channels live now.
-        state.liveCategories.forEach { row ->
-            item(key = "live_${row.category.name}") {
-                HomeRow(
-                    stringResource(R.string.main_home_live_category, stringResource(row.category.labelRes)),
-                    row.cards,
-                    { "live_${row.category.name}_${it.channel.id}" }
-                ) { card, modifier ->
-                    LiveCard(
-                        card,
-                        modifier,
-                        onClick = { scope.launch { onPlayChannel(viewModel.playable(card.channel)) } },
-                        onLongClick = { onOpenChannelProfile(card.channel) },
-                        channelLogo = true
-                    )
+                rowWithBanners(MainHomeRows.FAVORITE_NETWORKS, state.banners, onBannerAction) {
+                    if (state.favoriteNetworks.isNotEmpty()) {
+                        item(key = "favorite_networks") {
+                            HomeRow(stringResource(R.string.main_home_favorite_networks), state.favoriteNetworks, { "fav_${it.channel.id}" }) { card, modifier ->
+                                NetworkTile(
+                                    card,
+                                    modifier,
+                                    onClick = { scope.launch { onPlayChannel(viewModel.playable(card.channel)) } },
+                                    onLongClick = { onOpenChannelProfile(card.channel) }
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        }
-        titlesRow(MainHomeRows.POPULAR, R.string.main_home_popular, state.popular, state.banners, onOpenTitle, onBannerAction)
-        state.featuredCollection?.let { collection ->
-            rowWithBanners(MainHomeRows.FEATURED_COLLECTION, state.banners, onBannerAction) {
-                item(key = "featured_collection") {
-                    val items = collection.items.take(20)
-                    HomeRow(collection.name.ifBlank { stringResource(R.string.main_home_featured) }, items, { "fc_${it.tmdbId}_${it.isSeries}" }) { item, modifier ->
-                        WideTile(
-                            title = item.title,
-                            imageUrl = (item.backdropPath ?: item.posterPath)?.let { "https://image.tmdb.org/t/p/w780$it" },
-                            modifier = modifier,
-                            onClick = { onOpenCollection(collection.id) }
-                        )
+                titlesRow(MainHomeRows.POPULAR, R.string.main_home_popular, state.popular, state.banners, onOpenTitle, onBannerAction)
+                state.featuredCollection?.let { collection ->
+                    rowWithBanners(MainHomeRows.FEATURED_COLLECTION, state.banners, onBannerAction) {
+                        item(key = "featured_collection") {
+                            val items = remember(collection) { collection.items.take(ROW_SIZE).map { it.asTitle() } }
+                            HomeRow(collection.name.ifBlank { stringResource(R.string.main_home_featured) }, items, { "fc_${it.id}" }) { item, modifier ->
+                                AppleLandscapeCard(item = item, onClick = { onOpenCollection(collection.id) }, modifier = modifier)
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/** The banner slide's picture (a game without one isn't a slide: the banner is its picture). */
+private fun HeroSlide.heroPicture(): String? = when (this) {
+    is HeroSlide.Title -> item.background ?: item.landscapePoster
+    is HeroSlide.Live -> (card as? LiveNowCard.Channel)?.program?.imageUrl
+    is HeroSlide.Banner -> banner.imageUrl
+}?.takeIf { it.isNotBlank() }
+
+/** A slide as the banner shows it: a title as it is; a live channel or a website banner as one. */
+private fun HeroSlide.asHeroItem(liveLabel: String): MetaPreview = when (this) {
+    is HeroSlide.Title -> item
+    is HeroSlide.Live -> {
+        val channel = (card as LiveNowCard.Channel)
+        val program = channel.program
+        MetaPreview(
+            id = HERO_SLIDE_PREFIX + key,
+            type = ContentType.TV,
+            name = program?.title ?: channel.channel.name,
+            poster = null,
+            posterShape = PosterShape.LANDSCAPE,
+            background = heroPicture(),
+            logo = null,
+            description = program?.description?.takeIf { it.isNotBlank() } ?: timeRange(program?.startMs, program?.endMs),
+            releaseInfo = null,
+            imdbRating = null,
+            genres = listOf(channel.channel.name),
+            ageRating = liveLabel
+        )
+    }
+    is HeroSlide.Banner -> MetaPreview(
+        id = HERO_SLIDE_PREFIX + key,
+        type = ContentType.UNKNOWN,
+        rawType = "",
+        name = banner.title,
+        poster = null,
+        posterShape = PosterShape.LANDSCAPE,
+        background = heroPicture(),
+        logo = null,
+        description = banner.subtitle,
+        releaseInfo = null,
+        imdbRating = null,
+        genres = emptyList()
+    )
+}
+
+/** A Featured Collection title as a card finds its title art (TMDB's id). */
+private fun com.nuvio.tv.core.rctvcontrol.RctvCollectionItem.asTitle(): MetaPreview = MetaPreview(
+    id = "tmdb:$tmdbId",
+    type = if (isSeries) ContentType.SERIES else ContentType.MOVIE,
+    name = title,
+    poster = posterPath?.let { "https://image.tmdb.org/t/p/w342$it" },
+    posterShape = PosterShape.LANDSCAPE,
+    background = backdropPath?.let { "https://image.tmdb.org/t/p/w780$it" },
+    logo = null,
+    description = null,
+    releaseInfo = year?.toString(),
+    imdbRating = null,
+    genres = emptyList()
+)
 
 // ------------------------------------------------------------------------------- Rows
 
@@ -293,17 +442,14 @@ private fun LazyListScope.titlesRow(
     if (items.isNotEmpty()) {
         item(key = rowId) {
             HomeRow(stringResource(title), items, { "${rowId}_${it.id}" }) { meta, modifier ->
-                WideTile(
-                    title = meta.name,
-                    imageUrl = meta.landscapePoster ?: meta.background ?: meta.poster,
-                    modifier = modifier,
-                    onClick = { onOpenTitle(meta) }
-                )
+                // Movies & TV's card: the title's name on its picture (TMDB's title art).
+                AppleLandscapeCard(item = meta, onClick = { onOpenTitle(meta) }, modifier = modifier)
             }
         }
     }
 }
 
+/** A row as Movies & TV's: its name, then its cards from the page's edge. */
 @Composable
 private fun <T> HomeRow(
     title: String,
@@ -312,193 +458,50 @@ private fun <T> HomeRow(
     content: @Composable (T, Modifier) -> Unit
 ) {
     Column {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 48.dp, bottom = 12.dp)
-        )
+        AppleRowTitle(text = title, bottomGap = 0.dp)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            // Room above and below for a card growing on focus.
+            contentPadding = PaddingValues(horizontal = AppleTvContentStart, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
         ) {
             items(items, key = key) { item -> content(item, Modifier) }
         }
     }
 }
 
-// ------------------------------------------------------------------------------- Hero
-
-@Composable
-private fun HeroSection(slides: List<HeroSlide>, firstFocus: FocusRequester, onSlide: (HeroSlide) -> Unit) {
-    var index by remember { mutableIntStateOf(0) }
-    var focused by remember { mutableStateOf(false) }
-    val count = slides.size
-    // Turns on its own (not while the person is on it).
-    LaunchedEffect(count, focused) {
-        if (count < 2 || focused) return@LaunchedEffect
-        while (true) {
-            delay(HERO_EVERY_MS)
-            index = (index + 1) % count
-        }
-    }
-    val current = slides[index % count]
-    val next = slides[(index + 1) % count]
-    Row(
-        modifier = Modifier.fillMaxWidth().height(300.dp).padding(horizontal = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        FocusCard(
-            onClick = { onSlide(current) },
-            modifier = Modifier
-                .weight(2f)
-                .fillMaxHeight()
-                .focusRequester(firstFocus)
-                .onFocusChanged { focused = it.hasFocus || it.isFocused },
-            focusedScale = 1.02f
-        ) {
-            HeroContent(current, big = true)
-            if (count > 1) {
-                Row(
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    repeat(count) { i ->
-                        Box(
-                            modifier = Modifier
-                                .size(if (i == index % count) 9.dp else 7.dp)
-                                .background(if (i == index % count) Color.White else Dim.copy(alpha = 0.5f), CircleShape)
-                        )
-                    }
-                }
-            }
-        }
-        FocusCard(
-            onClick = { index = (index + 1) % count },
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            focusedScale = 1.03f
-        ) {
-            HeroContent(next, big = false)
-        }
-    }
-}
-
-@Composable
-private fun BoxScope.HeroContent(slide: HeroSlide, big: Boolean) {
-    val image: String?
-    val title: String
-    val subtitle: String?
-    val live: Boolean
-    val button: String
-    when (slide) {
-        is HeroSlide.Live -> when (val card = slide.card) {
-            is LiveNowCard.Game -> {
-                image = null
-                title = card.event.name
-                subtitle = card.event.leagueName
-                live = true
-                button = stringResource(R.string.main_home_watch_live)
-            }
-            is LiveNowCard.Channel -> {
-                image = card.program?.imageUrl
-                title = card.program?.title ?: card.channel.name
-                subtitle = card.channel.name
-                live = true
-                button = stringResource(R.string.main_home_watch_live)
-            }
-        }
-        is HeroSlide.Title -> {
-            image = slide.item.background ?: slide.item.landscapePoster
-            title = slide.item.name
-            subtitle = slide.item.description
-            live = false
-            button = stringResource(R.string.main_home_more_info)
-        }
-        is HeroSlide.Banner -> {
-            image = slide.banner.imageUrl
-            title = slide.banner.title
-            subtitle = slide.banner.subtitle
-            live = false
-            button = slide.banner.button.ifBlank { stringResource(R.string.main_home_more_info) }
-        }
-    }
-    if (image != null) {
-        AsyncImage(model = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-    } else if (slide is HeroSlide.Live && slide.card is LiveNowCard.Game) {
-        GameArt(slide.card.event, Modifier.fillMaxSize())
-    }
-    Box(
-        modifier = Modifier.fillMaxSize().background(
-            Brush.horizontalGradient(listOf(Color(0xE6070B18), Color(0x99070B18), Color.Transparent))
-        )
-    )
-    Column(
-        modifier = Modifier.align(Alignment.CenterStart).padding(start = if (big) 32.dp else 20.dp, end = 20.dp).fillMaxWidth(if (big) 0.6f else 0.9f)
-    ) {
-        if (live) LiveBadge(big)
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = if (big) 34.sp else 24.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = if (big) 38.sp else 28.sp
-        )
-        subtitle?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(6.dp))
-            Text(it, color = Dim, fontSize = if (big) 16.sp else 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        if (big) {
-            Spacer(Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(if (live) Icons.Default.PlayArrow else Icons.Default.Info, contentDescription = null, tint = Color.Black, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(button, color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-    }
-}
-
 // ------------------------------------------------------------------------------- Cards
 
+/** A card as Movies & TV's: no outline at rest; it grows, lifts and gets the white ring on focus. */
 @Composable
 private fun FocusCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
-    focusedScale: Float = 1.05f,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(AppleTvRadius.Poster)
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = CardColor,
-            focusedContainerColor = CardColor,
+            containerColor = AppleTvColors.Surface2,
+            focusedContainerColor = AppleTvColors.Surface2,
             contentColor = Color.White,
             focusedContentColor = Color.White
         ),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(border = BorderStroke(1.dp, CardBorder), shape = shape),
-            focusedBorder = Border(border = BorderStroke(3.dp, Color.White), shape = shape)
-        ),
+        border = tileSurfaceBorder(shape),
         shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = focusedScale),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = AppleTvFocusScale),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = AppleTvFocusGlow),
         modifier = modifier
     ) {
         Box(modifier = Modifier.fillMaxSize().clip(shape), content = content)
     }
 }
 
-private val WideWidth: Dp = 300.dp
-private val WideHeight: Dp = 169.dp
+/** A live card: the size of Movies & TV's wide cards. */
+private val LiveWidth: Dp = AppleLandscapeCardWidth
+private val LiveHeight: Dp = AppleLandscapeCardHeight
 
 @Composable
 private fun LiveCard(
@@ -509,7 +512,7 @@ private fun LiveCard(
     /** RCTV: the channel's logo in the corner when the card shows the program's picture. */
     channelLogo: Boolean = false
 ) {
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(WideWidth).height(WideHeight)) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(LiveWidth).height(LiveHeight)) {
         when (card) {
             is LiveNowCard.Game -> GameArt(card.event, Modifier.fillMaxSize())
             is LiveNowCard.Channel -> {
@@ -521,31 +524,31 @@ private fun LiveCard(
                         model = card.channel.logoUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.5f).height(70.dp).padding(bottom = 24.dp)
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.5f).height(48.dp).padding(bottom = 18.dp)
                     )
                 }
             }
         }
         BottomShade()
-        Box(modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)) { LiveBadge(false) }
+        Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) { LiveBadge(false) }
         if (channelLogo && card is LiveNowCard.Channel && card.program?.imageUrl != null) {
             AsyncImage(
                 model = card.channel.logoUrl,
                 contentDescription = card.channel.name,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.align(Alignment.TopStart).padding(10.dp).width(64.dp).height(32.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).width(48.dp).height(24.dp)
             )
         }
         val (title, line) = when (card) {
             is LiveNowCard.Game -> card.event.name to (card.event.leagueName ?: "")
             is LiveNowCard.Channel -> (card.program?.title ?: card.channel.name) to timeRange(card.program?.startMs, card.program?.endMs)
         }
-        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
-            Text(title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (line.isNotBlank()) Text(line, color = Dim, fontSize = 13.sp, maxLines = 1)
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, end = 10.dp, bottom = 8.dp)) {
+            Text(title, color = Color.White, style = AppleTvType.Caption1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (line.isNotBlank()) Text(line, color = Dim, style = AppleTvType.Caption2, maxLines = 1)
             val program = (card as? LiveNowCard.Channel)?.program
             if (program != null) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 val now = System.currentTimeMillis()
                 val fraction = ((now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)).coerceIn(0f, 1f)
                 ProgressLine(fraction)
@@ -554,99 +557,39 @@ private fun LiveCard(
     }
 }
 
-@Composable
-private fun ContinueCard(item: ContinueWatchingItem, modifier: Modifier, onClick: () -> Unit) {
-    val (name, image, line, fraction) = when (item) {
-        is ContinueWatchingItem.InProgress -> {
-            val p = item.progress
-            val percent = p.progressPercent?.div(100f)
-                ?: if (p.duration > 0) p.position.toFloat() / p.duration else 0f
-            Quad(
-                p.name,
-                item.customLandscapePoster ?: item.episodeThumbnail ?: p.backdrop ?: p.poster,
-                if (p.season != null && p.episode != null) "S${p.season} E${p.episode}" + (p.episodeTitle?.let { " · $it" } ?: "") else (item.releaseInfo ?: ""),
-                percent.coerceIn(0f, 1f)
-            )
-        }
-        is ContinueWatchingItem.NextUp -> Quad(
-            item.info.name,
-            item.customLandscapePoster ?: item.info.thumbnail ?: item.info.backdrop ?: item.info.poster,
-            "S${item.info.season} E${item.info.episode}" + (item.info.episodeTitle?.let { " · $it" } ?: ""),
-            0f
-        )
-    }
-    FocusCard(onClick = onClick, modifier = modifier.width(WideWidth).height(WideHeight)) {
-        AsyncImage(model = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        BottomShade()
-        Row(
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 14.dp, end = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (line.isNotBlank()) Text(line, color = Dim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(6.dp))
-                ProgressLine(fraction)
-            }
-            Spacer(Modifier.width(10.dp))
-            Box(
-                modifier = Modifier.size(34.dp).background(Color(0x66000000), CircleShape).padding(6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-            }
-        }
-    }
-}
-
-private data class Quad(val a: String, val b: String?, val c: String, val d: Float)
-
-@Composable
-private fun WideTile(title: String, imageUrl: String?, modifier: Modifier, onClick: () -> Unit) {
-    FocusCard(onClick = onClick, modifier = modifier.width(WideWidth).height(WideHeight)) {
-        AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        BottomShade()
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(14.dp)
-        )
-    }
-}
-
+/** RCTV (owner): Browse by Category's tiles, small (a five-column card) with a small icon. */
 @Composable
 private fun CategoryTile(category: MainHomeCategory, modifier: Modifier, onClick: () -> Unit) {
-    FocusCard(onClick = onClick, modifier = modifier.width(200.dp).height(110.dp)) {
+    FocusCard(onClick = onClick, modifier = modifier.width(CategoryWidth).height(CategoryHeight)) {
         Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(category.color, category.color.copy(alpha = 0.75f)))))
         Column(
             modifier = Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(category.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(stringResource(category.label), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Icon(category.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(stringResource(category.label), color = Color.White, style = AppleTvType.Caption1, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
 
+private val CategoryWidth: Dp = AppleTvSpacing.Col5
+private val CategoryHeight: Dp = AppleTvSpacing.Col5 * (9f / 16f)
+
 @Composable
 private fun NetworkTile(card: LiveNowCard.Channel, modifier: Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(220.dp).height(140.dp)) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(LiveWidth).height(LiveHeight)) {
         AsyncImage(
             model = card.channel.logoUrl,
             contentDescription = card.channel.name,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp).fillMaxWidth(0.6f).height(56.dp)
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp).fillMaxWidth(0.55f).height(44.dp)
         )
-        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) {
-            Text(card.program?.title ?: card.channel.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, end = 10.dp, bottom = 8.dp)) {
+            Text(card.program?.title ?: card.channel.name, color = Color.White, style = AppleTvType.Caption1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             card.program?.let { program ->
                 val now = System.currentTimeMillis()
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(4.dp))
                 ProgressLine(((now - program.startMs).toFloat() / (program.endMs - program.startMs).coerceAtLeast(1)).coerceIn(0f, 1f))
             }
         }
@@ -660,10 +603,10 @@ private fun GameArt(event: SportsEvent, modifier: Modifier) {
         modifier = modifier.background(Brush.linearGradient(listOf(Color(0xFF0E2A5C), Color(0xFF0A1530), Color(0xFF3A0E1E)))),
         contentAlignment = Alignment.Center
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 30.dp)) {
-            AsyncImage(model = event.awayTeamBadgeUrl, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(64.dp))
-            Text("vs", color = Dim, fontSize = 16.sp)
-            AsyncImage(model = event.homeTeamBadgeUrl, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(64.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 22.dp)) {
+            AsyncImage(model = event.awayTeamBadgeUrl, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(42.dp))
+            Text("vs", color = Dim, fontSize = 13.sp)
+            AsyncImage(model = event.homeTeamBadgeUrl, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(42.dp))
         }
     }
 }
@@ -708,11 +651,6 @@ internal fun contentIdOf(item: ContinueWatchingItem): String = when (item) {
     is ContinueWatchingItem.NextUp -> item.info.contentId
 }
 
-private fun videoIdOf(item: ContinueWatchingItem): String = when (item) {
-    is ContinueWatchingItem.InProgress -> item.progress.videoId
-    is ContinueWatchingItem.NextUp -> item.info.videoId
-}
-
 private fun isSeriesOf(item: ContinueWatchingItem): Boolean = when (item) {
     is ContinueWatchingItem.InProgress -> item.progress.contentType.equals("series", ignoreCase = true)
     is ContinueWatchingItem.NextUp -> true
@@ -720,3 +658,6 @@ private fun isSeriesOf(item: ContinueWatchingItem): Boolean = when (item) {
 
 /** The longest "Creating Your Experience" waits for this Home's rows. */
 private const val HOME_READY_MAX_MS = 20_000L
+
+/** At most this many cards in a row (as the other rows). */
+private const val ROW_SIZE = 20

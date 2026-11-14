@@ -27,6 +27,8 @@ import com.nuvio.tv.ui.screens.CatalogSeeAllScreen
 import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.home.HomeViewModel
+import com.nuvio.tv.ui.screens.home.refreshPosterLibraryStatus
+import com.nuvio.tv.ui.screens.home.togglePosterLibrary
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import com.nuvio.tv.ui.screens.library.LibraryScreen
@@ -2133,57 +2135,101 @@ private fun MainHomeRouteContent(navController: NavHostController, homeViewModel
     val homeState by homeViewModel.uiState.collectAsState()
     val openGame = rememberGameOpener(navController)
     val openBanner = rememberBannerOpener(navController)
+    // Continue Watching's card, played (from where it was left, or from the beginning).
+    fun continueWatchingRoute(item: ContinueWatchingItem, startFromBeginning: Boolean = false): String = when (item) {
+        is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
+            videoId = item.progress.videoId,
+            contentType = item.progress.contentType,
+            title = item.progress.name,
+            poster = item.progress.poster,
+            backdrop = item.progress.backdrop,
+            logo = item.progress.logo,
+            season = item.progress.season,
+            episode = item.progress.episode,
+            episodeName = item.progress.episodeTitle,
+            genres = null,
+            year = null,
+            contentId = item.progress.contentId,
+            contentName = item.progress.name,
+            runtime = null,
+            returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
+            returnToHomeOnBack = true,
+            startFromBeginning = startFromBeginning,
+            contentLanguage = item.contentLanguage
+        )
+        is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
+            videoId = item.info.videoId,
+            contentType = item.info.contentType,
+            title = item.info.name,
+            poster = item.info.poster,
+            backdrop = item.info.backdrop,
+            logo = item.info.logo,
+            season = item.info.season,
+            episode = item.info.episode,
+            episodeName = item.info.episodeTitle,
+            genres = null,
+            year = null,
+            contentId = item.info.contentId,
+            contentName = item.info.name,
+            runtime = null,
+            returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
+            returnToHomeOnBack = true,
+            startFromBeginning = startFromBeginning,
+            contentLanguage = item.info.contentLanguage
+        )
+    }
     com.nuvio.tv.ui.screens.mainhome.MainHomeScreen(
-        continueWatching = homeState.continueWatchingItems,
+        homeState = homeState,
         onOpenTitle = { meta ->
             navController.navigate(Screen.Detail.createRoute(itemId = meta.id, itemType = meta.apiType))
         },
+        // The banner's Play, as on Movies & TV: the title's page, playing.
+        onPlayTitle = { meta ->
+            navController.navigate(Screen.Detail.createRoute(itemId = meta.id, itemType = meta.apiType, playOnLoad = true))
+        },
+        onToggleLibrary = { meta ->
+            if (homeState.librarySourceMode == com.nuvio.tv.domain.model.LibrarySourceMode.LOCAL) {
+                homeViewModel.togglePosterLibrary(meta, null)
+            } else {
+                // Lists are picked on the title's page.
+                navController.navigate(Screen.Detail.createRoute(itemId = meta.id, itemType = meta.apiType))
+            }
+        },
+        onTitleShown = { meta -> homeViewModel.refreshPosterLibraryStatus(meta) },
         onContinueWatching = onContinue@{ item ->
             if (!playbackAvailability.canStream(item)) {
                 Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
                 return@onContinue
             }
-            val route = when (item) {
-                is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
-                    videoId = item.progress.videoId,
-                    contentType = item.progress.contentType,
-                    title = item.progress.name,
-                    poster = item.progress.poster,
-                    backdrop = item.progress.backdrop,
-                    logo = item.progress.logo,
-                    season = item.progress.season,
-                    episode = item.progress.episode,
-                    episodeName = item.progress.episodeTitle,
-                    genres = null,
-                    year = null,
-                    contentId = item.progress.contentId,
-                    contentName = item.progress.name,
-                    runtime = null,
-                    returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
-                    returnToHomeOnBack = true,
-                    contentLanguage = item.contentLanguage
+            navController.navigate(continueWatchingRoute(item))
+        },
+        onContinueWatchingDetails = { item ->
+            val (id, type) = when (item) {
+                is ContinueWatchingItem.InProgress -> item.progress.contentId to item.progress.contentType
+                is ContinueWatchingItem.NextUp -> item.info.contentId to item.info.contentType
+            }
+            navController.navigate(Screen.Detail.createRoute(itemId = id, itemType = type))
+        },
+        onContinueWatchingFromBeginning = onBeginning@{ item ->
+            if (!playbackAvailability.canStream(item)) {
+                Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                return@onBeginning
+            }
+            navController.navigate(continueWatchingRoute(item, startFromBeginning = true))
+        },
+        onRemoveContinueWatching = { item ->
+            when (item) {
+                is ContinueWatchingItem.InProgress -> homeViewModel.onEvent(
+                    com.nuvio.tv.ui.screens.home.HomeEvent.OnRemoveContinueWatching(
+                        item.progress.contentId, item.progress.season, item.progress.episode, false
+                    )
                 )
-                is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
-                    videoId = item.info.videoId,
-                    contentType = item.info.contentType,
-                    title = item.info.name,
-                    poster = item.info.poster,
-                    backdrop = item.info.backdrop,
-                    logo = item.info.logo,
-                    season = item.info.season,
-                    episode = item.info.episode,
-                    episodeName = item.info.episodeTitle,
-                    genres = null,
-                    year = null,
-                    contentId = item.info.contentId,
-                    contentName = item.info.name,
-                    runtime = null,
-                    returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
-                    returnToHomeOnBack = true,
-                    contentLanguage = item.info.contentLanguage
+                is ContinueWatchingItem.NextUp -> homeViewModel.onEvent(
+                    com.nuvio.tv.ui.screens.home.HomeEvent.OnRemoveContinueWatching(
+                        item.info.contentId, item.info.seedSeason, item.info.seedEpisode, true
+                    )
                 )
             }
-            navController.navigate(route)
         },
         onOpenGame = openGame,
         onPlayChannel = { channel ->

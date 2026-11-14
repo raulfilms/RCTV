@@ -105,8 +105,15 @@ class MainHomeViewModel @Inject constructor(
     private val publicFiles: RctvPublicFiles,
     private val homeBanners: RctvHomeBanners,
     private val playerSession: LiveTvPlayerSession,
-    private val experienceUpdater: com.nuvio.tv.core.rctvcontrol.RctvExperienceUpdater
+    private val experienceUpdater: com.nuvio.tv.core.rctvcontrol.RctvExperienceUpdater,
+    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
 ) : ViewModel() {
+
+    /**
+     * RCTV (owner): the title art of Home's title cards (TMDB's backdrop with the title on it, or
+     * the title's logo over the backdrop), as on Movies & TV. Not for live channels.
+     */
+    val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = titleArtService
 
     private val _uiState = MutableStateFlow(MainHomeUiState())
     val uiState: StateFlow<MainHomeUiState> = _uiState.asStateFlow()
@@ -217,6 +224,9 @@ class MainHomeViewModel @Inject constructor(
                 val trendingList = trending.await()
                 _uiState.update { it.copy(trending = trendingList.take(ROW_SIZE)).withHero(null, trendingList) }
                 _uiState.update { it.copy(recentlyAdded = recent.await().take(ROW_SIZE), popular = popular.await().take(ROW_SIZE)) }
+                // The banner's titles with their logos (as Movies & TV's banner shows them).
+                val withLogos = titleArtService.withLogos(trendingList.take(HERO_TITLES))
+                _uiState.update { it.withHero(null, withLogos + trendingList.drop(HERO_TITLES)) }
             }
         } catch (e: CancellationException) {
             throw e
@@ -298,7 +308,7 @@ class MainHomeViewModel @Inject constructor(
         if (banners != null) heroBanners = banners
         if (titles != null) heroTitles = titles
         val live = liveNow.take(3).map { HeroSlide.Live(it) }
-        val featured = heroTitles.take(4).map { HeroSlide.Title(it) }
+        val featured = heroTitles.take(HERO_TITLES).map { HeroSlide.Title(it) }
         val mixed = buildList {
             addAll(heroBanners.map { HeroSlide.Banner(it) })
             for (i in 0 until maxOf(live.size, featured.size)) {
@@ -324,6 +334,8 @@ class MainHomeViewModel @Inject constructor(
         const val MAX_GAMES = 8
         const val TOP_NETWORKS = 5
         const val HERO_SIZE = 8
+        /** Titles in the banner (with live channels and the website's banners). */
+        const val HERO_TITLES = 4
     }
 }
 
