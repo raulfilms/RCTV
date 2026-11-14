@@ -682,11 +682,25 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             allHeroFallbackRows, { it.hasHeroArtwork() }, currentHeroOrder
         )
 
+        // RCTV: with many rows each of the first seven gives the hero one title; when none of those
+        // has a backdrop (an addon's catalog without pictures first), any row's titles with one.
+        val anyRowHeroItemsWithArtwork = if (fallbackHeroItemsWithArtwork.isNotEmpty()) {
+            emptyList()
+        } else {
+            allHeroFallbackRows.asSequence()
+                .flatMap { it.items.asSequence() }
+                .filter { it.hasHeroArtwork() }
+                .distinctBy { it.id }
+                .take(7)
+                .toList()
+        }
+
         val computedHeroItems = when {
             heroItemsFromSelectedCatalogs.isNotEmpty() -> heroItemsFromSelectedCatalogs
             fallbackHeroItemsFromSelectedCatalogs.isNotEmpty() -> fallbackHeroItemsFromSelectedCatalogs
             selectedHeroCatalogSet.isNotEmpty() && !heroCatalogsGone -> emptyList()
             fallbackHeroItemsWithArtwork.isNotEmpty() -> fallbackHeroItemsWithArtwork
+            anyRowHeroItemsWithArtwork.isNotEmpty() -> anyRowHeroItemsWithArtwork
             else -> emptyList()
         }
 

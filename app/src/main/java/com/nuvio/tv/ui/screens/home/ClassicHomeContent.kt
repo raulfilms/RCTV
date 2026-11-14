@@ -385,7 +385,35 @@ fun ClassicHomeContent(
         }
     }
 
-    val heroVisible = uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()
+    // RCTV (owner): Movies & TV always opens on its hero (banner and backdrop). When the addons'
+    // catalogs give it no titles (none with a backdrop, or no catalogs at all), it takes the page's
+    // own TMDB rows' titles (Trending Now first), with each title's logo once it's found.
+    val discoverHeroItems = remember(discoverRows) { discoverHeroCandidates(discoverRows) }
+    var discoverHeroLogos by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val useDiscoverHero = uiState.heroItems.isEmpty() && discoverHeroItems.isNotEmpty()
+    LaunchedEffect(useDiscoverHero, discoverHeroItems, discoverTitleArt) {
+        val art = discoverTitleArt ?: return@LaunchedEffect
+        if (!useDiscoverHero) return@LaunchedEffect
+        discoverHeroItems.forEach { item ->
+            if (!item.logo.isNullOrBlank() || discoverHeroLogos.containsKey(item.id)) return@forEach
+            val logo = try {
+                (art.cached(item) ?: art.resolve(item)).logo
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (!logo.isNullOrBlank()) discoverHeroLogos = discoverHeroLogos + (item.id to logo)
+        }
+    }
+    val heroItems = remember(uiState.heroItems, useDiscoverHero, discoverHeroItems, discoverHeroLogos) {
+        if (useDiscoverHero) {
+            discoverHeroItems.map { item -> discoverHeroLogos[item.id]?.let { item.copy(logo = it) } ?: item }
+        } else {
+            uiState.heroItems
+        }
+    }
+    val heroVisible = uiState.heroSectionEnabled && heroItems.isNotEmpty()
 
     // Back anywhere down the page goes all the way back up, onto the banner; the next Back opens
     // the menu. (Registered after the row-to-start Back above, so it comes first.)
@@ -476,8 +504,8 @@ fun ClassicHomeContent(
     val stableTrailerPreviewAudioUrls = remember { androidx.compose.runtime.mutableStateOf(trailerPreviewAudioUrls) }
         .apply { value = trailerPreviewAudioUrls }
     var focusedArtwork by remember { mutableStateOf<ClassicFocusArtwork?>(null) }
-    var activeHeroItem by remember(uiState.heroItems.firstOrNull()?.id) {
-        mutableStateOf(uiState.heroItems.firstOrNull())
+    var activeHeroItem by remember(heroItems.firstOrNull()?.id) {
+        mutableStateOf(heroItems.firstOrNull())
     }
     val savedHeroIndex = rememberSaveable { mutableIntStateOf(0) }
     val latestOnItemFocus by rememberUpdatedState(onItemFocus)
@@ -543,6 +571,7 @@ fun ClassicHomeContent(
     // Lazy catalog loading: trigger load when rows approach visibility
     val latestOnRequestLazyCatalogLoad = rememberUpdatedState(onRequestLazyCatalogLoad)
     val latestVisibleHomeRows = rememberUpdatedState(visibleHomeRows)
+    val latestHeroVisible = rememberUpdatedState(heroVisible)
     val latestStreamingServices = rememberUpdatedState(streamingServices)
     // Home's TMDB rows that show (they come before the catalog rows in the list).
     // RCTV Control, Light: Home is movies and series only (no Top Channels row).
@@ -574,7 +603,7 @@ fun ClassicHomeContent(
             delay(240)
             val rows = latestVisibleHomeRows.value
             // Offset for hero + CW sections that precede homeRows in LazyColumn
-            val heroOffset = if (uiState.heroSectionEnabled && uiState.heroItems.isNotEmpty()) 1 else 0
+            val heroOffset = if (latestHeroVisible.value) 1 else 0
             val cwOffset = if (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) 1 else 0
             val servicesOffset = if (latestStreamingServices.value.isNotEmpty()) 1 else 0
             val rowsOffset = heroOffset + cwOffset + servicesOffset + latestDiscoverItemCount.value + latestBannerCount.value
@@ -718,14 +747,14 @@ fun ClassicHomeContent(
         if (heroVisible) {
             item(key = "hero_carousel", contentType = "hero") {
                 AppleHeroCarousel(
-                    items = uiState.heroItems.asStable(),
+                    items = heroItems.asStable(),
                     heroHeight = appleHeroHeight,
                     imageHeight = screenHeight,
                     scrollFraction = heroScrollFraction,
                     playFocusRequester = heroFocusRequester,
                     onActiveItemChanged = { item ->
                         activeHeroItem = item
-                        val idx = uiState.heroItems.indexOfFirst { it.id == item.id }
+                        val idx = heroItems.indexOfFirst { it.id == item.id }
                         if (idx >= 0) savedHeroIndex.intValue = idx
                         onHeroItemShown(item)
                     },
@@ -1190,6 +1219,26 @@ fun ClassicHomeContent(
  * A TMDB row shows once it has titles; card rows (genres, franchises) right away; Top Channels
  * once the Guide's "Custom" list has channels.
  */
+/**
+ * RCTV: the hero's titles from Home's TMDB rows when the addons' catalogs give it none: titles with
+ * a backdrop, the first rows first (Trending Now), each once, as many as the addons' hero shows.
+ */
+private fun discoverHeroCandidates(rows: List<HomeDiscoverRowState>): List<MetaPreview> {
+    val seen = HashSet<String>()
+    val out = ArrayList<MetaPreview>(DISCOVER_HERO_ITEMS)
+    for (state in rows) {
+        if (state.spec.kind != DisneyRowKind.CATALOG) continue
+        for (item in state.row?.items.orEmpty()) {
+            if (item.background.isNullOrBlank() || !seen.add(item.id)) continue
+            out += item
+            if (out.size >= DISCOVER_HERO_ITEMS) return out
+        }
+    }
+    return out
+}
+
+private const val DISCOVER_HERO_ITEMS = 7
+
 private fun HomeDiscoverRowState.isShown(): Boolean = when (spec.kind) {
     DisneyRowKind.GENRES, DisneyRowKind.FRANCHISES -> true
     DisneyRowKind.CHANNELS -> liveChannels.isNotEmpty()
