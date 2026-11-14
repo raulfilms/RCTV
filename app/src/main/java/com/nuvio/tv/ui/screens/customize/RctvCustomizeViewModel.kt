@@ -324,7 +324,7 @@ class RctvCustomizeViewModel @Inject constructor(
         val sources: List<LiveTvSource> = (
             liveTvDataStore.sources.value.takeIf { it.isNotEmpty() }
                 // Just opened: the account's IPTV login may still be on its way from storage.
-                ?: withTimeoutOrNull(SOURCES_WAIT_MS) { liveTvDataStore.sources.first { it.isNotEmpty() } }
+                ?: withTimeoutOrNull(sourcesWaitMs()) { liveTvDataStore.sources.first { it.isNotEmpty() } }
                 ?: emptyList()
             ).filter { it.enabled }
         if (sources.isEmpty()) {
@@ -574,6 +574,9 @@ class RctvCustomizeViewModel @Inject constructor(
         super.onCleared()
     }
 
+    private fun sourcesWaitMs(): Long =
+        if (liveTvDataStore.managedByAccount) ACCOUNT_SOURCES_WAIT_MS else SOURCES_WAIT_MS
+
     companion object {
         private const val CINEMETA_URL = "https://v3-cinemeta.strem.io"
         private const val CINEMETA_ID = "com.linvo.cinemeta"
@@ -584,7 +587,14 @@ class RctvCustomizeViewModel @Inject constructor(
         private const val MAX_NETWORKS = 1_500
         private const val MAX_QUERY = 60
         private const val SEARCH_WAIT_MS = 500L
-        private const val SOURCES_WAIT_MS = 1_500L
+        private const val SOURCES_WAIT_MS = 5_000L
+
+        /**
+         * With the account's IPTV set on the website, its source is there for sure, only still on
+         * its way as the app opens (on a busy Mi Box that took longer than the old 1.5 s, and the
+         * Networks page didn't show): waited for longer.
+         */
+        private const val ACCOUNT_SOURCES_WAIT_MS = 30_000L
         private const val TEAMS_CHECK_MS = 1_000L
         private val YEAR = Regex("\\d{4}")
 

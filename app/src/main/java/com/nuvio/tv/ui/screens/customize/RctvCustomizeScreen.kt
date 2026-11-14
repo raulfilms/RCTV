@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -151,10 +152,10 @@ fun RctvCustomizeScreen(
                     .fillMaxWidth()
             ) {
                 when (state.step) {
-                    CustomizeStep.LEAGUES -> LeaguesPage(state, viewModel, firstFocus)
-                    CustomizeStep.TEAMS -> TeamsPage(state, viewModel, firstFocus)
-                    CustomizeStep.NETWORKS -> NetworksPage(state, viewModel, firstFocus)
-                    CustomizeStep.SERIES -> SeriesPage(state, viewModel, firstFocus)
+                    CustomizeStep.LEAGUES -> LeaguesPage(state, viewModel, firstFocus, continueFocus)
+                    CustomizeStep.TEAMS -> TeamsPage(state, viewModel, firstFocus, continueFocus)
+                    CustomizeStep.NETWORKS -> NetworksPage(state, viewModel, firstFocus, continueFocus)
+                    CustomizeStep.SERIES -> SeriesPage(state, viewModel, firstFocus, continueFocus)
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
@@ -289,10 +290,15 @@ private fun Header(steps: List<CustomizeStep>, current: CustomizeStep) {
 // ---------------------------------------------------------------------- Pages
 
 @Composable
-private fun LeaguesPage(state: CustomizeUiState, viewModel: RctvCustomizeViewModel, firstFocus: FocusRequester) {
+private fun LeaguesPage(
+    state: CustomizeUiState,
+    viewModel: RctvCustomizeViewModel,
+    firstFocus: FocusRequester,
+    continueFocus: FocusRequester
+) {
     val selected = remember(state.selectedLeagueIds) { state.selectedLeagueIds.toSet() }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(5),
+        columns = GridCells.Fixed(LEAGUE_COLUMNS),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(6.dp),
@@ -306,6 +312,7 @@ private fun LeaguesPage(state: CustomizeUiState, viewModel: RctvCustomizeViewMod
                     .fillMaxWidth()
                     .height(96.dp)
                     .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                    .rightToContinue(index, LEAGUE_COLUMNS, state.leagues.size, continueFocus)
             ) {
                 Column(
                     modifier = Modifier
@@ -346,7 +353,12 @@ private fun LeaguesPage(state: CustomizeUiState, viewModel: RctvCustomizeViewMod
 }
 
 @Composable
-private fun TeamsPage(state: CustomizeUiState, viewModel: RctvCustomizeViewModel, firstFocus: FocusRequester) {
+private fun TeamsPage(
+    state: CustomizeUiState,
+    viewModel: RctvCustomizeViewModel,
+    firstFocus: FocusRequester,
+    continueFocus: FocusRequester
+) {
     val leagues = state.teamLeagues
     val current = leagues.firstOrNull { it.id == state.teamLeagueId } ?: leagues.firstOrNull()
     val selected = remember(state.selectedTeamKeys) { state.selectedTeamKeys.toSet() }
@@ -374,19 +386,20 @@ private fun TeamsPage(state: CustomizeUiState, viewModel: RctvCustomizeViewModel
                 Message(stringResource(if (state.teamsLoading) R.string.rctv_customize_loading else R.string.rctv_customize_nothing))
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(6),
+                    columns = GridCells.Fixed(TEAM_COLUMNS),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(6.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(state.teams, key = { SportsTeamKey.of(it) }) { team ->
+                    itemsIndexed(state.teams, key = { _, team -> SportsTeamKey.of(team) }) { index, team ->
                         PickTile(
                             selected = SportsTeamKey.of(team) in selected,
                             onClick = { viewModel.toggleTeam(team) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(92.dp)
+                                .rightToContinue(index, TEAM_COLUMNS, state.teams.size, continueFocus)
                         ) {
                             Column(
                                 modifier = Modifier
@@ -436,7 +449,12 @@ private fun TeamsPage(state: CustomizeUiState, viewModel: RctvCustomizeViewModel
 }
 
 @Composable
-private fun NetworksPage(state: CustomizeUiState, viewModel: RctvCustomizeViewModel, firstFocus: FocusRequester) {
+private fun NetworksPage(
+    state: CustomizeUiState,
+    viewModel: RctvCustomizeViewModel,
+    firstFocus: FocusRequester,
+    continueFocus: FocusRequester
+) {
     val selected = remember(state.selectedNetworkIds) { state.selectedNetworkIds.toSet() }
     val allLabel = stringResource(R.string.rctv_customize_all_networks)
     val entries = listOf(SideEntry(key = ALL_KEY, label = allLabel)) +
@@ -468,19 +486,20 @@ private fun NetworksPage(state: CustomizeUiState, viewModel: RctvCustomizeViewMo
                 Message(stringResource(if (state.networksLoading) R.string.rctv_customize_loading_channels else R.string.rctv_customize_nothing))
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(6),
+                    columns = GridCells.Fixed(NETWORK_COLUMNS),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(6.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(state.networks, key = { it.id }) { network ->
+                    itemsIndexed(state.networks, key = { _, network -> network.id }) { index, network ->
                         PickTile(
                             selected = network.id in selected,
                             onClick = { viewModel.toggleNetwork(network) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(76.dp)
+                                .rightToContinue(index, NETWORK_COLUMNS, state.networks.size, continueFocus)
                         ) {
                             Column(
                                 modifier = Modifier
@@ -539,7 +558,12 @@ private fun NetworksPage(state: CustomizeUiState, viewModel: RctvCustomizeViewMo
 }
 
 @Composable
-private fun SeriesPage(state: CustomizeUiState, viewModel: RctvCustomizeViewModel, firstFocus: FocusRequester) {
+private fun SeriesPage(
+    state: CustomizeUiState,
+    viewModel: RctvCustomizeViewModel,
+    firstFocus: FocusRequester,
+    continueFocus: FocusRequester
+) {
     val selected = remember(state.selectedSeries) { state.selectedSeries.map { it.id }.toSet() }
     val genres = RctvCustomizeViewModel.SERIES_GENRES
     val entries = genres.map { SideEntry(key = it.genre ?: ALL_KEY, label = stringResource(it.labelRes)) }
@@ -568,19 +592,20 @@ private fun SeriesPage(state: CustomizeUiState, viewModel: RctvCustomizeViewMode
                 Message(stringResource(if (state.seriesLoading) R.string.rctv_customize_loading else R.string.rctv_customize_nothing))
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(7),
+                    columns = GridCells.Fixed(SERIES_COLUMNS),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(6.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(state.series, key = { it.id }) { meta ->
+                    itemsIndexed(state.series, key = { _, meta -> meta.id }) { index, meta ->
                         PickTile(
                             selected = meta.id in selected,
                             onClick = { viewModel.toggleSeries(meta) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(2f / 3f)
+                                .rightToContinue(index, SERIES_COLUMNS, state.series.size, continueFocus)
                         ) {
                             // The name shows until (or unless) the poster does.
                             Text(
@@ -940,6 +965,18 @@ private fun SelectedRow(state: CustomizeUiState, viewModel: RctvCustomizeViewMod
         }
     }
 }
+
+private const val LEAGUE_COLUMNS = 5
+private const val TEAM_COLUMNS = 6
+private const val NETWORK_COLUMNS = 6
+private const val SERIES_COLUMNS = 7
+
+/**
+ * RCTV (owner): Right on the last tile of a row goes to Continue, instead of down to the next row
+ * (getting to Continue then took going down every row).
+ */
+private fun Modifier.rightToContinue(index: Int, columns: Int, count: Int, continueFocus: FocusRequester): Modifier =
+    if (index % columns == columns - 1 || index == count - 1) focusProperties { right = continueFocus } else this
 
 /** Continue (blue) or Back. */
 @Composable
