@@ -35,6 +35,18 @@ internal object LiveTvPlaybackTuning {
     const val SLOW_STALL_RECONNECT_MS = 25_000L
     /** A reconnect that hasn't shown a picture after this long gets another one. */
     const val STARTUP_STUCK_RECONNECT_MS = 20_000L
+
+    /**
+     * RCTV (owner): a channel's first start that shows no picture (the server answers but sends
+     * nothing, a game's channel off the air) waited forever: after this long it's opened again
+     * (sooner with another version of it to turn to).
+     */
+    const val FIRST_START_STUCK_MS = 15_000L
+    const val FIRST_START_VERSION_SWITCH_MS = 8_000L
+
+    /** A channel that never showed a picture: each new try waits this long, and after this many it says so. */
+    const val NEVER_PLAYED_RETRY_MS = 12_000L
+    const val NEVER_PLAYED_MAX_RECONNECTS = 3
     /** Failed reconnects in a row before the error is shown. */
     const val MAX_RECONNECTS = 12
     /** Playing this long counts as healthy again: the reconnect count starts over. */
@@ -222,11 +234,26 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
                 !snapshot.started -> {
                     stalledSinceMs = 0L
                     healthySinceMs = 0L
-                    // Only a reconnect of ours that is stuck: the first start has its own watchdogs.
-                    if (liveReconnectAttempts in 1 until LiveTvPlaybackTuning.MAX_RECONNECTS &&
-                        now - liveStuckSinceMs >= LiveTvPlaybackTuning.STARTUP_STUCK_RECONNECT_MS
-                    ) {
-                        reconnectLiveTv(reason = "no picture after reconnect")
+                    val stuckMs = now - liveStuckSinceMs
+                    val neverPlayed = !liveTvHasPlayed
+                    when {
+                        // RCTV (owner): the first start showing nothing no longer waits forever.
+                        liveReconnectAttempts == 0 -> {
+                            val hasOtherVersion = com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl) != null
+                            val limit = if (hasOtherVersion) LiveTvPlaybackTuning.FIRST_START_VERSION_SWITCH_MS else LiveTvPlaybackTuning.FIRST_START_STUCK_MS
+                            if (stuckMs >= limit) reconnectLiveTv(reason = "no picture on first start")
+                        }
+                        // Never showed a picture after a few tries: it says so (Back or try again).
+                        neverPlayed && liveReconnectAttempts >= LiveTvPlaybackTuning.NEVER_PLAYED_MAX_RECONNECTS -> {
+                            if (stuckMs >= LiveTvPlaybackTuning.NEVER_PLAYED_RETRY_MS) {
+                                giveUpLiveTv()
+                                return@launch
+                            }
+                        }
+                        liveReconnectAttempts < LiveTvPlaybackTuning.MAX_RECONNECTS &&
+                            stuckMs >= (if (neverPlayed) LiveTvPlaybackTuning.NEVER_PLAYED_RETRY_MS else LiveTvPlaybackTuning.STARTUP_STUCK_RECONNECT_MS) -> {
+                            reconnectLiveTv(reason = "no picture after reconnect")
+                        }
                     }
                 }
                 snapshot.ended -> {
@@ -271,6 +298,23 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
                 }
             }
         }
+    }
+}
+
+/**
+ * RCTV (owner): a channel that never showed a picture after a few tries stops trying and says so,
+ * instead of loading for minutes (Back leaves; the error's own button tries again).
+ */
+private fun PlayerRuntimeController.giveUpLiveTv() {
+    Log.w(PlayerRuntimeController.TAG, "LIVE_GIVE_UP: no picture after $liveReconnectAttempts tries")
+    errorRetryJob?.cancel()
+    runCatching { _exoPlayer?.stop() }
+    _uiState.update {
+        it.copy(
+            error = context.getString(com.nuvio.tv.R.string.player_live_channel_failed, it.title.ifBlank { "this channel" }),
+            isBuffering = false,
+            showLoadingOverlay = false
+        )
     }
 }
 
