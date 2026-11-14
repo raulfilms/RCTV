@@ -181,7 +181,7 @@ sealed class Screen(val route: String) {
         fun createRoute(hub: String, seeAll: String? = null): String =
             "disney_plus/$hub" + (seeAll?.let { "?seeAll=" + URLEncoder.encode(it, "UTF-8") } ?: "")
     }
-    /** Discover opened on one genre (from Home's genre cards): [type] "all" or "shows", TMDB genre id. */
+    /** Discover opened on one genre (from Home's genre cards): [type] "all", "shows" or "movies", TMDB genre id (0: none). */
     data object DiscoverGenre : Screen("discover_genre/{type}/{genreId}") {
         fun createRoute(type: String, genreId: Int): String = "discover_genre/$type/$genreId"
     }
@@ -190,6 +190,8 @@ sealed class Screen(val route: String) {
         fun createRoute(group: String): String = "studio_group/$group"
     }
     data object Sports : Screen("sports")
+    /** RCTV (owner): Home's News: the news channels, their shows and what's on (like YouTube TV's). */
+    data object News : Screen("news")
     data object SportsFavorites : Screen("sports_favorites")
     data object SportsTeams : Screen("sports_teams")
     data object SportsLeagueDetail : Screen("sports_league/{leagueId}?leagueName={leagueName}&sportName={sportName}&badgeUrl={badgeUrl}") {

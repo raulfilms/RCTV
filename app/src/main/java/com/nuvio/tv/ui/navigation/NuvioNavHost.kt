@@ -1684,6 +1684,28 @@ private fun PlaybackNavHost(
             )
         }
 
+        // RCTV (owner): Home's News page.
+        composable(Screen.News.route) {
+            com.nuvio.tv.ui.screens.news.NewsScreen(
+                onPlayChannel = { channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = channel.streamUrl,
+                            title = channel.name,
+                            contentType = "live",
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    )
+                },
+                // A show's page, with its showings in the guide.
+                onOpenTitle = { itemId, itemType ->
+                    navController.navigate(Screen.Detail.createRoute(itemId = itemId, itemType = itemType, liveAirings = true))
+                },
+                onOpenChannelProfile = { channel -> navController.navigate(Screen.ChannelProfile.createRoute(channel.id)) }
+            )
+        }
+
         composable(Screen.Sports.route) {
             // A live game plays on its channel; any other game opens its page.
             val openGame = rememberGameOpener(navController)
@@ -2179,12 +2201,14 @@ private fun MainHomeRouteContent(navController: NavHostController, homeViewModel
         onBannerAction = openBanner,
         onOpenCollection = { id -> navController.navigate(Screen.RctvCollection.createRoute(id)) },
         onCategory = { category ->
+            // RCTV (owner): Live TV the Guide, Shows and Movies Discover on TV Shows or Movies, News
+            // its own page, Sports the Sports page, Documentaries and Kids Discover on that genre.
             val route = when (category) {
-                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.LIVE_TV,
-                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.NEWS -> Screen.LiveTv.route
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.LIVE_TV -> Screen.LiveTv.route
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.NEWS -> Screen.News.route
                 com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.SPORTS -> Screen.Sports.route
-                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.SHOWS,
-                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.MOVIES -> Screen.MoviesTv.route
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.SHOWS -> Screen.DiscoverGenre.createRoute("shows", 0)
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.MOVIES -> Screen.DiscoverGenre.createRoute("movies", 0)
                 // TMDB's Documentary and Family genres.
                 com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.DOCUMENTARIES -> Screen.DiscoverGenre.createRoute("all", 99)
                 com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.KIDS -> Screen.DiscoverGenre.createRoute("all", 10751)

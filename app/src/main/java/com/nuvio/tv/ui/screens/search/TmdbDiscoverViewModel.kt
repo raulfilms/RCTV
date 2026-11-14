@@ -56,12 +56,15 @@ class TmdbDiscoverViewModel @Inject constructor(
      * Opened from one of Home's genre cards: the TMDB genre to pick once the Genre menu is known
      * (a series genre opens with Type set to TV Shows).
      */
-    private val startShows = savedStateHandle.get<String>("type") == "shows"
-    private var pendingGenreId: Int? = savedStateHandle.get<Int>("genreId")
+    // RCTV (owner): Home's Shows and Movies open Discover on TV Shows or Movies (genre 0: none picked).
+    private val startFilter = when (savedStateHandle.get<String>("type")) {
+        "shows" -> DiscoverMediaFilter.SHOWS
+        "movies" -> DiscoverMediaFilter.MOVIES
+        else -> DiscoverMediaFilter.ALL
+    }
+    private var pendingGenreId: Int? = savedStateHandle.get<Int>("genreId")?.takeIf { it > 0 }
 
-    private val _uiState = MutableStateFlow(
-        TmdbDiscoverUiState(mediaFilter = if (startShows) DiscoverMediaFilter.SHOWS else DiscoverMediaFilter.ALL)
-    )
+    private val _uiState = MutableStateFlow(TmdbDiscoverUiState(mediaFilter = startFilter))
     val uiState: StateFlow<TmdbDiscoverUiState> = _uiState.asStateFlow()
 
     /**
