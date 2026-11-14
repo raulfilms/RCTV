@@ -134,6 +134,15 @@ fun SeasonTabs(
             shape = RoundedCornerShape(20.dp)
         )
     )
+    // RCTV (owner): the season being shown keeps a white outline (and bold name) while the focus is
+    // on its episodes or anywhere else, so it's always clear which season this is.
+    val selectedTabBorder = CardDefaults.border(
+        border = Border(border = BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(20.dp)),
+        focusedBorder = Border(
+            border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+            shape = RoundedCornerShape(20.dp)
+        )
+    )
     val tabScale = CardDefaults.scale(focusedScale = 1.0f)
     val typography = MaterialTheme.typography
     val tabTextStyle = remember(typography) { typography.titleMedium }
@@ -246,12 +255,13 @@ fun SeasonTabs(
                     containerColor = if (isSelected) NuvioTheme.colors.SurfaceVariant else NuvioTheme.colors.BackgroundCard,
                     focusedContainerColor = NuvioTheme.colors.Secondary
                 ),
-                border = tabBorder,
+                border = if (isSelected) selectedTabBorder else tabBorder,
                 scale = tabScale
             ) {
                 Text(
                     text = if (season == 0) stringResource(R.string.episodes_specials) else stringResource(R.string.episodes_season, season),
                     style = tabTextStyle,
+                    fontWeight = if (isSelected) FontWeight.Bold else null,
                     color = when {
                         isFocused -> NuvioTheme.colors.OnSecondary
                         isSelected -> NuvioTheme.colors.TextPrimary
