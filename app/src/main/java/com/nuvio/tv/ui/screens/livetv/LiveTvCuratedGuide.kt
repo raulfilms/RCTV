@@ -25,13 +25,19 @@ internal object LiveTvCuratedGuide {
     private const val TAG = "LiveTvCuratedGuide"
     private const val ASSET = "live-guide-curated.json"
 
-    /** The categories in the list's order (the Guide lists its channels in this order). */
-    private val CATEGORY_ORDER = listOf(
-        GuideBrowse.TV_SHOWS, GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.MOVIES,
-        GuideBrowse.CHANNELS_24_7, GuideBrowse.LIFESTYLE, GuideBrowse.CRIME_REALITY, GuideBrowse.KIDS,
-        GuideBrowse.DOCUMENTARIES, GuideBrowse.GAME_SHOWS_CLASSICS, GuideBrowse.MUSIC, GuideBrowse.LATINO,
-        GuideBrowse.LOCAL, GuideBrowse.PUERTO_RICO
-    )
+    /**
+     * The categories in the list's order (the Guide lists its channels in this order). RCTV
+     * (14-nov-2026): his categories ([GuideBrowse.CURATED_CATEGORIES]); a list of the earlier
+     * kind is still read.
+     */
+    private val CATEGORY_ORDER = (
+        GuideBrowse.CURATED_CATEGORIES.filter { it != GuideBrowse.INTERNATIONAL } + listOf(
+            GuideBrowse.TV_SHOWS, GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.MOVIES,
+            GuideBrowse.CHANNELS_24_7, GuideBrowse.LIFESTYLE, GuideBrowse.CRIME_REALITY, GuideBrowse.KIDS,
+            GuideBrowse.DOCUMENTARIES, GuideBrowse.GAME_SHOWS_CLASSICS, GuideBrowse.MUSIC, GuideBrowse.LATINO,
+            GuideBrowse.LOCAL, GuideBrowse.PUERTO_RICO
+        )
+        ).distinct()
 
     /** One of the list's channels: its category, the name it shows under and its country. */
     private class Listed(val category: GuideBrowse, val publicName: String, val country: String, val order: Int)
@@ -41,6 +47,11 @@ internal object LiveTvCuratedGuide {
         val listed: List<Listed>,
         /** By the provider's name for the channel ([nameKey]). */
         val byOriginal: Map<String, Listed>,
+        /**
+         * RCTV: channels kept inside by name ([nameKey]) with their country: the local stations
+         * (Sports finds games on them; a network's page lists its locals). Never in the Guide.
+         */
+        val internalNames: Map<String, String>,
         val internalGroups: Set<String>,
         /** Playlist group ([groupKey]) -> country code or region (International). */
         val countries: Map<String, String>
@@ -85,16 +96,27 @@ internal object LiveTvCuratedGuide {
         var order = 0
         for (category in CATEGORY_ORDER) {
             val list = lists.optJSONArray(category.name) ?: continue
-            val country = if (category == GuideBrowse.PUERTO_RICO) "PR" else "US"
+            val categoryCountry = if (category == GuideBrowse.PUERTO_RICO) "PR" else "US"
             for (i in 0 until list.length()) {
                 val row = list.optJSONArray(i) ?: continue
                 val original = row.optString(0).trim()
                 if (original.isEmpty()) continue
                 val public = row.optString(1, "").trim().ifEmpty { original }
+                // RCTV: the row's territory ("US", "PR") when it gives one.
+                val country = row.optString(2, "").trim().uppercase(Locale.ROOT).ifEmpty { categoryCountry }
                 val listed = Listed(category, public, country, order++)
                 all += listed
                 // A name listed twice keeps its first place.
                 byOriginal.putIfAbsent(nameKey(original), listed)
+            }
+        }
+        val internalNames = HashMap<String, String>()
+        json.optJSONArray("internal")?.let { names ->
+            for (i in 0 until names.length()) {
+                val row = names.optJSONArray(i) ?: continue
+                val original = row.optString(0).trim()
+                if (original.isEmpty()) continue
+                internalNames[nameKey(original)] = row.optString(1, "").trim().uppercase(Locale.ROOT).ifEmpty { "US" }
             }
         }
         val internal = json.optJSONArray("internalGroups")
@@ -104,7 +126,7 @@ internal object LiveTvCuratedGuide {
         json.optJSONObject("countries")?.let { map ->
             map.keys().forEach { group -> countries[groupKey(group)] = map.optString(group) }
         }
-        return Rules(all, byOriginal, internalGroups, countries)
+        return Rules(all, byOriginal, internalNames, internalGroups, countries)
     }
 
     /**
@@ -145,6 +167,12 @@ internal object LiveTvCuratedGuide {
         val hidden = ArrayList<LiveTvChannel>()
         val international = LinkedHashMap<String, MutableList<LiveTvChannel>>()
         for (channel in unlisted) {
+            // RCTV: a local station: inside, as a station ([GuideBrowse.LOCAL]) of its country.
+            val stationCountry = rules.internalNames[nameKey(channel.name)]
+            if (stationCountry != null) {
+                hidden += channel.copy(country = stationCountry, guideCategory = GuideBrowse.LOCAL.name)
+                continue
+            }
             val group = channel.groupTitle?.let(::groupKey).orEmpty()
             when {
                 group in rules.internalGroups -> hidden += channel

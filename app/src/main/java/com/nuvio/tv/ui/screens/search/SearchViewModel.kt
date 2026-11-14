@@ -150,6 +150,27 @@ class SearchViewModel @Inject constructor(
     }
 
     init {
+        // RCTV (bug reports): what was searched and what came back ("search" in a report).
+        com.nuvio.tv.core.bugreport.BugReportProbes.register("search", this) {
+            val state = _uiState.value
+            org.json.JSONObject().apply {
+                put("query", state.query.take(100))
+                put("submitted", state.submittedQuery.take(100))
+                put("searching", state.isSearching)
+                state.error?.let { put("error", com.nuvio.tv.core.bugreport.BugReportRedactor.redact(it).take(300)) }
+                put("rows", org.json.JSONArray().apply {
+                    state.catalogRows.take(30).forEach { row ->
+                        put(org.json.JSONObject().apply {
+                            put("addon", row.addonName)
+                            put("catalog", row.catalogName)
+                            put("type", row.rawType)
+                            put("results", row.items.count { !it.id.startsWith("__placeholder_") })
+                            put("loading", row.isLoading)
+                        })
+                    }
+                })
+            }
+        }
         posterOptions.bind(viewModelScope)
         observeExtras()
         viewModelScope.launch {
@@ -1351,6 +1372,12 @@ class SearchViewModel @Inject constructor(
 
     private fun catalogKey(addonId: String, addonBaseUrl: String, type: String, catalogId: String): String {
         return catalogRowStableKey(addonId, addonBaseUrl, type, catalogId)
+    }
+
+    override fun onCleared() {
+        // RCTV (bug reports): the last search is kept for a report made after leaving Search.
+        com.nuvio.tv.core.bugreport.BugReportProbes.keepLast("search", this)
+        super.onCleared()
     }
 }
 

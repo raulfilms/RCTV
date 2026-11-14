@@ -22,6 +22,27 @@ object CrashLog {
     private const val PREFS = "crash_log"
     private const val LAST_EXIT_KEY = "last_exit_seen_ms"
     private const val MAX_TRACE_CHARS = 6_000
+    private const val REPORTED_FILE = "reported_crash.txt"
+    private const val REPORTED_KEPT_MS = 7L * 24 * 60 * 60 * 1000
+
+    /**
+     * RCTV (bug reports): the last crash or unexpected close as the app showed it, kept a week so a
+     * report ("App crashed") carries it ([forReports]).
+     */
+    fun keepForReports(context: Context, text: String) {
+        runCatching { File(context.applicationContext.filesDir, REPORTED_FILE).writeText(text.take(MAX_CHARS)) }
+    }
+
+    /** The crash kept by [keepForReports], when it's from the last week; null otherwise. */
+    fun forReports(context: Context): String? = runCatching {
+        val file = File(context.applicationContext.filesDir, REPORTED_FILE)
+        if (!file.exists()) return@runCatching null
+        if (System.currentTimeMillis() - file.lastModified() > REPORTED_KEPT_MS) {
+            file.delete()
+            return@runCatching null
+        }
+        file.readText().takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     /** Keeps every crash's error (then lets the app close as it would have). */
     fun install(context: Context) {

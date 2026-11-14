@@ -12,9 +12,23 @@ import java.io.IOException
 class SentryNetworkBreadcrumbInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        if (!Sentry.isEnabled()) return chain.proceed(request)
-
         val startedAtNs = System.nanoTime()
+        // RCTV (bug reports): the app's calls that failed or took long go in its last moments, with
+        // Sentry on or off (the site only).
+        if (!Sentry.isEnabled()) {
+            try {
+                val response = chain.proceed(request)
+                noteForBugReports(request.url, request.method, response.code, elapsedMs(startedAtNs), null)
+                return response
+            } catch (error: IOException) {
+                noteForBugReports(request.url, request.method, null, elapsedMs(startedAtNs), error)
+                throw error
+            } catch (error: RuntimeException) {
+                noteForBugReports(request.url, request.method, null, elapsedMs(startedAtNs), error)
+                throw error
+            }
+        }
+
         try {
             val response = chain.proceed(request)
             record(
@@ -46,6 +60,17 @@ class SentryNetworkBreadcrumbInterceptor : Interceptor {
         }
     }
 
+    private fun noteForBugReports(url: HttpUrl, method: String, statusCode: Int?, elapsedMs: Long, error: Throwable?) {
+        val failed = error != null || (statusCode != null && statusCode >= 400)
+        if (!failed && elapsedMs < SLOW_MS) return
+        val outcome = when {
+            error != null -> "${error.javaClass.simpleName} after $elapsedMs ms"
+            failed -> "HTTP $statusCode in $elapsedMs ms"
+            else -> "slow: HTTP $statusCode in $elapsedMs ms"
+        }
+        com.nuvio.tv.core.bugreport.BugReportLog.event("net", "$method ${url.host} → $outcome")
+    }
+
     private fun record(
         url: HttpUrl,
         method: String,
@@ -53,6 +78,7 @@ class SentryNetworkBreadcrumbInterceptor : Interceptor {
         elapsedMs: Long,
         error: Throwable?
     ) {
+        noteForBugReports(url, method, statusCode, elapsedMs, error)
         // RCTV (RCTV-AUD-011, 021): scheme and host only. Addon requests share this interceptor and
         // their paths carry the user's debrid keys and addon configuration; nothing of the path or
         // query is sent to the crash service.
@@ -80,6 +106,11 @@ class SentryNetworkBreadcrumbInterceptor : Interceptor {
             code >= 400 -> SentryLevel.WARNING
             else -> SentryLevel.INFO
         }
+    }
+
+    private companion object {
+        /** A call this slow goes in a bug report's log even when it worked. */
+        const val SLOW_MS = 4_000L
     }
 
     private fun elapsedMs(startedAtNs: Long): Long {

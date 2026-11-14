@@ -104,6 +104,52 @@ class LiveTvCuratedGuideTest {
         assertNull(LiveTvCuratedGuide.apply(listOf(channel("FR: TF1", "FR | France"), channel("USA: TNT", "USA | Entertainment"))))
     }
 
+    /** RCTV: the owner's guide of 14-nov-2026 (his categories, each row's territory, local stations inside). */
+    private val ownersGuide = """
+        {"version":2,"lists":{
+          "ENTERTAINMENT":[["NY | New York ABC 7 WABC","ABC","US"],["USA: TNT","TNT","US"],["PRI: WAPA","WAPA PR","PR"]],
+          "SPORTS":[["USA: NFL Redzone FHD","NFL RedZone","US"]]},
+         "internal":[["AK | ANCHORAGE ABC13 KYUR","US"],["PRI: CANAL 34","PR"]],
+         "internalGroups":["USA | ESPN+"],
+         "countries":{"FR | France":"FR"}}
+    """.trimIndent()
+
+    @Test
+    fun `the owner's new guide has his categories, no 24-7, and its local stations inside`() {
+        LiveTvCuratedGuide.loadForTest(ownersGuide)
+        val filler = (1..30).map { channel("USA: TNT", "USA | Entertainment") }
+        val applied = LiveTvCuratedGuide.apply(
+            filler + listOf(
+                channel("NY | New York ABC 7 WABC", "USA | Locals"),
+                channel("PRI: WAPA", "PRI | Puerto Rico"),
+                channel("USA: NFL Redzone FHD", "USA | NFL Game Pass"),
+                channel("24/7: 13 Reasons Why", "24/7 Drama"),
+                channel("(12) Lakers vs Celtics", "USA | ESPN+"),
+                channel("AK | ANCHORAGE ABC13 KYUR", "USA | Locals"),
+                channel("PRI: CANAL 34", "PRI | Puerto Rico"),
+                channel("FR: TF1", "FR | France")
+            )
+        )!!
+        assertEquals(listOf("ABC", "TNT", "WAPA PR", "NFL RedZone", "FR: TF1"), applied.visible.map { it.name })
+        val shown = applied.visible.associateBy { it.name }
+        assertEquals("ENTERTAINMENT", shown.getValue("ABC").guideCategory)
+        assertEquals("ENTERTAINMENT", shown.getValue("WAPA PR").guideCategory)
+        assertEquals("PR", shown.getValue("WAPA PR").country)
+        assertEquals("US", shown.getValue("TNT").country)
+        assertEquals("SPORTS", shown.getValue("NFL RedZone").guideCategory)
+        assertEquals("INTERNATIONAL", shown.getValue("FR: TF1").guideCategory)
+        // 24/7 is gone: neither in the Guide nor inside.
+        assertTrue((applied.visible + applied.hidden).none { "24/7" in it.name })
+        // The local stations are inside, as stations of their country (Sports and the networks' pages).
+        val anchorage = applied.hidden.single { it.name == "AK | ANCHORAGE ABC13 KYUR" }
+        assertEquals("LOCAL", anchorage.guideCategory)
+        assertEquals("US", anchorage.country)
+        assertNull(anchorage.versionOf)
+        assertEquals("PR", applied.hidden.single { it.name == "PRI: CANAL 34" }.country)
+        // Games and events stay inside for Sports.
+        assertTrue(applied.hidden.any { it.name == "(12) Lakers vs Celtics" && it.versionOf == null })
+    }
+
     @Test
     fun `versions of a channel share one key`() {
         assertEquals("tnt", LiveTvCuratedGuide.versionKey("USA: TNT FHD backup"))

@@ -400,69 +400,7 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
     if (state.playbackIssueReportStatus == PlaybackIssueReportStatus.Sending ||
         state.playbackIssueReportStatus == PlaybackIssueReportStatus.Sent
     ) return
-    val timeline = _playbackTimeline.value
-    val diagnostics = lastPlaybackDiagnosticsForReport.takeIf { it.timestampMs > 0L }
-        ?: LastPlaybackDiagnostics(
-            timestampMs = System.currentTimeMillis(),
-            host = currentStreamUrl.reportSafeHost(),
-            result = state.error?.let { "Error: $it" } ?: "Pending"
-        )
-    val reportError = lastPlaybackIssueError
-        ?: PlaybackIssueErrorInput(
-            displayMessage = state.error,
-            errorCode = null,
-            errorCodeName = null,
-            exceptionClass = null,
-            causeClass = null,
-            causeMessage = null,
-            httpStatus = null
-        )
-    val audioTrack = state.audioTracks.reportTrackLabel(state.selectedAudioTrackIndex)
-    val subtitleTrack = state.subtitleTracks.reportTrackLabel(state.selectedSubtitleTrackIndex)
-    val reportReason = PlayerStartupLoadingPolicy.loadingStallReportReason(
-        showLoadingOverlay = state.showLoadingOverlay,
-        hasRenderedFirstFrame = hasRenderedFirstFrame,
-        error = state.error,
-    )
-    val loadingInput = buildPlaybackIssueLoadingInput(reportReason)
-    val playbackAnalyticsInput = playbackAnalyticsDiagnostics.snapshot(
-        player = _exoPlayer,
-        hasRenderedFirstFrame = hasRenderedFirstFrame,
-        rebufferCount = rebufferCount,
-        rebufferTotalMs = rebufferTotalMs,
-        rebufferStartedAtMs = rebufferStartedAtMs
-    ).copy(startupStages = loadingInput.events)
-    val input = PlaybackIssueReportInput(
-        diagnostics = diagnostics,
-        error = reportError,
-        title = title,
-        contentName = contentName,
-        contentId = contentId,
-        contentType = contentType,
-        videoId = currentVideoId,
-        season = currentSeason,
-        episode = currentEpisode,
-        episodeTitle = currentEpisodeTitle,
-        releaseYear = year,
-        streamUrl = currentStreamUrl,
-        streamMimeType = currentStreamMimeType,
-        streamName = state.currentStreamName,
-        addonName = currentAddonName,
-        videoHash = currentVideoHash,
-        videoSize = currentVideoSize,
-        requestHeaders = currentHeaders,
-        responseHeaders = currentStreamResponseHeaders,
-        playerEngine = currentInternalPlayerEngine.name,
-        loading = loadingInput,
-        positionMs = timeline.currentPosition.takeIf { it > 0L },
-        durationMs = timeline.duration.takeIf { it > 0L },
-        bufferedPositionMs = timeline.bufferedPosition.takeIf { it > 0L },
-        selectedAudioTrack = audioTrack,
-        selectedSubtitleTrack = subtitleTrack,
-        isTorrentStream = isTorrentStream,
-        playbackSettings = buildPlaybackIssuePlaybackSettingsInput(),
-        playbackAnalytics = playbackAnalyticsInput
-    )
+    val input = buildPlaybackIssueReportInput()
 
     val requestVersion = playbackIssueReportRequestVersion.incrementAndGet()
     _uiState.update {
@@ -499,6 +437,93 @@ internal fun PlayerRuntimeController.submitPlaybackIssueReport() {
             }
         }
     }
+}
+
+private fun PlayerRuntimeController.buildPlaybackIssueReportInput(): PlaybackIssueReportInput {
+    val state = _uiState.value
+    val timeline = _playbackTimeline.value
+    val diagnostics = lastPlaybackDiagnosticsForReport.takeIf { it.timestampMs > 0L }
+        ?: LastPlaybackDiagnostics(
+            timestampMs = System.currentTimeMillis(),
+            host = currentStreamUrl.reportSafeHost(),
+            result = state.error?.let { "Error: $it" } ?: "Pending"
+        )
+    val reportError = lastPlaybackIssueError
+        ?: PlaybackIssueErrorInput(
+            displayMessage = state.error,
+            errorCode = null,
+            errorCodeName = null,
+            exceptionClass = null,
+            causeClass = null,
+            causeMessage = null,
+            httpStatus = null
+        )
+    val audioTrack = state.audioTracks.reportTrackLabel(state.selectedAudioTrackIndex)
+    val subtitleTrack = state.subtitleTracks.reportTrackLabel(state.selectedSubtitleTrackIndex)
+    val reportReason = PlayerStartupLoadingPolicy.loadingStallReportReason(
+        showLoadingOverlay = state.showLoadingOverlay,
+        hasRenderedFirstFrame = hasRenderedFirstFrame,
+        error = state.error,
+    )
+    val loadingInput = buildPlaybackIssueLoadingInput(reportReason)
+    val playbackAnalyticsInput = playbackAnalyticsDiagnostics.snapshot(
+        player = _exoPlayer,
+        hasRenderedFirstFrame = hasRenderedFirstFrame,
+        rebufferCount = rebufferCount,
+        rebufferTotalMs = rebufferTotalMs,
+        rebufferStartedAtMs = rebufferStartedAtMs
+    ).copy(startupStages = loadingInput.events)
+    return PlaybackIssueReportInput(
+        diagnostics = diagnostics,
+        error = reportError,
+        title = title,
+        contentName = contentName,
+        contentId = contentId,
+        contentType = contentType,
+        videoId = currentVideoId,
+        season = currentSeason,
+        episode = currentEpisode,
+        episodeTitle = currentEpisodeTitle,
+        releaseYear = year,
+        streamUrl = currentStreamUrl,
+        streamMimeType = currentStreamMimeType,
+        streamName = state.currentStreamName,
+        addonName = currentAddonName,
+        videoHash = currentVideoHash,
+        videoSize = currentVideoSize,
+        requestHeaders = currentHeaders,
+        responseHeaders = currentStreamResponseHeaders,
+        playerEngine = currentInternalPlayerEngine.name,
+        loading = loadingInput,
+        positionMs = timeline.currentPosition.takeIf { it > 0L },
+        durationMs = timeline.duration.takeIf { it > 0L },
+        bufferedPositionMs = timeline.bufferedPosition.takeIf { it > 0L },
+        selectedAudioTrack = audioTrack,
+        selectedSubtitleTrack = subtitleTrack,
+        isTorrentStream = isTorrentStream,
+        playbackSettings = buildPlaybackIssuePlaybackSettingsInput(),
+        playbackAnalytics = playbackAnalyticsInput
+    )
+}
+
+/**
+ * RCTV (bug reports): what plays now, as the playback report has it (title, IDs, episode, the
+ * source's site and kind, picture, sound, subtitles, errors, stalls, settings: never its address).
+ * On the player's thread.
+ */
+internal fun PlayerRuntimeController.bugReportPlayback(): org.json.JSONObject? {
+    if (currentStreamUrl.isBlank() && title.isNullOrBlank()) return null
+    val json = org.json.JSONObject(playbackIssueReportRepository.reportJson(buildPlaybackIssueReportInput()))
+    val state = _uiState.value
+    json.put("rctv", org.json.JSONObject().apply {
+        put("is_live", _playbackTimeline.value.duration <= 0L && currentStreamUrl.isNotBlank())
+        state.error?.let { put("error_shown", com.nuvio.tv.core.bugreport.BugReportRedactor.redact(it).take(300)) }
+        put("loading_shown", state.showLoadingOverlay)
+        put("rendered_first_frame", hasRenderedFirstFrame)
+        put("rebuffers", rebufferCount)
+        put("rebuffer_total_ms", rebufferTotalMs)
+    })
+    return json
 }
 
 private fun PlayerRuntimeController.buildPlaybackIssuePlaybackSettingsInput(): PlaybackIssuePlaybackSettingsInput {

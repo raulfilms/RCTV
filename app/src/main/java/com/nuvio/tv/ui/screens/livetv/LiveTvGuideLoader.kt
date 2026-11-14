@@ -123,6 +123,69 @@ class LiveTvGuideLoader @Inject constructor(
 
     private val keepingFresh = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    /** RCTV (bug reports): the sources last asked for (their kind and site only go in a report). */
+    @Volatile private var reportSources: List<LiveTvSource> = emptyList()
+
+    init {
+        // RCTV (bug reports): how the channels and the guide stand ("live_tv" in a report).
+        com.nuvio.tv.core.bugreport.BugReportProbes.register("live_tv", this) { reportJson() }
+    }
+
+    /** Counts, times, kinds and sites only: never an address, a login or a MAC. */
+    private fun reportJson(): org.json.JSONObject {
+        val now = System.currentTimeMillis()
+        val guide = _guide.value
+        return org.json.JSONObject().apply {
+            put("reloading", isReloading)
+            put("sources", org.json.JSONArray().apply {
+                reportSources.forEach { source ->
+                    put(org.json.JSONObject().apply {
+                        put("enabled", source.enabled)
+                        when (val connection = source.connection) {
+                            is LiveTvConnection.Xtream -> {
+                                put("type", "xtream")
+                                put("site", siteOf(connection.serverUrl))
+                                put("own_guide_address", connection.epgUrl != null)
+                            }
+                            is LiveTvConnection.M3u -> {
+                                put("type", "m3u")
+                                put("site", siteOf(connection.playlistUrl))
+                                put("guide_address", connection.epgUrl != null)
+                            }
+                            is LiveTvConnection.Stalker -> {
+                                put("type", "stalker")
+                                put("site", siteOf(connection.portalUrl))
+                            }
+                        }
+                    })
+                }
+            })
+            if (guide == null) {
+                put("guide", "not loaded yet")
+            } else {
+                put("guide", org.json.JSONObject().apply {
+                    put("sample_guide", guide.isPreview)
+                    put("loading", guide.isLoading)
+                    put("programs_loading", guide.isEpgLoading)
+                    put("channels", guide.channels.size)
+                    put("hidden_channels", guide.hiddenChannels.size)
+                    put("groups", guide.groups.size)
+                    put("channels_with_programs", guide.epgByChannel.size)
+                    put("programs", guide.epgByChannel.values.sumOf { it.size })
+                    put("sorted_by_owner_list", guide.curated)
+                    if (guide.loadedAtMs > 0L) {
+                        put("loaded_minutes_ago", (now - guide.loadedAtMs) / 60_000)
+                        put("stale", guide.isStale())
+                    }
+                    guide.error?.let { put("error", com.nuvio.tv.core.bugreport.BugReportRedactor.redact(it).take(300)) }
+                })
+            }
+        }
+    }
+
+    private fun siteOf(address: String): String =
+        runCatching { java.net.URI(address.trim()).host }.getOrNull() ?: "unknown"
+
     private var loadJob: Job? = null
     private var loadKey: String? = null
 
@@ -182,6 +245,7 @@ class LiveTvGuideLoader @Inject constructor(
      * still showing, once it's old; loaded again when [force]d (Retry).
      */
     fun ensure(sources: List<LiveTvSource>, force: Boolean = false) {
+        reportSources = sources
         val key = keyOf(sources)
         synchronized(lock) {
             val current = _guide.value?.takeIf { it.key == key }
@@ -397,15 +461,17 @@ class LiveTvGuideLoader @Inject constructor(
         }
         // The programs already loaded stay while the new ones come.
         val keptEpg: Map<String, List<EpgProgram>> = previous?.epgByChannel.orEmpty()
+        // RCTV (owner): Puerto Rico's channels keep San Juan's programs loaded last time meanwhile.
+        val shownChannels = PuertoRicoOtaGuide.pointAtStations(channels, keptEpg)
         val withChannels = LiveGuideSnapshot(
             key = key,
             isPreview = false,
             isLoading = false,
             isEpgLoading = channels.isNotEmpty(),
-            channels = channels,
+            channels = shownChannels,
             groups = channels.mapNotNull { it.groupTitle }.distinct().sorted(),
             epgByChannel = keptEpg,
-            channelCategories = categorize(channels, keptEpg),
+            channelCategories = categorize(shownChannels, keptEpg),
             error = error,
             loadedAtMs = previous?.loadedAtMs ?: System.currentTimeMillis(),
             hiddenChannels = hiddenChannels,
@@ -439,11 +505,26 @@ class LiveTvGuideLoader @Inject constructor(
             }
             merged += loadSourceEpg(source, wanted)
         }
-        val epg: Map<String, List<EpgProgram>> = merged.ifEmpty { keptEpg }
+        val providerEpg: Map<String, List<EpgProgram>> = merged.ifEmpty { keptEpg }
+        // RCTV (owner): Puerto Rico's channels the provider has no programs for get San Juan's TV
+        // guide; if it can't be read now, the one loaded last time stays.
+        val sanJuan = try {
+            PuertoRicoOtaGuide.programsFor(okHttpClient, channels, providerEpg)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        val epg: Map<String, List<EpgProgram>> = when {
+            sanJuan.isNotEmpty() -> providerEpg + sanJuan
+            else -> providerEpg + keptEpg.filterKeys(PuertoRicoOtaGuide::isOwnKey)
+        }
+        val guideChannels = PuertoRicoOtaGuide.pointAtStations(channels, epg)
         val loaded = withChannels.copy(
             isEpgLoading = false,
+            channels = guideChannels,
             epgByChannel = epg,
-            channelCategories = categorize(channels, epg),
+            channelCategories = categorize(guideChannels, epg),
             loadedAtMs = System.currentTimeMillis()
         )
         publish(key, loaded)
@@ -783,8 +864,10 @@ class LiveTvGuideLoader @Inject constructor(
          * 3: RCTV, the owner's channel list (each channel's category and versions, and the channels
          * kept out of the Guide).
          * 4: RCTV, each program's episode numbers and the day it first aired (its episode on TMDB).
+         * 5: RCTV, the owner's new guide (14-nov-2026: his categories, no 24/7, local stations inside):
+         *    a guide kept with the earlier list is loaded again.
          */
-        private const val SAVED_VERSION = 4
+        private const val SAVED_VERSION = 5
         private const val MAX_SAVED_TEXT_BYTES = 1_000_000
     }
 }
@@ -794,7 +877,11 @@ class LiveTvGuideLoader @Inject constructor(
  * their programs or their names, see [LiveTvGuideCategories]).
  */
 internal fun LiveGuideSnapshot.kidsOnly(): LiveGuideSnapshot {
-    val kept = channels.filter { GuideBrowse.KIDS in channelCategories[it.id].orEmpty() }
+    // RCTV: the owner's Family & Kids category, or (another provider's guide) the Kids one.
+    val kept = channels.filter { channel ->
+        val categories = channelCategories[channel.id].orEmpty()
+        GuideBrowse.KIDS in categories || GuideBrowse.FAMILY_KIDS in categories
+    }
     val ids = kept.mapTo(HashSet()) { it.id }
     val guideIds = kept.mapNotNullTo(HashSet(ids)) { it.epgChannelId }
     return copy(

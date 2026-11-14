@@ -155,6 +155,13 @@ class RctvAccessManager @Inject constructor(
                 Outcome.Failed
             }
         }
+        noteCheck(
+            when (outcome) {
+                is Outcome.Got -> "ok"
+                Outcome.Disconnected -> "disconnected by the website (401)"
+                Outcome.Failed -> "failed (no answer or a broken one)"
+            }
+        )
         when (outcome) {
             is Outcome.Got -> {
                 saveAccount(outcome.config.account)
@@ -314,15 +321,44 @@ class RctvAccessManager @Inject constructor(
     private fun readAccount(): RctvAccount? {
         val plan = RctvControlParser.planOf(prefs.getString(KEY_PLAN, null)) ?: return null
         val trialEnds = prefs.getLong(KEY_TRIAL_ENDS, 0L).takeIf { it > 0L }
-        return RctvAccount(basePlan = plan, master = prefs.getBoolean(KEY_MASTER, false), trialEndsAtMs = trialEnds)
+        val label = RctvAccountLabel(
+            accountId = prefs.getString(KEY_LABEL_ACCOUNT_ID, null),
+            accountName = prefs.getString(KEY_LABEL_ACCOUNT_NAME, null),
+            ownerName = prefs.getString(KEY_LABEL_OWNER_NAME, null),
+            deviceId = prefs.getString(KEY_LABEL_DEVICE_ID, null),
+            deviceName = prefs.getString(KEY_LABEL_DEVICE_NAME, null)
+        ).takeIf { it.accountId != null || it.accountName != null }
+        return RctvAccount(
+            basePlan = plan,
+            master = prefs.getBoolean(KEY_MASTER, false),
+            trialEndsAtMs = trialEnds,
+            label = label
+        )
     }
 
     private fun saveAccount(account: RctvAccount) {
-        prefs.edit()
+        val edit = prefs.edit()
             .putString(KEY_PLAN, if (account.basePlan == RctvPlan.FULL) "full" else "light")
             .putBoolean(KEY_MASTER, account.master)
             .putLong(KEY_TRIAL_ENDS, account.trialEndsAtMs ?: 0L)
-            .apply()
+        // RCTV: a website that doesn't name the account (an activation's answer) keeps the last names.
+        account.label?.let { label ->
+            edit.putString(KEY_LABEL_ACCOUNT_ID, label.accountId)
+                .putString(KEY_LABEL_ACCOUNT_NAME, label.accountName)
+                .putString(KEY_LABEL_OWNER_NAME, label.ownerName)
+                .putString(KEY_LABEL_DEVICE_ID, label.deviceId)
+                .putString(KEY_LABEL_DEVICE_NAME, label.deviceName)
+        }
+        edit.apply()
+    }
+
+    /** RCTV (bug reports): how the last ask to the website went, and when ("ok 14:02:10"). */
+    @Volatile var lastCheck: String = "not asked yet"
+        private set
+
+    private fun noteCheck(what: String) {
+        lastCheck = what + " " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+            .format(java.util.Date())
     }
 
     /** The TV's name as Android has it ("Living Room"), else its model. */
@@ -345,6 +381,11 @@ class RctvAccessManager @Inject constructor(
         const val KEY_PLAN = "base_plan"
         const val KEY_MASTER = "master"
         const val KEY_TRIAL_ENDS = "trial_ends_at"
+        const val KEY_LABEL_ACCOUNT_ID = "report_account_id"
+        const val KEY_LABEL_ACCOUNT_NAME = "report_account_name"
+        const val KEY_LABEL_OWNER_NAME = "report_owner_name"
+        const val KEY_LABEL_DEVICE_ID = "report_device_id"
+        const val KEY_LABEL_DEVICE_NAME = "report_device_name"
         const val TOKEN_AAD = "rctv-control:device-token"
         const val RETRY_SECONDS = 60L
         val JSON = "application/json; charset=utf-8".toMediaType()

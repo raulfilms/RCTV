@@ -368,6 +368,10 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var experienceUpdater: com.nuvio.tv.core.rctvcontrol.RctvExperienceUpdater
 
+    /** RCTV (owner): the bug report system (its list shows over any screen). */
+    @Inject
+    lateinit var bugReports: com.nuvio.tv.core.bugreport.BugReports
+
     /** RCTV: the profiles of this TV that already went through "Customize your experience". */
     @Inject
     lateinit var rctvCustomize: com.nuvio.tv.core.rctvcontrol.RctvCustomizeStore
@@ -419,6 +423,9 @@ open class MainActivity : ComponentActivity() {
         // The Live TV guide loads in the background, so the Guide and the channels' pages (from
         // Home's Top Channels) open at once.
         liveTvGuideLoader.prewarm()
+
+        // RCTV: bug reports that couldn't go before (offline, or no service connected yet).
+        bugReports.retryPendingSoon()
 
         PluginRuntimeHooks.onActivityCreate(this)
 
@@ -702,13 +709,16 @@ open class MainActivity : ComponentActivity() {
                             ?: com.nuvio.tv.core.diagnostics.CrashLog.takeLastExit(context)
                         // RCTV: a close with no error kept: where the app was and how its memory stood.
                         val trail = com.nuvio.tv.core.diagnostics.SessionTrail.takeUnexpectedEnd()
-                        if (crash == null) {
+                        val shown = if (crash == null) {
                             trail
                         } else if (trail != null && com.nuvio.tv.core.diagnostics.CrashLog.isSystemExit(crash)) {
                             crash + "\n" + trail.lines().drop(2).joinToString("\n")
                         } else {
                             crash
                         }
+                        // RCTV: kept for a bug report ("App crashed / Closed unexpectedly").
+                        shown?.let { com.nuvio.tv.core.diagnostics.CrashLog.keepForReports(context, it) }
+                        shown
                     }
                 }
                 lastCrash?.let { trace ->
@@ -1415,6 +1425,15 @@ open class MainActivity : ComponentActivity() {
                                         androidx.tv.material3.Text(stringResource(R.string.rctv_update_later))
                                     }
                                 }
+                            }
+
+                            // RCTV (owner): the bug report's list, over any screen, when the bug button opens it.
+                            val bugReportOpen by bugReports.isOpen.collectAsState()
+                            if (bugReportOpen) {
+                                com.nuvio.tv.ui.components.BugReportDialog(
+                                    onPick = { category -> bugReports.submit(category).await() },
+                                    onDismiss = { bugReports.close() }
+                                )
                             }
 
                             val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()

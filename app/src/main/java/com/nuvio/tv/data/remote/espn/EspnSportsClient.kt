@@ -1190,6 +1190,9 @@ class EspnSportsClient @Inject constructor(
     /** ESPN refused a range of days (since Nov 2026): ranges go by pieces (see [scoreboardJson]). */
     @Volatile private var rangesRefused = false
 
+    /** RCTV (bug reports): ESPN refused a range of days (the days are asked one by one). */
+    val refusesRanges: Boolean get() = rangesRefused
+
     /** [call] run, and cancelled with the coroutine that runs [cancellableBlocking] on this thread. */
     private fun <T> executeCancellable(call: okhttp3.Call, read: (okhttp3.Response) -> T): T {
         val open = openCalls.get()

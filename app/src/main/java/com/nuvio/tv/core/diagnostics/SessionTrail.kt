@@ -106,6 +106,16 @@ object SessionTrail {
     /** The screen on now, as the notes name it ("sports_teams"). */
     fun screenName(): String = screen
 
+    /**
+     * RCTV (bug reports): the notes as they stand right now (screens, memory, what plays), read
+     * fresh. Off the screen's thread (it reads the process's memory).
+     */
+    fun currentNotes(): String? {
+        val context = appContext ?: return null
+        write()
+        return runCatching { synchronized(fileLock) { File(context.filesDir, FILE_NAME).readText() } }.getOrNull()
+    }
+
     /** The images' memory cache, used and most (bytes), from the app's image loader. */
     @Volatile var imageCacheProbe: (() -> Pair<Long, Long>?)? = null
     /** Notes are written here, off the screen's thread. */
@@ -181,6 +191,7 @@ object SessionTrail {
             screenImageBytes = 0L
         }
         screen = name
+        com.nuvio.tv.core.bugreport.BugReportLog.event("screen", name)
         if (name == "player") {
             playing = null
             lastSeekAt = null

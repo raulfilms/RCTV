@@ -15,6 +15,12 @@ enum class GuideBrowse(@StringRes val labelRes: Int, val isCategory: Boolean) {
     LIVE_NOW(R.string.livetv_guide_live_now, false),
     A_TO_Z(R.string.livetv_guide_a_to_z, false),
     CUSTOM(R.string.livetv_guide_custom, false),
+    /** RCTV (owner's guide, 14-nov-2026): his categories, in [CURATED_CATEGORIES]' order. */
+    ENTERTAINMENT(R.string.livetv_guide_cat_entertainment, true),
+    MOVIES_EVENTS(R.string.livetv_guide_cat_movies_events, true),
+    NEWS_INFO(R.string.livetv_guide_cat_news_info, true),
+    FAMILY_KIDS(R.string.livetv_guide_cat_family_kids, true),
+    PREMIUM(R.string.livetv_guide_cat_premium, true),
     TV_SHOWS(R.string.livetv_guide_cat_tv_shows, true),
     NEWS(R.string.livetv_guide_cat_news, true),
     SPORTS(R.string.livetv_guide_cat_sports, true),
@@ -34,7 +40,21 @@ enum class GuideBrowse(@StringRes val labelRes: Int, val isCategory: Boolean) {
     LOCAL(R.string.livetv_guide_cat_local, true),
     /** RCTV (owner's channel list): Puerto Rico's channels. */
     PUERTO_RICO(R.string.livetv_guide_cat_puerto_rico, true),
-    INTERNATIONAL(R.string.livetv_guide_cat_international, true)
+    INTERNATIONAL(R.string.livetv_guide_cat_international, true);
+
+    companion object {
+        /**
+         * RCTV (owner's guide): the Guide's categories with his channel list, in this order (the
+         * other countries' channels in International). 24/7 channels are gone; local stations,
+         * leagues, games, events and PPV are kept inside for Sports (and the networks' pages).
+         */
+        val CURATED_CATEGORIES: List<GuideBrowse> = listOf(
+            ENTERTAINMENT, MOVIES_EVENTS, NEWS_INFO, FAMILY_KIDS, LATINO, SPORTS, PREMIUM, INTERNATIONAL
+        )
+
+        /** Only with his list (another provider's channels are sorted into the usual categories). */
+        val CURATED_ONLY: Set<GuideBrowse> = setOf(ENTERTAINMENT, MOVIES_EVENTS, NEWS_INFO, FAMILY_KIDS, PREMIUM)
+    }
 }
 
 /**

@@ -93,6 +93,16 @@ class SmartScraper @Inject constructor(
         if (streams.isEmpty()) return SmartSourcesResult.EMPTY
         val result = SmartScoreEngine.rank(streams.map(::normalize), request, context, listLanguage)
         if (context.config.debug) log(result, request, context)
+        // RCTV (bug reports): the sources list in a line (counts by addon, how many can play).
+        runCatching {
+            val byAddon = streams.groupingBy { it.addonName }.eachCount().entries.joinToString(", ") { "${it.key}: ${it.value}" }
+            com.nuvio.tv.core.bugreport.BugReportLog.event(
+                "streams",
+                "sources list ${request.title ?: "?"}" +
+                    (if (request.isSeries) " S${request.season ?: "?"}E${request.episode ?: "?"}" else "") +
+                    ": links by addon [$byAddon] · ${result.all.size} valid, ${result.rejected.size} rejected"
+            )
+        }
         return result
     }
 
@@ -107,10 +117,48 @@ class SmartScraper @Inject constructor(
         context: SmartRankingContext = rankingContext(),
         canVerifySize: Boolean = false
     ): AutoStreamResult {
-        if (streams.isEmpty()) return AutoStreamResult.EMPTY
+        if (streams.isEmpty()) {
+            noteForBugReports(request, streams, null, context)
+            return AutoStreamResult.EMPTY
+        }
         val result = AutoStreamEngine.rank(streams.map(::normalize), request, context, canVerifySize)
         if (context.config.debug) logAutoStream(result, request, context)
+        noteForBugReports(request, streams, result, context)
         return result
+    }
+
+    /**
+     * RCTV (bug reports): each Auto Stream search in a line of the app's last moments: the title,
+     * how many links each addon gave, how many could play, why the others couldn't, what it picked
+     * and the connection it judged by. Names and counts only (never a link).
+     */
+    private fun noteForBugReports(
+        request: SmartSourceRequest,
+        streams: List<Stream>,
+        result: AutoStreamResult?,
+        context: SmartRankingContext
+    ) {
+        runCatching {
+            val what = (request.title ?: "?") + (request.year?.let { " ($it)" } ?: "") +
+                (if (request.isSeries) " S${request.season ?: "?"}E${request.episode ?: "?"}" else "") +
+                " imdb=${request.imdbId ?: "?"}"
+            val byAddon = streams.groupingBy { it.addonName }.eachCount().entries
+                .joinToString(", ") { "${it.key}: ${it.value}" }.ifBlank { "none" }
+            val text = if (result == null) {
+                "auto stream $what: no links from any addon"
+            } else {
+                val reasons = result.rejected.groupingBy { it.second.name }.eachCount().entries
+                    .joinToString(", ") { "${it.key} ${it.value}" }.ifBlank { "none" }
+                val best = result.best?.let { candidate ->
+                    "${AutoStreamEngine.summary(candidate.release)} from ${candidate.scored.stream.addonName}" +
+                        " (${candidate.scored.source.provider.family}/${candidate.scored.source.provider.debrid})"
+                } ?: "nothing it can play"
+                "auto stream $what: links by addon [$byAddon] · ${result.candidates.size} can play, " +
+                    "${result.rejected.size} not [$reasons] · picked $best · connection " +
+                    "${context.connection.profile} ${context.connection.availableMbps ?: "?"} Mbps"
+            }
+            com.nuvio.tv.core.bugreport.BugReportLog.event("streams", text)
+        }
     }
 
     /** The player's source list for a title's streams: see [AutoStreamEngine.panelSources]. */

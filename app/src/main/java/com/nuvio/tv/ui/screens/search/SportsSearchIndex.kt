@@ -76,6 +76,23 @@ class SportsSearchIndex @Inject constructor(
         }
     }
 
+    // RCTV (bug reports): how the sports stand ("sports" in a report).
+    init {
+        com.nuvio.tv.core.bugreport.BugReportProbes.register("sports", this) {
+            val now = System.currentTimeMillis()
+            val snapshot = _state.value
+            org.json.JSONObject().apply {
+                put("loading", isLoading)
+                put("leagues", snapshot.leagues.size)
+                put("teams", snapshot.teams.size)
+                put("games", snapshot.games.size)
+                if (gamesLoadedAtMs > 0L) put("games_loaded_minutes_ago", (now - gamesLoadedAtMs) / 60_000)
+                if (teamsLoadedAtMs > 0L) put("teams_loaded_hours_ago", (now - teamsLoadedAtMs) / 3_600_000)
+                put("espn_refuses_day_ranges", client.refusesRanges)
+            }
+        }
+    }
+
     /** RCTV: the teams or the games are loading ("Creating Your Experience" waits for them). */
     val isLoading: Boolean
         get() = synchronized(lock) { teamsJob?.isActive == true || gamesJob?.isActive == true }

@@ -731,13 +731,16 @@ private fun GuideHeader(
             AppleFilterSection(
                 key = SECTION_CATEGORIES,
                 title = categoriesTitle,
-                options = GuideBrowse.entries
-                    .filter { it.isCategory }
-                    // RCTV (owner's channel list): leagues and events are Sports' own, not the
-                    // Guide's; Latino and Puerto Rico only when there are some.
-                    .filterNot { uiState.curatedGuide && it == GuideBrowse.LIVE_EVENTS }
-                    .filterNot { (it == GuideBrowse.LATINO || it == GuideBrowse.PUERTO_RICO) && (categoryCounts[it] ?: 0) == 0 }
-                    .map { option(it, categoryCounts[it] ?: 0) },
+                options = if (uiState.curatedGuide) {
+                    // RCTV (owner's guide): his categories in his order, each one that has channels
+                    // (leagues, games, events, PPV and local stations are Sports' own, inside).
+                    GuideBrowse.CURATED_CATEGORIES.filter { (categoryCounts[it] ?: 0) > 0 }
+                } else {
+                    GuideBrowse.entries
+                        .filter { it.isCategory && it !in GuideBrowse.CURATED_ONLY }
+                        // Latino and Puerto Rico only when there are some.
+                        .filterNot { (it == GuideBrowse.LATINO || it == GuideBrowse.PUERTO_RICO) && (categoryCounts[it] ?: 0) == 0 }
+                }.map { option(it, categoryCounts[it] ?: 0) },
                 selectedValue = uiState.guideBrowse.name
             )
         )

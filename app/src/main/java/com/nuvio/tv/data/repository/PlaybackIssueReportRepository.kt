@@ -189,8 +189,16 @@ data class PlaybackIssuePlaybackSettingsInput(
 
 @Singleton
 class PlaybackIssueReportRepository @Inject constructor(
-    private val playbackIssueReportApi: PlaybackIssueReportApi
+    private val playbackIssueReportApi: PlaybackIssueReportApi,
+    private val moshi: com.squareup.moshi.Moshi
 ) {
+    /**
+     * RCTV (bug reports): the playback report as JSON, with the same care as when it's sent (the
+     * source's site and fingerprints of its address, header names only, text cleaned).
+     */
+    fun reportJson(input: PlaybackIssueReportInput): String =
+        moshi.adapter(PlaybackIssueReportRequestDto::class.java).toJson(input.toDto())
+
     suspend fun submit(input: PlaybackIssueReportInput): Result<String> = runCatching {
         if (BuildConfig.PLAYBACK_REPORTS_BASE_URL.isBlank()) {
             error("Playback report endpoint is not configured")
@@ -645,8 +653,10 @@ class PlaybackIssueReportRepository @Inject constructor(
             ?.takeIf { it.isNotBlank() }
             ?.limit(maxLength)
 
+    // RCTV: the player's raw lines are cleaned too (a load's line can carry the address).
     private fun String.rawLogLine(maxLength: Int): String? =
-        replace('\n', ' ')
+        redactSensitiveText()
+            .replace('\n', ' ')
             .replace('\r', ' ')
             .trim()
             .takeIf { it.isNotBlank() }

@@ -108,6 +108,8 @@ class PlayerRuntimeController(
 
     companion object {
         private val CONVERTIBLE_DV_PROFILES = setOf("5", "7")
+        /** RCTV: the player's part of a bug report ("playback" in it). */
+        private const val BUG_REPORT_PROBE = "playback"
         internal const val TAG = "PlayerViewModel"
         internal const val SWITCH_TRACE_TAG = "SwitchTrace"
         internal const val SWITCH_TRACE_ENABLED = false
@@ -778,7 +780,14 @@ class PlayerRuntimeController(
         }
     }
 
+    // RCTV (bug reports): what plays, for a report made from here or right after.
+    init {
+        com.nuvio.tv.core.bugreport.BugReportProbes.register(BUG_REPORT_PROBE, this) { bugReportPlayback() }
+    }
+
     fun onCleared() {
+        // The last of it is kept (before the player goes) for a report made right after.
+        com.nuvio.tv.core.bugreport.BugReportProbes.keepLast(BUG_REPORT_PROBE, this)
         previewSeekCommitJob?.cancel()
         seekPreviewFrames.close()
         releasePlayer()

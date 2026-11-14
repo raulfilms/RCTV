@@ -15,7 +15,9 @@ data class RctvAccount(
     val basePlan: RctvPlan,
     val master: Boolean = false,
     /** When the 24-hour Full trial ends; null without one. */
-    val trialEndsAtMs: Long? = null
+    val trialEndsAtMs: Long? = null,
+    /** RCTV (bug reports): whose account and TV this is, as the website names them; null before it says. */
+    val label: RctvAccountLabel? = null
 ) {
     /** The plan right now: Full for Master, Full, or a trial still running; else Light. */
     fun planAt(nowMs: Long): RctvPlan =
@@ -23,6 +25,18 @@ data class RctvAccount(
 
     fun isTrialRunning(nowMs: Long): Boolean = trialEndsAtMs != null && trialEndsAtMs > nowMs
 }
+
+/**
+ * RCTV (bug reports): the account and this TV as the website has them (its name, the owner's name,
+ * their numbers), so a report says whose it is. Never shown in the app.
+ */
+data class RctvAccountLabel(
+    val accountId: String?,
+    val accountName: String?,
+    val ownerName: String?,
+    val deviceId: String?,
+    val deviceName: String?
+)
 
 /** The website's activation codes: 8 characters, without the ones that look alike (O, I, S, 0, 1, 5). */
 object RctvCodes {
@@ -167,7 +181,20 @@ object RctvControlParser {
         val every = json.optInt("heartbeat_seconds", DEFAULT_CHECK_SECONDS)
             .coerceIn(MIN_CHECK_SECONDS, MAX_CHECK_SECONDS)
         return RctvDeviceConfig(
-            account = RctvAccount(basePlan = base, master = master, trialEndsAtMs = trialEnds),
+            account = RctvAccount(
+                basePlan = base,
+                master = master,
+                trialEndsAtMs = trialEnds,
+                label = json.optJSONObject("report")?.let { report ->
+                    RctvAccountLabel(
+                        accountId = report.optStringOrNull("account_id")?.take(64),
+                        accountName = report.optStringOrNull("account_name")?.take(160),
+                        ownerName = report.optStringOrNull("owner_name")?.take(160),
+                        deviceId = report.optStringOrNull("device_id")?.take(64),
+                        deviceName = report.optStringOrNull("device_name")?.take(100)
+                    )
+                }
+            ),
             checkEverySeconds = every,
             services = servicesOf(json),
             profiles = json.optJSONArray("profiles")?.let(::profilesOf),

@@ -897,6 +897,13 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         while (events.size > PLAYBACK_ANALYTICS_EVENT_LIMIT) {
             events.removeFirst()
         }
+        // RCTV (bug reports): the moments that matter in the app's last moments (cleaned there).
+        if (name in BUG_REPORT_EVENTS) {
+            com.nuvio.tv.core.bugreport.BugReportLog.event(
+                "player",
+                "$name at ${position ?: 0} ms" + if (details.isEmpty()) "" else " " + details.toTraceDetails()
+            )
+        }
     }
 
     private fun buildRawEventLine(
@@ -936,6 +943,12 @@ private fun String.isPlaybackWarningEvent(): Boolean =
         this == "rebuffer_end" ||
         this == "load_error" ||
         this == "player_error"
+
+/** RCTV: the player's moments a bug report's log keeps. */
+private val BUG_REPORT_EVENTS = setOf(
+    "rendered_first_frame", "first_frame_ready", "rebuffer_start", "rebuffer_end",
+    "load_error", "player_error", "video_decoder_initialized", "audio_decoder_initialized"
+)
 
 private fun Map<String, String>.toTraceDetails(): String =
     if (isEmpty()) {

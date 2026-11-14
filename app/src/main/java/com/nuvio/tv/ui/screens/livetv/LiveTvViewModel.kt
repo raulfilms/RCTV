@@ -64,6 +64,11 @@ data class LiveTvUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val channels: List<LiveTvChannel> = emptyList(),
+    /**
+     * RCTV (owner's guide): the local stations kept inside (not in the Guide): a network's page
+     * lists its locals (ABC, CBS, FOX, NBC).
+     */
+    val localStations: List<LiveTvChannel> = emptyList(),
     val groups: List<String> = emptyList(),
     val selectedGroup: String? = null,
     val showGuide: Boolean = false,
@@ -617,6 +622,9 @@ class LiveTvViewModel @Inject constructor(
                 isLoading = false,
                 error = guide.error,
                 channels = guide.channels,
+                localStations = guide.hiddenChannels.filter { ch ->
+                    ch.versionOf == null && ch.guideCategory == GuideBrowse.LOCAL.name
+                },
                 groups = guide.groups,
                 selectedGroup = it.selectedGroup?.takeIf { g -> g in guide.groups },
                 guideCountry = it.guideCountry?.takeIf { c -> guide.channels.any { ch -> ch.country == c } },

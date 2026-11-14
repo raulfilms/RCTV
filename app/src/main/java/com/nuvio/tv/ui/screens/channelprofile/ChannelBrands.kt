@@ -327,6 +327,8 @@ object ChannelBrands {
         known.firstOrNull { brand -> brand.family.any { it.matches(normalized) } }?.let { return it }
         // A local station of a broadcast network ("FOX 8 New Orleans" -> FOX).
         known.firstOrNull { it.affiliate != null && it.affiliate == firstWord }?.let { return it }
+        // RCTV: a provider's local station by state and city ("AK | Anchorage ABC13 KYUR" -> ABC).
+        stationNetwork(normalized)?.let { word -> known.firstOrNull { it.affiliate == word }?.let { return it } }
         // Any other channel: its family is the channels that share its first real word.
         val base = baseWord(normalized)
         val display = displayName(channel.name)
@@ -360,7 +362,20 @@ object ChannelBrands {
     private fun couldBelong(brand: ChannelBrand, normalized: String): Boolean {
         if (brand.baseWord != null) return baseWord(normalized) == brand.baseWord
         if (brand.family.any { it.matches(normalized) }) return true
-        return brand.affiliate != null && normalized.substringBefore(' ') == brand.affiliate
+        return brand.affiliate != null &&
+            (normalized.substringBefore(' ') == brand.affiliate || stationNetwork(normalized) == brand.affiliate)
+    }
+
+    private val stationNetworkWord = Regex("^(abc|cbs|fox|nbc)\\d*$")
+
+    /**
+     * RCTV: the network of a provider's local station named by state and city ("ak anchorage abc13
+     * kyur" -> "abc", "tn va tri cities nbc wcyb" -> "nbc"), or null for any other name.
+     */
+    internal fun stationNetwork(normalized: String): String? {
+        val words = normalized.split(' ')
+        if (words.size < 3 || words[0].length != 2 || !words[0].all { it in 'a'..'z' }) return null
+        return words.drop(1).firstNotNullOfOrNull { stationNetworkWord.matchEntire(it)?.groupValues?.get(1) }
     }
 
     /** RCTV: the guide's channel names, normalized once per guide (every profile page reads them). */

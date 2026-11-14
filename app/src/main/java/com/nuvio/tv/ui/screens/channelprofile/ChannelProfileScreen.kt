@@ -188,12 +188,19 @@ fun ChannelProfileScreen(
     // The family's channels (every channel of the playlist is looked at) and what it airs: worked
     // out off the main thread, so opening a channel's page (or the guide refreshing) never holds up
     // the remote. The page shows its loading state for that moment the first time.
-    val family by androidx.compose.runtime.produceState<ChannelFamily?>(null, brand, liveState.channels, epg, selected?.id) {
+    val family by androidx.compose.runtime.produceState<ChannelFamily?>(
+        null, brand, liveState.channels, liveState.localStations, epg, selected?.id
+    ) {
         val found = brand ?: run {
             value = null
             return@produceState
         }
-        val channels = liveState.channels
+        // RCTV (owner): a network's locals are kept inside the guide (not in it): its page lists them.
+        val channels = if (found.hasLocals && liveState.localStations.isNotEmpty()) {
+            liveState.channels + liveState.localStations
+        } else {
+            liveState.channels
+        }
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val members = ChannelBrands.members(found, channels, selected) { channel ->
                 channel.epgChannelId?.let { epg[it] }?.isNotEmpty() == true

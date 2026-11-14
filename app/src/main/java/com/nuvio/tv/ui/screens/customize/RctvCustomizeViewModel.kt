@@ -610,6 +610,9 @@ class RctvCustomizeViewModel @Inject constructor(
 
         /** The Guide's categories offered for networks, in this order (not Local, 24/7, events or International). */
         val NETWORK_CATEGORIES = listOf(
+            // RCTV: the owner's categories (his channel list), then another provider's.
+            GuideBrowse.ENTERTAINMENT, GuideBrowse.MOVIES_EVENTS, GuideBrowse.NEWS_INFO, GuideBrowse.FAMILY_KIDS,
+            GuideBrowse.PREMIUM,
             GuideBrowse.TV_SHOWS, GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.KIDS,
             GuideBrowse.LIFESTYLE, GuideBrowse.CRIME_REALITY, GuideBrowse.MOVIES, GuideBrowse.DOCUMENTARIES,
             GuideBrowse.MUSIC, GuideBrowse.GAME_SHOWS_CLASSICS, GuideBrowse.LATINO, GuideBrowse.PUERTO_RICO
@@ -619,7 +622,8 @@ class RctvCustomizeViewModel @Inject constructor(
         private val POPULAR_NETWORKS = listOf(
             "espn", "espn2", "foxsports1", "tnt", "tbs", "fx", "cnn", "cnbc", "foxnewschannel", "msnbc",
             "hgtv", "foodnetwork", "discovery", "discoverychannel", "history", "historychannel", "tlc", "bravo", "ae",
-            "univision", "telemundo", "wapa", "nbc", "wiprcanal6", "espndeportes", "foxdeportes", "tudn",
+            "univision", "telemundo", "wapa", "nbc", "wiprcanal6", "wapapr", "telemundopr", "wipr", "teleoncepr",
+            "espndeportes", "foxdeportes", "tudn",
             "nflnetwork", "nbatv", "mlbnetwork", "nhlnetwork", "golfchannel", "usanetwork", "amc",
             "disneychannel", "nickelodeon", "cartoonnetwork", "hbo", "showtime", "starz", "cinemax",
             "lifetime", "comedycentral", "syfy", "animalplanet", "nationalgeographic", "investigationdiscovery",

@@ -32,10 +32,14 @@ class AddonRoleStore @Inject constructor(
     val assignments: StateFlow<Map<AddonRole, String>> = _assignments.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** RCTV (bug reports): the installed addons, for their names, servers and sites only. */
+    @Volatile private var reportAddons: List<com.nuvio.tv.domain.model.Addon> = emptyList()
+
     init {
         // Keeps the engine's map (addon's name in the app → server) up to date.
         scope.launch {
             combine(addonRepository.getInstalledAddons(), assignments) { addons, roles ->
+                reportAddons = addons
                 buildMap {
                     roles.forEach { (role, url) ->
                         addons.firstOrNull { AddonRoles.sameAddon(it.baseUrl, url) }?.let { put(it.displayName, role) }
@@ -44,6 +48,27 @@ class AddonRoleStore @Inject constructor(
             }
                 .catch { emit(emptyMap()) }
                 .collect { AddonRoles.update(it) }
+        }
+    }
+
+    init {
+        // RCTV (bug reports): which addons the TV has, each one's server and site ("addons" in a
+        // report): never its link (it carries the debrid key).
+        com.nuvio.tv.core.bugreport.BugReportProbes.register("addons", this) {
+            val roles = _assignments.value
+            org.json.JSONObject().put("installed", org.json.JSONArray().apply {
+                reportAddons.forEach { addon ->
+                    val role = roles.entries.firstOrNull { AddonRoles.sameAddon(addon.baseUrl, it.value) }?.key
+                    put(org.json.JSONObject().apply {
+                        put("name", addon.displayName)
+                        put("server", role?.key ?: "not set")
+                        put("enabled", addon.enabled)
+                        put("version", addon.version)
+                        put("site", runCatching { java.net.URI(addon.baseUrl).host }.getOrNull() ?: "unknown")
+                        put("types", org.json.JSONArray(addon.rawTypes))
+                    })
+                }
+            })
         }
     }
 
