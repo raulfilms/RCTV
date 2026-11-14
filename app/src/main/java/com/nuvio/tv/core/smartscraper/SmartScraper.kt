@@ -5,7 +5,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.nuvio.tv.core.recommendations.TvRecommendationManager
 import com.nuvio.tv.domain.model.Stream
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -32,10 +34,16 @@ class SmartScraper @Inject constructor(
 
     init {
         SmartScraperEnvironment.install(this)
-        // The internet's speed ready for the first Play (once the app has settled).
+        // The internet's speed ready for the first Play (once the app has settled), measured again
+        // every few hours. RCTV: never while something plays (the test would slow it and read low).
         scope.launch {
             delay(STARTUP_MEASURE_DELAY_MS)
-            if (settings.config.value.connectionAware) connection.measure(maxAgeMs = STARTUP_TEST_MAX_AGE_MS)
+            while (isActive) {
+                if (settings.config.value.connectionAware && !TvRecommendationManager.isPlaybackActive.value) {
+                    connection.measure(maxAgeMs = STARTUP_TEST_MAX_AGE_MS)
+                }
+                delay(RETEST_CHECK_MS)
+            }
         }
     }
 
@@ -198,7 +206,7 @@ class SmartScraper @Inject constructor(
                     "layout=${candidate.layout} audio=${candidate.audioCodecRank} " +
                     "bitrate=${candidate.bitrateMbps?.let { f(it.toFloat()) } ?: "?"} video=${candidate.videoPoints} " +
                     "spanish=${candidate.embeddedSpanish} reliability=${f(candidate.reliability.toFloat())} " +
-                    "fits=${candidate.fitsConnection} check=${candidate.needsVerification} copies=${1 + candidate.copies.size} " +
+                    "fits=${candidate.fitsConnection} speed=${candidate.withinSpeed} check=${candidate.needsVerification} copies=${1 + candidate.copies.size} " +
                     "${AutoStreamEngine.summary(candidate.release)} " +
                     "provider=${candidate.scored.source.provider.family}/${candidate.scored.source.provider.debrid} " +
                     "RAW=${candidate.release.releaseName}"
@@ -214,12 +222,14 @@ class SmartScraper @Inject constructor(
     private companion object {
         const val TAG = "SmartScraper"
         const val MAX_CACHED = 4_000
-        const val STARTUP_MEASURE_DELAY_MS = 8_000L
+        /** RCTV: after the start's own loading (guide, EPG), which made the test read low. */
+        const val STARTUP_MEASURE_DELAY_MS = 45_000L
+        const val RETEST_CHECK_MS = 10L * 60 * 1000
 
         /**
          * RCTV (PERF-05): the measurement made when the app starts is skipped when there's one from the
-         * last 6 h (it downloaded up to 12 MB at nearly every start). Before an automatic Play it's
-         * still measured when older than 15 min, alongside the addons (no extra wait).
+         * last 6 h (it downloaded up to 12 MB at nearly every start); then again every 6 h while
+         * nothing plays. The ranking trusts the last one for a day (see [ConnectionMonitor]).
          */
         const val STARTUP_TEST_MAX_AGE_MS = 6L * 60 * 60 * 1000
     }

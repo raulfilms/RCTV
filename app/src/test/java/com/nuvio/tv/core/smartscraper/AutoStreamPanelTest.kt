@@ -40,10 +40,12 @@ class AutoStreamPanelTest {
         // 176 min: 7.4 GB ≈ 6.0 Mbps (× 1.5 = 9.0), 5.2 GB ≈ 4.2 (6.3), 3.9 GB ≈ 3.2 (4.7), 2 GB ≈ 1.6 (2.4).
         val fast = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.FAST, availableMbps = 100.0))
         assertEquals(listOf("1080-small", "1080", "atmos", "stereo", "720"), panel(batmanStreams(), fast))
+        // RCTV (owner's rule, 13-nov-2026): a 4K, 2K or 1080p the measured speed takes without the
+        // headroom is listed too (Auto Stream plays it before a 720p).
         val eight = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 8.0))
-        assertEquals(listOf("1080-small", "1080", "720"), panel(batmanStreams(), eight))
+        assertEquals(listOf("1080-small", "1080", "atmos", "stereo", "720"), panel(batmanStreams(), eight))
         val five = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 5.0))
-        assertEquals(listOf("1080-small", "720"), panel(batmanStreams(), five))
+        assertEquals(listOf("1080-small", "1080", "720"), panel(batmanStreams(), five))
         val three = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 3.0))
         assertEquals(listOf("720"), panel(batmanStreams(), three))
     }

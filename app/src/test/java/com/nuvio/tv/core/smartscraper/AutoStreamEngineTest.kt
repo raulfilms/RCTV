@@ -84,11 +84,30 @@ class AutoStreamEngineTest {
         assertTrue(kept.candidates.all { it.tierAllowed })
         val stepped = AutoStreamEngine.rank(normalized, batman, short)
         assertEquals("1080", stepped.best?.stream?.infoHash)
-        // The 4Ks the connection can't keep up with stay only as the last resort.
+        // RCTV (owner's rule, 13-nov-2026): the 4Ks the measured speed takes without the headroom
+        // (about 6 Mbps of 8) come after the 1080p, still before any 720p.
         assertEquals(listOf("1080", "atmos", "truehd-7.1", "stereo"), hashes(stepped))
         assertTrue(stepped.candidates.first().tierAllowed)
-        assertFalse(stepped.candidates[1].tierAllowed)
-        assertFalse(stepped.candidates.last().tierAllowed)
+        assertTrue(stepped.candidates.drop(1).all { !it.fitsConnection && it.withinSpeed })
+        // Below even that (5 Mbps): the 1080p (4.2 Mbps) first, the 4Ks only as the last resort.
+        val slower = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 5.0))
+        val capped = AutoStreamEngine.rank(normalized, batman, slower)
+        assertEquals("1080", capped.best?.stream?.infoHash)
+        assertTrue(capped.candidates.drop(1).none { it.tierAllowed })
+    }
+
+    @Test
+    fun `owner's rule - a 1080p over the headroom but within the measured speed plays before a 720p`() {
+        // 120 min: 1080p 4.5 GB ≈ 5.4 Mbps (8.1 with the headroom); 720p 2.0 GB ≈ 2.4 Mbps.
+        val seven = SmartRankingContext(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 7.0))
+        val result = rank(
+            stream("720-2.0", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0),
+            stream("1080-4.5", "Movie.2020.1080p.WEB-DL.DDP5.1.x264", 4.5),
+            context = seven
+        )
+        assertEquals(listOf("1080-4.5", "720-2.0"), hashes(result))
+        // Not chosen before the other addons answer (it needs more than the headroom allows).
+        assertFalse(result.bestIsIdeal(seven))
     }
 
     // ==================================================================== RCTV: the owner's rule (4-nov-2026)
@@ -384,6 +403,9 @@ class AutoStreamEngineTest {
         assertTrue(result.bestIsIdeal(tv))
         // Not at once: a 720p on a 4K TV, or a source not known to start reliably.
         assertFalse(rank(stream("720", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0), context = tv).bestIsIdeal(tv))
+        // RCTV (owner's rule): nor when the speed allows only 720p (the others may still bring a 1080p).
+        val tvOnSlowLine = tv.copy(connection = ConnectionEstimate(ConnectionProfile.SLOW, availableMbps = 10.0))
+        assertFalse(rank(stream("720", "Movie.2020.720p.WEB-DL.DDP5.1.x264", 2.0), context = tvOnSlowLine).bestIsIdeal(tvOnSlowLine))
         val unknownSource = tv.copy(providerStats = emptyMap())
         assertFalse(rank(stream("hdr10", "Movie.2020.2160p.WEB-DL.DDP5.1.HDR10.HEVC", 5.5), context = unknownSource).bestIsIdeal(unknownSource))
     }

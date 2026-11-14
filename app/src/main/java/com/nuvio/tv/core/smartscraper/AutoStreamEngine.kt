@@ -53,6 +53,8 @@ data class AutoStreamCandidate(
     val requiredMbps: Double = 0.0,
     /** The connection keeps up with it. */
     val fitsConnection: Boolean = true,
+    /** RCTV: the connection's own speed takes its bitrate (without the headroom for peaks). */
+    val withinSpeed: Boolean = true,
     /**
      * The TV shows its picture as meant: no HDR on a TV without HDR, no Dolby Vision-only file on
      * one without Dolby Vision, a codec it decodes in hardware.
@@ -128,7 +130,9 @@ data class AutoStreamResult(
             best.layout == AutoStreamEngine.LAYOUT_5_1 &&
             best.reliability >= context.config.autoStream.earlyDecisionMinReliability &&
             (AutoStreamEngine.isWantedResolution(best.release.resolution, context.device, context.config.autoStream) ||
-                best.tier >= AutoStreamEngine.highestAllowedTier(context))
+                // RCTV (owner's rule): a 720p never stops the search on a TV that shows 1080p.
+                (!AutoStreamEngine.showsWanted(context.device, context.config.autoStream) &&
+                    best.tier >= AutoStreamEngine.highestAllowedTier(context)))
     }
 
     companion object {
@@ -367,6 +371,7 @@ object AutoStreamEngine {
             bitrateMbps = bitrate,
             requiredMbps = estimate * config.bitrateHeadroom,
             fitsConnection = fitsConnection(estimate, context),
+            withinSpeed = withinSpeed(estimate, context),
             tvCompatible = compatible,
             videoPoints = videoPoints(release, compatible, context),
             embeddedSpanish = AudioLanguage.SPANISH in said,
@@ -387,7 +392,9 @@ object AutoStreamEngine {
      * RCTV (owner's rule): first the wanted resolutions (4K, 2K, 1080p, up to the TV's own) the
      * connection and the TV take, the smallest file first ([smallestFirst]); then the other files
      * they take (720p, 480p, a 4K on a 1080p TV), resolutions highest first; last, as a last resort,
-     * every file the connection or the TV can't take (§5), resolutions highest first.
+     * every file the connection or the TV can't take (§5), resolutions highest first. RCTV (owner's
+     * rule, 13-nov-2026): a wanted file the connection's measured speed takes, but without the
+     * headroom for peaks, still comes before a 720p (after the wanted files with the headroom).
      */
     private fun order(
         candidates: List<AutoStreamCandidate>,
@@ -395,12 +402,20 @@ object AutoStreamEngine {
         device: DeviceProfile,
         readyFirst: Boolean = false
     ): List<AutoStreamCandidate> {
-        val (takes, capped) = candidates.partition { it.fitsConnection && it.tvCompatible }
+        val (takes, rest) = candidates.partition { it.fitsConnection && it.tvCompatible }
         val (wanted, other) = takes.partition { isWantedResolution(it.release.resolution, device, config) }
+        val (tight, capped) = rest.partition {
+            it.tvCompatible && it.withinSpeed && isWantedResolution(it.release.resolution, device, config)
+        }
         return smallestFirst(wanted, config, readyFirst) +
+            smallestFirst(tight, config, readyFirst) +
             byResolution(other, config, readyFirst) +
             byResolution(capped, config, readyFirst).map { it.copy(tierAllowed = false) }
     }
+
+    /** RCTV: the TV shows one of the wanted resolutions (1080p or more). */
+    fun showsWanted(device: DeviceProfile, config: AutoStreamConfig): Boolean =
+        tvMaxLevel(device) >= config.lowestWantedResolution.level
 
     /** RCTV: 1080p up to the TV's own resolution (4K on a 4K TV). */
     fun isWantedResolution(resolution: VideoResolution, device: DeviceProfile, config: AutoStreamConfig): Boolean =
@@ -540,9 +555,12 @@ object AutoStreamEngine {
                 if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries)
             }
             .map { candidate(it, request, context, AutoStreamPool.MAIN) }
-        val shown = candidates.filter { it.fitsConnection }.ifEmpty { candidates }
-        val (sized, unsized) = shown.partition { it.sizeKnown }
         val device = context.device
+        // RCTV: with the 1080p and 4K the measured speed takes (as Auto Stream plays them).
+        val shown = candidates.filter {
+            it.fitsConnection || (it.withinSpeed && isWantedResolution(it.release.resolution, device, config))
+        }.ifEmpty { candidates }
+        val (sized, unsized) = shown.partition { it.sizeKnown }
         return regularFirst(order(sized, config, device, readyFirst = true) + order(unsized, config, device, readyFirst = true), request)
             .map { it.scored }
     }
@@ -660,6 +678,24 @@ object AutoStreamEngine {
             ConnectionProfile.FAST, ConnectionProfile.UNKNOWN -> true
             ConnectionProfile.MEDIUM -> required <= config.mediumConnectionMaxMbps
             ConnectionProfile.SLOW -> required <= config.slowConnectionMaxMbps
+        }
+    }
+
+    /**
+     * RCTV: the connection's own speed takes a file of [bitrateMbps], without [fitsConnection]'s
+     * headroom for peaks (what was measured, else the network's kind), and it's not above the
+     * bitrate plays have kept buffering at.
+     */
+    fun withinSpeed(bitrateMbps: Double, context: SmartRankingContext): Boolean {
+        if (!context.config.connectionAware) return true
+        val config = context.config.autoStream
+        val connection = context.connection
+        connection.learnedMaxMbps?.let { if (bitrateMbps > it) return false }
+        connection.availableMbps?.let { return bitrateMbps <= it }
+        return when (connection.profile) {
+            ConnectionProfile.FAST, ConnectionProfile.UNKNOWN -> true
+            ConnectionProfile.MEDIUM -> bitrateMbps <= config.mediumConnectionMaxMbps
+            ConnectionProfile.SLOW -> bitrateMbps <= config.slowConnectionMaxMbps
         }
     }
 
