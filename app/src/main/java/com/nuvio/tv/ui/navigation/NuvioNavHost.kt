@@ -126,41 +126,57 @@ private fun liveVodRoute(target: com.nuvio.tv.data.livetv.LiveVodTarget, fromBeg
 /** RCTV Control: where a Home banner's button goes. */
 private fun rctvBannerRoute(action: com.nuvio.tv.core.rctvcontrol.RctvBannerAction): String = when (action) {
     is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Collection -> Screen.RctvCollection.createRoute(action.collectionId)
-    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Game -> {
-        // The game's page reads the score and the rest itself; until then, by its start time.
-        val now = System.currentTimeMillis()
-        val start = action.startMs
-        val status = when {
-            start == null || start > now -> com.nuvio.tv.domain.model.SportsEventStatus.UPCOMING
-            now - start < 4L * 60 * 60 * 1000 -> com.nuvio.tv.domain.model.SportsEventStatus.LIVE
-            else -> com.nuvio.tv.domain.model.SportsEventStatus.FINISHED
-        }
-        gameDetailRoute(
-            SportsEvent(
-                id = action.eventId,
-                name = action.name,
-                sportName = action.sportName.ifBlank { null },
-                leagueId = action.leagueId,
-                leagueName = action.leagueName.ifBlank { null },
-                homeTeamId = action.home?.id,
-                homeTeamName = action.home?.name.orEmpty(),
-                homeTeamBadgeUrl = action.home?.logoUrl,
-                awayTeamId = action.away?.id,
-                awayTeamName = action.away?.name.orEmpty(),
-                awayTeamBadgeUrl = action.away?.logoUrl,
-                homeScore = null,
-                awayScore = null,
-                startTimeMs = start,
-                venue = null,
-                status = status
-            )
-        )
-    }
+    is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Game -> gameDetailRoute(bannerGameEvent(action))
     is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Team ->
         Screen.SportsTeamDetail.createRoute(action.leagueId, action.teamId, action.name, action.logoUrl, action.color)
     is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.League ->
         Screen.SportsLeagueDetail.createRoute(action.leagueId, action.name, action.sportName, action.logoUrl)
     is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Channel -> Screen.RctvLiveChannel.createRoute(action.name)
+}
+
+/** A banner's game as an event: its page reads the score and the rest itself; until then, by its start time. */
+private fun bannerGameEvent(action: com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Game): SportsEvent {
+    val now = System.currentTimeMillis()
+    val start = action.startMs
+    val status = when {
+        start == null || start > now -> com.nuvio.tv.domain.model.SportsEventStatus.UPCOMING
+        now - start < 4L * 60 * 60 * 1000 -> com.nuvio.tv.domain.model.SportsEventStatus.LIVE
+        else -> com.nuvio.tv.domain.model.SportsEventStatus.FINISHED
+    }
+    return SportsEvent(
+        id = action.eventId,
+        name = action.name,
+        sportName = action.sportName.ifBlank { null },
+        leagueId = action.leagueId,
+        leagueName = action.leagueName.ifBlank { null },
+        homeTeamId = action.home?.id,
+        homeTeamName = action.home?.name.orEmpty(),
+        homeTeamBadgeUrl = action.home?.logoUrl,
+        awayTeamId = action.away?.id,
+        awayTeamName = action.away?.name.orEmpty(),
+        awayTeamBadgeUrl = action.away?.logoUrl,
+        homeScore = null,
+        awayScore = null,
+        startTimeMs = start,
+        venue = null,
+        status = status
+    )
+}
+
+/**
+ * RCTV (owner): a banner's button. A game's PLAY plays it live right away (on the channel showing
+ * it, like a game anywhere in Sports); one not on yet (or no channel showing it) opens its page.
+ */
+@Composable
+private fun rememberBannerOpener(navController: NavHostController): (com.nuvio.tv.core.rctvcontrol.RctvBannerAction) -> Unit {
+    val openGame = rememberGameOpener(navController)
+    return { action ->
+        if (action is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Game) {
+            openGame(bannerGameEvent(action))
+        } else {
+            navController.navigate(rctvBannerRoute(action))
+        }
+    }
 }
 
 private fun gameDetailRoute(event: SportsEvent): String = Screen.SportsGameDetail.createRoute(
@@ -2094,6 +2110,7 @@ private fun MainHomeRouteContent(navController: NavHostController, homeViewModel
     val context = LocalContext.current
     val homeState by homeViewModel.uiState.collectAsState()
     val openGame = rememberGameOpener(navController)
+    val openBanner = rememberBannerOpener(navController)
     com.nuvio.tv.ui.screens.mainhome.MainHomeScreen(
         continueWatching = homeState.continueWatchingItems,
         onOpenTitle = { meta ->
@@ -2159,7 +2176,7 @@ private fun MainHomeRouteContent(navController: NavHostController, homeViewModel
             )
         },
         onOpenChannelProfile = { channel -> navController.navigate(Screen.ChannelProfile.createRoute(channel.id)) },
-        onBannerAction = { action -> navController.navigate(rctvBannerRoute(action)) },
+        onBannerAction = openBanner,
         onOpenCollection = { id -> navController.navigate(Screen.RctvCollection.createRoute(id)) },
         onCategory = { category ->
             val route = when (category) {
@@ -2182,6 +2199,7 @@ private fun HomeRouteContent(
     navController: NavHostController,
     viewModel: HomeViewModel
 ) {
+    val openBanner = rememberBannerOpener(navController)
     val playbackAvailability = LocalPlaybackAvailability.current
     val context = LocalContext.current
     fun createContinueWatchingRoute(
@@ -2306,7 +2324,7 @@ private fun HomeRouteContent(
                     Screen.ChannelProfile.createRoute(link.channelId)
                 )
                 // RCTV Control: a website banner's button.
-                is com.nuvio.tv.ui.screens.home.HomeLink.Banner -> navController.navigate(rctvBannerRoute(link.action))
+                is com.nuvio.tv.ui.screens.home.HomeLink.Banner -> openBanner(link.action)
             }
         },
         onOpenStreamingService = { service ->
