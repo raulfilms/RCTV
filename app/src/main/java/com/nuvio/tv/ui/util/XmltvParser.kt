@@ -157,6 +157,36 @@ object XmltvParser {
         }
     }
 
+    /**
+     * RCTV: an XMLTV `episode-num`: "xmltv_ns" counts from zero ("1.7.0/1" is season 2, episode 8);
+     * the others say it as people do ("S02E08", "2x08"). Null without both numbers.
+     */
+    internal fun episodeNumbers(text: String, system: String?): Pair<Int, Int>? {
+        if (system.equals("xmltv_ns", ignoreCase = true)) {
+            val parts = text.split('.')
+            if (parts.size < 2) return null
+            val season = parts[0].substringBefore('/').trim().toIntOrNull() ?: return null
+            val episode = parts[1].substringBefore('/').trim().toIntOrNull() ?: return null
+            return (season + 1 to episode + 1).takeIf { it.first in 1..99 && it.second in 1..999 }
+        }
+        val found = SEASON_EPISODE.find(text) ?: return null
+        val season = found.groupValues[1].ifEmpty { found.groupValues[3] }.toIntOrNull() ?: return null
+        val episode = found.groupValues[2].ifEmpty { found.groupValues[4] }.toIntOrNull() ?: return null
+        return (season to episode).takeIf { it.first in 1..99 && it.second in 1..999 }
+    }
+
+    /** RCTV: "20190312", "20190312200000 +0000" or "2019-03-12" -> its epoch day; null for a year alone. */
+    internal fun epochDayOf(value: String?): Int? {
+        val digits = value?.trim()?.replace("-", "")?.take(8) ?: return null
+        if (digits.length != 8 || digits.any { !it.isDigit() }) return null
+        return runCatching {
+            java.time.LocalDate.of(digits.substring(0, 4).toInt(), digits.substring(4, 6).toInt(), digits.substring(6, 8).toInt())
+                .toEpochDay().toInt()
+        }.getOrNull()?.takeIf { it > 0 }
+    }
+
+    private val SEASON_EPISODE = Regex("""(?i)\bS(\d{1,2})\s*E(\d{1,3})\b|\b(\d{1,2})x(\d{1,3})\b""")
+
     private fun read(
         parser: XmlPullParser,
         fromMs: Long,
@@ -187,6 +217,11 @@ object XmltvParser {
         var imageUrl: String? = null
         var markedLive = false
         var markedNew = false
+        // RCTV: the episode's numbers and the day it first aired, when the guide gives them.
+        var episodeSystem: String? = null
+        var seasonNumber = 0
+        var episodeNumber = 0
+        var originalAirDay = 0
         val categories = ArrayList<String>(4)
         // The same few category names repeat thousands of times: keep one copy of each. The same
         // goes for the channel ids and the shows' titles (a show airs many times in two days).
@@ -235,6 +270,9 @@ object XmltvParser {
                                 imageUrl = null
                                 markedLive = false
                                 markedNew = false
+                                seasonNumber = 0
+                                episodeNumber = 0
+                                originalAirDay = 0
                                 categories.clear()
                             }
                         }
@@ -250,6 +288,14 @@ object XmltvParser {
                                 imageUrl = parser.getAttributeValue(null, "src")?.trim()?.takeIf { it.isNotBlank() }
                             }
                         }
+                        inProgramme && tag == "episode-num" -> {
+                            episodeSystem = parser.getAttributeValue(null, "system")
+                            currentTag = tag
+                        }
+                        inProgramme && tag == "date" -> currentTag = tag
+                        inProgramme && tag == "previously-shown" -> {
+                            epochDayOf(parser.getAttributeValue(null, "start"))?.let { originalAirDay = it }
+                        }
                         inProgramme && tag == "live" -> markedLive = true
                         inProgramme && tag == "new" -> markedNew = true
                     }
@@ -262,6 +308,13 @@ object XmltvParser {
                                 "title" -> title = (title.orEmpty() + text).takeIf { it.isNotBlank() }
                                 "desc" -> description = (description.orEmpty() + text).takeIf { it.isNotBlank() }
                                 "sub-title" -> subtitle = (subtitle.orEmpty() + text).takeIf { it.isNotBlank() }
+                                "episode-num" -> if (episodeNumber == 0) {
+                                    episodeNumbers(text, episodeSystem)?.let { (season, episode) ->
+                                        seasonNumber = season
+                                        episodeNumber = episode
+                                    }
+                                }
+                                "date" -> if (originalAirDay == 0) epochDayOf(text)?.let { originalAirDay = it }
                                 "category" -> {
                                     val name = categoryNames.getOrPut(text) { text }
                                     if (category == null) category = name
@@ -279,7 +332,7 @@ object XmltvParser {
                 }
                 XmlPullParser.END_TAG -> {
                     when (parser.name) {
-                        "title", "desc", "category", "sub-title", "display-name" -> currentTag = null
+                        "title", "desc", "category", "sub-title", "display-name", "episode-num", "date" -> currentTag = null
                         "channel" -> if (inChannel) {
                             val id = channelDeclId
                             if (!id.isNullOrBlank()) {
@@ -312,7 +365,10 @@ object XmltvParser {
                                     imageUrl = imageUrl?.let(::shared),
                                     isLive = markedLive || GuideText.hasBracketTag(programTitle, "live") || (isNew && isSportsGame),
                                     isNew = isNew,
-                                    categories = categories.toList()
+                                    categories = categories.toList(),
+                                    seasonNumber = seasonNumber,
+                                    episodeNumber = episodeNumber,
+                                    originalAirDay = originalAirDay
                                 )
                             }
                             inProgramme = false

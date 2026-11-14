@@ -17,7 +17,12 @@ data class EpgProgram(
     /** A new episode or first airing: marked `<new/>` or "[NEW]". */
     val isNew: Boolean = false,
     /** Every XMLTV category of the program ([category] is the first one). */
-    val categories: List<String> = emptyList()
+    val categories: List<String> = emptyList(),
+    /** RCTV: the episode's season and number as the guide gives them (XMLTV `episode-num`); 0: not given. */
+    val seasonNumber: Int = 0,
+    val episodeNumber: Int = 0,
+    /** RCTV: the day it first aired (XMLTV `previously-shown` or `date`), as an epoch day; 0: not given. */
+    val originalAirDay: Int = 0
 ) {
     fun isAiringAt(timeMs: Long): Boolean = timeMs in startMs until endMs
 

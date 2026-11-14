@@ -103,23 +103,22 @@ class LiveProgramLibrary @Inject constructor(
      */
     suspend fun match(program: EpgProgram): LiveProgramMatch? = withContext(Dispatchers.IO) {
         val language = language()
-        val key = "${program.title}|${program.subtitle}|${program.description?.hashCode() ?: 0}|${program.startMs / DAY_MS}|$language"
+        val key = "${program.title}|${program.subtitle}|${program.description?.hashCode() ?: 0}|${program.startMs / DAY_MS}|" +
+            "${program.seasonNumber}.${program.episodeNumber}.${program.originalAirDay}|$language"
         matchCache[key]?.let { return@withContext it.value }
 
-        val rawTitle = cleanTitle(program.title)
-        val year = TRAILING_YEAR.find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val title = rawTitle.replace(TRAILING_YEAR, "").trim()
-        if (title.length < 2) return@withContext null
-
-        val found = bestTitle(program, title, year, language)
+        // RCTV: the title as the guide found it already (kept): TMDB isn't searched twice for it.
+        val found = findTitle(program)
+        var failed = false
         val match = if (found != null && !found.isMovie) {
             found.copy(episode = runCatching { findEpisode(found.tmdbId, program, language) }
-                .onFailure { if (it is CancellationException) throw it }
+                .onFailure { if (it is CancellationException) throw it; failed = true }
                 .getOrNull())
         } else {
             found
         }
-        matchCache[key] = Optional(match)
+        // RCTV: TMDB not reached for the episode: asked again next time (not kept as "no episode").
+        if (!failed) matchCache[key] = Optional(match)
         match
     }
 
@@ -394,8 +393,12 @@ class LiveProgramLibrary @Inject constructor(
      * Not the most popular of the name: "Dead Heat" with Kiefer Sutherland isn't the 1988 one.
      */
     private suspend fun bestTitle(program: EpgProgram, title: String, year: Int?, language: String): LiveProgramMatch? {
-        val all = candidates(title, year, isTv = false, language).map { it to false } +
-            candidates(title, year, isTv = true, language).map { it to true }
+        // RCTV: the movies and the series of its name asked at once (not one after the other).
+        val all = coroutineScope {
+            val movies = async { candidates(title, year, isTv = false, language) }
+            val series = async { candidates(title, year, isTv = true, language) }
+            movies.await().map { it to false } + series.await().map { it to true }
+        }
         if (all.isEmpty()) return null
         val chosen = if (all.size == 1) {
             all.single()
@@ -413,8 +416,10 @@ class LiveProgramLibrary @Inject constructor(
             var scored = all.map { (result, isTv) -> Triple(result, isTv, scoreOf(result, isTv, null)) }
                 .sortedByDescending { it.third }
             if (clues.names.isNotEmpty() && scored[0].third - scored[1].third < LiveTitleClues.CLEAR_LEAD) {
-                val looked = scored.take(MAX_CAST_LOOKUPS).map { (result, isTv, _) ->
-                    Triple(result, isTv, scoreOf(result, isTv, castOf(result.id, isTv)))
+                val looked = coroutineScope {
+                    scored.take(MAX_CAST_LOOKUPS).map { (result, isTv, _) ->
+                        async { Triple(result, isTv, scoreOf(result, isTv, castOf(result.id, isTv))) }
+                    }.awaitAll()
                 }
                 scored = (looked + scored.drop(MAX_CAST_LOOKUPS)).sortedByDescending { it.third }
             }
@@ -478,54 +483,96 @@ class LiveProgramLibrary @Inject constructor(
     private val genreCache = ConcurrentHashMap<String, Map<Int, String>>()
 
     /**
-     * The episode a series' airing is: the one whose name is the guide's episode title (any season,
-     * newest first), else one that first aired the day of the airing (a new episode).
+     * The episode a series' airing is: the guide's own numbers, else (a rerun) the episode that first
+     * aired the day the guide says, else the one whose name is the guide's episode title (any season,
+     * newest first; in English too), else one that first aired the day of the airing (a new episode).
      */
     private suspend fun findEpisode(tvId: Int, program: EpgProgram, language: String): LiveEpisode? {
-        val seasons = limiter.withPermit {
-            tmdbApi.getTvDetails(tvId, apiKey, language).body()?.numberOfSeasons
-        } ?: return null
+        val shape = tvShape(tvId, language) ?: return null
+        val seasons = shape.numberOfSeasons
         if (seasons <= 0) return null
         val newestFirst = (seasons downTo 1).toList()
-        // RCTV: the guide's own numbers when it gives them ("(S1, ep 8)", "S01E08"): that episode.
-        episodeNumbersOf(program)?.let { (season, number) ->
-            if (season in 1..seasons) {
-                seasonEpisodes(tvId, season, language)
-                    .firstOrNull { it.episodeNumber == number }
-                    ?.toLiveEpisode(season)
-                    ?.let { return it }
-            }
+        suspend fun numbered(season: Int, number: Int): LiveEpisode? =
+            seasonEpisodes(tvId, season, language).firstOrNull { it.episodeNumber == number }?.toLiveEpisode(season)
+        // The guide's own numbers: its episode-num (RCTV), else its text ("(S1, ep 8)", "S01E08").
+        val numbers = if (program.seasonNumber > 0 && program.episodeNumber > 0) {
+            program.seasonNumber to program.episodeNumber
+        } else {
+            episodeNumbersOf(program)
+        }
+        numbers?.let { (season, number) ->
+            if (season in 1..seasons) numbered(season, number)?.let { return it }
+        }
+        // RCTV: the day it first aired (the guide's "previously shown"): that day's episode, in the
+        // season airing then (a rerun of any season, in one or two requests).
+        if (program.originalAirDay > 0) {
+            byAirDay(tvId, shape, program.originalAirDay.toLong(), language, recentSeasons = null)?.let { return it }
         }
         // RCTV: guides without an episode title often start the description with it ("The Space
         // Rock: Trouble follows Henry..."): looked up by that name the same way.
         val subtitle = (program.subtitle ?: episodeTitleOf(program.description))
             ?.let(::cleanTitle)?.takeIf { it.isNotBlank() }
-        val airDay = Instant.ofEpochMilli(program.startMs).atZone(ZoneId.systemDefault()).toLocalDate()
-
-        // By name: a few seasons at a time, newest first, stopping at the first match.
+        // By name: several seasons at a time, newest first, stopping at the first match. RCTV: in
+        // English too (the guide's names are English) when the app's TMDB language is another.
         if (subtitle != null) {
-            val wanted = normalize(subtitle)
-            for (batch in newestFirst.take(MAX_SEASONS).chunked(4)) {
-                val loaded = coroutineScope {
-                    batch.map { season -> async { season to seasonEpisodes(tvId, season, language) } }.awaitAll()
-                }
-                for ((season, episodes) in loaded) {
-                    val exact = episodes.firstOrNull { normalize(it.name.orEmpty()) == wanted }
-                        ?: episodes.firstOrNull { episode ->
-                            val name = normalize(episode.name.orEmpty())
-                            name.length >= 8 && wanted.length >= 8 && (name.startsWith(wanted) || wanted.startsWith(name))
-                        }
-                    exact?.let { return it.toLiveEpisode(season) }
+            val wanted = nameKeys(subtitle)
+            val languages = if (language.startsWith("en")) listOf(language) else listOf(language, ENGLISH)
+            for (batch in newestFirst.take(MAX_SEASONS).chunked(SEASONS_AT_ONCE)) {
+                for (named in languages) {
+                    val loaded = coroutineScope {
+                        batch.map { season -> async { season to seasonEpisodes(tvId, season, named) } }.awaitAll()
+                    }
+                    for ((season, episodes) in loaded) {
+                        val hit = episodes.firstOrNull { sameName(it.name, wanted) } ?: continue
+                        val number = hit.episodeNumber ?: continue
+                        return if (named == language) hit.toLiveEpisode(season) else numbered(season, number) ?: hit.toLiveEpisode(season)
+                    }
                 }
             }
         }
         // By date: a new episode first airs the day it's on (the last two seasons are enough).
-        for (season in newestFirst.take(2)) {
-            val episodes = seasonEpisodes(tvId, season, language)
-            episodes.firstOrNull { episode ->
-                val date = episode.airDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return@firstOrNull false
-                kotlin.math.abs(date.toEpochDay() - airDay.toEpochDay()) <= 1
-            }?.let { return it.toLiveEpisode(season) }
+        val airDay = Instant.ofEpochMilli(program.startMs).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()
+        return byAirDay(tvId, shape, airDay, language, recentSeasons = newestFirst.take(2))
+    }
+
+    /** A series' number of seasons and the day each began (kept: asked once per series). */
+    private class TvShape(val numberOfSeasons: Int, val seasonStarts: List<Pair<Int, Long?>>)
+    private val shapeCache = ConcurrentHashMap<String, TvShape>()
+
+    private suspend fun tvShape(tvId: Int, language: String): TvShape? {
+        val key = "$tvId:$language"
+        shapeCache[key]?.let { return it }
+        val details = limiter.withPermit { tmdbApi.getTvDetails(tvId, apiKey, language).body() } ?: return null
+        val shape = TvShape(
+            numberOfSeasons = details.numberOfSeasons ?: 0,
+            seasonStarts = details.seasons.orEmpty()
+                .mapNotNull { season -> season.seasonNumber?.takeIf { it >= 1 }?.let { it to epochDayOrNull(season.airDate) } }
+                .sortedBy { it.first }
+        )
+        if (shape.numberOfSeasons > 0) shapeCache[key] = shape
+        return shape
+    }
+
+    /**
+     * The episode that first aired on [day] (the day itself first, then the one before or after: the
+     * guide's day and TMDB's can differ by a time zone): in [recentSeasons], or (null) the season
+     * airing then and the one before it.
+     */
+    private suspend fun byAirDay(tvId: Int, shape: TvShape, day: Long, language: String, recentSeasons: List<Int>?): LiveEpisode? {
+        val seasons = recentSeasons ?: shape.seasonStarts
+            .filter { (_, start) -> start != null && start <= day + 1 }
+            .map { it.first }
+            .takeLast(2)
+            .reversed()
+        if (seasons.isEmpty()) return null
+        val loaded = seasons.map { season -> season to seasonEpisodes(tvId, season, language) }
+        for (gap in 0..1) {
+            for ((season, episodes) in loaded) {
+                episodes.firstOrNull { episode ->
+                    val aired = epochDayOrNull(episode.airDate) ?: return@firstOrNull false
+                    kotlin.math.abs(aired - day) == gap.toLong()
+                }?.let { return it.toLiveEpisode(season) }
+            }
         }
         return null
     }
@@ -632,6 +679,34 @@ class LiveProgramLibrary @Inject constructor(
         private val FOUR_DIGITS = Regex("(\\d{4})")
         /** Seasons looked through for an episode's name. */
         private const val MAX_SEASONS = 40
+        /** RCTV: seasons asked for at once when looking an episode up by name (4 at a time go out). */
+        private const val SEASONS_AT_ONCE = 8
+        private const val ENGLISH = "en-US"
+        /** RCTV: "(1)", "Part 1", "Pt. 1", "Part One": the same part of a two-part episode. */
+        private val PART = Regex("""(?i)\(\s*(\d{1,2})\s*\)|\bpart\s+(\d{1,2}|one|two|three|four|i{1,3}|iv)\b|\bpt\.?\s*(\d{1,2})\b""")
+        private val PART_WORDS = mapOf("one" to "1", "two" to "2", "three" to "3", "four" to "4", "i" to "1", "ii" to "2", "iii" to "3", "iv" to "4")
+
+        private fun epochDayOrNull(date: String?): Long? =
+            date?.takeIf { it.length >= 10 }?.let { runCatching { LocalDate.parse(it.take(10)).toEpochDay() }.getOrNull() }
+
+        /** RCTV: the ways an episode's name is written: as it is, and with its part, "&" and "The" told one way. */
+        internal fun nameKeys(name: String): Set<String> {
+            val parts = PART.replace(name) { found ->
+                val number = found.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.lowercase(Locale.ROOT).orEmpty()
+                " part" + (PART_WORDS[number] ?: number) + " "
+            }
+            val simpler = normalize(parts.replace("&", " and ")).removePrefix("the")
+            return setOf(normalize(name), simpler).filter { it.isNotEmpty() }.toSet()
+        }
+
+        /** RCTV: an episode's [name] is the guide's ([wanted] its [nameKeys]): the same, or a long one starting the other. */
+        internal fun sameName(name: String?, wanted: Set<String>): Boolean {
+            val keys = nameKeys(name ?: return false)
+            if (keys.any { it in wanted }) return true
+            return keys.any { key ->
+                wanted.any { want -> key.length >= 8 && want.length >= 8 && (key.startsWith(want) || want.startsWith(key)) }
+            }
+        }
         private val TRAILING_YEAR = Regex("""\s*\((\d{4})\)\s*$""")
 
         /** Guide titles that aren't a show's name (TMDB could have something by that name). */

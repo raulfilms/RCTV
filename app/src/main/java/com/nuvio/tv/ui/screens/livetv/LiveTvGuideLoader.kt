@@ -583,6 +583,9 @@ class LiveTvGuideLoader @Inject constructor(
                         out.writeBoolean(program.isNew)
                         out.writeInt(program.categories.size)
                         program.categories.forEach { out.writeText(it) }
+                        out.writeInt(program.seasonNumber)
+                        out.writeInt(program.episodeNumber)
+                        out.writeInt(program.originalAirDay)
                     }
                 }
             }
@@ -633,7 +636,10 @@ class LiveTvGuideLoader @Inject constructor(
                             imageUrl = input.readOptional(),
                             isLive = input.readBoolean(),
                             isNew = input.readBoolean(),
-                            categories = List(input.readInt()) { shared(input.readText()) }
+                            categories = List(input.readInt()) { shared(input.readText()) },
+                            seasonNumber = input.readInt(),
+                            episodeNumber = input.readInt(),
+                            originalAirDay = input.readInt()
                         )
                     }
                 }
@@ -741,8 +747,9 @@ class LiveTvGuideLoader @Inject constructor(
          * 2: only the playlist's own channels' programs are kept (1 kept the provider's whole guide).
          * 3: RCTV, the owner's channel list (each channel's category and versions, and the channels
          * kept out of the Guide).
+         * 4: RCTV, each program's episode numbers and the day it first aired (its episode on TMDB).
          */
-        private const val SAVED_VERSION = 3
+        private const val SAVED_VERSION = 4
         private const val MAX_SAVED_TEXT_BYTES = 1_000_000
     }
 }
