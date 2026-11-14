@@ -5,7 +5,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -127,6 +130,11 @@ internal fun LiveTvPlayerOverlay(
     liveViewModel: LiveTvPlayerViewModel,
     /** Where focus goes when the controls show (the Networks tab). */
     initialFocusRequester: FocusRequester,
+    /**
+     * RCTV (as YouTube TV): the timeline, which Up reaches from the tabs (and from full screen); Up
+     * again goes to the game's stats, else back to full screen.
+     */
+    progressFocusRequester: FocusRequester,
     onEvent: (PlayerEvent) -> Unit,
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit,
@@ -158,6 +166,7 @@ internal fun LiveTvPlayerOverlay(
     }
     val tabRequesters = remember { LiveTab.entries.associateWith { FocusRequester() } }
     val contentEntry = remember { FocusRequester() }
+    val statsRequester = remember { FocusRequester() }
     val tabFocusRequester: (LiveTab) -> FocusRequester = { tab ->
         if (tab == LiveTab.NETWORKS) initialFocusRequester else tabRequesters.getValue(tab)
     }
@@ -246,14 +255,25 @@ internal fun LiveTvPlayerOverlay(
                     }
                 }
                 // RCTV (as YouTube TV): a game on now: its stats and the league's games, at the right
-                // above the timeline; Down goes back to the tabs.
+                // above the timeline; Down goes back to the timeline, Up to full screen.
                 if (onOpenGameCenter != null) {
                     Spacer(modifier = Modifier.width(16.dp))
                     IconButton(
                         onClick = onOpenGameCenter,
                         modifier = Modifier
                             .size(44.dp)
-                            .focusProperties { down = initialFocusRequester }
+                            .focusRequester(statsRequester)
+                            .focusProperties { down = progressFocusRequester }
+                            .onPreviewKeyEvent { event ->
+                                if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
+                                    event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_UP
+                                ) {
+                                    onHideControls()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                             .onFocusChanged { if (it.isFocused) onResetHideTimer() },
                         colors = IconButtonDefaults.colors(
                             containerColor = Color.Black.copy(alpha = 0.45f),
@@ -277,11 +297,37 @@ internal fun LiveTvPlayerOverlay(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (program != null) {
-                ProgramProgress(program = program, nowMs = nowMs)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Spacer(modifier = Modifier.height(4.dp))
+            // RCTV (as YouTube TV): the timeline can be selected (a live channel doesn't move along
+            // it): Up from it goes to the game's stats, or back to full screen; Down to the tabs.
+            LiveTimeline(
+                program = program,
+                nowMs = nowMs,
+                onFocused = onResetHideTimer,
+                modifier = Modifier
+                    .focusRequester(progressFocusRequester)
+                    .focusProperties { down = tabFocusRequester(selectedTab) }
+                    .onPreviewKeyEvent { event ->
+                        if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                        when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                if (onOpenGameCenter != null) {
+                                    runCatching { statsRequester.requestFocus() }.onFailure { onHideControls() }
+                                } else {
+                                    onHideControls()
+                                }
+                                true
+                            }
+                            // Nothing to move to on a live channel: the timeline stays selected.
+                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                onResetHideTimer()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+            )
+            Spacer(modifier = Modifier.height(4.dp))
 
             // The tabs: focusing one shows its content below.
             Row(
@@ -298,7 +344,10 @@ internal fun LiveTvPlayerOverlay(
                 val tabModifier: (LiveTab) -> Modifier = { tab ->
                     Modifier
                         .focusRequester(tabFocusRequester(tab))
-                        .focusProperties { if (contentFocusable) down = contentEntry }
+                        .focusProperties {
+                            if (contentFocusable) down = contentEntry
+                            up = progressFocusRequester
+                        }
                         .onFocusChanged {
                             if (it.isFocused) {
                                 selectedTab = tab
@@ -506,32 +555,64 @@ private fun LiveBadge() {
     )
 }
 
-/** How far along the program on now is (the player's accent bar), with its start and end times. */
+/**
+ * How far along the program on now is (the player's accent bar), with its start and end times; the
+ * whole bar when the guide has nothing for the channel. RCTV (as YouTube TV): it can be selected:
+ * it grows, with a white dot where the channel is now.
+ */
 @Composable
-private fun ProgramProgress(program: EpgProgram, nowMs: Long) {
+private fun LiveTimeline(program: EpgProgram?, nowMs: Long, onFocused: () -> Unit, modifier: Modifier = Modifier) {
     val accent = NuvioTheme.palette.accentBrush()
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
+    var focused by remember { mutableStateOf(false) }
+    val progress = program?.progressAt(nowMs) ?: 1f
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
+            .focusable()
+    ) {
+        BoxWithConstraints(
+            contentAlignment = Alignment.CenterStart,
             modifier = Modifier
                 .weight(1f)
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.3f))
+                .height(16.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(program.progressAt(nowMs))
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(accent)
+                    .fillMaxWidth()
+                    .height(if (focused) 6.dp else 4.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(alpha = if (focused) 0.45f else 0.3f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(accent)
+                )
+            }
+            if (focused) {
+                Box(
+                    modifier = Modifier
+                        .offset(x = (maxWidth * progress - 7.dp).coerceAtLeast(0.dp))
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+            }
+        }
+        if (program != null) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = timeRange(program),
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 12.sp
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = timeRange(program),
-            color = Color.White.copy(alpha = 0.9f),
-            fontSize = 12.sp
-        )
     }
 }
 

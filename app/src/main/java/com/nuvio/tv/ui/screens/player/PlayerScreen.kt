@@ -620,6 +620,9 @@ fun PlayerScreen(
         }
     }
 
+    // RCTV (as YouTube TV): Up on a live channel shows its controls on the timeline.
+    var liveUpToTimeline by remember { mutableStateOf(false) }
+
     // Request focus for key events when controls visibility or panel state changes
     LaunchedEffect(
         uiState.showControls,
@@ -645,7 +648,12 @@ fun PlayerScreen(
             // Wait for AnimatedVisibility animation to complete before focusing play/pause button
             kotlinx.coroutines.delay(250)
             try {
-                playPauseFocusRequester.requestFocus()
+                if (liveUpToTimeline && uiState.contentType.equals("live", ignoreCase = true)) {
+                    liveUpToTimeline = false
+                    progressBarFocusRequester.requestFocus()
+                } else {
+                    playPauseFocusRequester.requestFocus()
+                }
             } catch (e: Exception) {
                 // Focus requester may not be ready yet
             }
@@ -1034,6 +1042,8 @@ fun PlayerScreen(
                         }
                         KeyEvent.KEYCODE_DPAD_UP -> {
                                 if (!uiState.showControls) {
+                                    // RCTV (as YouTube TV): a live channel's controls open on the timeline.
+                                    liveUpToTimeline = uiState.contentType.equals("live", ignoreCase = true)
                                     viewModel.onEvent(PlayerEvent.OnToggleControls)
                                 } else {
                                     try {
@@ -1598,6 +1608,7 @@ fun PlayerScreen(
                     uiState = uiState,
                     liveViewModel = liveTvViewModel,
                     initialFocusRequester = playPauseFocusRequester,
+                    progressFocusRequester = progressBarFocusRequester,
                     onEvent = viewModel::onEvent,
                     onResetHideTimer = {
                         viewModel.scheduleHideControls()
