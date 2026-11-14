@@ -232,6 +232,9 @@ class EspnSportsClient @Inject constructor(
         /** A league's page between seasons: this many of its next (or last) games. */
         private const val LEAGUE_HOME_EVENTS = 40
 
+        /** The sports whose game summaries have each team's players (a box score, the leaders). */
+        private val BOX_SCORE_SPORTS = setOf("football", "basketball", "baseball", "hockey")
+
         /** A range of days, as ESPN's scoreboards used to take it ("20261109-20261122"). */
         private val RANGE_OF_DAYS = Regex("""^(\d{8})-(\d{8})$""")
 
@@ -1859,8 +1862,38 @@ class EspnSportsClient @Inject constructor(
         ) {
             return null
         }
-        val json = JSONObject(get("$BASE_URL/$sport/$league/summary?event=${parsed.rawEventId}"))
-        return EspnGameCenterParser.parse(json, eventId, sport, league)
+        val url = "$BASE_URL/$sport/$league/summary?event=${parsed.rawEventId}"
+        // RCTV: the data server's trimmed summary left out the players (each team's box score and the
+        // game's leaders): once seen, ESPN's own summary is read instead.
+        val withPlayers = sport in BOX_SCORE_SPORTS
+        if (withPlayers && summariesLackPlayers) {
+            runCatching { EspnGameCenterParser.parse(JSONObject(getDirect(url)), eventId, sport, league) }
+                .getOrNull()?.let { return it }
+        }
+        val json = JSONObject(get(url))
+        val center = EspnGameCenterParser.parse(json, eventId, sport, league)
+        if (withPlayers && center != null && center.status != com.nuvio.tv.domain.model.SportsEventStatus.UPCOMING &&
+            center.boxScores.isEmpty() && json.optJSONObject("boxscore")?.has("players") != true
+        ) {
+            val direct = runCatching { EspnGameCenterParser.parse(JSONObject(getDirect(url)), eventId, sport, league) }.getOrNull()
+            if (direct != null && direct.boxScores.isNotEmpty()) {
+                summariesLackPlayers = true
+                return direct
+            }
+        }
+        return center
+    }
+
+    /** RCTV: the data server's game summaries come without their players (see [fetchGameCenter]). */
+    @Volatile private var summariesLackPlayers = false
+
+    /** [url] from ESPN itself, not through the data server. */
+    private fun getDirect(url: String): String = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("espn") {
+        val request = Request.Builder().url(url).header("Accept", "application/json").build()
+        executeCancellable(okHttpClient.newCall(request)) { response ->
+            if (!response.isSuccessful) throw ServerAnswer(response.code)
+            boundedBody(response)
+        }
     }
 
     /** RCTV (game center's Scores): the games of [eventId]'s league today, read fresh (not the pages' copy). */

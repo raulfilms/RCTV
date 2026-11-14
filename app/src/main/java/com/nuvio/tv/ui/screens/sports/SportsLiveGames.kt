@@ -170,7 +170,9 @@ internal object SportsGameChannels {
                 }
             }
             if (matches.isEmpty()) continue
-            return matches.firstOrNull { it.country == "US" } ?: matches.first()
+            // RCTV (owner): in English, the US's first (never another language's).
+            val english = matches.mapNotNull { m -> languageRank(m, emptyList(), emptyList())?.let { m to it } }
+            english.minByOrNull { it.second }?.first?.let { return it }
         }
         return null
     }
@@ -294,6 +296,10 @@ internal object SportsGameChannels {
             ppvChannelAiring(channel, channelPrograms, home, away, event, now)?.let { airing ->
                 if (seen.add("${channel.id}|ppv")) found += airing
             }
+            // RCTV (owner): a team's own channel ("NFL | Washington Commanders") during its game.
+            teamChannelAiring(channel, channelPrograms, home, away, event, now)?.let { airing ->
+                if (seen.add("${channel.id}|team")) found += airing
+            }
             val programs = channelPrograms ?: return@forEach
             programs.forEach program@{ program ->
                 // On now, or starting in a few minutes.
@@ -306,8 +312,87 @@ internal object SportsGameChannels {
                 found += GameAiring(channel, program, score + channelBonus(channel))
             }
         }
-        return found.sortedByDescending { it.score }
+        // RCTV (owner): games in English: the US's channels first (and the provider's channels
+        // named after the game), then the UK's, then other English-speaking countries'; never a
+        // channel in another language (a Brazilian SporTV for Thursday Night Football).
+        return found
+            .mapNotNull { airing -> languageRank(airing.channel, home, away)?.let { airing to it } }
+            .sortedWith(compareBy<Pair<GameAiring, Int>> { it.second }.thenByDescending { it.first.score })
+            .map { it.first }
     }
+
+    /**
+     * Where [channel] stands for a game in English: 0 the US's (or one named after the game, which
+     * the provider's English event channels are), 1 the UK's or a country it doesn't say, 2 another
+     * English-speaking country's; null for another language's, never shown for a game.
+     */
+    internal fun languageRank(channel: LiveTvChannel, home: List<String>, away: List<String>): Int? {
+        val country = countryOf(channel)
+        if (country != null) return ENGLISH_COUNTRIES[country]
+        val name = canonical(normalize(channel.name))
+        val group = canonical(normalize(channel.groupTitle.orEmpty()))
+        if (NOT_ENGLISH.any { has(name, it) || has(group, it) }) return null
+        return if (teamIn(name, home) > 0 && teamIn(name, away) > 0) 0 else 1
+    }
+
+    private fun countryOf(channel: LiveTvChannel): String? {
+        channel.country?.let { com.nuvio.tv.ui.screens.livetv.LiveTvCountry.normalize(it) }?.let { return it }
+        for (text in listOfNotNull(channel.name, channel.groupTitle)) {
+            val code = com.nuvio.tv.core.util.GuideText.countryPrefix(text)?.first ?: continue
+            com.nuvio.tv.ui.screens.livetv.LiveTvCountry.normalize(code)?.let { return it }
+        }
+        return null
+    }
+
+    /** RCTV (owner): the US first, then the UK, then other English-speaking countries. */
+    private val ENGLISH_COUNTRIES = mapOf("US" to 0, "GB" to 1, "CA" to 2, "IE" to 2, "AU" to 2, "NZ" to 2)
+
+    /** Channels in another language that don't say their country. */
+    private val NOT_ENGLISH = listOf(
+        "sportv", "deportes", "espanol", "en espanol", "tudn", "univision", "telemundo", "movistar",
+        "globo", "premiere", "sky sport", "dazn", "eleven", "viaplay", "ziggo", "rmc", "canal", "latino",
+        "brasil", "brazil", "portugal", "mexico", "argentina", "france", "italia", "deutschland"
+    )
+
+    /** The leagues whose teams have their own channels with some providers. */
+    private val TEAM_CHANNEL_LEAGUES = setOf("nfl", "nba", "mlb", "nhl", "wnba", "mls")
+
+    /**
+     * RCTV (owner): a team's own channel during its game: named after one of the two teams and its
+     * league ("NFL | Washington Commanders", in an "NBA Teams" group), from a little before the game
+     * to its end. Just below a channel named after the game; the home team's first.
+     */
+    private fun teamChannelAiring(
+        channel: LiveTvChannel,
+        programs: List<EpgProgram>?,
+        home: List<String>,
+        away: List<String>,
+        event: SportsEvent,
+        now: Long
+    ): GameAiring? {
+        val league = event.leagueId?.substringAfter(':')?.substringBefore('.')?.lowercase()
+            ?.takeIf { it in TEAM_CHANNEL_LEAGUES } ?: return null
+        val name = canonical(normalize(channel.name))
+        val group = canonical(normalize(channel.groupTitle.orEmpty()))
+        if (!has(name, league) && !has(group, league)) return null
+        val homeIn = teamIn(name, home) > 0
+        val awayIn = teamIn(name, away) > 0
+        if (homeIn == awayIn) return null // neither team, or both (the game's own channel, above)
+        if (NOT_THE_GAME.any { has(name, it) || has(group, it) }) return null
+        val start = event.startTimeMs ?: return null
+        if (now < start - STARTING_SOON_MS || now > start + LIVE_WINDOW_MS) return null
+        val program = programs?.firstOrNull { it.isAiringAt(now) } ?: EpgProgram(
+            channelId = channel.epgChannelId ?: channel.id,
+            title = event.name,
+            startMs = now,
+            endMs = now + LIVE_WINDOW_MS,
+            isLive = true
+        )
+        return GameAiring(channel, program, TEAM_CHANNEL_SCORE + (if (homeIn) 1 else 0) + channelBonus(channel))
+    }
+
+    /** A team's own channel: below one named after the game. */
+    private const val TEAM_CHANNEL_SCORE = 100
 
     /**
      * How surely a guide program (now or later) is [event] itself, 0 when it isn't: the game's teams
@@ -426,7 +511,8 @@ class SportsWatchViewModel @Inject constructor(
     private val guideLoader: LiveTvGuideLoader,
     private val liveTvDataStore: LiveTvDataStore,
     private val bananaBallLive: BananaBallLive,
-    private val espnClient: com.nuvio.tv.data.remote.espn.EspnSportsClient
+    private val espnClient: com.nuvio.tv.data.remote.espn.EspnSportsClient,
+    private val playerSession: com.nuvio.tv.data.livetv.LiveTvPlayerSession
 ) : ViewModel() {
 
     /** A Banana Ball game no channel is showing: its live stream on YouTube, ready to play; else null. */
@@ -449,6 +535,19 @@ class SportsWatchViewModel @Inject constructor(
         // RCTV (owner's rule): the provider's guide doesn't name the game: the channel of the network
         // showing it (ESPN, TNT, FOX...), as ESPN says.
         val channel = airing?.channel ?: networkChannelFor(event) ?: return null
+        // RCTV (owner): the player's Networks row has the Guide's channels even when Live TV wasn't
+        // opened first (it was empty from a game).
+        guideLoader.guide.value?.takeIf { !it.isPreview && it.channels.isNotEmpty() }?.let { guide ->
+            if (playerSession.guide.value.channels.isEmpty()) {
+                playerSession.publish(
+                    com.nuvio.tv.data.livetv.LiveTvPlayerSession.Guide(
+                        channels = guide.channels,
+                        epgByChannel = guide.epgByChannel,
+                        customChannelIds = liveTvDataStore.customChannelIds.value
+                    )
+                )
+            }
+        }
         return channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources))
     }
 
