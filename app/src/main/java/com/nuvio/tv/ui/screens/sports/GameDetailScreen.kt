@@ -442,20 +442,6 @@ private fun GameDetailTeam(name: String, badgeUrl: String?, score: Int?, modifie
     }
 }
 
-private fun statusLine(event: com.nuvio.tv.domain.model.SportsEvent): String {
-    if (event.isGolf()) return golfStatusText(event)
-    if (event.status == SportsEventStatus.LIVE) {
-        return event.statusDetail?.takeIf { it.isNotBlank() } ?: "Live"
-    }
-    val startTimeMs = event.startTimeMs
-    if (startTimeMs != null) {
-        if (event.startTimeTba()) return tbaStartLabel(startTimeMs)
-        val format = java.text.SimpleDateFormat("EEE, MMM d • h:mm a", java.util.Locale.getDefault())
-        return format.format(java.util.Date(startTimeMs))
-    }
-    return event.statusDetail ?: "Scheduled"
-}
-
 @Composable
 private fun GameActionButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Button(
