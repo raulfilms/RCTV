@@ -798,20 +798,15 @@ private fun GuideHeader(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        if (onAddIptv != null) {
+        // RCTV (owner): no "Manage sources" or "Channels" on the Guide (the IPTV is the account's,
+        // set on the website; a channel's logo opens its profile). Only the sample guide, with no
+        // IPTV at all, offers to add one.
+        if (onAddIptv != null && uiState.isPreviewGuide) {
             GuidePillButton(
-                label = stringResource(
-                    if (uiState.isPreviewGuide) R.string.livetv_preview_add_iptv else R.string.iptv_sources_manage_btn
-                ),
+                label = stringResource(R.string.livetv_preview_add_iptv),
                 onClick = onAddIptv
             )
-            Spacer(modifier = Modifier.width(10.dp))
         }
-        GuidePillButton(
-            label = stringResource(R.string.livetv_guide_channels),
-            onClick = onShowChannels,
-            showGridIcon = true
-        )
     }
 }
 
