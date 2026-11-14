@@ -31,6 +31,7 @@ class EspnRegressionTest {
 
     private fun client(answer: (path: String, query: String?) -> Pair<Int, String>): EspnSportsClient {
         val http = OkHttpClient.Builder()
+            .addInterceptor(rctvServersOffline)
             .addInterceptor { chain ->
                 val request = chain.request()
                 val (code, body) = answer(request.url.encodedPath, request.url.encodedQuery)

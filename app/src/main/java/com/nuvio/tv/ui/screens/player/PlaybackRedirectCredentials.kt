@@ -33,8 +33,25 @@ internal object PlaybackRedirectCredentials {
     fun isSameSite(hop: HttpUrl, first: HttpUrl): Boolean {
         if (first.isHttps && !hop.isHttps) return false
         if (hop.host == first.host) return true
-        val site = first.topPrivateDomain() ?: return false
-        return hop.topPrivateDomain() == site
+        val site = registrableDomain(first) ?: return false
+        return registrableDomain(hop) == site
+    }
+
+    /**
+     * [url]'s registrable domain by OkHttp's public suffix list ("provider.com" for
+     * "cdn.provider.com"); null for an IP address or a public suffix. RCTV: also null when the list
+     * can't be read (OkHttp throws then): a hop is then the same site only on the very same host, so
+     * credentials are kept back rather than the request failing (inside a network interceptor that
+     * error would end the playback request). Replaced only by the JVM unit tests, where OkHttp's
+     * Android list (an app asset) can't be read.
+     */
+    @Volatile
+    internal var registrableDomain: (HttpUrl) -> String? = { url ->
+        try {
+            url.topPrivateDomain()
+        } catch (_: IllegalStateException) {
+            null
+        }
     }
 
     /** One of the headers any host may get: User-Agent, Referer, Origin, Accept-Language. */

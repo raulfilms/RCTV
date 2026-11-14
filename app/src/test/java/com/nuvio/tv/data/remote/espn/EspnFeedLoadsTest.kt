@@ -41,6 +41,7 @@ class EspnFeedLoadsTest {
     /** An ESPN client whose every request is answered by [answer] (after [beforeAnswer]). */
     private fun client(beforeAnswer: () -> Unit = {}, answer: (path: String) -> String = { "{}" }): EspnSportsClient {
         val http = OkHttpClient.Builder()
+            .addInterceptor(rctvServersOffline)
             .addInterceptor { chain ->
                 val request = chain.request()
                 requested += request.url.encodedPath
@@ -116,6 +117,7 @@ class EspnFeedLoadsTest {
     fun `a league whose dated request fails is asked once more, without dates`() {
         val nfl = feeds.first()
         val http = OkHttpClient.Builder()
+            .addInterceptor(rctvServersOffline)
             .addInterceptor { chain ->
                 val request = chain.request()
                 requested += request.url.toString()
@@ -153,6 +155,7 @@ class EspnFeedLoadsTest {
             }
         }.apply { isDaemon = true; start() }
         val http = OkHttpClient.Builder()
+            .addInterceptor(rctvServersOffline)
             .readTimeout(30, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val request = chain.request()

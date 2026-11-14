@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import okhttp3.Dns
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -8,6 +9,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -26,6 +29,35 @@ import kotlin.concurrent.thread
  * fallback, and a stream's credentials only go to its own host when a request is redirected.
  */
 class PlaybackTlsAndRedirectTest {
+
+    /**
+     * OkHttp's public suffix list is an Android asset, which a JVM unit test can't read: these
+     * tests use a few of its rules instead ("com", "net", "io", "test" and "github.io", so
+     * "a.github.io" and "b.github.io" stay two sites). On the TV, OkHttp's whole list is used.
+     */
+    private val realRegistrableDomain = PlaybackRedirectCredentials.registrableDomain
+
+    @Before
+    fun useTestSuffixes() {
+        PlaybackRedirectCredentials.registrableDomain = ::testRegistrableDomain
+    }
+
+    @After
+    fun restoreSuffixes() {
+        PlaybackRedirectCredentials.registrableDomain = realRegistrableDomain
+    }
+
+    private fun testRegistrableDomain(url: HttpUrl): String? {
+        val host = url.host
+        if (':' in host || host.all { it.isDigit() || it == '.' }) return null
+        val labels = host.split('.')
+        for (start in labels.indices) {
+            if (labels.drop(start).joinToString(".") in TEST_PUBLIC_SUFFIXES) {
+                return if (start == 0) null else labels.drop(start - 1).joinToString(".")
+            }
+        }
+        return null
+    }
 
     private val streamHeaders = mapOf(
         "Authorization" to "Bearer token",
@@ -411,5 +443,9 @@ class PlaybackTlsAndRedirectTest {
             socket.close()
             acceptor.join(1_000)
         }
+    }
+
+    private companion object {
+        val TEST_PUBLIC_SUFFIXES = setOf("com", "net", "io", "test", "github.io")
     }
 }
