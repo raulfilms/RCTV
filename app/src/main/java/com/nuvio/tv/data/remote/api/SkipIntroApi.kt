@@ -12,6 +12,15 @@ import retrofit2.http.Query
 
 // --- IntroDB API ---
 
+/**
+ * RCTV: IntroDB's public address (introdb.app: reads need no key or account), used when the build
+ * names none: Skip Intro / Recap / Credits then works on every series and movie IntroDB knows, not
+ * only on anime (AniSkip). A build that names its own address keeps it.
+ */
+const val INTRODB_PUBLIC_URL = "https://api.introdb.app/"
+
+fun introDbBaseUrl(): String = com.nuvio.tv.BuildConfig.INTRODB_API_URL.ifBlank { INTRODB_PUBLIC_URL }
+
 interface IntroDbApi {
     @GET("segments")
     suspend fun getSegments(

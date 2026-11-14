@@ -417,7 +417,7 @@ object NetworkModule {
     @Named("introDb")
     fun provideIntroDbRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
         Retrofit.Builder()
-            .baseUrl(BuildConfig.INTRODB_API_URL.ifEmpty { "https://localhost/" })
+            .baseUrl(com.nuvio.tv.data.remote.api.introDbBaseUrl())
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
