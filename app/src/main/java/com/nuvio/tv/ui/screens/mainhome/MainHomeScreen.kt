@@ -119,6 +119,10 @@ fun MainHomeScreen(
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
+    // RCTV (owner): the app left on a channel opens on it again.
+    LaunchedEffect(Unit) {
+        viewModel.resumeChannel()?.let(onPlayChannel)
+    }
 
     // Recommended for You: like what's being watched.
     val last = continueWatching.firstOrNull()

@@ -110,6 +110,8 @@ class LiveTvPlayerViewModel @Inject constructor(
     fun noteLeaving(name: String, logo: String?) {
         if (session.guide.value.isPreview) return
         channelFor(name, logo, session.guide.value)?.let(session::noteLeft)
+        // Left with Back: the app doesn't open on it again.
+        viewModelScope.launch { runCatching { liveTvDataStore.setResumeChannel(null) } }
     }
 
     /** RCTV (Networks): a channel is being switched to inside the player. */
@@ -122,6 +124,8 @@ class LiveTvPlayerViewModel @Inject constructor(
         if (session.guide.value.isPreview) return
         viewModelScope.launch {
             runCatching { liveTvDataStore.noteRecentChannel(channel.id) }
+            // RCTV: the app left on it (Home, the TV off) opens on it again.
+            runCatching { liveTvDataStore.setResumeChannel(channel.id) }
         }
     }
 

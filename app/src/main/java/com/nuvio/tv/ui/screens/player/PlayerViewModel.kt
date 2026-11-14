@@ -318,6 +318,11 @@ class PlayerViewModel @Inject constructor(
         controller.resumeForLifecycle()
     }
 
+    /** RCTV: a live channel plays again after the app was in the background (not left paused). */
+    fun clearLifecyclePause() {
+        controller.userPausedManually = false
+    }
+
     fun startInitialPlaybackIfNeeded() {
         controller.startInitialPlaybackIfNeeded()
     }

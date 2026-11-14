@@ -2,6 +2,7 @@ package com.nuvio.tv.data.local
 
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.nuvio.tv.core.profile.ProfileManager
@@ -147,6 +148,36 @@ class LiveTvDataStore @Inject constructor(
     val recentChannelIds: StateFlow<List<String>> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs -> parseRecentChannels(prefs[recentChannelsKey]) }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** RCTV: the channel playing when the app was left (it plays again when the app opens), per profile. */
+    private val resumeChannelKey = stringPreferencesKey("live_tv_resume_channel_id")
+    private val resumeAtKey = longPreferencesKey("live_tv_resume_at")
+
+    /** The channel playing now ([channelId]), or none (null: the player was left with Back). */
+    suspend fun setResumeChannel(channelId: String?) {
+        store().edit { prefs ->
+            if (channelId.isNullOrBlank()) {
+                prefs.remove(resumeChannelKey)
+                prefs.remove(resumeAtKey)
+            } else {
+                prefs[resumeChannelKey] = channelId
+                prefs[resumeAtKey] = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /** The channel the app was left playing within [maxAgeMs], once (it's forgotten here). */
+    suspend fun takeResumeChannel(maxAgeMs: Long): String? {
+        var found: String? = null
+        store().edit { prefs ->
+            val id = prefs[resumeChannelKey]
+            val at = prefs[resumeAtKey] ?: 0L
+            prefs.remove(resumeChannelKey)
+            prefs.remove(resumeAtKey)
+            if (!id.isNullOrBlank() && System.currentTimeMillis() - at in 0..maxAgeMs) found = id
+        }
+        return found
+    }
 
     /** A channel was watched: it goes first in the recent channels (once). */
     suspend fun noteRecentChannel(channelId: String) {

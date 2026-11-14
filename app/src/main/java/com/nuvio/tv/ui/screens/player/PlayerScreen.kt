@@ -551,6 +551,10 @@ fun PlayerScreen(
         }
     }
 
+    // RCTV (owner): back in the app on a live channel, it plays again (live, not paused).
+    val liveChannelNow by rememberUpdatedState(playingLiveChannel)
+    val retuneLive by rememberUpdatedState(switchLiveChannel)
+    val wentToBackground = remember { booleanArrayOf(false) }
     // Handle lifecycle events
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -558,10 +562,18 @@ fun PlayerScreen(
                 Lifecycle.Event.ON_PAUSE -> {
                     viewModel.pauseForLifecycle()
                 }
+                Lifecycle.Event.ON_STOP -> wentToBackground[0] = true
                 Lifecycle.Event.ON_RESUME -> {
                     // Re-create the MediaSession so media controls work in foreground.
                     // Don't auto-resume playback — let the user press play.
                     viewModel.resumeForLifecycle()
+                    if (wentToBackground[0] && isLiveTvChannel) {
+                        liveChannelNow?.let { channel ->
+                            viewModel.clearLifecyclePause()
+                            retuneLive(channel)
+                        }
+                    }
+                    wentToBackground[0] = false
                 }
                 else -> {}
             }

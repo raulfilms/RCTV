@@ -161,6 +161,22 @@ class MainHomeViewModel @Inject constructor(
     }
 
     /** A channel ready to play (some providers hand out its address only when asked). */
+    /**
+     * RCTV (owner): the channel the app was left playing (the Home button, the TV turned off), to
+     * play again as the app opens: once per app start, within [RESUME_MAX_AGE_MS], when the Guide
+     * still has it. Nothing is kept running for it while the app is closed.
+     */
+    suspend fun resumeChannel(): LiveTvChannel? {
+        if (resumeAsked) return null
+        resumeAsked = true
+        val id = runCatching { liveTvDataStore.takeResumeChannel(RESUME_MAX_AGE_MS) }.getOrNull() ?: return null
+        val guide = kotlinx.coroutines.withTimeoutOrNull(RESUME_GUIDE_WAIT_MS) {
+            guideLoader.guide.first { it != null && !it.isPreview && it.channels.isNotEmpty() }
+        } ?: return null
+        val channel = guide.channels.firstOrNull { it.id == id } ?: return null
+        return playable(channel)
+    }
+
     suspend fun playable(channel: LiveTvChannel): LiveTvChannel {
         val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
         // The player's Networks row: the Guide's channels.
@@ -249,6 +265,11 @@ class MainHomeViewModel @Inject constructor(
     }
 
     private companion object {
+        /** Asked once per app start (not every time Home shows). */
+        @Volatile var resumeAsked = false
+        const val RESUME_MAX_AGE_MS = 12L * 60 * 60 * 1000
+        const val RESUME_GUIDE_WAIT_MS = 10_000L
+
         const val MINUTE_MS = 60_000L
         const val ROW_SIZE = 20
         const val MAX_GAMES = 8
