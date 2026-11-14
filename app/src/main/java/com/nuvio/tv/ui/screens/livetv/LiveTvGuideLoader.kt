@@ -159,6 +159,12 @@ class LiveTvGuideLoader @Inject constructor(
             if (!force) {
                 if (running) return
                 if (current != null && current.isUsable() && !current.isStale()) return
+                // RCTV: an old guide isn't read again while a video plays (a big guide takes a TV
+                // box's processor and memory for a while, and the picture could stutter): it's
+                // refreshed the next time it's asked for after that; the one loaded keeps showing.
+                if (current != null && current.isUsable() &&
+                    com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value
+                ) return
             }
             loadJob?.cancel()
             loadKey = key
@@ -720,8 +726,13 @@ class LiveTvGuideLoader @Inject constructor(
         /** Programs kept per load: from 2 hours ago to 36 hours ahead. */
         private const val EPG_WINDOW_PAST_MS = 2L * 60 * 60 * 1000
         private const val EPG_WINDOW_AHEAD_MS = 36L * 60 * 60 * 1000
-        /** A guide this old is loaded again in the background (the one loaded still shows). */
-        private const val REFRESH_AFTER_MS = 2L * 60 * 60 * 1000
+        /**
+         * A guide this old is loaded again in the background (the one loaded still shows). RCTV:
+         * every 6 hours (was 2): the provider's guide is huge and reading it again often slowed
+         * the TV; its programs reach 36 hours ahead, so 30 are always there, and the day's event
+         * channels (named for their games) are still read again during the day.
+         */
+        private const val REFRESH_AFTER_MS = 6L * 60 * 60 * 1000
         /** How long after the app starts the guide starts loading (Home first). */
         private const val PREWARM_DELAY_MS = 1_500L
         /** The guide kept on the device (in the app's cache, so the system can clear it). */
