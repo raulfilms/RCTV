@@ -76,7 +76,10 @@ class RctvManagedServices @Inject constructor(
         services.torbox?.let { values.put("torbox", it) }
         services.premiumize?.let { values.put("premiumize", it) }
         services.addons.forEach { (name, url) -> values.put(name, url) }
-        if (services.addonList.isNotEmpty()) values.put("addon_list", org.json.JSONArray(services.addonList))
+        if (services.addonList.isNotEmpty()) {
+            values.put("addon_list", org.json.JSONArray(services.addonList))
+            values.put("addon_roles", org.json.JSONArray(services.addonList.map { services.addonRoles[it].orEmpty() }))
+        }
         services.seekr?.let { values.put("seekr", it) }
         json.put("services", values)
         services.iptv?.let { iptv ->

@@ -23,8 +23,9 @@ import javax.inject.Singleton
  * AIOStreams...; LatinoDebrid, Addon LATAM) are on the profile watching, first and in the website's
  * order; the TV's own addons stay after them. The website wins: when it changes an address, the old
  * one goes; the same addon installed on the TV at another address is replaced. Addresses carry keys:
- * never logged. RCTV: the website's LatinoDebrid and Addon LATAM are those servers to the app, whatever
- * their addons call themselves (else their links weren't told apart and none was used).
+ * never logged. RCTV: the website says which server each addon is (AIO Stream Main, Torrentio
+ * Real-Debrid, LatinoDebrid, Addon LATAM...), and the app reads, ranks and asks it as that server,
+ * whatever the addon calls itself (else its links weren't told apart, and some weren't used).
  */
 @Singleton
 class RctvManagedAddons @Inject constructor(
@@ -40,13 +41,15 @@ class RctvManagedAddons @Inject constructor(
     /** Keeps the profile watching up to date while the app is open (run it from the screen's lifecycle). */
     suspend fun run() {
         combine(
-            managed.services.map { it.managedAddonUrls to it.addons }.distinctUntilChanged(),
+            // Only the addons' part (a new IPTV login or debrid key doesn't install them again).
+            managed.services.map { it.copy(realDebrid = null, torbox = null, premiumize = null, iptv = null, seekr = null) }
+                .distinctUntilChanged(),
             profileManager.activeProfileId
-        ) { (urls, spanish), profileId -> Triple(urls, spanish, profileId) }
-            .collectLatest { (urls, spanish, profileId) ->
+        ) { services, profileId -> services to profileId }
+            .collectLatest { (services, profileId) ->
                 try {
-                    applyRoles(spanish)
-                    apply(profileId, urls)
+                    applyRoles(services)
+                    apply(profileId, services.managedAddonUrls)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -80,15 +83,28 @@ class RctvManagedAddons @Inject constructor(
         prefs.edit().putStringSet(key, urls.toSet()).apply()
     }
 
-    /** The website's Spanish servers, by its service ("latinodebrid", "addon_latam"): the website wins. */
-    private fun applyRoles(spanish: Map<String, String>) {
-        spanish.forEach { (service, url) ->
-            val role = when (service) {
-                "addon_latam" -> AddonRole.LATAM
-                "latinodebrid" -> AddonRole.LATINODEBRID
-                else -> null
-            } ?: return@forEach
-            if (!AddonRoles.sameAddon(addonRoles.urlOf(role), url)) addonRoles.set(role, url)
+    /**
+     * The server each website addon is: its list's roles, and its LatinoDebrid and Addon LATAM
+     * services. The website wins over what the phone's QR page set; an addon the website says is
+     * another server (or none: "other") loses the role it had.
+     */
+    private fun applyRoles(services: RctvServices) {
+        val wanted = LinkedHashMap<AddonRole, String>()
+        val saidNone = ArrayList<String>()
+        services.addonRoles.forEach { (url, key) ->
+            val role = AddonRole.ofKey(key)
+            if (role != null) wanted[role] = url else if (key == OTHER) saidNone += url
+        }
+        services.addons["latinodebrid"]?.let { wanted[AddonRole.LATINODEBRID] = it }
+        services.addons["addon_latam"]?.let { wanted[AddonRole.LATAM] = it }
+        val told = wanted.values + saidNone
+        AddonRole.entries.forEach { role ->
+            val current = addonRoles.urlOf(role)
+            val url = wanted[role]
+            when {
+                url != null -> if (!AddonRoles.sameAddon(current, url)) addonRoles.set(role, url)
+                current != null && told.any { AddonRoles.sameAddon(it, current) } -> addonRoles.clear(role)
+            }
         }
     }
 
@@ -96,5 +112,6 @@ class RctvManagedAddons @Inject constructor(
 
     private companion object {
         const val PREFS = "rctv_control_addons"
+        const val OTHER = "other"
     }
 }

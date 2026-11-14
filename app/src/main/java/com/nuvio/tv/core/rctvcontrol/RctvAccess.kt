@@ -59,6 +59,11 @@ data class RctvServices(
     val iptv: RctvIptv? = null,
     /** The account's addons (Torrentio, AIOStreams...), in the website's order. They carry keys. */
     val addonList: List<String> = emptyList(),
+    /**
+     * RCTV: the server each of [addonList] is, by its link (the app's AddonRole keys: "aio_main",
+     * "torrentio_rd", "latam", "other"...), as the website says; a link it doesn't say isn't here.
+     */
+    val addonRoles: Map<String, String> = emptyMap(),
     /** RCTV: the account's Seekr key (seekr.tv: the timeline's pictures while seeking). Never logged. */
     val seekr: String? = null
 ) {
@@ -200,14 +205,17 @@ object RctvControlParser {
                 services?.optStringOrNull(name)?.trim()?.takeIf(::isHttps)?.let { put(name, it) }
             }
         }
-        // The account's addons, in order (HTTPS only).
-        val addonList = services?.optJSONArray("addon_list")?.let { list ->
+        // The account's addons, in order (HTTPS only), and (RCTV) the server each one is, in the same order.
+        val roles = services?.optJSONArray("addon_roles")
+        val listed = services?.optJSONArray("addon_list")?.let { list ->
             (0 until list.length()).mapNotNull { i ->
                 list.optString(i, "").trim().takeIf { url ->
                     url.startsWith("https://") && url.length <= MAX_ADDON_URL && url.none(Char::isWhitespace)
-                }
-            }.distinct().take(MAX_ADDONS)
+                }?.let { url -> url to roles?.optString(i, "")?.trim()?.takeIf { ROLE.matches(it) } }
+            }.distinctBy { it.first }.take(MAX_ADDONS)
         }.orEmpty()
+        val addonList = listed.map { it.first }
+        val addonRoles = listed.mapNotNull { (url, role) -> role?.let { url to it } }.toMap()
         val iptv = json.optJSONObject("iptv")?.let { x ->
             val server = x.optStringOrNull("server")?.trim()?.trimEnd('/')
             val username = x.optStringOrNull("username")
@@ -228,6 +236,7 @@ object RctvControlParser {
             addons = addons,
             iptv = iptv,
             addonList = addonList,
+            addonRoles = addonRoles,
             // One word: it goes in a header to Seekr only.
             seekr = services?.optStringOrNull("seekr")?.trim()?.takeIf { SEEKR_KEY.matches(it) }
         )
@@ -262,6 +271,7 @@ object RctvControlParser {
     /** The website's addon services. */
     val ADDON_SERVICES = listOf("latinodebrid", "addon_latam")
     const val MAX_ADDONS = 30
+    private val ROLE = Regex("[a-z_]{2,20}")
     private const val MAX_ADDON_URL = 4000
     private val COLOR = Regex("^#[0-9A-Fa-f]{6}$")
 

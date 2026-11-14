@@ -97,6 +97,22 @@ class RctvAccessTest {
     }
 
     @Test
+    fun `each website addon's server comes with it, by its link`() {
+        val services = RctvControlParser.deviceConfig(
+            """{"plan":"light","services":{
+               "addon_list":["https://aio.example/a/manifest.json","http://plain.example/manifest.json",
+               "https://torrentio.example/torbox=SECRETKEY","https://other.example/x"],
+               "addon_roles":["aio_dubbed","torrentio_rd","torrentio_tb",""]}}"""
+        )!!.services
+        // In the same order as the links (the dropped http link takes its role with it); "" says nothing.
+        assertEquals(
+            mapOf("https://aio.example/a/manifest.json" to "aio_dubbed", "https://torrentio.example/torbox=SECRETKEY" to "torrentio_tb"),
+            services.addonRoles
+        )
+        assertEquals(false, services.toString().contains("SECRETKEY"))
+    }
+
+    @Test
     fun `the account's addon list keeps the website's order`() {
         val services = RctvControlParser.deviceConfig(
             """{"plan":"light","services":{"addon_latam":"https://latam.example/manifest.json",
