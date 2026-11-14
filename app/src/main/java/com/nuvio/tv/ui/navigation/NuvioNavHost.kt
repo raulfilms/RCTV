@@ -309,14 +309,20 @@ private fun PlaybackNavHost(
         }
     ) {
         composable(Screen.Home.route) { backStackEntry ->
-            HomeRouteContent(
-                navController = navController,
-                viewModel = androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
-            )
+            val homeViewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(backStackEntry)
+            // RCTV (owner): the whole app's Home (Live TV, Sports, movies and series); Movies & TV
+            // keeps the Home of movies and series. Light (no Live TV or Sports) and Kids keep that one.
+            val light = com.nuvio.tv.ui.components.LocalRctvPlan.current == com.nuvio.tv.core.rctvcontrol.RctvPlan.LIGHT
+            val kids = com.nuvio.tv.ui.components.LocalKidsProfile.current
+            if (light || kids) {
+                HomeRouteContent(navController = navController, viewModel = homeViewModel)
+            } else {
+                MainHomeRouteContent(navController = navController, homeViewModel = homeViewModel)
+            }
         }
 
-        // "Movies & TV" in the menu: an exact copy of Home. It uses Home's own ViewModel, so the
-        // two pages always show the same rows and nothing loads twice.
+        // "Movies & TV" in the menu: the Home of movies and series. It uses Home's own ViewModel
+        // (the new Home reads its Continue Watching), so nothing loads twice.
         composable(Screen.MoviesTv.route) { backStackEntry ->
             val homeBackStackEntry = androidx.compose.runtime.remember(backStackEntry) {
                 try { navController.getBackStackEntry(Screen.Home.route) } catch (_: Exception) { null }
@@ -2081,6 +2087,96 @@ private fun PlaybackNavHost(
  * The Home page (Apple TV layout and its navigation). Shown by the "Home" menu item and, with the
  * very same content, by "Movies & TV".
  */
+/** RCTV (owner): the new Home and where each of its cards goes. */
+@Composable
+private fun MainHomeRouteContent(navController: NavHostController, homeViewModel: HomeViewModel) {
+    val playbackAvailability = LocalPlaybackAvailability.current
+    val context = LocalContext.current
+    val homeState by homeViewModel.uiState.collectAsState()
+    val openGame = rememberGameOpener(navController)
+    com.nuvio.tv.ui.screens.mainhome.MainHomeScreen(
+        continueWatching = homeState.continueWatchingItems,
+        onOpenTitle = { meta ->
+            navController.navigate(Screen.Detail.createRoute(itemId = meta.id, itemType = meta.apiType))
+        },
+        onContinueWatching = onContinue@{ item ->
+            if (!playbackAvailability.canStream(item)) {
+                Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                return@onContinue
+            }
+            val route = when (item) {
+                is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
+                    videoId = item.progress.videoId,
+                    contentType = item.progress.contentType,
+                    title = item.progress.name,
+                    poster = item.progress.poster,
+                    backdrop = item.progress.backdrop,
+                    logo = item.progress.logo,
+                    season = item.progress.season,
+                    episode = item.progress.episode,
+                    episodeName = item.progress.episodeTitle,
+                    genres = null,
+                    year = null,
+                    contentId = item.progress.contentId,
+                    contentName = item.progress.name,
+                    runtime = null,
+                    returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
+                    returnToHomeOnBack = true,
+                    contentLanguage = item.contentLanguage
+                )
+                is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
+                    videoId = item.info.videoId,
+                    contentType = item.info.contentType,
+                    title = item.info.name,
+                    poster = item.info.poster,
+                    backdrop = item.info.backdrop,
+                    logo = item.info.logo,
+                    season = item.info.season,
+                    episode = item.info.episode,
+                    episodeName = item.info.episodeTitle,
+                    genres = null,
+                    year = null,
+                    contentId = item.info.contentId,
+                    contentName = item.info.name,
+                    runtime = null,
+                    returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
+                    returnToHomeOnBack = true,
+                    contentLanguage = item.info.contentLanguage
+                )
+            }
+            navController.navigate(route)
+        },
+        onOpenGame = openGame,
+        onPlayChannel = { channel ->
+            navController.navigate(
+                Screen.Player.createRoute(
+                    streamUrl = channel.streamUrl,
+                    title = channel.name,
+                    contentType = "live",
+                    contentName = channel.name,
+                    logo = channel.logoUrl
+                )
+            )
+        },
+        onOpenChannelProfile = { channel -> navController.navigate(Screen.ChannelProfile.createRoute(channel.id)) },
+        onBannerAction = { action -> navController.navigate(rctvBannerRoute(action)) },
+        onOpenCollection = { id -> navController.navigate(Screen.RctvCollection.createRoute(id)) },
+        onCategory = { category ->
+            val route = when (category) {
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.LIVE_TV,
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.NEWS -> Screen.LiveTv.route
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.SPORTS -> Screen.Sports.route
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.SHOWS,
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.MOVIES -> Screen.MoviesTv.route
+                // TMDB's Documentary and Family genres.
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.DOCUMENTARIES -> Screen.DiscoverGenre.createRoute("all", 99)
+                com.nuvio.tv.ui.screens.mainhome.MainHomeCategory.KIDS -> Screen.DiscoverGenre.createRoute("all", 10751)
+            }
+            navController.navigate(route) { launchSingleTop = true }
+        }
+    )
+}
+
 @Composable
 private fun HomeRouteContent(
     navController: NavHostController,

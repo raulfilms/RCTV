@@ -4557,4 +4557,24 @@
     <!-- RCTV: the Sports page's switch for every score in the app. -->
     <string name="sports_hide_scores">Hide scores</string>
     <string name="sports_show_scores">Show scores</string>
+    <!-- RCTV: the new Home (the whole app's). -->
+    <string name="main_home_live_now">Live Now</string>
+    <string name="main_home_continue_watching">Continue Watching</string>
+    <string name="main_home_recommended">Recommended for You</string>
+    <string name="main_home_categories">Browse by Category</string>
+    <string name="main_home_trending">Trending on RCTV</string>
+    <string name="main_home_recently_added">Recently Added</string>
+    <string name="main_home_favorite_networks">Favorite Networks</string>
+    <string name="main_home_popular">Popular on RCTV</string>
+    <string name="main_home_featured">Featured Collection</string>
+    <string name="main_home_watch_live">Watch Live</string>
+    <string name="main_home_more_info">More Info</string>
+    <string name="main_home_live">LIVE</string>
+    <string name="main_home_cat_live_tv">Live TV</string>
+    <string name="main_home_cat_shows">Shows</string>
+    <string name="main_home_cat_news">News</string>
+    <string name="main_home_cat_sports">Sports</string>
+    <string name="main_home_cat_movies">Movies</string>
+    <string name="main_home_cat_documentaries">Documentaries</string>
+    <string name="main_home_cat_kids">Kids</string>
 </resources>

@@ -1857,4 +1857,24 @@
     <!-- RCTV: the Sports page's switch for every score in the app. -->
     <string name="sports_hide_scores">Ocultar resultados</string>
     <string name="sports_show_scores">Mostrar resultados</string>
+    <!-- RCTV: the new Home (the whole app's). -->
+    <string name="main_home_live_now">En vivo ahora</string>
+    <string name="main_home_continue_watching">Seguir viendo</string>
+    <string name="main_home_recommended">Recomendado para ti</string>
+    <string name="main_home_categories">Explorar por categoría</string>
+    <string name="main_home_trending">Tendencias en RCTV</string>
+    <string name="main_home_recently_added">Agregado recientemente</string>
+    <string name="main_home_favorite_networks">Canales favoritos</string>
+    <string name="main_home_popular">Popular en RCTV</string>
+    <string name="main_home_featured">Colección destacada</string>
+    <string name="main_home_watch_live">Ver en vivo</string>
+    <string name="main_home_more_info">Más información</string>
+    <string name="main_home_live">EN VIVO</string>
+    <string name="main_home_cat_live_tv">TV en vivo</string>
+    <string name="main_home_cat_shows">Series</string>
+    <string name="main_home_cat_news">Noticias</string>
+    <string name="main_home_cat_sports">Deportes</string>
+    <string name="main_home_cat_movies">Películas</string>
+    <string name="main_home_cat_documentaries">Documentales</string>
+    <string name="main_home_cat_kids">Niños</string>
 </resources>

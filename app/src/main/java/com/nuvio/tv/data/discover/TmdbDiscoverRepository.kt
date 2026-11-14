@@ -307,6 +307,46 @@ class TmdbDiscoverRepository @Inject constructor(
         )
     }
 
+    /**
+     * RCTV Home ("Recommended for You"): TMDB's titles like [contentId] (an IMDb "tt…" or a "tmdb:…"
+     * id), as cards; empty when TMDB doesn't know it.
+     */
+    suspend fun recommendationsFor(contentId: String, isSeries: Boolean, language: String): List<MetaPreview> =
+        withContext(Dispatchers.IO) {
+            val id = contentId.substringBefore(':').let { if (it == "tmdb") contentId.removePrefix("tmdb:").substringBefore(':') else it }
+            val tmdbId = when {
+                contentId.startsWith("tmdb:") -> id.toIntOrNull()
+                id.startsWith("tt") -> runCatching {
+                    tmdbApi.findByExternalId(id, apiKey).body()?.let { found ->
+                        (if (isSeries) found.tvResults else found.movieResults)?.firstOrNull()?.id
+                    }
+                }.getOrNull()
+                else -> null
+            } ?: return@withContext emptyList()
+            val mediaType = if (isSeries) TmdbCollectionMediaType.TV else TmdbCollectionMediaType.MOVIE
+            val response = runCatching {
+                if (isSeries) tmdbApi.getTvRecommendations(tmdbId, apiKey, language)
+                else tmdbApi.getMovieRecommendations(tmdbId, apiKey, language)
+            }.getOrNull() ?: return@withContext emptyList()
+            val names = genreList(mediaType, language).toMap()
+            response.body()?.results.orEmpty().mapNotNull { r ->
+                TmdbDiscoverResult(
+                    id = r.id,
+                    title = r.title,
+                    name = r.name,
+                    originalTitle = r.originalTitle,
+                    originalName = r.originalName,
+                    posterPath = r.posterPath,
+                    backdropPath = r.backdropPath,
+                    overview = r.overview,
+                    releaseDate = r.releaseDate,
+                    firstAirDate = r.firstAirDate,
+                    voteAverage = r.voteAverage,
+                    voteCount = r.voteCount
+                ).toPreview(mediaType, names)
+            }
+        }
+
     private fun imageUrl(path: String?, size: String): String? =
         path?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/$size$it" }
 

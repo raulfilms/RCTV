@@ -467,7 +467,8 @@ open class MainActivity : ComponentActivity() {
                 com.nuvio.tv.ui.components.LocalRowLayout provides rowLayout,
                 com.nuvio.tv.ui.components.LocalRctvPlan provides rctvPlan,
                 com.nuvio.tv.ui.components.LocalKidsProfile provides kidsProfileActive,
-                com.nuvio.tv.ui.components.LocalRctvHomeBanners provides homeBannersNow,
+                // Movies & TV's banners (the new Home's, "main_...", are its own).
+                com.nuvio.tv.ui.components.LocalRctvHomeBanners provides homeBannersNow.filterNot { it.afterRow.startsWith("main_") },
                 com.nuvio.tv.ui.components.LocalRctvAccess provides rctvAccess
             ) {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
