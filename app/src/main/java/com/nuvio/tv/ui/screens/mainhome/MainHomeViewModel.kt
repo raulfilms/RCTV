@@ -16,6 +16,7 @@ import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.SportsEvent
 import com.nuvio.tv.domain.model.TmdbCollectionMediaType
+import com.nuvio.tv.ui.screens.livetv.GuideBrowse
 import com.nuvio.tv.ui.screens.livetv.LiveGuideSnapshot
 import com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader
 import com.nuvio.tv.ui.screens.search.SportsSearchIndex
@@ -50,6 +51,10 @@ sealed class LiveNowCard {
     }
 }
 
+/** RCTV (owner, like YouTube TV's Home): a Guide category's channels and what's on each right now. */
+@Immutable
+data class LiveCategoryRow(val category: GuideBrowse, val cards: List<LiveNowCard.Channel>)
+
 /** One slide of the banner at the top: something on now, a title, or a website banner. */
 @Immutable
 sealed class HeroSlide {
@@ -76,6 +81,8 @@ data class MainHomeUiState(
     val trending: List<MetaPreview> = emptyList(),
     val recentlyAdded: List<MetaPreview> = emptyList(),
     val favoriteNetworks: List<LiveNowCard.Channel> = emptyList(),
+    /** RCTV: a row per Guide category with its channels live now (Entertainment, News, Sports...). */
+    val liveCategories: List<LiveCategoryRow> = emptyList(),
     val popular: List<MetaPreview> = emptyList(),
     val featuredCollection: RctvCollection? = null,
     /** The website's banners for this Home, by the row they go after ([MainHomeRows]). */
@@ -246,8 +253,40 @@ class MainHomeViewModel @Inject constructor(
         val liveNow = (liveGames.map { LiveNowCard.Game(it) } + favoriteCards + networks)
             .distinctBy { it.key }
             .take(ROW_SIZE)
+        val liveCategories = usable?.let { snapshot ->
+            liveCategoryRows(snapshot) { channel -> cardOf(channel) }
+        }.orEmpty()
         _uiState.update { state ->
-            state.copy(liveNow = liveNow, favoriteNetworks = favoriteCards.take(ROW_SIZE)).withHero(null, null)
+            state.copy(
+                liveNow = liveNow,
+                favoriteNetworks = favoriteCards.take(ROW_SIZE),
+                liveCategories = liveCategories
+            ).withHero(null, null)
+        }
+    }
+
+    /**
+     * RCTV (owner, like YouTube TV's Home): each Guide category's channels, the ones with something
+     * on now first (in the Guide's order), at most [ROW_SIZE] a row. The owner's categories with his
+     * list; another provider's guide, the usual ones. A Kids profile's guide has only its own.
+     */
+    private fun liveCategoryRows(
+        guide: LiveGuideSnapshot,
+        cardOf: (LiveTvChannel) -> LiveNowCard.Channel
+    ): List<LiveCategoryRow> {
+        val categories = if (guide.curated) {
+            GuideBrowse.CURATED_CATEGORIES.filter { it != GuideBrowse.INTERNATIONAL }
+        } else {
+            OTHER_PROVIDER_CATEGORIES
+        }
+        return categories.mapNotNull { category ->
+            val cards = guide.channels.asSequence()
+                .filter { category in guide.channelCategories[it.id].orEmpty() }
+                .map(cardOf)
+                .toList()
+                .sortedBy { if (it.program != null) 0 else 1 }
+                .take(ROW_SIZE)
+            cards.takeIf { it.isNotEmpty() }?.let { LiveCategoryRow(category, it) }
         }
     }
 
@@ -278,6 +317,10 @@ class MainHomeViewModel @Inject constructor(
 
         const val MINUTE_MS = 60_000L
         const val ROW_SIZE = 20
+        /** Another provider's guide: its usual categories with a live row each. */
+        val OTHER_PROVIDER_CATEGORIES = listOf(
+            GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.TV_SHOWS, GuideBrowse.MOVIES, GuideBrowse.KIDS, GuideBrowse.LATINO
+        )
         const val MAX_GAMES = 8
         const val TOP_NETWORKS = 5
         const val HERO_SIZE = 8

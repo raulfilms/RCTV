@@ -4606,6 +4606,7 @@
     <string name="main_home_trending">Trending on RCTV</string>
     <string name="main_home_recently_added">Recently Added</string>
     <string name="main_home_favorite_networks">Favorite Networks</string>
+    <string name="main_home_live_category">Live %1$s</string>
     <string name="main_home_popular">Popular on RCTV</string>
     <string name="main_home_featured">Featured Collection</string>
     <string name="main_home_watch_live">Watch Live</string>

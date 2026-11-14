@@ -4096,6 +4096,7 @@
     <string name="main_home_trending">Tendencias en RCTV</string>
     <string name="main_home_recently_added">Agregado recientemente</string>
     <string name="main_home_favorite_networks">Canales favoritos</string>
+    <string name="main_home_live_category">En vivo: %1$s</string>
     <string name="main_home_popular">Popular en RCTV</string>
     <string name="main_home_featured">Colección destacada</string>
     <string name="main_home_watch_live">Ver en vivo</string>

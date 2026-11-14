@@ -221,6 +221,24 @@ fun MainHomeScreen(
                 }
             }
         }
+        // RCTV (owner, like YouTube TV's Home): a row per Guide category with its channels live now.
+        state.liveCategories.forEach { row ->
+            item(key = "live_${row.category.name}") {
+                HomeRow(
+                    stringResource(R.string.main_home_live_category, stringResource(row.category.labelRes)),
+                    row.cards,
+                    { "live_${row.category.name}_${it.channel.id}" }
+                ) { card, modifier ->
+                    LiveCard(
+                        card,
+                        modifier,
+                        onClick = { scope.launch { onPlayChannel(viewModel.playable(card.channel)) } },
+                        onLongClick = { onOpenChannelProfile(card.channel) },
+                        channelLogo = true
+                    )
+                }
+            }
+        }
         titlesRow(MainHomeRows.POPULAR, R.string.main_home_popular, state.popular, state.banners, onOpenTitle, onBannerAction)
         state.featuredCollection?.let { collection ->
             rowWithBanners(MainHomeRows.FEATURED_COLLECTION, state.banners, onBannerAction) {
@@ -483,8 +501,15 @@ private val WideWidth: Dp = 300.dp
 private val WideHeight: Dp = 169.dp
 
 @Composable
-private fun LiveCard(card: LiveNowCard, modifier: Modifier, onClick: () -> Unit) {
-    FocusCard(onClick = onClick, modifier = modifier.width(WideWidth).height(WideHeight)) {
+private fun LiveCard(
+    card: LiveNowCard,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    /** RCTV: the channel's logo in the corner when the card shows the program's picture. */
+    channelLogo: Boolean = false
+) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(WideWidth).height(WideHeight)) {
         when (card) {
             is LiveNowCard.Game -> GameArt(card.event, Modifier.fillMaxSize())
             is LiveNowCard.Channel -> {
@@ -503,6 +528,14 @@ private fun LiveCard(card: LiveNowCard, modifier: Modifier, onClick: () -> Unit)
         }
         BottomShade()
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)) { LiveBadge(false) }
+        if (channelLogo && card is LiveNowCard.Channel && card.program?.imageUrl != null) {
+            AsyncImage(
+                model = card.channel.logoUrl,
+                contentDescription = card.channel.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.align(Alignment.TopStart).padding(10.dp).width(64.dp).height(32.dp)
+            )
+        }
         val (title, line) = when (card) {
             is LiveNowCard.Game -> card.event.name to (card.event.leagueName ?: "")
             is LiveNowCard.Channel -> (card.program?.title ?: card.channel.name) to timeRange(card.program?.startMs, card.program?.endMs)
