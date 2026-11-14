@@ -40,9 +40,10 @@ private val BarEnd = Color(0xFF22D3EE)
  * RCTV, as the app opens: "Creating Your Experience". Home's rows, the Live TV channels and guide
  * and the sports load behind it, so when its bar is full everything opens at once instead of
  * filling in while the person watches. The logo and the background are the activation page's.
+ * RCTV: also "Updating Your Experience…" ([title]) while everything loads again.
  */
 @Composable
-fun RctvExperienceScreen(progress: Float, modifier: Modifier = Modifier) {
+fun RctvExperienceScreen(progress: Float, modifier: Modifier = Modifier, title: String? = null) {
     val shown by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
@@ -65,7 +66,7 @@ fun RctvExperienceScreen(progress: Float, modifier: Modifier = Modifier) {
             )
             Spacer(modifier = Modifier.height(40.dp))
             Text(
-                text = stringResource(R.string.rctv_experience_title),
+                text = title ?: stringResource(R.string.rctv_experience_title),
                 color = Color.White,
                 fontSize = 34.sp,
                 fontWeight = FontWeight.SemiBold,

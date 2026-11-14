@@ -166,6 +166,11 @@ class StartupSyncService @Inject constructor(
     /** Emits after a manual addon refresh, so screens holding catalogs can re-request them. */
     val manualAddonRefreshes: SharedFlow<Unit> = _manualAddonRefreshes.asSharedFlow()
 
+    /** RCTV ("Update Your Experience"): screens holding catalogs ask for them again (addons untouched). */
+    fun requestCatalogRefresh() {
+        _manualAddonRefreshes.tryEmit(Unit)
+    }
+
     fun requestAddonSyncNow() {
         val profileId = profileManager.activeProfileId.value
         Log.d(TAG, "Manual addon sync enqueued for profile $profileId")

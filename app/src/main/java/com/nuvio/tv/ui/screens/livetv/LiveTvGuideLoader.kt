@@ -121,6 +121,8 @@ class LiveTvGuideLoader @Inject constructor(
         }
     }
 
+    private val keepingFresh = java.util.concurrent.atomic.AtomicBoolean(false)
+
     private var loadJob: Job? = null
     private var loadKey: String? = null
 
@@ -143,6 +145,34 @@ class LiveTvGuideLoader @Inject constructor(
                 return@launch
             }
             ensure(sources.filter { it.enabled })
+            keepFresh()
+        }
+    }
+
+    /**
+     * RCTV (owner): the IPTV channels and guide read again on their own every few hours
+     * ([REFRESH_AFTER_MS]: the provider's new event channels and programs), with nothing pressed:
+     * only while the app is on screen and no video plays (reading a big guide takes a TV box's
+     * processor for a while); the one loaded keeps showing meanwhile.
+     */
+    private suspend fun keepFresh() {
+        // Once for the app (the screen that starts it can be made again).
+        if (!keepingFresh.compareAndSet(false, true)) return
+        while (true) {
+            delay(KEEP_FRESH_CHECK_MS)
+            com.nuvio.tv.core.runtime.AppForeground.awaitForeground()
+            if (com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value) continue
+            val current = _guide.value ?: continue
+            if (current.isPreview || !current.isUsable() || !current.isStale()) continue
+            val sources = try {
+                liveTvDataStore.sources.first().filter { it.enabled }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                continue
+            }
+            if (sources.isEmpty() || keyOf(sources) != current.key) continue
+            ensure(sources)
         }
     }
 
@@ -187,6 +217,10 @@ class LiveTvGuideLoader @Inject constructor(
             }
         }
     }
+
+    /** RCTV ("Update Your Experience"): the guide is being loaded right now. */
+    val isReloading: Boolean
+        get() = synchronized(lock) { loadJob?.isActive == true }
 
     /** Forgets the Stalker sessions (the sources were disconnected). */
     fun clearSessions() {
@@ -734,11 +768,12 @@ class LiveTvGuideLoader @Inject constructor(
         private const val EPG_WINDOW_AHEAD_MS = 36L * 60 * 60 * 1000
         /**
          * A guide this old is loaded again in the background (the one loaded still shows). RCTV:
-         * every 6 hours (was 2): the provider's guide is huge and reading it again often slowed
-         * the TV; its programs reach 36 hours ahead, so 30 are always there, and the day's event
-         * channels (named for their games) are still read again during the day.
+         * every 3 hours (owner: the provider's new channels during the day; it was 6, and 2 before
+         * that): never while a video plays (reading the provider's huge guide could slow the TV).
          */
-        private const val REFRESH_AFTER_MS = 6L * 60 * 60 * 1000
+        private const val REFRESH_AFTER_MS = 3L * 60 * 60 * 1000
+        /** How often the app checks whether the guide is due ([keepFresh]). */
+        private const val KEEP_FRESH_CHECK_MS = 10L * 60 * 1000
         /** How long after the app starts the guide starts loading (Home first). */
         private const val PREWARM_DELAY_MS = 1_500L
         /** The guide kept on the device (in the app's cache, so the system can clear it). */

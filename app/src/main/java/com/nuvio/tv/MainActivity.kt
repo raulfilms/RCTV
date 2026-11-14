@@ -364,6 +364,10 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var experiencePreparer: com.nuvio.tv.core.rctvcontrol.RctvExperiencePreparer
 
+    /** RCTV (owner): "Please Update Your Experience" a day after everything last loaded. */
+    @Inject
+    lateinit var experienceUpdater: com.nuvio.tv.core.rctvcontrol.RctvExperienceUpdater
+
     /** RCTV: the profiles of this TV that already went through "Customize your experience". */
     @Inject
     lateinit var rctvCustomize: com.nuvio.tv.core.rctvcontrol.RctvCustomizeStore
@@ -830,7 +834,20 @@ open class MainActivity : ComponentActivity() {
                     // profile selection and the home content
                     // RCTV: while "Creating Your Experience" covers Home, the remote does nothing
                     // (nothing opens unseen behind it).
-                    Box(modifier = Modifier.fillMaxSize().onPreviewKeyEvent { startupCovering }) {
+                    // RCTV: "Updating Your Experience…" too; Back there lets it finish behind.
+                    val updatingProgress by experienceUpdater.progress.collectAsState()
+                    Box(modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+                        if (updatingProgress != null) {
+                            if (event.key == androidx.compose.ui.input.key.Key.Back &&
+                                event.type == androidx.compose.ui.input.key.KeyEventType.KeyUp
+                            ) {
+                                experienceUpdater.hide()
+                            }
+                            true
+                        } else {
+                            startupCovering
+                        }
+                    }) {
 
                     var startupDestination = StartupDestination.Loading
                     val surfaceContentReady = hasSeenAuthQrOnFirstLaunch != null &&
@@ -1363,6 +1380,43 @@ open class MainActivity : ComponentActivity() {
                                 }
                             }
 
+                            // RCTV (owner): a day after everything last loaded, Home asks to update it all.
+                            // (Asked once "Creating Your Experience" is gone: an opening counts as an update.)
+                            var updateDue by remember { mutableStateOf(false) }
+                            LaunchedEffect(startupCovering) {
+                                updateDue = false
+                                if (startupCovering) return@LaunchedEffect
+                                while (true) {
+                                    updateDue = experienceUpdater.isDue()
+                                    delay(UPDATE_CHECK_MS)
+                                }
+                            }
+                            if (updateDue && updatingProgress == null && rctvAnnouncement == null &&
+                                currentRoute == Screen.Home.route && !startupCovering
+                            ) {
+                                com.nuvio.tv.ui.components.NuvioDialog(
+                                    onDismiss = {
+                                        experienceUpdater.later()
+                                        updateDue = false
+                                    },
+                                    title = stringResource(R.string.rctv_update_title),
+                                    subtitle = stringResource(R.string.rctv_update_body)
+                                ) {
+                                    androidx.tv.material3.Button(onClick = {
+                                        updateDue = false
+                                        experienceUpdater.update()
+                                    }) {
+                                        androidx.tv.material3.Text(stringResource(R.string.rctv_update_now))
+                                    }
+                                    androidx.tv.material3.Button(onClick = {
+                                        experienceUpdater.later()
+                                        updateDue = false
+                                    }) {
+                                        androidx.tv.material3.Text(stringResource(R.string.rctv_update_later))
+                                    }
+                                }
+                            }
+
                             val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
                             autoNextOverlay?.let { ov ->
                                 com.nuvio.tv.ui.screens.player.LoadingOverlay(
@@ -1424,6 +1478,8 @@ open class MainActivity : ComponentActivity() {
                             experiencePreparer.finish()
                         }
                         startupLoadingState.progress = 1f
+                        // RCTV: everything just loaded: "Please Update Your Experience" a day from now.
+                        experienceUpdater.noteUpdated()
                         // The bar fills before it goes.
                         delay(EXPERIENCE_FILL_MS)
                         startupLoadingState.experienceReady = true
@@ -1454,6 +1510,12 @@ open class MainActivity : ComponentActivity() {
                         com.nuvio.tv.ui.components.RctvExperienceScreen(
                             progress = startupLoadingState.progress,
                             modifier = Modifier.graphicsLayer { alpha = splashAlpha }
+                        )
+                    }
+                    updatingProgress?.let { updating ->
+                        com.nuvio.tv.ui.components.RctvExperienceScreen(
+                            progress = updating,
+                            title = stringResource(R.string.rctv_updating_title)
                         )
                     }
                     }
@@ -2716,3 +2778,5 @@ private const val EXPERIENCE_HOME_EXPECTED_MS = 8_000L
 private const val EXPERIENCE_TICK_MS = 150L
 /** How long the full bar shows before the screen goes. */
 private const val EXPERIENCE_FILL_MS = 500L
+/** RCTV: how often Home checks whether to ask "Please Update Your Experience". */
+private const val UPDATE_CHECK_MS = 60_000L

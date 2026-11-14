@@ -4478,6 +4478,11 @@
     <string name="rctv_activation_title">Activate RCTV</string>
     <string name="rctv_activation_subtitle">STREAM TV, MOVIES &amp; MORE</string>
     <string name="rctv_experience_title">Creating Your Experience…</string>
+    <string name="rctv_update_title">Please Update Your Experience</string>
+    <string name="rctv_update_body">Get the latest channels, shows, movies and games. It only takes a moment.</string>
+    <string name="rctv_update_now">Update</string>
+    <string name="rctv_update_later">Later</string>
+    <string name="rctv_updating_title">Updating Your Experience…</string>
     <!-- RCTV: "Customize your experience" (Full plan, the first time a profile opens) -->
     <string name="rctv_customize_step_leagues">Sports Leagues</string>
     <string name="rctv_customize_step_teams">Teams</string>

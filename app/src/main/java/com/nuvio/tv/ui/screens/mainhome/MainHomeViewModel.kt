@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -96,7 +97,8 @@ class MainHomeViewModel @Inject constructor(
     private val tmdb: TmdbDiscoverRepository,
     private val publicFiles: RctvPublicFiles,
     private val homeBanners: RctvHomeBanners,
-    private val playerSession: LiveTvPlayerSession
+    private val playerSession: LiveTvPlayerSession,
+    private val experienceUpdater: com.nuvio.tv.core.rctvcontrol.RctvExperienceUpdater
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainHomeUiState())
@@ -141,6 +143,10 @@ class MainHomeViewModel @Inject constructor(
                 }
         }
         sportsIndex.ensure()
+        // RCTV ("Update Your Experience"): TMDB's rows asked again.
+        viewModelScope.launch {
+            experienceUpdater.updates.drop(1).collect { loadTitles() }
+        }
     }
 
     /** "Recommended for You": like the title watched last ([contentId]); TMDB's best rated when there's none. */
@@ -160,7 +166,6 @@ class MainHomeViewModel @Inject constructor(
         }
     }
 
-    /** A channel ready to play (some providers hand out its address only when asked). */
     /**
      * RCTV (owner): the channel the app was left playing (the Home button, the TV turned off), to
      * play again as the app opens: once per app start, within [RESUME_MAX_AGE_MS], when the Guide
@@ -177,6 +182,7 @@ class MainHomeViewModel @Inject constructor(
         return playable(channel)
     }
 
+    /** A channel ready to play (some providers hand out its address only when asked). */
     suspend fun playable(channel: LiveTvChannel): LiveTvChannel {
         val sources = runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
         // The player's Networks row: the Guide's channels.

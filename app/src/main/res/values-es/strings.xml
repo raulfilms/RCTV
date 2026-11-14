@@ -1778,6 +1778,11 @@
     <string name="rctv_activation_title">Activa RCTV</string>
     <string name="rctv_activation_subtitle">TV, PELÍCULAS Y MÁS</string>
     <string name="rctv_experience_title">Creando tu experiencia…</string>
+    <string name="rctv_update_title">Actualiza tu experiencia</string>
+    <string name="rctv_update_body">Trae los canales, programas, películas y juegos más recientes. Toma solo un momento.</string>
+    <string name="rctv_update_now">Actualizar</string>
+    <string name="rctv_update_later">Más tarde</string>
+    <string name="rctv_updating_title">Actualizando tu experiencia…</string>
     <!-- RCTV: "Customize your experience" (Full plan, the first time a profile opens) -->
     <string name="rctv_customize_step_leagues">Ligas</string>
     <string name="rctv_customize_step_teams">Equipos</string>

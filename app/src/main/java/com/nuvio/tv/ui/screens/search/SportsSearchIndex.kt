@@ -93,6 +93,14 @@ class SportsSearchIndex @Inject constructor(
         }
     }
 
+    /** RCTV ("Update Your Experience"): the games loaded again now (unless they're loading). */
+    fun refreshGames() {
+        synchronized(lock) {
+            if (gamesJob?.isActive != true) gamesLoadedAtMs = 0L
+        }
+        ensure()
+    }
+
     // ------------------------------------------------------------------ Leagues
 
     /** Every league the app follows, under the name it shows ("NBA"), with ESPN's logo once known. */

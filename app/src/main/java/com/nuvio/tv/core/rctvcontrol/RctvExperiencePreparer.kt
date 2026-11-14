@@ -43,9 +43,11 @@ class RctvExperiencePreparer @Inject constructor(
 ) {
     /**
      * Starts the loads and returns when they're all done, telling [onProgress] how far they are
-     * (0 to 1) as they go. Cancelling it stops only the waiting: the loads go on.
+     * (0 to 1) as they go. Cancelling it stops only the waiting: the loads go on. RCTV, [refresh]
+     * ("Update Your Experience"): the channels and guide and the games are loaded again now, and
+     * it waits for the new ones (the ones loaded keep showing meanwhile).
      */
-    suspend fun prepare(onProgress: (Float) -> Unit) {
+    suspend fun prepare(refresh: Boolean = false, onProgress: (Float) -> Unit) {
         val full = access.state.value.plan == RctvPlan.FULL
         val kids = profileManager.kidsProfileActive.value
         val sources: List<LiveTvSource> = if (!full) {
@@ -59,9 +61,11 @@ class RctvExperiencePreparer @Inject constructor(
         }
         val withGuide = sources.isNotEmpty()
         val key = guideLoader.keyOf(sources)
-        if (withGuide) guideLoader.ensure(sources)
+        if (withGuide) guideLoader.ensure(sources, force = refresh)
         val withSports = full && !kids
-        if (withSports) sportsIndex.ensure()
+        if (withSports) {
+            if (refresh) sportsIndex.refreshGames() else sportsIndex.ensure()
+        }
 
         val startedAt = System.currentTimeMillis()
         var channelsAt = 0L
@@ -73,10 +77,13 @@ class RctvExperiencePreparer @Inject constructor(
                     val now = System.currentTimeMillis()
                     val guide = guideLoader.guide.value?.takeIf { it.key == key }
                     // Ready when they're there: an old guide refreshing behind still shows what it had.
-                    val channelsReady = !withGuide || (guide != null && (!guide.isLoading || guide.channels.isNotEmpty()))
+                    // An update: the new channels (they come before their programs), then the new programs.
+                    val reloading = refresh && guideLoader.isReloading
+                    val channelsReady = !withGuide ||
+                        (guide != null && (!guide.isLoading || guide.channels.isNotEmpty()) && (!reloading || guide.isEpgLoading))
                     if (channelsReady && channelsAt == 0L) channelsAt = now
                     val programsReady = !withGuide ||
-                        (guide != null && channelsReady && (!guide.isEpgLoading || guide.epgByChannel.isNotEmpty()))
+                        (guide != null && channelsReady && (!guide.isEpgLoading || guide.epgByChannel.isNotEmpty()) && !reloading)
                     // The programs' TMDB titles, once the programs are in.
                     if (programsReady && withGuide && titles == null && guide != null) {
                         titles = async { lookUpTitles(guide) }
