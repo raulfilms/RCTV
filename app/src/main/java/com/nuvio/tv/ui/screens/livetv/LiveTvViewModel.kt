@@ -562,9 +562,9 @@ class LiveTvViewModel @Inject constructor(
         super.onCleared()
     }
 
-    /** RCTV: the channel the player was just left on (played behind the Guide), once. */
-    fun takeBackgroundChannel(): LiveTvChannel? =
-        if (uiState.value.isPreviewGuide) null else playerSession.takeLeftChannel(BACKGROUND_PICKUP_MS)
+    /** RCTV: the channel the player was just left on (played behind the Guide) and its last picture, once. */
+    fun takeBackground(): LiveTvPlayerSession.Left? =
+        if (uiState.value.isPreviewGuide) null else playerSession.takeLeft(BACKGROUND_PICKUP_MS)
 
     suspend fun resolvePlaybackUrl(channel: LiveTvChannel): String =
         guideLoader.resolvePlaybackUrl(channel, currentSources)

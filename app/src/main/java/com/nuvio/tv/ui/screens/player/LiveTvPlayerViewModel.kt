@@ -106,10 +106,13 @@ class LiveTvPlayerViewModel @Inject constructor(
             ?: guide.channels.firstOrNull { it.name == name && it.logoUrl == logo }
             ?: guide.channels.firstOrNull { it.name == name }
 
-    /** RCTV: the player is being left on this channel: the Guide keeps it playing behind. */
-    fun noteLeaving(name: String, logo: String?) {
+    /**
+     * RCTV: the player is being left on this channel: the Guide keeps it playing behind, showing
+     * [frame] (its last picture) until it plays there.
+     */
+    fun noteLeaving(name: String, logo: String?, frame: android.graphics.Bitmap? = null) {
         if (session.guide.value.isPreview) return
-        channelFor(name, logo, session.guide.value)?.let(session::noteLeft)
+        channelFor(name, logo, session.guide.value)?.let { session.noteLeft(it, frame) }
         // Left with Back: the app doesn't open on it again.
         viewModelScope.launch { runCatching { liveTvDataStore.setResumeChannel(null) } }
     }

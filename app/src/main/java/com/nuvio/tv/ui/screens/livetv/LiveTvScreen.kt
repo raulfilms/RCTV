@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.livetv
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.BorderStroke
@@ -99,9 +100,11 @@ fun LiveTvScreen(
     val coroutineScope = rememberCoroutineScope()
     // RCTV: what's on now being chosen (its "Watch From Beginning" is looked up): one at a time.
     var liveChoiceJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    // RCTV (owner): back from the player, its channel goes on playing behind the Guide.
-    var backgroundChannel by remember { mutableStateOf<LiveTvChannel?>(null) }
-    LaunchedEffect(Unit) { backgroundChannel = viewModel.takeBackgroundChannel() }
+    // RCTV (owner): back from the player, its channel goes on playing behind the Guide, its last
+    // picture there from the first moment (taken at once, not a frame later).
+    val leftBehind = remember { viewModel.takeBackground() }
+    var backgroundChannel by remember { mutableStateOf(leftBehind?.channel) }
+    val backgroundStill = remember { leftBehind?.frame?.asImageBitmap() }
 
     // Stalker channels carry a short-lived "cmd" token as streamUrl instead of a real URL, so it
     // must be resolved to a playable one right before navigating to the player. A no-op for
@@ -142,7 +145,8 @@ fun LiveTvScreen(
             LiveTvBackgroundVideo(
                 channel = channel,
                 resolveUrl = viewModel::resolvePlaybackUrl,
-                onFailed = { backgroundChannel = null }
+                onFailed = { backgroundChannel = null },
+                still = backgroundStill
             )
             // It counts as this TV watching live TV (the account's 2 at once).
             com.nuvio.tv.ui.components.RctvPlaybackGuard(

@@ -49,15 +49,24 @@ class LiveTvPlayerSession @Inject constructor() {
     @Volatile private var leftChannel: LiveTvChannel? = null
     @Volatile private var leftAtMs: Long = 0L
 
-    fun noteLeft(channel: LiveTvChannel) {
+    /** RCTV (owner): its last picture, shown behind the Guide until the channel plays there again. */
+    @Volatile private var leftFrame: android.graphics.Bitmap? = null
+
+    /** The channel left and what it was showing ([frame]: null when it couldn't be read). */
+    data class Left(val channel: LiveTvChannel, val frame: android.graphics.Bitmap?)
+
+    fun noteLeft(channel: LiveTvChannel, frame: android.graphics.Bitmap? = null) {
         leftChannel = channel
+        leftFrame = frame
         leftAtMs = System.currentTimeMillis()
     }
 
     /** The channel just left, once (null when it was left more than [maxAgeMs] ago). */
-    fun takeLeftChannel(maxAgeMs: Long): LiveTvChannel? {
+    fun takeLeft(maxAgeMs: Long): Left? {
         val channel = leftChannel ?: return null
+        val frame = leftFrame
         leftChannel = null
-        return channel.takeIf { System.currentTimeMillis() - leftAtMs <= maxAgeMs }
+        leftFrame = null
+        return Left(channel, frame).takeIf { System.currentTimeMillis() - leftAtMs <= maxAgeMs }
     }
 }

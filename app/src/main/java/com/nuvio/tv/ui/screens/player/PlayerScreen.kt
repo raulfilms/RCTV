@@ -212,18 +212,36 @@ fun PlayerScreen(
     val liveVodOffered = isLiveTvChannel && liveVod?.let { it.status != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE } == true
     var liveVodPromptVisible by remember { mutableStateOf(false) }
 
-    val exitPlayer: () -> Unit = exitPlayer@{
-        if (exitDispatched) return@exitPlayer
-        exitDispatched = true
+    val exitScope = androidx.compose.runtime.rememberCoroutineScope()
+    val finishExit: () -> Unit = {
         val timeline = viewModel.playbackTimeline.value
-        // RCTV: back to the Guide, the channel goes on playing behind it.
-        if (isLiveTvChannel) runCatching { liveTvViewModel.noteLeaving(uiState.title, uiState.logo) }
         viewModel.stopAndRelease()
         val completed = postPlayRecommendationState.isVisible || uiState.playbackEnded ||
             (!timeline.isLive &&
                 timeline.duration > 0L &&
                 (timeline.currentPosition.toFloat() / timeline.duration.toFloat()) >= WatchProgress.COMPLETED_THRESHOLD)
         onBackPress(uiState.currentVideoId, uiState.currentSeason, uiState.currentEpisode, uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL, completed)
+    }
+    val exitPlayer: () -> Unit = exitPlayer@{
+        if (exitDispatched) return@exitPlayer
+        exitDispatched = true
+        if (!isLiveTvChannel) {
+            finishExit()
+            return@exitPlayer
+        }
+        // RCTV (owner): back to the Guide, the channel goes on playing behind it, and its picture
+        // never goes away: the last one stays there (a moment to read it) until it plays again.
+        exitScope.launch {
+            val frame = try {
+                LiveFrameGrab.grab(viewModel.controller.exoPlayerView)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            runCatching { liveTvViewModel.noteLeaving(uiState.title, uiState.logo, frame) }
+            finishExit()
+        }
     }
     // Live TV: switching channels from the Networks row, and "More info" on what's on.
     val liveScope = androidx.compose.runtime.rememberCoroutineScope()
