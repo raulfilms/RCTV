@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +38,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -45,7 +47,6 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
 import com.nuvio.tv.core.build.AppFeaturePolicy
-import com.nuvio.tv.ui.components.MemberBrandWordmark
 
 @Composable
 fun AboutScreen(
@@ -119,16 +120,11 @@ fun AboutSettingsContent(
                         CompositionLocalProvider(LocalBringIntoViewSpec provides defaultBringIntoViewSpec) {
                             Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
 
-                            MemberBrandWordmark(
-                                height = 40.dp,
-                                contentDescription = stringResource(R.string.cd_nuvio_logo)
-                            )
-
-                            Text(
-                                text = stringResource(R.string.about_made_with_love),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NuvioTheme.colors.TextSecondary,
-                                textAlign = TextAlign.Center
+                            // RCTV (owner): RCTV's logo, and only the version under it.
+                            Image(
+                                painter = painterResource(R.drawable.rctv_activation_logo),
+                                contentDescription = "RCTV",
+                                modifier = Modifier.height(64.dp)
                             )
 
                             Text(
