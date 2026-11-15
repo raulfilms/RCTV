@@ -73,6 +73,10 @@ class RctvExperiencePreparer @Inject constructor(
         var titlesDone = !withGuide
         var titles: kotlinx.coroutines.Deferred<Unit>? = null
         var networksLinked = !withGuide
+        // RCTV (owner): channels that didn't load (the provider didn't answer) are asked again a few
+        // times before the screen gives up on them: the app never opens without its channels.
+        var channelRetries = 0
+        var retriedAt = 0L
         coroutineScope {
             try {
                 while (true) {
@@ -81,8 +85,15 @@ class RctvExperiencePreparer @Inject constructor(
                     // Ready when they're there: an old guide refreshing behind still shows what it had.
                     // An update: the new channels (they come before their programs), then the new programs.
                     val reloading = refresh && guideLoader.isReloading
+                    val channelsFailed = withGuide && guide != null && !guide.isLoading && guide.channels.isEmpty()
+                    if (channelsFailed && channelRetries < CHANNEL_RETRIES && now - retriedAt >= CHANNEL_RETRY_EVERY_MS) {
+                        channelRetries++
+                        retriedAt = now
+                        guideLoader.ensure(sources, force = true)
+                    }
                     val channelsReady = !withGuide ||
-                        (guide != null && (!guide.isLoading || guide.channels.isNotEmpty()) && (!reloading || guide.isEpgLoading))
+                        (guide != null && (!guide.isLoading || guide.channels.isNotEmpty()) && (!reloading || guide.isEpgLoading) &&
+                            !(channelsFailed && channelRetries < CHANNEL_RETRIES))
                     if (channelsReady && channelsAt == 0L) channelsAt = now
                     // RCTV (owner): the networks picked on "Customize your experience" find their
                     // channels in the Guide now, into the profile's Favorite Networks.
@@ -175,23 +186,40 @@ class RctvExperiencePreparer @Inject constructor(
         sportsIndex.pause()
     }
 
-    private fun sourcesWaitMs(): Long =
-        if (liveTvDataStore.managedByAccount) ACCOUNT_SOURCES_WAIT_MS else SOURCES_WAIT_MS
+    /**
+     * RCTV (owner): a Full account always has its IPTV set on the website: when the TV doesn't have
+     * it yet (just installed, or its data cleared), it's on its way from the website and is waited
+     * for, so the screen never opens the app without the channels.
+     */
+    private fun sourcesWaitMs(): Long = when {
+        liveTvDataStore.managedByAccount -> ACCOUNT_SOURCES_WAIT_MS
+        access.watchSyncActive -> ACCOUNT_SOURCES_FIRST_WAIT_MS
+        else -> SOURCES_WAIT_MS
+    }
 
     companion object {
-        /** The longest the screen waits for everything (then the app opens and the rest keeps loading). */
-        const val MAX_WAIT_MS = 180_000L
+        /**
+         * The longest the screen waits for everything (then the app opens and the rest keeps
+         * loading). RCTV (owner): only a safety net; it waits for everything, even the first load
+         * after the app is installed or its cache cleared (a few minutes on a Mi Box). Was 3 min:
+         * that first load could take longer and the app opened without its channels and programs.
+         */
+        const val MAX_WAIT_MS = 600_000L
 
         /** About how long the programs take once the channels are in (the bar's pace while they load). */
-        private const val PROGRAMS_EXPECTED_MS = 60_000L
+        private const val PROGRAMS_EXPECTED_MS = 150_000L
+
+        /** Channels that didn't load are asked again this many times, this far apart. */
+        private const val CHANNEL_RETRIES = 3
+        private const val CHANNEL_RETRY_EVERY_MS = 5_000L
 
         /** The Guide's first channels whose programs are looked up on TMDB. */
         private const val TITLE_CHANNELS = 40
         private const val TITLES_AT_ONCE = 4
         private const val TITLES_MAX_MS = 30_000L
 
-        /** The longest the screen waits for the sports. */
-        private const val SPORTS_MAX_MS = 60_000L
+        /** The longest the screen waits for the sports (a league that doesn't answer doesn't hold the rest). */
+        private const val SPORTS_MAX_MS = 180_000L
         private const val SOURCES_WAIT_MS = 5_000L
 
         /**
@@ -200,6 +228,9 @@ class RctvExperiencePreparer @Inject constructor(
          * Networks page didn't show): waited for longer.
          */
         private const val ACCOUNT_SOURCES_WAIT_MS = 15_000L
+
+        /** An activated account whose IPTV hasn't reached this TV yet (installed again, data cleared). */
+        private const val ACCOUNT_SOURCES_FIRST_WAIT_MS = 60_000L
         private const val CHECK_EVERY_MS = 200L
     }
 }
