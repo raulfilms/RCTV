@@ -498,55 +498,35 @@ private fun NetworksPage(
                             onClick = { viewModel.toggleNetwork(network) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(76.dp)
+                                .height(84.dp)
                                 .rightToContinue(index, NETWORK_COLUMNS, state.networks.size, continueFocus)
                         ) {
-                            Column(
+                            // RCTV (owner): the network's normal logo, big, alone (as the sports pages'
+                            // logos); its name only while it has no logo.
+                            Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 if (!network.logoUrl.isNullOrBlank()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxWidth(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        AsyncImage(
-                                            model = network.logoUrl,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(36.dp)
-                                        )
-                                    }
+                                    AsyncImage(
+                                        model = network.logoUrl,
+                                        contentDescription = network.name,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
                                     Text(
                                         text = network.name,
-                                        color = Muted,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        lineHeight = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         textAlign = TextAlign.Center
                                     )
-                                } else {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = network.name,
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            lineHeight = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
                                 }
                             }
                         }

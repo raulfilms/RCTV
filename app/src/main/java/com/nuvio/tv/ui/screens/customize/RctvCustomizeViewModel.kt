@@ -10,9 +10,7 @@ import com.nuvio.tv.data.local.LiveTvDataStore
 import com.nuvio.tv.data.local.SportsLibraryStore
 import com.nuvio.tv.data.local.SportsPreferencesDataStore
 import com.nuvio.tv.data.remote.espn.EspnSportsClient
-import com.nuvio.tv.domain.model.CustomLiveChannel
 import com.nuvio.tv.domain.model.LibraryEntryInput
-import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.LiveTvSource
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.PosterShape
@@ -22,9 +20,8 @@ import com.nuvio.tv.domain.model.SportsTeamKey
 import com.nuvio.tv.domain.repository.CatalogRepository
 import com.nuvio.tv.domain.repository.LibraryRepository
 import com.nuvio.tv.ui.screens.livetv.GuideBrowse
-import com.nuvio.tv.ui.screens.livetv.LiveGuideSnapshot
+import com.nuvio.tv.ui.screens.livetv.ChannelLogoLibrary
 import com.nuvio.tv.ui.screens.livetv.LiveTvGuideLoader
-import com.nuvio.tv.ui.screens.livetv.LiveTvViewModel
 import com.nuvio.tv.ui.screens.search.SportsSearchIndex
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -59,13 +56,17 @@ data class CustomizeLeague(
     fun toLeague(): SportsLeague = SportsLeague(id = id, name = name, sportName = sportName, badgeUrl = badgeUrl)
 }
 
-/** A Live TV channel to pick, under its Guide category. */
+/**
+ * A network to pick ([RctvNetworkCatalog]): its normal logo, under its category. RCTV (owner): only
+ * a logo; "Creating Your Experience" finds its channel in the Guide afterwards.
+ */
 data class CustomizeNetwork(
+    /** The network's key in [RctvNetworkCatalog]. */
     val id: String,
     val name: String,
     val logoUrl: String?,
     val category: GuideBrowse,
-    /** Its place in the Guide (Home's Top Channels follow the Guide's order). */
+    /** Its place on the page ("All Networks" order). */
     val position: Int
 )
 
@@ -122,8 +123,9 @@ data class CustomizeUiState(
  * RCTV (owner's design), "Customize your experience": after a profile opens for the first time on
  * the TV (Full plan), it picks its leagues, teams, TV networks and series. What it picks goes where
  * the app already keeps it: the leagues in "My Sports", the teams in "My Teams" (both in the
- * Library too), the networks in the Guide's Custom list (Home's Top Channels) and the series in
- * the Library. Only what's changed here is saved: anything picked before stays.
+ * Library too), the networks (RCTV: picked by their logos; "Creating Your Experience" then finds
+ * each one's channel in the Guide, into the Favorite Networks) and the series in the Library.
+ * Only what's changed here is saved: anything picked before stays.
  */
 @HiltViewModel
 class RctvCustomizeViewModel @Inject constructor(
@@ -134,7 +136,8 @@ class RctvCustomizeViewModel @Inject constructor(
     private val guideLoader: LiveTvGuideLoader,
     private val catalogRepository: CatalogRepository,
     private val libraryRepository: LibraryRepository,
-    private val store: RctvCustomizeStore
+    private val store: RctvCustomizeStore,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CustomizeUiState())
@@ -147,7 +150,6 @@ class RctvCustomizeViewModel @Inject constructor(
     /** What the profile had when it opened: only what's changed here is saved. */
     private var initialLeagueIds: Set<String> = emptySet()
     private var initialTeamKeys: Set<String> = emptySet()
-    private var initialNetworkIds: Set<String> = emptySet()
 
     /** Every team Sports knows (the shown ones are the league's) and every channel to pick. */
     private var allTeams: List<SportsTeam> = emptyList()
@@ -167,8 +169,8 @@ class RctvCustomizeViewModel @Inject constructor(
         val savedTeamKeys = sportsPreferences.favoriteTeamIds.value.filterNot(SportsTeamKey::isLegacy)
         initialTeamKeys = savedTeamKeys.toSet()
         sportsLibrary.teams.value.forEach { saved -> knownTeams[SportsTeamKey.of(saved.team)] = saved.team }
-        val savedNetworkIds = liveTvDataStore.customChannelIds.value.toList()
-        initialNetworkIds = savedNetworkIds.toSet()
+        // The networks picked before and not yet linked (normally none: the page shows once).
+        val savedNetworkIds = store.pendingNetworks(profileId)
 
         val leagues = leaguesOf(sportsIndex.state.value)
         _uiState.value = CustomizeUiState(
@@ -197,7 +199,7 @@ class RctvCustomizeViewModel @Inject constructor(
                 refreshTeams()
             }
         }
-        // The Live TV channels (the account's IPTV): loaded meanwhile, for the networks page.
+        // The networks (their logos) and the account's IPTV they'll be linked to.
         jobs += viewModelScope.launch { watchNetworks() }
         // The most popular series, ready for their page.
         loadSeries()
@@ -321,6 +323,37 @@ class RctvCustomizeViewModel @Inject constructor(
     }
 
     private suspend fun watchNetworks() {
+        // RCTV (owner): the networks offered are RCTV's own list with each one's normal logo (the
+        // app's bundled logos), not the IPTV's channels: shown at once.
+        val networks = withContext(Dispatchers.IO) {
+            ChannelLogoLibrary.ensureReady(context)
+            RctvNetworkCatalog.all.mapIndexed { index, network ->
+                CustomizeNetwork(
+                    id = network.key,
+                    name = network.name,
+                    logoUrl = network.logo?.let(ChannelLogoLibrary::logoUriForKey),
+                    category = network.category,
+                    position = index
+                )
+            }
+        }
+        allNetworks = networks
+        networks.forEach { network ->
+            if (network.id in _uiState.value.selectedNetworkIds) knownNetworks[network.id] = network
+        }
+        val categories = RctvNetworkCatalog.CATEGORIES.filter { category -> networks.any { it.category == category } }
+        _uiState.update { state ->
+            state.copy(
+                networkCategories = categories,
+                networkCategory = state.networkCategory?.takeIf { it in categories },
+                networksLoading = false,
+                selectedNetworkIds = state.selectedNetworkIds.filter { id -> networks.any { it.id == id } },
+                selectedNetworks = state.selectedNetworkIds.mapNotNull { knownNetworks[it] }
+            )
+        }
+        refreshNetworks()
+
+        // They're linked to the account's IPTV channels: without Live TV the page isn't there.
         val sources: List<LiveTvSource> = (
             liveTvDataStore.sources.value.takeIf { it.isNotEmpty() }
                 // Just opened: the account's IPTV login may still be on its way from storage.
@@ -328,67 +361,11 @@ class RctvCustomizeViewModel @Inject constructor(
                 ?: emptyList()
             ).filter { it.enabled }
         if (sources.isEmpty()) {
-            _uiState.update { it.copy(withNetworks = false, networksLoading = false) }
+            _uiState.update { it.copy(withNetworks = false) }
             return
         }
-        val key = guideLoader.keyOf(sources)
+        // The Guide loads meanwhile ("Creating Your Experience" links the picks to its channels).
         guideLoader.ensure(sources)
-        var builtFrom: LiveGuideSnapshot? = null
-        guideLoader.guide.collect { guide ->
-            if (guide == null || guide.key != key) return@collect
-            if (guide.channels.isNotEmpty() && builtFrom?.channels !== guide.channels) {
-                builtFrom = guide
-                val networks = withContext(Dispatchers.Default) { networksOf(guide) }
-                allNetworks = networks
-                networks.forEach { network ->
-                    if (network.id in _uiState.value.selectedNetworkIds) knownNetworks[network.id] = network
-                }
-                val categories = NETWORK_CATEGORIES.filter { category -> networks.any { it.category == category } }
-                _uiState.update { state ->
-                    state.copy(
-                        networkCategories = categories,
-                        networkCategory = state.networkCategory?.takeIf { it in categories },
-                        selectedNetworks = state.selectedNetworkIds.mapNotNull { knownNetworks[it] }
-                    )
-                }
-                refreshNetworks()
-            }
-            val loading = guide.channels.isEmpty() && guide.isLoading
-            _uiState.update { it.copy(networksLoading = loading) }
-        }
-    }
-
-    /**
-     * The Guide's channels to pick from: the United States' and Puerto Rico's by category (not the
-     * local stations, the 24/7 channels or the events), each name once, the best-known first.
-     */
-    private fun networksOf(guide: LiveGuideSnapshot): List<CustomizeNetwork> {
-        val seen = HashSet<String>()
-        val found = ArrayList<CustomizeNetwork>()
-        for ((index, channel) in guide.channels.withIndex()) {
-            val category = categoryOf(channel, guide) ?: continue
-            val name = LiveTvViewModel.stripCountryTag(channel.name).trim()
-            if (name.isEmpty() || !seen.add(normalize(name))) continue
-            found += CustomizeNetwork(id = channel.id, name = name, logoUrl = channel.logoUrl, category = category, position = index)
-            if (found.size >= MAX_NETWORKS) break
-        }
-        return found.sortedWith(
-            compareBy<CustomizeNetwork> { popularRank(it.name) }.thenBy { it.name.lowercase() }
-        )
-    }
-
-    private fun categoryOf(channel: LiveTvChannel, guide: LiveGuideSnapshot): GuideBrowse? {
-        if (guide.curated) {
-            val name = channel.guideCategory ?: return null
-            return NETWORK_CATEGORIES.firstOrNull { it.name == name }
-        }
-        val categories = guide.channelCategories[channel.id] ?: return null
-        return NETWORK_CATEGORIES.firstOrNull { it in categories }
-    }
-
-    private fun popularRank(name: String): Int {
-        val index = POPULAR_NETWORKS.indexOf(normalize(name).replace(" ", ""))
-        return if (index >= 0) index else POPULAR_NETWORKS.size
     }
 
     private fun refreshNetworks() {
@@ -514,20 +491,9 @@ class RctvCustomizeViewModel @Inject constructor(
             if (named.isNotEmpty()) runCatching { sportsLibrary.rememberTeams(named) }
         }
 
-        // The Guide's Custom list (Home's Top Channels).
-        val pickedNetworks = state.selectedNetworkIds.toSet()
-        val currentNetworks = liveTvDataStore.customChannelIds.value
-        (pickedNetworks - initialNetworkIds).forEach { channelId ->
-            if (channelId !in currentNetworks) {
-                val info = knownNetworks[channelId]?.let {
-                    CustomLiveChannel(id = it.id, name = it.name, logoUrl = it.logoUrl, position = it.position)
-                }
-                runCatching { liveTvDataStore.toggleCustomChannel(channelId, info) }
-            }
-        }
-        (initialNetworkIds - pickedNetworks).forEach { channelId ->
-            if (channelId in currentNetworks) runCatching { liveTvDataStore.toggleCustomChannel(channelId) }
-        }
+        // The networks: their channels are found in the Guide by "Creating Your Experience" (next),
+        // into the profile's Favorite Networks.
+        profileId?.let { id -> store.setPendingNetworks(id, state.selectedNetworkIds) }
 
         // The series, into the Library.
         state.selectedSeries.forEach { meta ->
@@ -584,7 +550,6 @@ class RctvCustomizeViewModel @Inject constructor(
         private const val SERIES_CATALOG_ID = "top"
         private const val SERIES_TYPE = "series"
         private const val MAX_SERIES = 60
-        private const val MAX_NETWORKS = 1_500
         private const val MAX_QUERY = 60
         private const val SEARCH_WAIT_MS = 500L
         private const val SOURCES_WAIT_MS = 5_000L
@@ -606,28 +571,6 @@ class RctvCustomizeViewModel @Inject constructor(
             "conmebol.libertadores", "concacaf.champions", "fifa.world",
             "wnba", "lidom", "caribbean-series", "world-baseball-classic", "banana-ball",
             "ppv-events", "nascar-premier", "irl", "motogp", "lpga", "liv", "ufl"
-        )
-
-        /** The Guide's categories offered for networks, in this order (not Local, 24/7, events or International). */
-        val NETWORK_CATEGORIES = listOf(
-            // RCTV: the owner's categories (his channel list), then another provider's.
-            GuideBrowse.ENTERTAINMENT, GuideBrowse.MOVIES_EVENTS, GuideBrowse.NEWS_INFO, GuideBrowse.FAMILY_KIDS,
-            GuideBrowse.PREMIUM,
-            GuideBrowse.TV_SHOWS, GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.KIDS,
-            GuideBrowse.LIFESTYLE, GuideBrowse.CRIME_REALITY, GuideBrowse.MOVIES, GuideBrowse.DOCUMENTARIES,
-            GuideBrowse.MUSIC, GuideBrowse.GAME_SHOWS_CLASSICS, GuideBrowse.LATINO, GuideBrowse.PUERTO_RICO
-        )
-
-        /** The best-known networks, shown first (names as [normalize] leaves them, without spaces). */
-        private val POPULAR_NETWORKS = listOf(
-            "espn", "espn2", "foxsports1", "tnt", "tbs", "fx", "cnn", "cnbc", "foxnewschannel", "msnbc",
-            "hgtv", "foodnetwork", "discovery", "discoverychannel", "history", "historychannel", "tlc", "bravo", "ae",
-            "univision", "telemundo", "wapa", "nbc", "wiprcanal6", "wapapr", "telemundopr", "wipr", "teleoncepr",
-            "espndeportes", "foxdeportes", "tudn",
-            "nflnetwork", "nbatv", "mlbnetwork", "nhlnetwork", "golfchannel", "usanetwork", "amc",
-            "disneychannel", "nickelodeon", "cartoonnetwork", "hbo", "showtime", "starz", "cinemax",
-            "lifetime", "comedycentral", "syfy", "animalplanet", "nationalgeographic", "investigationdiscovery",
-            "travelchannel", "theweatherchannel", "bet", "paramountnetwork", "galavision", "unimas", "cnnenespanol"
         )
 
         /** Lower case, without accents or marks, for comparing names ("Telemundo Puerto Rico", "A&E"). */

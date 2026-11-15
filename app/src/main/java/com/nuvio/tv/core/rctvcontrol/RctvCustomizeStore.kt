@@ -50,6 +50,29 @@ class RctvCustomizeStore @Inject constructor(
         scope.launch { synchronized(lock) { write(read() - profileId) } }
     }
 
+    /**
+     * RCTV (owner): the networks [profileId] picked on the Networks page (their keys), waiting for
+     * "Creating Your Experience" to find each one's channel in the Guide.
+     */
+    fun pendingNetworks(profileId: Int): List<String> = synchronized(lock) {
+        prefs.getString(networksKey(profileId), null)
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+    }
+
+    /** Keeps [keys] for [profileId] until they're linked (empty: nothing waiting). */
+    fun setPendingNetworks(profileId: Int, keys: List<String>) {
+        synchronized(lock) {
+            val editor = prefs.edit()
+            if (keys.isEmpty()) editor.remove(networksKey(profileId)) else editor.putString(networksKey(profileId), keys.joinToString(","))
+            editor.apply()
+        }
+    }
+
+    private fun networksKey(profileId: Int) = "$KEY_NETWORKS_PREFIX$profileId"
+
     private fun read(): Set<Int> =
         prefs.getStringSet(KEY_DONE, null).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
 
@@ -60,5 +83,6 @@ class RctvCustomizeStore @Inject constructor(
     private companion object {
         const val PREFS_NAME = "rctv_customize"
         const val KEY_DONE = "done_profiles"
+        const val KEY_NETWORKS_PREFIX = "networks_"
     }
 }

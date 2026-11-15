@@ -39,7 +39,8 @@ class RctvExperiencePreparer @Inject constructor(
     private val liveTvDataStore: LiveTvDataStore,
     private val guideLoader: LiveTvGuideLoader,
     private val sportsIndex: SportsSearchIndex,
-    private val programLibrary: LiveProgramLibrary
+    private val programLibrary: LiveProgramLibrary,
+    private val networkLinker: RctvNetworkLinker
 ) {
     /**
      * Starts the loads and returns when they're all done, telling [onProgress] how far they are
@@ -71,6 +72,7 @@ class RctvExperiencePreparer @Inject constructor(
         var channelsAt = 0L
         var titlesDone = !withGuide
         var titles: kotlinx.coroutines.Deferred<Unit>? = null
+        var networksLinked = !withGuide
         coroutineScope {
             try {
                 while (true) {
@@ -82,6 +84,17 @@ class RctvExperiencePreparer @Inject constructor(
                     val channelsReady = !withGuide ||
                         (guide != null && (!guide.isLoading || guide.channels.isNotEmpty()) && (!reloading || guide.isEpgLoading))
                     if (channelsReady && channelsAt == 0L) channelsAt = now
+                    // RCTV (owner): the networks picked on "Customize your experience" find their
+                    // channels in the Guide now, into the profile's Favorite Networks.
+                    if (!networksLinked && guide != null && guide.channels.isNotEmpty() && !reloading) {
+                        networksLinked = true
+                        try {
+                            networkLinker.linkPending(profileManager.activeProfileId.value, guide)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                        }
+                    }
                     val programsReady = !withGuide ||
                         (guide != null && channelsReady && (!guide.isEpgLoading || guide.epgByChannel.isNotEmpty()) && !reloading)
                     // The programs' TMDB titles, once the programs are in.

@@ -213,6 +213,22 @@ class LiveTvDataStore @Inject constructor(
     }
 
     /**
+     * RCTV: adds the channel to the "Custom" list (never takes it out: already there, it stays as
+     * it is). For the networks picked on "Customize your experience".
+     */
+    suspend fun addCustomChannel(channelId: String, info: CustomLiveChannel? = null) {
+        store().edit { prefs ->
+            val current = prefs[customChannelsKey] ?: emptySet()
+            if (channelId in current) return@edit
+            prefs[customChannelsKey] = current + channelId
+            if (info != null) {
+                val kept = parseCustomChannels(prefs[customChannelsInfoKey]).filterNot { it.id == channelId }
+                prefs[customChannelsInfoKey] = encodeCustomChannels(kept + info)
+            }
+        }
+    }
+
+    /**
      * Brings the "Custom" channels' names, logos and order up to date with the Guide's channels
      * (and fills them in for channels added before they were kept). A channel the sources don't
      * list right now keeps what was saved.

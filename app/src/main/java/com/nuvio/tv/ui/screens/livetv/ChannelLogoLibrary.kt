@@ -74,6 +74,16 @@ internal object ChannelLogoLibrary {
         return "file://" + File(dir, "$key.webp").absolutePath
     }
 
+    /**
+     * RCTV: a "file://" URI of the bundled logo named [key] (its light or wide version first, for
+     * dark tiles), or null when the pack has none. Call after [ensureReady].
+     */
+    fun logoUriForKey(key: String): String? {
+        val dir = directory ?: return null
+        val best = prefer(key) ?: return null
+        return "file://" + File(dir, "$best.webp").absolutePath
+    }
+
     private val noise = setOf("hd", "fhd", "uhd", "4k", "sd", "east", "west", "pacific", "us", "feed", "alternate", "alt", "hdtv")
 
     private val aliases = mapOf(
