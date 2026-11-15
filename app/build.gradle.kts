@@ -105,8 +105,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1064
-        versionName = "1.1.0-beta.1"
+        // RCTV (owner): a release (.github/workflows/rctv-release.yml) sets its own version ("1.2.0-beta")
+        // and a higher build number every time; any other build keeps these.
+        versionCode = env("RCTV_VERSION_CODE")?.toIntOrNull() ?: 1064
+        versionName = env("RCTV_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.1.0-beta.1"
 
         buildConfigField("String", "PARENTAL_GUIDE_API_URL", "\"${localProperties.getProperty("PARENTAL_GUIDE_API_URL", "")}\"")
         buildConfigField("String", "INTRODB_API_URL", "\"${localProperties.getProperty("INTRODB_API_URL", "")}\"")
