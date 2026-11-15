@@ -61,6 +61,9 @@ import java.util.Locale
 /** The game center's tabs, as YouTube TV's. */
 enum class GameCenterTab { SCORES, STATS, KEY_PLAYS }
 
+/** RCTV (owner): the tabs shown; Key plays is off for now. */
+private val SHOWN_TABS = listOf(GameCenterTab.SCORES, GameCenterTab.STATS)
+
 private val CardColor = Color(0xFF2B2B2F)
 private val CardShape = RoundedCornerShape(16.dp)
 private val Dim = Color.White.copy(alpha = 0.62f)
@@ -77,13 +80,15 @@ fun LiveGameCenterPanel(
     state: GameCenterUiState,
     modifier: Modifier = Modifier
 ) {
-    var tab by rememberSaveable { mutableStateOf(GameCenterTab.SCORES) }
+    var savedTab by rememberSaveable { mutableStateOf(GameCenterTab.SCORES) }
+    // A tab that isn't shown (Key plays, kept from before) opens on Scores.
+    val tab = savedTab.takeIf { it in SHOWN_TABS } ?: GameCenterTab.SCORES
     val tabFocus = remember { GameCenterTab.entries.associateWith { FocusRequester() } }
     val listEntry = remember { FocusRequester() }
 
     Column(modifier = modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GameCenterTab.entries.forEach { entry ->
+            SHOWN_TABS.forEach { entry ->
                 TabPill(
                     text = stringResource(
                         when (entry) {
@@ -94,7 +99,7 @@ fun LiveGameCenterPanel(
                     ),
                     selected = tab == entry,
                     focusRequester = tabFocus.getValue(entry),
-                    onFocused = { tab = entry }
+                    onFocused = { savedTab = entry }
                 )
             }
         }

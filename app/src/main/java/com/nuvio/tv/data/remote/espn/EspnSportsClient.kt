@@ -1905,20 +1905,29 @@ class EspnSportsClient @Inject constructor(
         }
         val json = JSONObject(get(url))
         val center = EspnGameCenterParser.parse(json, eventId, sport, league)
+        // RCTV (owner): a game under way whose players didn't come (left out, or cut down to nothing
+        // the tables can read): ESPN's own summary, at most once a minute for a game ESPN has none for.
+        val now = System.currentTimeMillis()
         if (withPlayers && center != null && center.status != com.nuvio.tv.domain.model.SportsEventStatus.UPCOMING &&
-            center.boxScores.isEmpty() && json.optJSONObject("boxscore")?.has("players") != true
+            center.boxScores.isEmpty() && now - (directMissAt[eventId] ?: 0L) >= DIRECT_RETRY_MS
         ) {
             val direct = runCatching { EspnGameCenterParser.parse(JSONObject(getDirect(url)), eventId, sport, league) }.getOrNull()
             if (direct != null && direct.boxScores.isNotEmpty()) {
                 summariesLackPlayers = true
+                directMissAt.remove(eventId)
                 return direct
             }
+            directMissAt[eventId] = now
         }
         return center
     }
 
     /** RCTV: the data server's game summaries come without their players (see [fetchGameCenter]). */
     @Volatile private var summariesLackPlayers = false
+
+    /** RCTV: when ESPN's own summary last had no players for a game (asked again after [DIRECT_RETRY_MS]). */
+    private val directMissAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val DIRECT_RETRY_MS = 60_000L
 
     /** [url] from ESPN itself, not through the data server. */
     private fun getDirect(url: String): String = com.nuvio.tv.core.diagnostics.NativeMemoryGuard.during("espn") {
