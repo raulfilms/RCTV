@@ -30,7 +30,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Videocam
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,6 +45,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -214,17 +219,44 @@ fun MainHomeScreen(
     val heroHeight = remember(screenHeight) { (screenHeight - 140.dp).coerceAtLeast(300.dp) }
     val titleArt = viewModel.titleArt
 
+    // RCTV (owner): Back anywhere down the page goes all the way back up, onto the banner (the top
+    // row when there's none); the next Back opens the menu (as Movies & TV does). Only while Home
+    // has the focus: with the menu open, Back is the menu's.
+    val contentHasFocus = remember { mutableStateOf(false) }
+    val heroHasFocus = remember { mutableStateOf(false) }
+    val columnFocus = remember { FocusRequester() }
+    val pageScrolled by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
+    }
+    BackHandler(enabled = contentHasFocus.value && (if (heroVisible) !heroHasFocus.value else pageScrolled)) {
+        scope.launch {
+            runCatching { listState.scrollToItem(0, 0) }
+            repeat(8) {
+                withFrameNanos { }
+                val target = if (heroVisible) firstFocus else columnFocus
+                if (runCatching { target.requestFocus(); true }.getOrDefault(false)) {
+                    runCatching { listState.scrollToItem(0, 0) }
+                    return@launch
+                }
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(AppleTvColors.Background)) {
         CompositionLocalProvider(LocalTitleArtResolver provides titleArt) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusRequester(columnFocus)
+                    .onFocusChanged { contentHasFocus.value = it.hasFocus },
                 contentPadding = PaddingValues(top = if (heroVisible) 0.dp else AppleTvSpacing.SafeY, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(26.dp)
             ) {
                 if (heroVisible) {
                     item(key = "hero") {
                         AppleHeroCarousel(
+                            modifier = Modifier.onFocusChanged { heroHasFocus.value = it.hasFocus },
                             items = heroItems.asStable(),
                             heroHeight = heroHeight,
                             imageHeight = screenHeight,
