@@ -2052,6 +2052,12 @@ fun PlayerScreen(
                 viewModel.onEvent(PlayerEvent.OnDisableSubtitles)
                 viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
             },
+            // RCTV (owner): the bars open Settings' Audio settings and Subtitle settings.
+            onOpenAudioSettings = {
+                audioSettingsOpen = true
+                viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
+            },
+            onOpenSubtitleSettings = { viewModel.onEvent(PlayerEvent.OnShowSubtitleOverlay) },
             onDismiss = { viewModel.onEvent(PlayerEvent.OnDismissTransientOverlay) },
             modifier = Modifier
                 .fillMaxSize()

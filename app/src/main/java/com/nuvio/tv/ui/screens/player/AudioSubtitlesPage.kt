@@ -71,6 +71,8 @@ private data class PageChoice(
  * Subtitles (Off, the video's own, one per addon language); the one chosen in white with a ✓, the
  * focused one white with black words; ✕ at the top right closes it, as Back does. The audio's
  * timing and boost and the subtitles' style, timing and other files are in the controls' Settings.
+ * RCTV (owner): the grey bars are shortcuts to those: Audio opens Audio settings, Subtitles opens
+ * Subtitle settings (Up from a column's first row reaches its bar).
  */
 @Composable
 internal fun AudioSubtitlesPage(
@@ -85,6 +87,8 @@ internal fun AudioSubtitlesPage(
     onInternalSubtitleSelected: (Int) -> Unit,
     onAddonSubtitleSelected: (Subtitle) -> Unit,
     onDisableSubtitles: () -> Unit,
+    onOpenAudioSettings: () -> Unit,
+    onOpenSubtitleSettings: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -160,14 +164,16 @@ internal fun AudioSubtitlesPage(
                     choices = audioChoices,
                     focusKey = focusedAudioKey,
                     focusRequester = audioFocusRequester,
-                    upFocusRequester = closeFocusRequester
+                    upFocusRequester = closeFocusRequester,
+                    onTitleClick = onOpenAudioSettings
                 )
                 PageColumn(
                     title = stringResource(R.string.subtitle_dialog_title),
                     choices = subtitleChoices,
                     focusKey = null,
                     focusRequester = null,
-                    upFocusRequester = closeFocusRequester
+                    upFocusRequester = closeFocusRequester,
+                    onTitleClick = onOpenSubtitleSettings
                 )
             }
         }
@@ -223,23 +229,36 @@ private fun PageColumn(
     choices: List<PageChoice>,
     focusKey: String?,
     focusRequester: FocusRequester?,
-    upFocusRequester: FocusRequester
+    upFocusRequester: FocusRequester,
+    /** RCTV (owner): the bar is a shortcut to its settings (Audio settings, Subtitle settings). */
+    onTitleClick: () -> Unit
 ) {
+    val titleFocusRequester = remember { FocusRequester() }
     Column(modifier = Modifier.width(334.dp)) {
-        Box(
+        Card(
+            onClick = onTitleClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(42.dp)
-                .background(PageHeaderColor),
-            contentAlignment = Alignment.Center
+                .focusRequester(titleFocusRequester)
+                .focusProperties { up = upFocusRequester },
+            colors = CardDefaults.colors(
+                containerColor = PageHeaderColor,
+                focusedContainerColor = Color.White,
+                contentColor = Color(0xFFE6E6E6),
+                focusedContentColor = Color.Black
+            ),
+            shape = CardDefaults.shape(shape = RoundedCornerShape(0.dp)),
+            scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFFE6E6E6),
-                textAlign = TextAlign.Center
-            )
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
@@ -247,7 +266,7 @@ private fun PageColumn(
                 PageChoiceRow(
                     choice = choice,
                     focusRequester = if (focusRequester != null && choice.key == focusKey) focusRequester else null,
-                    upFocusRequester = if (index == 0) upFocusRequester else null
+                    upFocusRequester = if (index == 0) titleFocusRequester else null
                 )
             }
         }
