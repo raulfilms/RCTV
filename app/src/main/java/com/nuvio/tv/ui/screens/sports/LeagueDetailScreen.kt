@@ -494,15 +494,22 @@ private fun LeagueGamesContent(
         when {
             filter == LeagueGamesFilter.BY_WEEK && uiState.isLoadingSchedule -> LeagueEmptyState(stringResource(R.string.league_loading))
             games.isEmpty() -> LeagueEmptyState(stringResource(emptyText))
+            // RCTV (owner): the games as Sports' cards (team vs team in their colors, when it starts,
+            // the league under it), as on the Sports page's See All.
             else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 260.dp),
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
+                columns = GridCells.Fixed(3),
+                horizontalArrangement = Arrangement.spacedBy(com.nuvio.tv.ui.components.AppleTvSpacing.GridGap),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(
+                    start = com.nuvio.tv.ui.components.AppleTvSpacing.SafeX,
+                    end = com.nuvio.tv.ui.components.AppleTvSpacing.SafeX,
+                    top = NuvioTheme.spacing.sm,
+                    bottom = 48.dp
+                ),
                 modifier = Modifier.fillMaxSize()
             ) {
                 gridItems(games.distinctBy { it.id }, key = { it.id }) { event ->
-                    ScoreboardCard(
+                    SportsGameCard(
                         event = event,
                         onClick = { onPlayEvent(event) },
                         onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.EventTarget(event)) }
@@ -566,20 +573,29 @@ private fun LeagueTeamsContent(
         uiState.isLoadingTeams -> LeagueEmptyState(stringResource(R.string.league_loading))
         uiState.teams.isEmpty() && uiState.teamsLoaded -> LeagueEmptyState(stringResource(R.string.league_no_teams))
         else -> {
+            // RCTV (owner): the teams as My Teams' tiles (the logo on the team's color, a star on the
+            // person's own, the name under it); long press adds or removes one, as on My Teams.
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 160.dp),
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-                contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(com.nuvio.tv.ui.components.AppleTvSpacing.GridGap),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(
+                    start = com.nuvio.tv.ui.components.AppleTvSpacing.SafeX,
+                    end = com.nuvio.tv.ui.components.AppleTvSpacing.SafeX,
+                    top = NuvioTheme.spacing.sm,
+                    bottom = 48.dp
+                ),
                 modifier = Modifier.fillMaxSize()
             ) {
                 gridItems(uiState.teams.distinctBy { it.id }, key = { it.id }) { team ->
-                    TeamGridCard(
-                        team = team,
+                    SportsLogoTile(
+                        name = team.name,
+                        logoUrl = team.badgeUrl,
+                        color = sportsTeamColor(team.color, team.id),
                         isFavorite = uiState.favoriteTeamIds.hasTeam(team),
                         onClick = { onOpenTeam(team) },
-                        onToggleFavorite = { onToggleFavoriteTeam(SportsTeamKey.of(team)) },
-                        onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) }
+                        onLongPress = { onShowFavoriteOptions(SportsFavoriteTarget.TeamTarget(team)) },
+                        prominentName = true
                     )
                 }
             }
