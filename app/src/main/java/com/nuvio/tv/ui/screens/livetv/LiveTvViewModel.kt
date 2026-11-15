@@ -563,7 +563,7 @@ class LiveTvViewModel @Inject constructor(
     }
 
     /** RCTV: the channel the player was just left on (played behind the Guide) and its last picture, once. */
-    fun takeBackground(): LiveTvPlayerSession.Left? =
+    fun takeBackground(): com.nuvio.tv.data.livetv.LiveTvPlayerSession.Left? =
         if (uiState.value.isPreviewGuide) null else playerSession.takeLeft(BACKGROUND_PICKUP_MS)
 
     suspend fun resolvePlaybackUrl(channel: LiveTvChannel): String =
