@@ -81,6 +81,12 @@ private val LeagueText = Color(0xFFE6E9F2)
 private val LeagueDim = Color(0xFFB8BAC2)
 private val LeaguePagePadding = 40.dp
 private val LeagueTitleColumn = 132.dp
+
+/**
+ * RCTV (owner, 15-nov-2026: "it's very small, it can't be seen"): Home's rows are drawn this much
+ * bigger (all of them, tiles and words alike); the page's side margin stays the hero's.
+ */
+internal const val LEAGUE_HOME_SCALE = 1.5f
 private const val HERO_ROTATE_MS = 8_000L
 
 /** The channels' tiles, in turn: deep red, deep blue, deep green, deep purple. */
@@ -405,7 +411,7 @@ internal fun LeagueHomeRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = LeaguePagePadding)
+            .padding(start = LeaguePagePadding / LEAGUE_HOME_SCALE)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.width(LeagueTitleColumn)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -424,7 +430,7 @@ internal fun LeagueHomeRow(
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            contentPadding = PaddingValues(start = 4.dp, end = LeaguePagePadding, top = 4.dp, bottom = 4.dp),
+            contentPadding = PaddingValues(start = 4.dp, end = LeaguePagePadding / LEAGUE_HOME_SCALE, top = 4.dp, bottom = 4.dp),
             modifier = Modifier
                 .weight(1f)
                 .height(height + 8.dp),

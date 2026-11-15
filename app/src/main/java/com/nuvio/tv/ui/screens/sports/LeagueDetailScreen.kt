@@ -246,6 +246,14 @@ private fun LeagueHomeContent(
     onPlayVideo: (String, String) -> Unit
 ) {
     val leagueName = uiState.league?.name.orEmpty()
+    // RCTV (owner): the rows drawn bigger ([LEAGUE_HOME_SCALE]): every size in them, words included.
+    val baseDensity = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
+            baseDensity.density * LEAGUE_HOME_SCALE,
+            baseDensity.fontScale
+        )
+    ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = NuvioTheme.spacing.xl),
@@ -320,6 +328,7 @@ private fun LeagueHomeContent(
                 }
             }
         }
+    }
     }
 }
 
