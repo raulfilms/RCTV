@@ -72,8 +72,10 @@ import kotlinx.coroutines.delay
  * teams' and channels' real logos are shown where the design has their initials.
  */
 
-internal val LeaguePageBackground = Color(0xFF070B18)
-private val LeagueCard = Color(0xFF151C2E)
+// RCTV (owner, 15-nov-2026): the league pages on the app's own background (#17161B), their bars
+// and cards in the app's contrast color (#2B2F37), as every other screen; was a navy blue.
+internal val LeaguePageBackground = com.nuvio.tv.ui.theme.NuvioPrimitives.appBackground
+private val LeagueCard = com.nuvio.tv.ui.theme.NuvioPrimitives.appContrast
 private val LeagueCardBorder = Color(0x2EFFFFFF)
 private val LeagueLiveRed = Color(0xFFE5232B)
 private val LeagueBlue = Color(0xFF1F63E0)
@@ -130,18 +132,26 @@ internal fun LeagueHero(
         modifier = modifier
             .fillMaxWidth()
             .height(210.dp)
-            .background(Brush.verticalGradient(listOf(Color(0xFF0D1A3A), Color(0xFF0A1330), LeaguePageBackground)))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        androidx.compose.ui.graphics.lerp(LeaguePageBackground, Color.White, 0.05f),
+                        androidx.compose.ui.graphics.lerp(LeaguePageBackground, Color.White, 0.025f),
+                        LeaguePageBackground
+                    )
+                )
+            )
             .drawBehind {
                 drawRect(
                     Brush.radialGradient(
-                        listOf(Color(0x4D7EA0FF), Color.Transparent),
+                        listOf(Color(0x1AFFFFFF), Color.Transparent),
                         center = Offset(size.width * 0.64f, 0f),
                         radius = size.width * 0.28f
                     )
                 )
                 drawRect(
                     Brush.radialGradient(
-                        listOf(Color(0x387EA0FF), Color.Transparent),
+                        listOf(Color(0x12FFFFFF), Color.Transparent),
                         center = Offset(size.width * 0.86f, 0f),
                         radius = size.width * 0.22f
                     )
