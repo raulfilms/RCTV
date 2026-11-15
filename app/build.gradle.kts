@@ -546,6 +546,10 @@ dependencies {
     implementation(libs.supabase.storage)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.sentry.android)
+    // RCTV (owner): Firebase (Crashlytics, Analytics); does nothing without the project's google-services.json.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
 
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
@@ -566,4 +570,12 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:5.3.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// RCTV (owner): Firebase is connected only when the build has the owner's project file
+// (app/google-services.json, written by the CI from the GOOGLE_SERVICES_JSON secret; never committed).
+// Without it the app builds and runs with Firebase off.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
 }

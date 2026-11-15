@@ -28,7 +28,10 @@ private const val PLAYBACK_HEALTH_SNAPSHOT_INTERVAL_MS = 5_000L
 private const val POSITION_STALL_THRESHOLD_MS = 5_000L
 private const val POSITION_PROGRESS_EPSILON_MS = 250L
 
-internal class PlayerPlaybackAnalyticsDiagnostics {
+internal class PlayerPlaybackAnalyticsDiagnostics(
+    /** RCTV: the playback's first picture (once per playback). */
+    private val onFirstFrame: () -> Unit = {}
+) {
     private var sessionStartedAtElapsedMs: Long = SystemClock.elapsedRealtime()
     private var sessionStartedAtWallTimeMs: Long = System.currentTimeMillis()
     private val events: ArrayDeque<PlaybackIssuePlaybackEventInput> = ArrayDeque()
@@ -319,6 +322,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         renderedFirstFrameCount += 1
         if (firstFrameElapsedMs == null) {
             firstFrameElapsedMs = (SystemClock.elapsedRealtime() - sessionStartedAtElapsedMs).coerceAtLeast(0L)
+            runCatching { onFirstFrame() }
         }
         record(name = "rendered_first_frame", eventTime = eventTime)
     }
@@ -327,6 +331,7 @@ internal class PlayerPlaybackAnalyticsDiagnostics {
         renderedFirstFrameCount += 1
         if (firstFrameElapsedMs == null) {
             firstFrameElapsedMs = (SystemClock.elapsedRealtime() - sessionStartedAtElapsedMs).coerceAtLeast(0L)
+            runCatching { onFirstFrame() }
         }
         player?.let { recordProgressSnapshot(it, hasRenderedFirstFrame = true) }
         record(

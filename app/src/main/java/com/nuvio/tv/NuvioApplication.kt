@@ -102,6 +102,8 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         // the app's start-up (crash screen, memory guard, channels, plugins) belongs there.
         if (isSpeechProcess()) return
         SentryInitializer.start(this, sentrySettingsDataStore)
+        // RCTV (owner): Firebase (crashes, bug reports, how the app is used), when the build has it.
+        com.nuvio.tv.core.diagnostics.FirebaseDiagnostics.start(this, sentrySettingsDataStore)
         // RCTV: a crash's error is kept and shown the next time the app opens.
         com.nuvio.tv.core.diagnostics.CrashLog.install(this)
         // RCTV (MEM-08): native garbage is collected as soon as it grows fast, never left to pile

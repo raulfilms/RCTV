@@ -1012,6 +1012,7 @@ open class MainActivity : ComponentActivity() {
                     LaunchedEffect(actualRoute) {
                         optimisticRoute = null
                         com.nuvio.tv.core.diagnostics.SessionTrail.setScreen(actualRoute)
+                        com.nuvio.tv.core.diagnostics.FirebaseDiagnostics.screen(actualRoute)
                     }
 
                     // Auto-play next episode for EXTERNAL players: the tracker resolves the

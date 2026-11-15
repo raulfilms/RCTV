@@ -23,8 +23,8 @@ import javax.inject.Singleton
  * RCTV (owner): the bug report system. A button anywhere calls [open]; the list of problems shows
  * (the app hosts it over any screen, the player included); the person picks one and [send] does
  * the rest: the app gathers everything itself ([BugReportCollector]), keeps it on the TV
- * ([BugReportStore]) and hands it to each service connected ([BugReportSink]: Sentry now, Firebase
- * when it's added to [sinks]). What couldn't go yet goes later ([retryPending]: at the app's start,
+ * ([BugReportStore]) and hands it to each service connected ([BugReportSink]: Sentry, and Firebase
+ * when the build is connected to it). What couldn't go yet goes later ([retryPending]: at the app's start,
  * and with every new report).
  */
 @Singleton
@@ -32,11 +32,12 @@ class BugReports @Inject constructor(
     private val collector: BugReportCollector,
     private val store: BugReportStore,
     sentry: SentryBugReportSink,
+    firebase: FirebaseBugReportSink,
     /** Starts with the reports (it follows the favorites and the history from then on). */
     @Suppress("unused") private val libraryProbe: BugReportLibraryProbe
 ) {
-    /** Where reports go. RCTV: Firebase's sink joins this list when the app is connected to it. */
-    private val sinks: List<BugReportSink> = listOf(sentry)
+    /** Where reports go: Sentry, and Firebase when this build is connected to it. */
+    private val sinks: List<BugReportSink> = listOfNotNull(sentry, firebase.takeIf { it.isConnected })
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sending = Mutex()
