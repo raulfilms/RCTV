@@ -1642,6 +1642,8 @@ class EspnSportsClient @Inject constructor(
         fun parseGroup(groupJson: JSONObject, fallbackName: String): SportsStandingsGroup? {
             val entriesJson = groupJson.optJSONObject("standings")?.optJSONArray("entries") ?: return null
             val entries = ArrayList<SportsStandingEntry>(entriesJson.length())
+            // Each entry's stats by ESPN's name ("wins"), in the entries' order.
+            val namedStats = ArrayList<Map<String, SportsStandingStat>>(entriesJson.length())
             for (i in 0 until entriesJson.length()) {
                 val entryJson = entriesJson.optJSONObject(i) ?: continue
                 val teamJson = entryJson.optJSONObject("team") ?: continue
@@ -1661,6 +1663,7 @@ class EspnSportsClient @Inject constructor(
 
                 val statsJson = entryJson.optJSONArray("stats") ?: JSONArray()
                 val stats = ArrayList<SportsStandingStat>(statsJson.length())
+                val named = LinkedHashMap<String, SportsStandingStat>()
                 for (j in 0 until statsJson.length()) {
                     val statJson = statsJson.optJSONObject(j) ?: continue
                     val value = statJson.optString("displayValue")?.takeIf { it.isNotBlank() } ?: continue
@@ -1668,12 +1671,31 @@ class EspnSportsClient @Inject constructor(
                         ?: statJson.optString("abbreviation")?.takeIf { it.isNotBlank() }
                         ?: statJson.optString("name")?.takeIf { it.isNotBlank() }
                         ?: continue
-                    stats += SportsStandingStat(label = label, value = value)
+                    val stat = SportsStandingStat(label = label, value = value)
+                    stats += stat
+                    val name = statJson.optString("name").ifBlank { statJson.optString("type") }.lowercase(Locale.US)
+                    if (name.isNotBlank()) named.putIfAbsent(name, stat)
                 }
 
                 entries += SportsStandingEntry(rank = i + 1, team = team, stats = stats.take(5))
+                namedStats += named
             }
             if (entries.isEmpty()) return null
+            // RCTV (owner: "where are the wins and the losses?"): ESPN now lists the stats in another
+            // order (Diff, GB, L, Pos...; the wins came after the first five): the sport's own
+            // columns are picked by name (W, L, ...), the same for every team ("-" when one has none).
+            val columns = standingsColumnsFor(feed.sportPath).mapNotNull { names ->
+                names.firstOrNull { name -> namedStats.any { name in it } }
+            }
+            if (columns.size >= 2) {
+                val labels = columns.associateWith { name -> namedStats.firstNotNullOf { it[name] }.label }
+                for (e in entries.indices) {
+                    val own = namedStats[e]
+                    entries[e] = entries[e].copy(
+                        stats = columns.map { name -> own[name] ?: SportsStandingStat(label = labels.getValue(name), value = "-") }
+                    )
+                }
+            }
             val groupName = groupJson.optString("name")?.takeIf { it.isNotBlank() }
                 ?: groupJson.optString("abbreviation")?.takeIf { it.isNotBlank() }
                 ?: fallbackName
@@ -1691,6 +1713,26 @@ class EspnSportsClient @Inject constructor(
             parseGroup(json, feed.sportLabel)?.let { groups += it }
         }
         return groups
+    }
+
+    /**
+     * RCTV: a sport's standings columns, each by ESPN's stat names (the first one a league has):
+     * football W, L, T, PCT, DIFF; soccer GP, W, D, L, GD, P; hockey GP, W, L, OTL, PTS; the rest
+     * W, L, PCT, GB, STRK.
+     */
+    private fun standingsColumnsFor(sportPath: String): List<List<String>> = when (sportPath) {
+        "football" -> listOf(
+            listOf("wins"), listOf("losses"), listOf("ties"), listOf("winpercent"),
+            listOf("pointdifferential", "differential")
+        )
+        "soccer" -> listOf(
+            listOf("gamesplayed"), listOf("wins"), listOf("ties"), listOf("losses"),
+            listOf("pointdifferential", "differential"), listOf("points")
+        )
+        "hockey" -> listOf(
+            listOf("gamesplayed"), listOf("wins"), listOf("losses"), listOf("otlosses", "overtimelosses"), listOf("points")
+        )
+        else -> listOf(listOf("wins"), listOf("losses"), listOf("winpercent"), listOf("gamesbehind"), listOf("streak"))
     }
 
     /** Fetches recent ESPN news headlines for a league. */
