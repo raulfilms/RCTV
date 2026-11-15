@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -144,7 +145,9 @@ internal fun LiveTvPlayerOverlay(
     /** RCTV: the game center (YouTube TV's stats panel); null when what's on isn't a known game. */
     onOpenGameCenter: (() -> Unit)? = null,
     /** RCTV: English or Español, for a La Liga or Champions League game; null for any other. */
-    gameLanguage: LiveGameLanguage? = null
+    gameLanguage: LiveGameLanguage? = null,
+    /** RCTV (owner): the bug report's list ("Report a Problem", after Stats for nerds). */
+    onReportProblem: (() -> Unit)? = null
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
@@ -529,6 +532,11 @@ internal fun LiveTvPlayerOverlay(
                             add(LiveOption(icon = Icons.Default.BarChart, label = stringResource(R.string.player_live_stats)) {
                                 onEvent(PlayerEvent.OnShowStreamInfo)
                             })
+                            onReportProblem?.let { report ->
+                                add(LiveOption(icon = Icons.Default.BugReport, label = stringResource(R.string.bug_report_title)) {
+                                    report()
+                                })
+                            }
                         },
                         entry = contentEntry,
                         itemModifier = upToTab,

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -127,6 +128,8 @@ internal fun TitlePlayerControlsOverlay(
     onShowSpeedDialog: () -> Unit,
     onToggleMoreActions: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** RCTV (owner): the bug report's list (the bug at the right of Settings). */
+    onReportProblem: () -> Unit,
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit
 ) {
@@ -184,14 +187,27 @@ internal fun TitlePlayerControlsOverlay(
                             logo = uiState.logo
                         )
                     }
-                    ControlButton(
-                        icon = Icons.Outlined.Settings,
-                        contentDescription = stringResource(R.string.nav_settings),
-                        onClick = onOpenSettings,
-                        focusRequester = settingsFocusRequester,
-                        onDownKey = { runCatching { progressBarFocusRequester.requestFocus() } },
-                        onFocused = onResetHideTimer
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ControlButton(
+                            icon = Icons.Outlined.Settings,
+                            contentDescription = stringResource(R.string.nav_settings),
+                            onClick = onOpenSettings,
+                            focusRequester = settingsFocusRequester,
+                            onDownKey = { runCatching { progressBarFocusRequester.requestFocus() } },
+                            onFocused = onResetHideTimer
+                        )
+                        // RCTV (owner): Report a Problem, at the right of Settings.
+                        ControlButton(
+                            icon = Icons.Outlined.BugReport,
+                            contentDescription = stringResource(R.string.bug_report_title),
+                            onClick = onReportProblem,
+                            onDownKey = { runCatching { progressBarFocusRequester.requestFocus() } },
+                            onFocused = onResetHideTimer
+                        )
+                    }
                 }
                 if (isEpisode) {
                     EpisodeLine(

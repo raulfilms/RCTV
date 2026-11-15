@@ -1651,7 +1651,8 @@ fun PlayerScreen(
                     onOpenTitle = openLiveTitle,
                     onOpenEpisode = openLiveEpisode,
                     onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable },
-                    gameLanguage = languageGame?.let { LiveGameLanguage(spanish = gameSpanish, onChoose = chooseGameLanguage) }
+                    gameLanguage = languageGame?.let { LiveGameLanguage(spanish = gameSpanish, onChoose = chooseGameLanguage) },
+                    onReportProblem = { viewModel.openBugReport() }
                 )
             } else if (uiState.usesTitleControls) {
                 // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).
@@ -1689,6 +1690,7 @@ fun PlayerScreen(
                         }
                     },
                     onOpenSettings = { showMovieSettings = true },
+                    onReportProblem = { viewModel.openBugReport() },
                     onResetHideTimer = {
                         viewModel.scheduleHideControls()
                         viewModel.onUserInteraction()

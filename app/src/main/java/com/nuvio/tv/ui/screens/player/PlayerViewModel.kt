@@ -99,6 +99,8 @@ class PlayerViewModel @Inject constructor(
     private val subtitleFileCache: com.nuvio.tv.core.player.SubtitleFileCache,
     private val tvRecommendationManager: com.nuvio.tv.core.recommendations.TvRecommendationManager,
     private val libraryRepository: com.nuvio.tv.domain.repository.LibraryRepository,
+    /** RCTV (owner): the bug button in the player opens the bug report's list. */
+    private val bugReports: com.nuvio.tv.core.bugreport.BugReports,
     profileManager: com.nuvio.tv.core.profile.ProfileManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -329,6 +331,11 @@ class PlayerViewModel @Inject constructor(
 
     fun onEvent(event: PlayerEvent) {
         controller.onEvent(event)
+    }
+
+    /** RCTV (owner): the player's bug button: the list of problems shows over the player. */
+    fun openBugReport() {
+        bugReports.open()
     }
 
     fun bindExoSubtitleView(subtitleView: androidx.media3.ui.SubtitleView?) {
