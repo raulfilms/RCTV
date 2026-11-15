@@ -44,6 +44,10 @@ class RctvCustomizeStore @Inject constructor(
         scope.launch { synchronized(lock) { write(read() + profileId) } }
     }
 
+    /** The profile went through it on this TV (read from the TV itself: right even before [done] is). */
+    fun isDone(profileId: Int): Boolean =
+        _done.value?.contains(profileId) == true || synchronized(lock) { profileId in read() }
+
     /** A new profile in this place (or the old one deleted): it shows again the first time it opens. */
     fun forget(profileId: Int) {
         _done.update { it?.minus(profileId) }

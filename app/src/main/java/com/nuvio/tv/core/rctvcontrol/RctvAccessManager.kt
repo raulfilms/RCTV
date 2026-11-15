@@ -232,6 +232,25 @@ class RctvAccessManager @Inject constructor(
         return if (!answer.has("data") || answer.isNull("data")) "null" else answer.get("data").toString()
     }
 
+    /**
+     * RCTV (owner): profile [slot]'s favorites kept with the account (profile-prefs on the website):
+     * the saved copy (null: none yet) and its version; null when the website didn't answer.
+     */
+    suspend fun profilePrefs(slot: Int): Pair<JSONObject?, Long>? {
+        val (status, text) = post("profile-prefs", JSONObject().put("action", "get").put("slot", slot)) ?: return null
+        if (status != 200) return null
+        val answer = runCatching { JSONObject(text.orEmpty()) }.getOrNull() ?: return null
+        return answer.optJSONObject("data") to answer.optLong("version", 0L)
+    }
+
+    /** Saves profile [slot]'s favorites with the account: the new version, or null when it couldn't. */
+    suspend fun saveProfilePrefs(slot: Int, data: JSONObject): Long? {
+        val body = JSONObject().put("action", "put").put("slot", slot).put("data", data)
+        val (status, text) = post("profile-prefs", body) ?: return null
+        if (status != 200) return null
+        return runCatching { JSONObject(text.orEmpty()).getLong("version") }.getOrNull()
+    }
+
     suspend fun startPlayback(kind: String, title: String): RctvPlaybackStart {
         val body = JSONObject().put("action", "start").put("kind", kind).put("title", title.take(200))
         val (status, text) = post("playback", body) ?: return RctvPlaybackStart.Unchecked

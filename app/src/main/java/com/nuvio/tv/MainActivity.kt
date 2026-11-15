@@ -360,6 +360,10 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var rctvWatchSync: com.nuvio.tv.core.rctvcontrol.RctvWatchSync
 
+    /** RCTV (owner): each profile's favorites (sports, teams, channels, IMDb link...) in its account too. */
+    @Inject
+    lateinit var rctvProfilePrefs: com.nuvio.tv.core.rctvcontrol.RctvProfilePrefsSync
+
     /** RCTV: what loads behind "Creating Your Experience" (Live TV channels and guide, sports). */
     @Inject
     lateinit var experiencePreparer: com.nuvio.tv.core.rctvcontrol.RctvExperiencePreparer
@@ -458,6 +462,8 @@ open class MainActivity : ComponentActivity() {
                 launch { rctvManagedAddons.run() }
                 // The library, watched titles and progress follow the account on every TV.
                 launch { rctvWatchSync.run() }
+                // And the profile's favorites: sports, leagues, teams, games, channels, IMDb link.
+                launch { rctvProfilePrefs.run() }
             }
         }
 
@@ -537,6 +543,9 @@ open class MainActivity : ComponentActivity() {
             // "Customize your experience" (leagues, teams, networks, series) before Home. Decided
             // once each time a profile opens (null: not yet).
             val customizeDone by rctvCustomize.done.collectAsState()
+            // RCTV (owner): a profile that already went through it on another TV of the account
+            // doesn't again: its favorites are read from the account first (a few seconds at most).
+            val profilePrefsChecked by rctvProfilePrefs.checked.collectAsState()
             var customizeNow by remember(activeProfileId, startupSession) { mutableStateOf<Boolean?>(null) }
 
             LaunchedEffect(authState, profiles) {
@@ -958,7 +967,9 @@ open class MainActivity : ComponentActivity() {
                     if (customizeNow == null) {
                         val done = customizeDone
                         val profile = activeProfile
-                        if (done != null && profile != null) {
+                        val accountRead = profile == null || profile.id in done.orEmpty() ||
+                            !rctvProfilePrefs.active || profile.id in profilePrefsChecked
+                        if (done != null && profile != null && accountRead) {
                             customizeNow = rctvPlan == com.nuvio.tv.core.rctvcontrol.RctvPlan.FULL &&
                                 !profile.isKids && profile.id !in done
                         }
