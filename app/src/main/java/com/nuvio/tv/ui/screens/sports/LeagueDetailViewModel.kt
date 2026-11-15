@@ -396,17 +396,37 @@ class LeagueDetailViewModel @Inject constructor(
                 ?.let { channel.id to it }
         }.toMap()
 
-    /** [item]'s channel, ready to play; null when its address can't be had. */
+    /**
+     * [item]'s channel, ready to play; null when its address can't be had. RCTV (owner: "couldn't
+     * open this channel"): as Home's channels do, the sources in use now (not only the ones the
+     * page started with), and when the channel's own address can't be had, the Guide's copy of it
+     * or one of its other versions. Why one fails goes in the bug report's log (never the address).
+     */
     suspend fun playable(item: LeagueChannelItem): com.nuvio.tv.domain.model.LiveTvChannel? {
-        val sources = lineupSources.ifEmpty { return null }
-        return try {
-            val url = guideLoader.resolvePlaybackUrl(item.channel, sources)
-            item.channel.copy(streamUrl = url).takeIf { url.isNotBlank() }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
+        val sources = lineupSources.ifEmpty {
+            runCatching { liveTvDataStore.sources.first() }.getOrDefault(emptyList()).filter { it.enabled }
         }
+        val guide = guideLoader.guide.value
+        val candidates = buildList {
+            add(item.channel)
+            guide?.channels?.firstOrNull { it.id == item.channel.id }?.let(::add)
+            guide?.hiddenChannels?.filter { it.id == item.channel.id || it.versionOf == item.channel.id }?.let(::addAll)
+        }.distinctBy { it.id to it.streamUrl }
+        for (candidate in candidates) {
+            val url = try {
+                if (sources.isEmpty()) candidate.streamUrl else guideLoader.resolvePlaybackUrl(candidate, sources)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                candidate.streamUrl
+            }
+            if (url.isNotBlank()) return candidate.copy(streamUrl = url)
+        }
+        com.nuvio.tv.core.bugreport.BugReportLog.event(
+            "league",
+            "channel not playable: ${item.title} (sources ${sources.size}, versions ${candidates.size}, guide ${guide != null})"
+        )
+        return null
     }
 
     // ------------------------------------------------------------------ RCTV: highlights
