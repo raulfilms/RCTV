@@ -81,6 +81,14 @@ class RctvAccessManager @Inject constructor(
      */
     val remoteProfiles: StateFlow<List<RctvRemoteProfile>?> = _remoteProfiles.asStateFlow()
 
+    private val _cloudSlots = MutableStateFlow(readCloudSlots())
+
+    /**
+     * RCTV (owner): the profiles (places 1 to 8) he let see the Library's Cloud on the website. Kept on
+     * the TV (known at once when the app opens); empty without his yes: nobody sees Cloud then.
+     */
+    val cloudSlots: StateFlow<Set<Int>> = _cloudSlots.asStateFlow()
+
     /** Enters the account's code. On success the app opens with the account's plan. */
     suspend fun activate(rawCode: String): RctvActivation {
         val url = baseUrl ?: return RctvActivation.NoConnection
@@ -167,6 +175,7 @@ class RctvAccessManager @Inject constructor(
                 saveAccount(outcome.config.account)
                 managed.save(outcome.config.services, outcome.config.publicUrls)
                 outcome.config.profiles?.let { _remoteProfiles.value = it }
+                saveCloudSlots(outcome.config.cloudSlots.orEmpty())
                 publish()
                 nextWaitSeconds(outcome.config.checkEverySeconds.toLong(), outcome.config.account)
             }
@@ -185,7 +194,20 @@ class RctvAccessManager @Inject constructor(
         prefs.edit().clear().apply()
         managed.clear()
         _remoteProfiles.value = null
+        _cloudSlots.value = emptySet()
         publish()
+    }
+
+    private fun readCloudSlots(): Set<Int> =
+        prefs.getString(KEY_CLOUD_SLOTS, null)
+            ?.split(',')
+            ?.mapNotNull { it.trim().toIntOrNull()?.takeIf { slot -> slot in 1..8 } }
+            ?.toSet()
+            .orEmpty()
+
+    private fun saveCloudSlots(slots: Set<Int>) {
+        prefs.edit().putString(KEY_CLOUD_SLOTS, slots.sorted().joinToString(",")).apply()
+        _cloudSlots.value = slots
     }
 
     /** Saves a profile of this TV on its account (made or changed here). */
@@ -399,6 +421,7 @@ class RctvAccessManager @Inject constructor(
         const val KEY_TOKEN = "device_token"
         const val KEY_PLAN = "base_plan"
         const val KEY_MASTER = "master"
+        const val KEY_CLOUD_SLOTS = "cloud_slots"
         const val KEY_TRIAL_ENDS = "trial_ends_at"
         const val KEY_LABEL_ACCOUNT_ID = "report_account_id"
         const val KEY_LABEL_ACCOUNT_NAME = "report_account_name"

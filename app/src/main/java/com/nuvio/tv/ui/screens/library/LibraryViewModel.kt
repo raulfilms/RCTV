@@ -52,6 +52,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -61,6 +62,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.nuvio.tv.R
@@ -223,6 +225,15 @@ class LibraryViewModel @Inject constructor(
     // RCTV Control: the account's plan (Light has no teams, leagues, games or channels); none in tests.
     private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null
 ) : ViewModel() {
+
+    /**
+     * RCTV (owner): the Library's Cloud (the debrid services' own files) only for a profile he let
+     * have it on the website; nobody else sees it (nor without an account: no tests' one either).
+     */
+    val cloudAllowed: StateFlow<Boolean> = (rctvAccess?.cloudSlots ?: MutableStateFlow(emptySet()))
+        .combine(profileManager.activeProfileId) { slots, profileId -> profileId in slots }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
      * RCTV Control, Light: the Library has only All, Movies and Shows (no sports, channels, IMDb

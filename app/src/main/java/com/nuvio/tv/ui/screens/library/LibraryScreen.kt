@@ -154,6 +154,11 @@ fun LibraryScreen(
     var showDeleteConfirm by remember(uiState.showManageDialog) { mutableStateOf(false) }
     var expandedPicker by remember { mutableStateOf<String?>(null) }
     var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.Saved) }
+    // RCTV (owner): Cloud only for a profile he let have it on the website.
+    val cloudAllowed by viewModel.cloudAllowed.collectAsState()
+    LaunchedEffect(cloudAllowed) {
+        if (!cloudAllowed && viewMode == LibraryViewMode.Cloud) viewMode = LibraryViewMode.Saved
+    }
     var activeCloudItem by remember { mutableStateOf<CloudLibraryItem?>(null) }
     var extraToRemove by remember { mutableStateOf<com.nuvio.tv.domain.model.LibraryEntry?>(null) }
     var pendingCloudPlayback by remember { mutableStateOf<CloudLibraryPlaybackInfo?>(null) }
@@ -355,6 +360,7 @@ fun LibraryScreen(
 
         item(span = { GridItemSpan(maxLineSpan) }) {
             LibraryViewModeRow(
+                modes = if (cloudAllowed) LibraryViewMode.entries else listOf(LibraryViewMode.Saved),
                 selectedMode = viewMode,
                 primaryFocusRequester = primaryFocusRequester,
                 onSelected = { mode ->
@@ -841,6 +847,8 @@ private fun ImdbSyncButton(syncing: Boolean, onClick: () -> Unit) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun LibraryViewModeRow(
+    /** The views offered (RCTV: Cloud only when the owner allowed this profile). */
+    modes: List<LibraryViewMode>,
     selectedMode: LibraryViewMode,
     primaryFocusRequester: FocusRequester,
     onSelected: (LibraryViewMode) -> Unit,
@@ -853,7 +861,7 @@ private fun LibraryViewModeRow(
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-            LibraryViewMode.entries.forEach { mode ->
+            modes.forEach { mode ->
                 val selected = mode == selectedMode
                 Button(
                     onClick = { onSelected(mode) },

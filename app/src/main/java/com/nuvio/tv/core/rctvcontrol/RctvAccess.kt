@@ -136,6 +136,11 @@ data class RctvDeviceConfig(
     val services: RctvServices = RctvServices(),
     /** The account's profiles; null from a website without them (the TV's profiles stay as they are). */
     val profiles: List<RctvRemoteProfile>? = null,
+    /**
+     * RCTV (owner): the profiles (their places, 1 to 8) the owner let see the Library's Cloud (the
+     * debrid services' own files), on the website; null from a website without it (none can).
+     */
+    val cloudSlots: Set<Int>? = null,
     val publicUrls: RctvPublicUrls = RctvPublicUrls()
 )
 
@@ -198,6 +203,7 @@ object RctvControlParser {
             checkEverySeconds = every,
             services = servicesOf(json),
             profiles = json.optJSONArray("profiles")?.let(::profilesOf),
+            cloudSlots = json.optJSONArray("profiles")?.let(::cloudSlotsOf),
             publicUrls = json.optJSONObject("public_urls")?.let { urls ->
                 val announcements = urls.optStringOrNull("announcements")?.takeIf(::isHttps)
                 RctvPublicUrls(
@@ -286,6 +292,15 @@ object RctvControlParser {
             )
         }
     }.distinctBy { it.slot }.sortedBy { it.slot }
+
+    /** The profiles' places with "cloud_allowed" on (the owner's yes, on the website). */
+    fun cloudSlotsOf(array: org.json.JSONArray): Set<Int> = buildSet {
+        for (i in 0 until array.length()) {
+            val p = array.optJSONObject(i) ?: continue
+            val slot = p.optInt("slot", 0).takeIf { it in 1..8 } ?: continue
+            if (p.optBoolean("cloud_allowed", false)) add(slot)
+        }
+    }
 
     private fun isHttps(value: String): Boolean = value.startsWith("https://") && value.length <= 500
 
