@@ -1,0 +1,181 @@
+name: RCTV Release
+
+# RCTV (owner): the app as a real release (com.nuvio.tv), signed always with RCTV's own key so every
+# new version installs over the one before. Each run gets a higher build number. "publish" off: only
+# the APKs to try (in the run's artifacts). "publish" on: a GitHub release "RCTV Beta <version>"
+# that the app on every TV finds and offers as an update.
+#
+# Secrets used: RCTV_RELEASE_KEYSTORE (the key file, base64), RCTV_RELEASE_PASSWORD (its password),
+# LOCAL_PROPERTIES_BASE64, SENTRY_DSN and GOOGLE_SERVICES_JSON (used only when it has com.nuvio.tv).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (example: 1.2)"
+        required: true
+        type: string
+      notes:
+        description: "What's new (shown in the update)"
+        required: false
+        type: string
+      publish:
+        description: "Publish the update for everyone"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rctv-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: RCTV Beta ${{ inputs.version }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="$(printf '%s' "$INPUT_VERSION" | tr -d '[:space:]')"
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            semver="$version.0"
+          elif [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            semver="$version"
+          else
+            echo "The version must look like 1.2 (or 1.2.1)." >&2
+            exit 1
+          fi
+          name="$semver-beta"
+          tag="v$name"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Version $version was already published. Use a higher one." >&2
+            exit 1
+          fi
+          {
+            echo "short=$version"
+            echo "name=$name"
+            echo "tag=$tag"
+            echo "code=$((2000 + GITHUB_RUN_NUMBER))"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Prepare local properties
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+          LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
+        run: |
+          if [ -n "$LOCAL_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+          if [ -n "$LOCAL_DEV_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_DEV_PROPERTIES_BASE64" | base64 --decode > local.dev.properties
+          else
+            touch local.dev.properties
+          fi
+
+      # The same key every time: without it a TV can't install the update over the app it has.
+      - name: Prepare RCTV's signing key
+        env:
+          RCTV_RELEASE_KEYSTORE: ${{ secrets.RCTV_RELEASE_KEYSTORE }}
+          RCTV_RELEASE_PASSWORD: ${{ secrets.RCTV_RELEASE_PASSWORD }}
+        run: |
+          if [ -z "$RCTV_RELEASE_KEYSTORE" ] || [ -z "$RCTV_RELEASE_PASSWORD" ]; then
+            echo "Missing the RCTV_RELEASE_KEYSTORE or RCTV_RELEASE_PASSWORD secret." >&2
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/rctv-release.p12"
+          printf '%s' "$RCTV_RELEASE_KEYSTORE" | tr -d '[:space:]' | base64 --decode > "$keystore"
+          if ! keytool -list -keystore "$keystore" -storetype pkcs12 -storepass:env RCTV_RELEASE_PASSWORD -alias rctv >/dev/null 2>&1; then
+            echo "The signing key can't be read: check RCTV_RELEASE_KEYSTORE and RCTV_RELEASE_PASSWORD." >&2
+            exit 1
+          fi
+          {
+            echo "NUVIO_RELEASE_STORE_FILE=$keystore"
+            echo "NUVIO_RELEASE_KEY_ALIAS=rctv"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ] && printf '%s' "$GOOGLE_SERVICES_JSON" | grep -q '"com.nuvio.tv"'; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          else
+            echo "Firebase off for this build (its settings don't have com.nuvio.tv)."
+          fi
+
+      - name: Test updater and build the release APKs
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          NUVIO_RELEASE_KEY_PASSWORD: ${{ secrets.RCTV_RELEASE_PASSWORD }}
+          NUVIO_RELEASE_STORE_PASSWORD: ${{ secrets.RCTV_RELEASE_PASSWORD }}
+          RCTV_VERSION_NAME: ${{ steps.version.outputs.name }}
+          RCTV_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: ./gradlew :app:testFullReleaseUnitTest --tests 'com.nuvio.tv.updater.*' :app:assembleFullRelease --stacktrace
+
+      - name: Name the APKs
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+        run: |
+          mkdir -p release-apks
+          out=app/build/outputs/apk/full/release
+          for abi in universal armeabi-v7a arm64-v8a; do
+            if [ -f "$out/app-full-$abi-release.apk" ]; then
+              cp "$out/app-full-$abi-release.apk" "release-apks/RCTV-$SHORT-$abi.apk"
+            fi
+          done
+          if [ ! -f "release-apks/RCTV-$SHORT-universal.apk" ]; then
+            echo "The universal APK wasn't built." >&2
+            exit 1
+          fi
+          ls -l release-apks
+
+      - name: Upload the APKs (to try)
+        uses: actions/upload-artifact@v7
+        with:
+          name: RCTV-${{ steps.version.outputs.short }}-apks
+          path: release-apks/
+          if-no-files-found: error
+          retention-days: 30
+
+      # For Sentry's and Crashlytics' readable errors later (only class names, nothing secret).
+      - name: Upload the R8 mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: RCTV-${{ steps.version.outputs.short }}-mapping
+          path: app/build/outputs/mapping/fullRelease/mapping.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Publish the update
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SHORT: ${{ steps.version.outputs.short }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          notes="${NOTES:-Improvements and fixes.}"
+          gh release create "$TAG" release-apks/*.apk \
+            --target "$GITHUB_SHA" \
+            --title "RCTV Beta $SHORT" \
+            --notes "$notes" \
+            --prerelease
