@@ -9,6 +9,7 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1405,16 +1406,20 @@ private fun MetaDetailsContent(
         }
     }
     var lastDetailDpadKey by rememberSaveable(meta.id) { mutableIntStateOf(0) }
+    // RCTV: while an episode has focus the page only moves as little as needed to show the whole
+    // card with its name and story under it (it used to jump the row down and cut the story off).
+    val episodeRowFocus = remember { EpisodeRowFocus() }
     val episodeRowStayVerticalResponder = remember(lastDetailDpadKey, pendingRestoreType) {
         object : BringIntoViewResponder {
             override fun calculateRectForParent(localRect: Rect): Rect {
                 val stayVertical = pendingRestoreType == RestoreTarget.EPISODE ||
                     lastDetailDpadKey == KeyEvent.KEYCODE_DPAD_LEFT ||
                     lastDetailDpadKey == KeyEvent.KEYCODE_DPAD_RIGHT
-                return if (stayVertical) {
-                    Rect(localRect.left, 0f, localRect.right, 0f)
-                } else {
-                    localRect
+                return when {
+                    stayVertical -> Rect(localRect.left, 0f, localRect.right, 0f)
+                    episodeRowFocus.heightPx > 0 ->
+                        Rect(localRect.left, 0f, localRect.right, episodeRowFocus.heightPx.toFloat())
+                    else -> localRect
                 }
             }
 
@@ -2216,11 +2221,25 @@ private fun MetaDetailsContent(
         )
 
         // Single scrollable column with hero + content
+        val detailPageBringIntoViewSpec = remember(defaultBringIntoViewSpec, episodeRowFocus) {
+            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+            object : BringIntoViewSpec {
+                override val scrollAnimationSpec: AnimationSpec<Float> =
+                    defaultBringIntoViewSpec.scrollAnimationSpec
+
+                override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                    if (episodeRowFocus.focused) {
+                        keepFullyInView(offset, size, containerSize)
+                    } else {
+                        defaultBringIntoViewSpec.calculateScrollDistance(offset, size, containerSize)
+                    }
+            }
+        }
         CompositionLocalProvider(
             LocalBringIntoViewSpec provides if (suppressRestoreBringIntoView) {
                 restoreNoScrollBringIntoViewSpec
             } else {
-                defaultBringIntoViewSpec
+                detailPageBringIntoViewSpec
             }
         ) {
         LazyColumn(
@@ -2366,7 +2385,12 @@ private fun MetaDetailsContent(
                     } else {
                         null
                     }
-                    Box(modifier = Modifier.bringIntoViewResponder(episodeRowStayVerticalResponder)) {
+                    Box(
+                        modifier = Modifier
+                            .onSizeChanged { episodeRowFocus.heightPx = it.height }
+                            .onFocusChanged { episodeRowFocus.focused = it.hasFocus }
+                            .bringIntoViewResponder(episodeRowStayVerticalResponder)
+                    ) {
                         EpisodesRow(
                             episodes = episodesForSeason,
                             episodeProgressMap = episodeProgressMap,
@@ -3105,5 +3129,21 @@ private fun LibraryListPickerDialog(
                 Text(if (isPending) stringResource(R.string.action_saving) else stringResource(R.string.action_save))
             }
         }
+    }
+}
+
+/** RCTV: whether an episode in the season's row has focus, and how tall the row is (card, name and story). */
+private class EpisodeRowFocus {
+    var focused: Boolean = false
+    var heightPx: Int = 0
+}
+
+/** RCTV: moves the page only as much as needed to show all of it (nothing when it already shows). */
+private fun keepFullyInView(offset: Float, size: Float, containerSize: Float): Float {
+    val end = offset + size
+    return when {
+        offset >= 0f && end <= containerSize -> 0f
+        offset < 0f || size > containerSize -> offset
+        else -> end - containerSize
     }
 }
