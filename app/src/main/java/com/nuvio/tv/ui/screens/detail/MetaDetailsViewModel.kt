@@ -2536,6 +2536,17 @@ class MetaDetailsViewModel @Inject constructor(
         if (meta.apiType != "movie") return
         if (_uiState.value.isMovieWatchedPending) return
 
+        // RCTV (owner): the eye shows on the movie's cards at once (every id they can carry: the one it
+        // was opened with, "tmdb:123" from a TMDB row, and its IMDb id), not once it's saved and synced.
+        val markingWatched = !_uiState.value.isMovieWatched
+        val cardIds = buildSet {
+            add(_effectiveContentId.value)
+            itemId.takeIf { it.isNotBlank() }?.let(::add)
+            meta.id.takeIf { it.isNotBlank() }?.let(::add)
+            meta.imdbId?.takeIf { it.isNotBlank() }?.let(::add)
+        }.filter { it.isNotBlank() }.toSet()
+        watchProgressRepository.applyOptimisticWatchedMovie(cardIds, add = markingWatched)
+
         viewModelScope.launch {
             _uiState.update { it.copy(isMovieWatchedPending = true) }
             runCatching {
@@ -2547,6 +2558,7 @@ class MetaDetailsViewModel @Inject constructor(
                     showMessage(localizedContext.getString(R.string.detail_movie_marked_watched))
                 }
             }.onFailure { error ->
+                watchProgressRepository.revertOptimisticWatchedMovie(cardIds, add = markingWatched)
                 showMessage(
                     message = error.message ?: context.getString(com.nuvio.tv.R.string.detail_error_update_watched_failed),
                     isError = true
