@@ -115,6 +115,8 @@ class MetaDetailsViewModel @Inject constructor(
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
     /** RCTV, Kids profiles: only titles for children up to 13. */
     private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate,
+    /** RCTV: the marks on every card (watched, in the Library) under every id the title goes by. */
+    private val titleStatus: com.nuvio.tv.core.titlestatus.TitleStatusService,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val itemId: String = savedStateHandle["itemId"] ?: ""
@@ -167,6 +169,13 @@ class MetaDetailsViewModel @Inject constructor(
 
     init {
         posterOptions.bind(viewModelScope)
+        // RCTV (owner): the ids this title goes by (the one it opened with, "tmdb:123" from a TMDB
+        // row, and the one its page loaded), so its cards everywhere show its Library and watched marks.
+        viewModelScope.launch {
+            _uiState.map { it.meta }.distinctUntilChanged().collect { meta ->
+                if (meta != null) titleStatus.noteSameTitle(listOf(itemId, meta.id, meta.imdbId))
+            }
+        }
         checkKidsRating()
         observeMetaViewSettings()
         observeTrailerAutoplaySettings()
@@ -2291,11 +2300,17 @@ class MetaDetailsViewModel @Inject constructor(
             val input = meta.toLibraryEntryInput()
             val wasInWatchlist = _uiState.value.isInWatchlist
             val wasInLibrary = _uiState.value.isInLibrary
+            // RCTV (owner): its cards show the Library check (or lose it) at once, under every id.
+            val cardIds = listOf(itemId, meta.id, meta.imdbId, _effectiveContentId.value)
+            val adding = !(wasInLibrary || wasInWatchlist)
+            titleStatus.noteSameTitle(cardIds)
+            titleStatus.noteLibrary(cardIds, inLibrary = adding)
             _uiState.update { it.copy(defaultLibraryTogglePending = true) }
             runCatching {
                 libraryRepository.toggleDefault(input)
             }.onSuccess { result ->
                 if (result.requiresRemovalConfirmation) {
+                    titleStatus.noteLibrary(cardIds, inLibrary = !adding)
                     pendingDefaultLibraryToggle = input
                     _uiState.update {
                         it.copy(
@@ -2314,6 +2329,7 @@ class MetaDetailsViewModel @Inject constructor(
                 }
                 showMessage(message)
             }.onFailure { error ->
+                titleStatus.noteLibrary(cardIds, inLibrary = !adding)
                 pendingDefaultLibraryToggle = null
                 _uiState.update { it.copy(defaultLibraryTogglePending = false) }
                 showMessage(
@@ -2462,6 +2478,9 @@ class MetaDetailsViewModel @Inject constructor(
         input: LibraryEntryInput,
         confirmations: List<TrackingMembershipRemovalConfirmation>
     ) {
+        _uiState.value.meta?.let { meta ->
+            titleStatus.noteLibrary(listOf(itemId, meta.id, meta.imdbId, _effectiveContentId.value), inLibrary = false)
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(defaultLibraryTogglePending = true) }
             runCatching {
