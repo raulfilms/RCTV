@@ -1542,6 +1542,9 @@
     <string name="sports_game_not_on_channels">Este juego no está en ninguno de tus canales ahora</string>
     <string name="sports_finding_game_youtube">No está en tus canales: buscándolo en vivo en YouTube…</string>
     <string name="game_detail_watch_recap">Ver resumen</string>
+    <string name="game_detail_show_less">Ver menos</string>
+    <string name="game_detail_show_all">Ver todo (%1$d)</string>
+    <string name="game_detail_player">JUGADOR</string>
     <string name="game_detail_leaderboard">Clasificación</string>
     <string name="game_detail_loading_leaderboard">Cargando la clasificación…</string>
     <string name="game_detail_no_leaderboard">Aún no hay clasificación: sale cuando empiece el torneo</string>

@@ -42,7 +42,9 @@ data class GameDetailUiState(
     /** A race's results, or its running order while it's on (NASCAR). */
     val raceResults: List<com.nuvio.tv.domain.model.SportsRaceResult> = emptyList(),
     /** A PPV show's poster, description and card. */
-    val showDetails: com.nuvio.tv.domain.model.SportsShowDetails? = null
+    val showDetails: com.nuvio.tv.domain.model.SportsShowDetails? = null,
+    /** RCTV (owner): each team's players (box score: offense, defense...), from the game's summary. */
+    val boxScores: List<com.nuvio.tv.domain.model.GameCenterBoxScore> = emptyList()
 )
 
 /** Watch Recap: looking for the game's highlights on YouTube, playing them, or none found. */
@@ -144,6 +146,16 @@ class GameDetailViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoadingStats = false, showDetails = details) }
             }
             return
+        }
+        // RCTV (owner): each team's players' stats, for their boxes under Team Comparison (kept fresh
+        // while the game is on).
+        viewModelScope.launch {
+            while (true) {
+                val center = withContext(Dispatchers.IO) { runCatching { client.fetchGameCenter(event.id) }.getOrNull() }
+                center?.boxScores?.takeIf { it.isNotEmpty() }?.let { boxes -> _uiState.update { it.copy(boxScores = boxes) } }
+                if (event.status != SportsEventStatus.LIVE) break
+                kotlinx.coroutines.delay(BOX_SCORE_REFRESH_MS)
+            }
         }
         viewModelScope.launch {
             val summary = withContext(Dispatchers.IO) {
@@ -303,6 +315,7 @@ class GameDetailViewModel @Inject constructor(
 
         /** How often a race on now looks at its running order again. */
         const val RACE_REFRESH_MS = 30_000L
+        const val BOX_SCORE_REFRESH_MS = 60_000L
 
         fun decodeArg(raw: String?): String {
             if (raw.isNullOrEmpty()) return ""

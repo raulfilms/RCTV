@@ -86,19 +86,25 @@ fun GameDetailScreen(
         )
     }
 
+    // RCTV (owner): which boxes are open (Team Comparison, each team's players' boxes).
+    var openBoxes by remember { mutableStateOf(emptySet<String>()) }
+    fun toggleBox(key: String) {
+        openBoxes = if (key in openBoxes) openBoxes - key else openBoxes + key
+    }
+
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = NuvioTheme.spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+        modifier = modifier.fillMaxSize().gameGlassBackground(),
+        contentPadding = PaddingValues(vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item(key = "header") {
             GameDetailHeader(
                 event = event,
-                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg),
+                modifier = Modifier.padding(horizontal = GlassPageSide),
                 // Golf has no recap to find (its highlights aren't one game's).
                 recapButton = if (isOver && !event.isGolf()) {
                     {
-                        WatchRecapButton(
+                        GlassRecapButton(
                             onClick = viewModel::watchRecap,
                             modifier = Modifier.focusRequester(recapRequester)
                         )
@@ -111,12 +117,12 @@ fun GameDetailScreen(
 
         item(key = "actions") {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = NuvioTheme.spacing.lg)
+                    .padding(horizontal = GlassPageSide)
             ) {
-                GameActionButton(
+                GlassPillButton(
                     label = stringResource(
                         if (uiState.isInLibrary) R.string.hero_remove_from_library else R.string.hero_add_to_library
                     ),
@@ -125,7 +131,7 @@ fun GameDetailScreen(
                 )
                 event.homeTeamId?.let { homeTeamId ->
                     val isFavorite = uiState.favoriteTeamIds.hasTeam(event.leagueId, homeTeamId)
-                    GameActionButton(
+                    GlassPillButton(
                         label = stringResource(
                             if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
                             event.homeTeamName
@@ -136,7 +142,7 @@ fun GameDetailScreen(
                 }
                 event.awayTeamId?.let { awayTeamId ->
                     val isFavorite = uiState.favoriteTeamIds.hasTeam(event.leagueId, awayTeamId)
-                    GameActionButton(
+                    GlassPillButton(
                         label = stringResource(
                             if (isFavorite) R.string.sports_remove_team_from_my_teams else R.string.sports_add_team_to_my_teams,
                             event.awayTeamName
@@ -161,61 +167,71 @@ fun GameDetailScreen(
             return@LazyColumn
         }
 
-        item(key = "stats_title") {
-            Text(
-                text = stringResource(R.string.game_detail_stats_title),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = NuvioTheme.colors.TextPrimary,
-                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
-            )
-        }
-
+        val stats = uiState.stats.distinctBy { it.label }
         when {
             uiState.isLoadingStats -> item(key = "stats_loading") {
                 Text(
                     text = stringResource(R.string.game_detail_loading_stats),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioTheme.colors.TextSecondary,
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+                    fontSize = 16.sp,
+                    color = GlassDim,
+                    modifier = Modifier.padding(horizontal = GlassPageSide)
                 )
             }
-            uiState.stats.isEmpty() -> item(key = "stats_empty") {
+            stats.isEmpty() -> item(key = "stats_empty") {
                 Text(
                     text = stringResource(R.string.game_detail_no_stats),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioTheme.colors.TextSecondary,
-                    modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg)
+                    fontSize = 16.sp,
+                    color = GlassDim,
+                    modifier = Modifier.padding(horizontal = GlassPageSide)
                 )
             }
-            else -> {
-                item(key = "stats_header") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.xs)
-                    ) {
-                        Text(
-                            text = event.homeTeamName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NuvioTheme.colors.TextTertiary,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Start
-                        )
-                        Spacer(modifier = Modifier.width(80.dp))
-                        Text(
-                            text = event.awayTeamName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NuvioTheme.colors.TextTertiary,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                }
-                items(uiState.stats.distinctBy { it.label }, key = { it.label }) { stat ->
-                    GameStatRow(stat = stat, modifier = Modifier.padding(horizontal = NuvioTheme.spacing.lg))
+            else -> item(key = "comparison") {
+                GlassExpandablePanel(
+                    title = stringResource(R.string.game_detail_stats_title),
+                    expanded = "comparison" in openBoxes,
+                    onToggle = { toggleBox("comparison") },
+                    rowCount = stats.size,
+                    modifier = Modifier.padding(horizontal = GlassPageSide),
+                    subHeader = { ComparisonTeams(left = event.homeTeamName, right = event.awayTeamName) }
+                ) { index -> ComparisonLine(stats[index]) }
+            }
+        }
+
+        // RCTV (owner): each team's players, the header's left team first: one box a part of the game
+        // (passing, rushing, receiving, defense...; the players in basketball), each opening whole.
+        val boxes = uiState.boxScores.sortedBy { box ->
+            when (box.team.id) {
+                event.homeTeamId -> 0
+                event.awayTeamId -> 1
+                else -> 2
+            }
+        }
+        boxes.forEach { box ->
+            box.sections.filter { it.rows.isNotEmpty() }.forEachIndexed { sectionIndex, section ->
+                val boxKey = "players_${box.team.id ?: box.team.name}_$sectionIndex"
+                item(key = boxKey) {
+                    GlassExpandablePanel(
+                        title = listOf(box.team.name, section.title).filter { it.isNotBlank() }.joinToString("  ·  "),
+                        expanded = boxKey in openBoxes,
+                        onToggle = { toggleBox(boxKey) },
+                        rowCount = section.rows.size,
+                        modifier = Modifier.padding(horizontal = GlassPageSide),
+                        leading = box.team.logoUrl?.takeIf { it.isNotBlank() }?.let { logo -> @Composable { GlassTeamLogo(logo) } },
+                        subHeader = { BoxSectionHeader(section) }
+                    ) { index -> BoxSectionLine(section, index) }
                 }
             }
         }
+    }
+}
+
+/** RCTV: the league's own logo, for the leagues ESPN keeps one at a known place. */
+private fun leagueLogoUrl(leagueId: String?): String? {
+    val league = leagueId?.substringAfter(':')?.takeIf { it.isNotBlank() } ?: return null
+    return if (league in setOf("nba", "nfl", "mlb", "nhl", "wnba", "mls")) {
+        "https://a.espncdn.com/i/teamlogos/leagues/500/$league.png"
+    } else {
+        null
     }
 }
 
@@ -223,77 +239,73 @@ fun GameDetailScreen(
 private fun GameDetailHeader(
     event: com.nuvio.tv.domain.model.SportsEvent,
     modifier: Modifier = Modifier,
-    /** Watch Recap, big under the score (a game that's over). */
+    /** Watch Recap, under when and where (a game that's over). */
     recapButton: (@Composable () -> Unit)? = null
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(NuvioTheme.radii.panel))
-            .background(NuvioTheme.colors.BackgroundElevated)
-            .padding(NuvioTheme.spacing.xl)
+            .glassPanel()
+            .padding(horizontal = 26.dp, vertical = 22.dp)
     ) {
-        Text(
-            text = (event.leagueName ?: event.sportName).orEmpty().uppercase(),
-            style = MaterialTheme.typography.labelLarge,
-            color = NuvioTheme.colors.TextSecondary
-        )
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+        // The league: its logo and its name, top left.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            leagueLogoUrl(event.leagueId)?.let { logo ->
+                SportsLogoImage(url = logo, background = SportsLogoDarkBackground, contentDescription = null, modifier = Modifier.size(30.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+            }
+            Text(
+                text = (event.leagueName ?: event.sportName).orEmpty(),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         if (event.isSoloEvent()) {
             // A golf tournament, a race, a PPV show: the tour's (series', promotion's) logo, its name, its leader.
             SoloEventContent(
                 event = event,
                 nameSize = 28.sp,
-                textColor = NuvioTheme.colors.TextPrimary,
-                secondaryColor = NuvioTheme.colors.TextSecondary,
+                textColor = Color.White,
+                secondaryColor = GlassDim,
                 modifier = Modifier.fillMaxWidth()
             )
-        } else Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        } else {
             // RCTV: "Hide scores" (Sports page).
             val scoresHidden = rememberScoresHidden()
-            GameDetailTeam(
-                name = event.homeTeamName,
-                badgeUrl = event.homeTeamBadgeUrl,
-                score = event.homeScore.takeUnless { scoresHidden },
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "VS",
-                style = MaterialTheme.typography.titleSmall,
-                color = NuvioTheme.colors.TextTertiary,
-                modifier = Modifier.padding(horizontal = NuvioTheme.spacing.md)
-            )
-            GameDetailTeam(
-                name = event.awayTeamName,
-                badgeUrl = event.awayTeamBadgeUrl,
-                score = event.awayScore.takeUnless { scoresHidden },
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-        Text(
-            text = statusLine(event),
-            style = MaterialTheme.typography.titleSmall,
-            color = if (event.status == SportsEventStatus.LIVE) NuvioTheme.colors.Error else NuvioTheme.colors.TextPrimary,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
-        )
-        event.venue?.takeIf { it.isNotBlank() }?.let { venue ->
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
-            Text(
-                text = venue,
-                style = MaterialTheme.typography.bodySmall,
-                color = NuvioTheme.colors.TextSecondary,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
+            val homeScore = event.homeScore.takeUnless { scoresHidden }
+            val awayScore = event.awayScore.takeUnless { scoresHidden }
+            val hasScore = homeScore != null && awayScore != null
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                GameDetailTeam(name = event.homeTeamName, badgeUrl = event.homeTeamBadgeUrl, modifier = Modifier.weight(1f))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1.2f).padding(top = 18.dp)
+                ) {
+                    // VS, or the score once there's one.
+                    Text(
+                        text = if (hasScore) "$homeScore  –  $awayScore" else "VS",
+                        fontSize = if (hasScore) 40.sp else 34.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = statusLine(event),
+                        fontSize = 17.sp,
+                        color = if (event.status == SportsEventStatus.LIVE) Color(0xFFFF5A5F) else GlassDim,
+                        textAlign = TextAlign.Center
+                    )
+                    event.venue?.takeIf { it.isNotBlank() }?.let { venue ->
+                        Text(text = venue, fontSize = 17.sp, color = GlassDim, textAlign = TextAlign.Center, maxLines = 1)
+                    }
+                }
+                GameDetailTeam(name = event.awayTeamName, badgeUrl = event.awayTeamBadgeUrl, modifier = Modifier.weight(1f))
+            }
         }
         if (recapButton != null) {
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+            Spacer(modifier = Modifier.height(18.dp))
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { recapButton() }
         }
     }
@@ -328,175 +340,34 @@ private fun recapTitle(event: com.nuvio.tv.domain.model.SportsEvent, uiState: Ga
     return listOfNotNull(matchup, weekLabel).joinToString("  •  ")
 }
 
-/** YouTube's red. */
-private val RecapRed = Color(0xFFFF0033)
-
-/**
- * "Watch Recap": red like YouTube's, a compact pill centered under the score; the game's
- * highlights. The play icon and the words sit together in the very middle of the red (the text
- * without its font's extra top and bottom).
- */
 @Composable
-private fun WatchRecapButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    // RCTV: a compact pill in the middle, a little bigger (still in the middle) when focused.
-    val shape = RoundedCornerShape(12.dp)
-    androidx.tv.material3.Surface(
-        onClick = onClick,
-        modifier = modifier
-            .height(44.dp)
-            .widthIn(min = 210.dp),
-        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape),
-        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
-            containerColor = RecapRed,
-            contentColor = Color.White,
-            focusedContainerColor = RecapRed,
-            focusedContentColor = Color.White
-        ),
-        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
-            focusedBorder = androidx.tv.material3.Border(
-                border = androidx.compose.foundation.BorderStroke(3.dp, Color.White),
-                shape = shape
-            )
-        ),
-        // Grows from its middle, so it stays centered.
-        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f)
-    ) {
-        Box(
-            // As wide as its words (not the whole width of the page): it filled the width before.
-            modifier = Modifier
-                .fillMaxHeight()
-                .padding(horizontal = 22.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = stringResource(R.string.game_detail_watch_recap).uppercase(),
-                    color = Color.White,
-                    maxLines = 1,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp,
-                        lineHeight = 15.sp,
-                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
-                        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
-                            alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
-                            trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.Both
-                        )
-                    )
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun GameDetailTeam(name: String, badgeUrl: String?, score: Int?, modifier: Modifier = Modifier) {
+private fun GameDetailTeam(name: String, badgeUrl: String?, modifier: Modifier = Modifier) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(NuvioTheme.colors.SurfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.size(84.dp), contentAlignment = Alignment.Center) {
             if (!badgeUrl.isNullOrBlank()) {
                 SportsLogoImage(
                     url = badgeUrl,
                     background = SportsLogoDarkBackground,
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(80.dp)
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.SportsBasketball,
                     contentDescription = null,
-                    tint = NuvioTheme.colors.TextTertiary,
-                    modifier = Modifier.size(32.dp)
+                    tint = GlassDim,
+                    modifier = Modifier.size(44.dp)
                 )
             }
         }
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = name,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = NuvioTheme.colors.TextPrimary,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.White,
             textAlign = TextAlign.Center,
             maxLines = 2
-        )
-        score?.let {
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
-            Text(
-                text = "$it",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                color = NuvioTheme.colors.TextPrimary
-            )
-        }
-    }
-}
-
-@Composable
-private fun GameActionButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
-            contentColor = NuvioTheme.colors.TextPrimary,
-            focusedContainerColor = NuvioTheme.colors.FocusBackground,
-            focusedContentColor = NuvioTheme.colors.TextPrimary
-        ),
-        shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
-    ) {
-        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(NuvioTheme.spacing.xs))
-        Text(text = label, maxLines = 1)
-    }
-}
-
-/**
- * One stat, both teams' values at the sides. It takes focus (lighter when focused), so Down goes
- * through the comparison and the page scrolls with it.
- */
-@Composable
-private fun GameStatRow(stat: SportsGameStat, modifier: Modifier = Modifier) {
-    var focused by remember { mutableStateOf(false) }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }
-            .focusable()
-            .padding(horizontal = 12.dp, vertical = NuvioTheme.spacing.xs)
-    ) {
-        Text(
-            text = stat.homeValue,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-            color = NuvioTheme.colors.TextPrimary,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = stat.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = NuvioTheme.colors.TextTertiary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.width(80.dp)
-        )
-        Text(
-            text = stat.awayValue,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-            color = NuvioTheme.colors.TextPrimary,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f)
         )
     }
 }
