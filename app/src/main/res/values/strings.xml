@@ -2186,7 +2186,7 @@
     <string name="library_type_all">All</string>
     <string name="library_type_items">items</string>
     <string name="library_type_movies">Movies</string>
-    <string name="library_type_shows">Shows</string>
+    <string name="library_type_shows">TV Shows</string>
     <string name="library_type_sports_teams">Sports Teams</string>
     <string name="library_type_sports_leagues">Sports Leagues</string>
     <string name="library_type_events">Events</string>
