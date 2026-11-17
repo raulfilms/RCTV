@@ -133,10 +133,14 @@ class NewsViewModel @Inject constructor(
         val news = newsChannels(guide)
         val chips = chipsFor(news, guide, now)
         val selected = _uiState.value.selectedChip?.takeIf { key -> chips.any { it.key == key } }
+        // RCTV (owner: the app closed opening News, "Key ... was already used"): a channel listed
+        // twice, or a guide with the same program twice, made two cards with one key; each channel
+        // and each program once, and each row's cards once.
         val shown = news.filter { channel -> selected == null || inChip(selected, channel, guide, now) }
+            .distinctBy { it.id }
 
         fun programsOf(channel: LiveTvChannel): List<EpgProgram> =
-            guide.epgByChannel[channel.epgChannelId ?: channel.id].orEmpty()
+            guide.epgByChannel[channel.epgChannelId ?: channel.id].orEmpty().distinctBy { it.startMs }
 
         val onNowLive = shown.mapNotNull { channel ->
             programsOf(channel).firstOrNull { it.startMs <= now && it.endMs > now }?.let { NewsCard(channel, it, live = true) }
@@ -144,7 +148,7 @@ class NewsViewModel @Inject constructor(
         val upcoming = shown.flatMap { channel ->
             programsOf(channel).filter { it.startMs > now && it.startMs < now + UPCOMING_MS }.take(2).map { NewsCard(channel, it, live = false) }
         }.sortedBy { it.program.startMs }
-        val onNow = (onNowLive + upcoming).take(ON_NOW_SIZE)
+        val onNow = (onNowLive + upcoming).distinctBy { it.key }.take(ON_NOW_SIZE)
 
         // One card a show: its next airing (on now first), the channels in the Guide's order.
         val seenTitles = HashSet<String>()
@@ -157,7 +161,7 @@ class NewsViewModel @Inject constructor(
                 picked += NewsCard(channel, program, live = program.startMs <= now)
             }
         }
-        val pickedSorted = picked.sortedBy { if (it.live) 0 else 1 }.take(PICKED_SIZE)
+        val pickedSorted = picked.distinctBy { it.key }.sortedBy { if (it.live) 0 else 1 }.take(PICKED_SIZE)
 
         val channelRows = shown.take(CHANNEL_ROWS).mapNotNull { channel ->
             val cards = programsOf(channel).filter { it.endMs > now }.take(CHANNEL_ROW_SIZE)
