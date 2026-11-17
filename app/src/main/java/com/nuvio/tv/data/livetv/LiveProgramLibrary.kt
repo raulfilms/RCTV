@@ -111,7 +111,13 @@ class LiveProgramLibrary @Inject constructor(
         val found = findTitle(program)
         var failed = false
         val match = if (found != null && !found.isMovie) {
-            found.copy(episode = runCatching { findEpisode(found.tmdbId, program, language) }
+            // RCTV: the episode named in the title ("Series : Episode") is the episode's name.
+            val episodeProgram = if (program.subtitle.isNullOrBlank()) {
+                episodePartOf(cleanTitle(program.title))?.let { program.copy(subtitle = it) } ?: program
+            } else {
+                program
+            }
+            found.copy(episode = runCatching { findEpisode(found.tmdbId, episodeProgram, language) }
                 .onFailure { if (it is CancellationException) throw it; failed = true }
                 .getOrNull())
         } else {
@@ -144,7 +150,11 @@ class LiveProgramLibrary @Inject constructor(
         }
         val language = language()
         val found = try {
+            // RCTV (owner: "Naked and Afraid : Enter the Queen" wasn't found): guides that put the
+            // episode in the title ("Series : Episode", "Series - Episode") are looked up by the
+            // series' part when the whole title isn't a title on TMDB.
             bestTitle(program, title, year, language)
+                ?: seriesPartOf(title)?.let { part -> bestTitle(program, part, year, language) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -741,6 +751,25 @@ class LiveProgramLibrary @Inject constructor(
             }
             return null
         }
+
+        /** RCTV: where a guide's title puts its episode after the series ("Series : Episode"). */
+        private val TITLE_SEPARATORS = listOf(" : ", ": ", " - ", " – ", " — ")
+
+        private fun splitTitle(title: String): Pair<String, String>? {
+            val (index, separator) = TITLE_SEPARATORS
+                .mapNotNull { separator -> title.indexOf(separator).takeIf { it >= 0 }?.let { it to separator } }
+                .minByOrNull { it.first } ?: return null
+            val series = title.substring(0, index).trim()
+            val episode = title.substring(index + separator.length).trim()
+            if (series.length < 2 || episode.isEmpty() || normalize(series) in GENERIC_TITLES) return null
+            return series to episode
+        }
+
+        /** "Naked and Afraid : Enter the Queen" -> "Naked and Afraid"; null without such a separator. */
+        fun seriesPartOf(title: String): String? = splitTitle(title)?.first
+
+        /** "Naked and Afraid : Enter the Queen" -> "Enter the Queen"; null without such a separator. */
+        fun episodePartOf(title: String): String? = splitTitle(title)?.second
 
         /** RCTV: "The Space Rock: Trouble follows Henry..." -> "The Space Rock"; null when it doesn't start so. */
         fun episodeTitleOf(description: String?): String? {
