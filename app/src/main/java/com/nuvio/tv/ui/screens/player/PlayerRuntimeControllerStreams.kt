@@ -1655,12 +1655,46 @@ internal suspend fun PlayerRuntimeController.resolveDirectDebridStreamIfNeeded(
     }
 }
 
-internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = false) {
-    val nextVideo = nextEpisodeVideo ?: return
+/**
+ * RCTV: an episode picked in the player's Episodes list starts the same way, at once (its best source
+ * picked like the next episode's), instead of showing its list of sources.
+ */
+internal fun PlayerRuntimeController.playEpisodeFromList(video: Video) {
+    val type = contentType
+    if (type == null || type.equals("cloud", ignoreCase = true) ||
+        !PlayerNextEpisodeRules.hasEpisodeAired(video.released)
+    ) {
+        loadStreamsForEpisode(video)
+        return
+    }
+    dismissEpisodesPanel()
+    playNextEpisode(userInitiated = true, target = video)
+}
+
+internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = false, target: Video? = null) {
+    // RCTV: target = an episode picked in the Episodes list (not the one after this).
+    val panelPick = target != null
+    val nextVideo = target ?: nextEpisodeVideo ?: return
     val type = contentType ?: return
 
     val state = _uiState.value
-    val nextInfo = state.nextEpisode ?: return
+    val nextInfo = if (target != null) {
+        NextEpisodeInfo(
+            videoId = target.id,
+            season = target.season ?: 0,
+            episode = target.episode ?: 0,
+            title = target.title,
+            thumbnail = target.thumbnail,
+            overview = target.overview,
+            released = target.released,
+            hasAired = PlayerNextEpisodeRules.hasEpisodeAired(target.released),
+            unairedMessage = null
+        )
+    } else {
+        state.nextEpisode ?: return
+    }
+    fun cardEpisode(current: PlayerUiState): NextEpisodeInfo =
+        if (panelPick) nextInfo else (current.nextEpisode ?: nextInfo)
     if (!nextInfo.hasAired) {
         return
     }
@@ -1671,12 +1705,12 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
         return
     }
 
-    if (type.equals("cloud", ignoreCase = true)) {
+    if (!panelPick && type.equals("cloud", ignoreCase = true)) {
         playNextCloudLibraryFile(nextVideo = nextVideo, userInitiated = userInitiated)
         return
     }
 
-    val episodeForMode = state.nextEpisode ?: nextInfo
+    val episodeForMode = cardEpisode(state)
     _uiState.update {
         it.copy(
             postPlayMode = PostPlayMode.AutoPlay(
@@ -1695,11 +1729,13 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
             val shouldAutoSelectInManualMode =
                 playerSettings.streamAutoPlayMode == StreamAutoPlayMode.MANUAL &&
                     (
-                        playerSettings.streamAutoPlayNextEpisodeEnabled ||
+                        panelPick ||
+                            playerSettings.streamAutoPlayNextEpisodeEnabled ||
                             playerSettings.streamAutoPlayPreferBingeGroupForNextEpisode
                         )
             val bingeGroupOnlyManualMode =
-                shouldAutoSelectInManualMode &&
+                !panelPick &&
+                    shouldAutoSelectInManualMode &&
                     (!playerSettings.streamAutoPlayNextEpisodeEnabled ||
                         !playerSettings.streamAutoPlayNextEpisodeFallbackEnabled) &&
                     playerSettings.streamAutoPlayPreferBingeGroupForNextEpisode
@@ -1707,7 +1743,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 _uiState.update {
                     it.copy(
                         postPlayMode = null,
-                        postPlayDismissedForCurrentEpisode = true,
+                        postPlayDismissedForCurrentEpisode = !panelPick || it.postPlayDismissedForCurrentEpisode,
                     )
                 }
                 showEpisodeStreamPicker(video = nextVideo, forceRefresh = true)
@@ -1724,7 +1760,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                         _uiState.update { current ->
                             current.copy(
                                 postPlayMode = PostPlayMode.AutoPlay(
-                                    nextEpisode = current.nextEpisode ?: nextInfo,
+                                    nextEpisode = cardEpisode(current),
                                     searching = false,
                                     sourceName = readyText,
                                     countdownSec = remaining,
@@ -1737,7 +1773,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 _uiState.update {
                     it.copy(
                         postPlayMode = null,
-                        postPlayDismissedForCurrentEpisode = true,
+                        postPlayDismissedForCurrentEpisode = !panelPick || it.postPlayDismissedForCurrentEpisode,
                         playbackEnded = false,
                     )
                 }
@@ -1932,7 +1968,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 val countdownFrom = if (userInitiated) 0 else 3
                 for (remaining in countdownFrom downTo 1) {
                     _uiState.update { current ->
-                        val episodeForMode = current.nextEpisode ?: nextInfo
+                        val episodeForMode = cardEpisode(current)
                         current.copy(
                             postPlayMode = PostPlayMode.AutoPlay(
                                 nextEpisode = episodeForMode,
@@ -1947,7 +1983,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 _uiState.update {
                     it.copy(
                         postPlayMode = null,
-                        postPlayDismissedForCurrentEpisode = true,
+                        postPlayDismissedForCurrentEpisode = !panelPick || it.postPlayDismissedForCurrentEpisode,
                         playbackEnded = false,
                     )
                 }
@@ -1976,7 +2012,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
                 _uiState.update {
                     it.copy(
                         postPlayMode = null,
-                        postPlayDismissedForCurrentEpisode = true,
+                        postPlayDismissedForCurrentEpisode = !panelPick || it.postPlayDismissedForCurrentEpisode,
                     )
                 }
                 showEpisodeStreamPicker(
@@ -1990,7 +2026,7 @@ internal fun PlayerRuntimeController.playNextEpisode(userInitiated: Boolean = fa
             _uiState.update {
                 it.copy(
                     postPlayMode = null,
-                    postPlayDismissedForCurrentEpisode = true,
+                    postPlayDismissedForCurrentEpisode = !panelPick || it.postPlayDismissedForCurrentEpisode,
                 )
             }
             showEpisodeStreamPicker(video = nextVideo, forceRefresh = false)
