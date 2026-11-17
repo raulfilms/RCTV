@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -197,15 +198,25 @@ fun MainHomeScreen(
         if (item.id.startsWith(HERO_SLIDE_PREFIX)) heroSlides.firstOrNull { it.key == item.id.removePrefix(HERO_SLIDE_PREFIX) } else null
     val heroVisible = heroItems.isNotEmpty()
 
+    val listState = rememberLazyListState()
+    // RCTV (owner): Home opens at its top, on the banner, also when the banner comes in after the rows
+    // (entering a profile: the page used to stay on the row it showed then, Continue Watching). Not
+    // once a button was pressed on the page.
+    val pressedOnPage = remember { mutableStateOf(false) }
     LaunchedEffect(heroVisible) {
         if (!heroVisible) return@LaunchedEffect
-        repeat(8) {
+        repeat(12) {
             delay(150)
-            if (runCatching { firstFocus.requestFocus(); true }.getOrDefault(false)) return@LaunchedEffect
+            if (pressedOnPage.value) return@LaunchedEffect
+            if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
+                runCatching { listState.scrollToItem(0, 0) }
+            }
+            if (runCatching { firstFocus.requestFocus(); true }.getOrDefault(false)) {
+                runCatching { listState.scrollToItem(0, 0) }
+                return@LaunchedEffect
+            }
         }
     }
-
-    val listState = rememberLazyListState()
     val density = LocalDensity.current
     val fadePx = remember(density) { with(density) { HERO_FADE_DISTANCE.toPx() } }
     val heroScrollFraction: () -> Float = remember(listState, fadePx) {
@@ -249,7 +260,11 @@ fun MainHomeScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .focusRequester(columnFocus)
-                    .onFocusChanged { contentHasFocus.value = it.hasFocus },
+                    .onFocusChanged { contentHasFocus.value = it.hasFocus }
+                    .onPreviewKeyEvent { event ->
+                        if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) pressedOnPage.value = true
+                        false
+                    },
                 contentPadding = PaddingValues(top = if (heroVisible) 0.dp else AppleTvSpacing.SafeY, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(26.dp)
             ) {
