@@ -1326,7 +1326,48 @@ private fun AppleContinueWatchingCard(
     }
     val bgCardColor = AppleTvColors.Surface1
     val backgroundPainter = remember(bgCardColor) { androidx.compose.ui.graphics.painter.ColorPainter(bgCardColor) }
+    var cardFocused by remember { mutableStateOf(false) }
 
+    // RCTV (owner's choice, like Disney+): under the picture, the title; for an episode "S1:E3 Its Name";
+    // then how much is left ("44min remaining").
+    val strMinRemaining = stringResource(R.string.cw_min_remaining)
+    val strHoursMinRemaining = stringResource(R.string.cw_hours_min_remaining)
+    val strResume = stringResource(R.string.cw_resume)
+    val strPercentWatched = stringResource(R.string.cw_percent_watched)
+    val strNextUp = stringResource(R.string.cw_next_up)
+    val strNewEpisode = stringResource(R.string.cw_new_episode)
+    val strNewSeason = stringResource(R.string.cw_new_season)
+    val strUpcoming = stringResource(R.string.cw_upcoming)
+    val episodeLine = remember(progress, nextUp, context) {
+        val season = progress?.season ?: nextUp?.season
+        val episode = progress?.episode ?: nextUp?.episode
+        val name = (progress?.episodeTitle ?: nextUp?.episodeTitle)
+            ?.localizeEpisodeTitle(context)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        when {
+            season == null || episode == null -> null
+            name != null -> context.getString(R.string.cw_season_episode_title, season, episode, name)
+            else -> context.getString(R.string.cw_season_episode, season, episode)
+        }
+    }
+    val timeLine = remember(progress, nextUp, context) {
+        when {
+            progress != null -> formatContinueWatchingProgressLabel(
+                progress = progress,
+                resumeLabel = strResume,
+                percentWatchedLabel = strPercentWatched,
+                hoursMinLeftLabel = strHoursMinRemaining,
+                minLeftLabel = strMinRemaining
+            )
+            nextUp == null -> null
+            nextUp.isReleaseAlert -> if (nextUp.isNewSeasonRelease) strNewSeason else strNewEpisode
+            !nextUp.hasAired -> computeAirDateBadgeText(context, nextUp.released, nextUp.airDateLabel) ?: strUpcoming
+            else -> strNextUp
+        }
+    }
+
+    Column(modifier = Modifier.width(cardWidth)) {
     Card(
         onClick = {
             if (longPressTriggered) {
@@ -1338,6 +1379,7 @@ private fun AppleContinueWatchingCard(
         modifier = modifier
             .width(cardWidth)
             .height(cardHeight)
+            .onFocusChanged { cardFocused = it.isFocused }
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
                 if (native.action == AndroidKeyEvent.ACTION_DOWN && native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
@@ -1480,7 +1522,40 @@ private fun AppleContinueWatchingCard(
             }
         }
     }
+
+    // Clear of the card when it grows on focus.
+    Spacer(modifier = Modifier.height(CW_TEXT_GAP))
+    FocusMarqueeText(
+        text = titleText,
+        focused = cardFocused,
+        style = AppleTvType.Callout.copy(fontWeight = FontWeight.SemiBold),
+        color = AppleTvColors.Label
+    )
+    episodeLine?.let { line ->
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = line,
+            color = AppleTvColors.LabelSecondary,
+            style = AppleTvType.Caption1,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+    timeLine?.let { line ->
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = line,
+            color = AppleTvColors.LabelSecondary,
+            style = AppleTvType.Caption1,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+    }
 }
+
+/** RCTV: the space between a Continue Watching card and its text (the card grows 10% on focus). */
+private val CW_TEXT_GAP = 12.dp
 
 /** RCTV: the gap between Continue Watching cards (Prime Video's). */
 private val CW_CARD_GAP = 17.dp
