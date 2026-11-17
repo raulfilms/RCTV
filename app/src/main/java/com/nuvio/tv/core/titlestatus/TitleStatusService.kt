@@ -35,6 +35,9 @@ data class TitleStatus(
     val library: Set<String> = emptySet(),
     val imdbList: Set<String> = emptySet()
 ) {
+    /** RCTV: whether a title with any of [ids] is in the IMDb watchlist (a title's page). */
+    fun inImdbList(vararg ids: String?): Boolean = ids.any { !it.isNullOrBlank() && it in imdbList }
+
     fun of(item: MetaPreview): TitleMarks {
         val ids = listOfNotNull(item.id.takeIf { it.isNotBlank() }, item.imdbId?.takeIf { it.isNotBlank() })
         if (ids.isEmpty()) return TitleMarks()

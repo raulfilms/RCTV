@@ -35,7 +35,7 @@ private val ImdbDark = Color(0xFF121212)
  * RCTV: the marks at the top right of every movie and series thumbnail:
  * - a blue eye: watched all the way through;
  * - a black check on white: in the app's Library;
- * - a yellow check (IMDb's yellow): in the IMDb watchlist.
+ * - a black check on IMDb's yellow: in the IMDb watchlist.
  * [watched] adds what a screen already knows (watched just now).
  */
 @Composable
@@ -56,7 +56,8 @@ fun TitleStatusBadges(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (inImdb) {
-            StatusDot(Icons.Default.Check, ImdbYellow, ImdbDark, stringResource(R.string.title_status_imdb), size)
+            // RCTV (owner): IMDb's yellow circle with a black check.
+            StatusDot(Icons.Default.Check, ImdbDark, ImdbYellow, stringResource(R.string.title_status_imdb), size)
         }
         if (inLibrary) {
             StatusDot(Icons.Default.Check, Color.Black, Color.White, stringResource(R.string.title_status_library), size)

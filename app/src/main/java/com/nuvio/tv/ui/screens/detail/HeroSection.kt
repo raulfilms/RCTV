@@ -297,16 +297,27 @@ fun HeroContentSection(
                             }
                         )
 
+                        // RCTV (owner): in the IMDb watchlist (and not the app's Library): a black check
+                        // on IMDb's yellow, as on its cards; choosing it adds it to the Library too.
+                        val inImdbList = !isInLibrary &&
+                            com.nuvio.tv.ui.components.LocalTitleStatus.current.inImdbList(meta.id, meta.imdbId)
                         ActionIconButton(
-                            icon = if (isInLibrary) Icons.Default.Check else null,
-                            painter = if (!isInLibrary) {
+                            icon = if (isInLibrary || inImdbList) Icons.Default.Check else null,
+                            painter = if (!isInLibrary && !inImdbList) {
                                 libraryAddPainter
                             } else {
                                 null
                             },
-                            contentDescription = if (isInLibrary) stringResource(R.string.hero_remove_from_library) else stringResource(R.string.hero_add_to_library),
+                            contentDescription = when {
+                                isInLibrary -> stringResource(R.string.hero_remove_from_library)
+                                inImdbList -> stringResource(R.string.title_status_imdb)
+                                else -> stringResource(R.string.hero_add_to_library)
+                            },
                             onClick = onToggleLibrary,
                             onLongPress = onLibraryLongPress,
+                            selected = inImdbList,
+                            selectedContainerColor = Color(0xFFF5C518),
+                            selectedContentColor = Color.Black,
                             upFocusRequester = buttonsUpTarget,
                             onFocused = onHeroActionFocused
                         )
