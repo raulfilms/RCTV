@@ -1029,6 +1029,9 @@ private fun PlaybackNavHost(
             )
 
             PlayerScreen(
+                // RCTV (owner, as YouTube TV): the player lives in the playback session, so Back can
+                // leave it playing while the app is browsed (the Now Playing banner brings it back).
+                viewModel = com.nuvio.tv.ui.screens.player.sessionPlayerViewModel(backStackEntry),
                 onBackPress = { currentVideoId, currentSeason, currentEpisode, autoPlayEnabled, playbackCompleted ->
                     val args = backStackEntry.arguments
                     val initialSeason = args?.getString("season")?.toIntOrNull()

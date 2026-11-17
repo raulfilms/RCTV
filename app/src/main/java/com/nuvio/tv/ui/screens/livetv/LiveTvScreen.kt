@@ -139,8 +139,16 @@ fun LiveTvScreen(
         !(uiState.error != null && uiState.channels.isEmpty())
 
     val playingBehind = backgroundChannel?.takeIf { showTimeline }
+    // RCTV (owner, as YouTube TV): a channel left playing with Back goes on behind the Guide (the
+    // same player: nothing reconnects).
+    val sessionNow by com.nuvio.tv.core.playback.PlaybackSession.nowPlaying.collectAsState()
+    val sessionPlayer = remember(sessionNow) {
+        if (sessionNow?.isLive == true) com.nuvio.tv.core.playback.PlaybackSession.minimizedPlayer() else null
+    }
+    val sessionBehind = sessionPlayer?.takeIf { showTimeline && playingBehind == null }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        sessionBehind?.let { player -> LiveTvSessionVideo(player = player) }
         playingBehind?.let { channel ->
             LiveTvBackgroundVideo(
                 channel = channel,
@@ -157,7 +165,7 @@ fun LiveTvScreen(
         }
         if (showTimeline) {
             LiveTvTimelineGuide(
-                translucent = playingBehind != null,
+                translucent = playingBehind != null || sessionBehind != null,
                 uiState = uiState,
                 // Below the floating "‹ Guide" pill when it's shown.
                 topInset = if (showBuiltInHeader) NuvioTheme.spacing.lg else 56.dp,

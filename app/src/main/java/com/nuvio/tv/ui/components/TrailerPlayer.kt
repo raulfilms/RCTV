@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,8 +73,10 @@ fun TrailerPlayer(
     // addresses RCTV reads off YouTube: YouTube's official player gave sound and no picture on the
     // Mi Box. A video that can't be read here is told to [onYouTubeError] (else it just ends).
     val youTubeId = remember(trailerUrl) { com.nuvio.tv.data.trailer.YouTubeVideo.idOf(trailerUrl) }
-    // RCTV: nothing plays behind "Creating Your Experience".
-    val playing = isPlaying && !LocalStartupCovering.current
+    // RCTV: nothing plays behind "Creating Your Experience", nor while a channel, movie or episode
+    // goes on playing behind the app (Now Playing): one sound and one decoder at a time.
+    val playbackBehind by com.nuvio.tv.core.playback.PlaybackSession.nowPlaying.collectAsState()
+    val playing = isPlaying && !LocalStartupCovering.current && playbackBehind == null
     if (youTubeId == null) {
         ExoTrailerPlayer(
             trailerUrl = trailerUrl, trailerAudioUrl = trailerAudioUrl, isPlaying = playing, isPaused = isPaused,

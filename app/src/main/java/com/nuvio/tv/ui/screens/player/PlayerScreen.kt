@@ -216,6 +216,7 @@ fun PlayerScreen(
     var liveVodPromptVisible by remember { mutableStateOf(false) }
 
     val exitScope = androidx.compose.runtime.rememberCoroutineScope()
+    val sessionContext = LocalContext.current
     val finishExit: () -> Unit = {
         val timeline = viewModel.playbackTimeline.value
         viewModel.stopAndRelease()
@@ -228,6 +229,23 @@ fun PlayerScreen(
     val exitPlayer: () -> Unit = exitPlayer@{
         if (exitDispatched) return@exitPlayer
         exitDispatched = true
+        // RCTV (owner, as YouTube TV): Back leaves it playing while the app is browsed, with the Now
+        // Playing banner on top (choosing it comes back here, nothing restarted). Not when it can't
+        // go on by itself: ended, an error, nothing playing yet, or the MPV engine (its picture
+        // lives in its own view).
+        if (canMinimizePlayback(viewModel, uiState, postPlayRecommendationState.isVisible)) {
+            val nowPlaying = nowPlayingOf(uiState, liveTvViewModel.program.value.program?.title, sessionContext)
+            if (com.nuvio.tv.core.playback.PlaybackSession.minimize(store = null, nowPlaying = nowPlaying)) {
+                onBackPress(
+                    uiState.currentVideoId,
+                    uiState.currentSeason,
+                    uiState.currentEpisode,
+                    uiState.streamAutoPlayMode != StreamAutoPlayMode.MANUAL,
+                    false
+                )
+                return@exitPlayer
+            }
+        }
         if (!isLiveTvChannel) {
             finishExit()
             return@exitPlayer

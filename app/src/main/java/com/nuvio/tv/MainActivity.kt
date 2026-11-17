@@ -1343,7 +1343,24 @@ open class MainActivity : ComponentActivity() {
                             focusedSplashTheme = null
                             hasSelectedProfileThisSession = false
                         }
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        val onPlayerScreen = actualRoute == Screen.Player.route
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                // RCTV (owner): Play on the remote opens the player again on what goes
+                                // on playing behind the app (the Now Playing banner does too).
+                                .onPreviewKeyEvent { event ->
+                                    val playKey = event.key == Key.MediaPlayPause || event.key == Key.MediaPlay
+                                    if (playKey && !onPlayerScreen && com.nuvio.tv.core.playback.PlaybackSession.isMinimized) {
+                                        if (event.type == KeyEventType.KeyUp) {
+                                            com.nuvio.tv.core.playback.PlaybackSession.resume(navController)
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                        ) {
                             if (modernSidebarEnabled) {
                                 ModernSidebarScaffold(
                                     longPressBackHeld = longPressBackHeld,
@@ -1446,6 +1463,14 @@ open class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
+
+                            // RCTV (owner, as YouTube TV): what goes on playing while the app is browsed:
+                            // the Now Playing banner at the top of every page.
+                            com.nuvio.tv.ui.components.NowPlayingBannerHost(
+                                navController = navController,
+                                onPlayerScreen = onPlayerScreen,
+                                modifier = Modifier.align(Alignment.TopCenter)
+                            )
 
                             // RCTV (owner): the bug report's list, over any screen, when the bug button opens it.
                             val bugReportOpen by bugReports.isOpen.collectAsState()
@@ -1664,6 +1689,9 @@ open class MainActivity : ComponentActivity() {
     override fun onStop() {
         externalPlaybackTracker.onExternalPlayerCoveredApp()
         super.onStop()
+        // RCTV: the app left (Home, the TV off): what was playing behind it stops, as the player did
+        // (nothing keeps running, nor the decoder held, while the app isn't on screen).
+        com.nuvio.tv.core.playback.PlaybackSession.stopMinimized()
         com.nuvio.tv.core.runtime.AppForeground.set(false)
         startupSyncService.stopPeriodicSurfacePulls()
         // App going to background (e.g. user returning to the launcher): reconcile the

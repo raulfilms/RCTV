@@ -176,6 +176,35 @@ internal fun LiveTvBackgroundVideo(
     }
 }
 
+/**
+ * RCTV (owner, as YouTube TV): the channel left playing with Back (the playback session, see
+ * PlaybackSession) shown behind the Guide: the same player, no second connection. Its picture
+ * goes back to the full player when the Now Playing banner is chosen.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+internal fun LiveTvSessionVideo(player: Player, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { ctx ->
+            (LayoutInflater.from(ctx).inflate(R.layout.live_background_player_view, null) as PlayerView).apply {
+                this.player = player
+                // The Guide keeps the remote: the picture never takes focus.
+                isFocusable = false
+                isFocusableInTouchMode = false
+                descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                keepScreenOn = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
+        },
+        update = { view -> if (view.player !== player) view.player = player },
+        onRelease = { view ->
+            view.player = null
+            view.keepScreenOn = false
+        },
+        modifier = modifier.fillMaxSize()
+    )
+}
+
 private const val MIN_BUFFER_MS = 4_000
 private const val MAX_BUFFER_MS = 12_000
 private const val START_BUFFER_MS = 1_000
