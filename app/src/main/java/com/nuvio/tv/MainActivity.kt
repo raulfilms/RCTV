@@ -570,9 +570,12 @@ open class MainActivity : ComponentActivity() {
             // Set when the profile photo in the menu is pressed: show "Who's watching?" even
             // with a single profile (that screen can also add profiles).
             var forceProfileSelection by remember { mutableStateOf(false) }
+            // RCTV (owner): a TV that just joined an account starts on "Who's watching?" (to choose
+            // and name the profile) before anything else.
+            val freshRctvAccount by rctvAccess.freshAccount.collectAsState()
             val shouldAutoSelectProfile = rememberLastProfileEnabled &&
                 hasEverSelectedProfile && !activeProfileHasPin &&
-                !hasSelectedProfileThisSession && !profileSwitchedManually
+                !hasSelectedProfileThisSession && !profileSwitchedManually && !freshRctvAccount
             if (shouldAutoSelectProfile && !splashTriggered) {
                 splashTriggered = true
                 hasSelectedProfileThisSession = true
@@ -894,7 +897,7 @@ open class MainActivity : ComponentActivity() {
                     // sign-in page (the account, its profiles and its library are RCTV's website's).
 
                     val shouldShowProfileSelection =
-                        !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin || forceProfileSelection)
+                        !hasSelectedProfileThisSession && (profiles.size > 1 || activeProfileHasPin || forceProfileSelection || freshRctvAccount)
 
                     if (shouldShowProfileSelection) {
                         startupDestination = if (splashTriggered) StartupDestination.Loading else StartupDestination.ProfileSelection
@@ -919,6 +922,7 @@ open class MainActivity : ComponentActivity() {
                             },
                             onProfileSelected = {
                                 forceProfileSelection = false
+                                rctvAccess.freshAccountDone()
                                 hasSelectedProfileThisSession = true
                                 if (authManager.authState.value is AuthState.FullAccount) {
                                     startupSyncService.requestSyncNow()

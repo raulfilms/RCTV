@@ -47,7 +47,9 @@ class RctvAccessManager @Inject constructor(
     @ApplicationContext private val context: Context,
     okHttpClient: OkHttpClient,
     /** The account's services, profiles' links and public files (kept sealed on the TV). */
-    private val managed: RctvManagedServices
+    private val managed: RctvManagedServices,
+    /** RCTV (owner): each account's things are its own; a TV joining an account starts clean. */
+    private val dataGuard: RctvAccountDataGuard
 ) {
     private val baseUrl: String? = BuildConfig.RCTV_CONTROL_URL.trim().trimEnd('/')
         .takeIf { it.startsWith("https://") }
@@ -83,6 +85,12 @@ class RctvAccessManager @Inject constructor(
 
     private val _cloudSlots = MutableStateFlow(readCloudSlots())
 
+    /** RCTV (owner): just joined an account: "Who's watching?" first, to choose (and name) the profile. */
+    val freshAccount: StateFlow<Boolean> get() = dataGuard.freshAccount
+
+    /** The profile was chosen after joining the account. */
+    fun freshAccountDone() = dataGuard.freshAccountDone()
+
     /**
      * RCTV (owner): the profiles (places 1 to 8) he let see the Library's Cloud on the website. Kept on
      * the TV (known at once when the app opens); empty without his yes: nobody sees Cloud then.
@@ -116,6 +124,10 @@ class RctvAccessManager @Inject constructor(
             }
         }
         if (result is RctvActivation.Activated) {
+            // RCTV (owner): this TV joins the account clean, before anything syncs: nothing it had
+            // (another account's Library, Continue Watching, IMDb...) goes up to this account or
+            // shows in it. The account's own things come down from the website next.
+            dataGuard.startClean()
             saveToken(result.token)
             saveAccount(result.account)
             publish()
