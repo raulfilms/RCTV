@@ -827,13 +827,13 @@ class LiveTvViewModel @Inject constructor(
 
     /**
      * RCTV: what's on now was chosen. True when it can be watched from the beginning (its movie or
-     * episode is on TMDB and its sources have it, or are still being asked): its details open with
-     * "Watch Live" and "Watch From Beginning". False: it plays live at once, nothing asked.
+     * episode is on TMDB): its details open with "Watch Live" and "Watch From Beginning". False: it
+     * plays live at once. RCTV (owner): the quick look at the sources ahead no longer decides it (it
+     * missed movies their page had); the sources' page searches them all.
      */
     suspend fun offersWatchFromBeginning(program: EpgProgram): Boolean {
         if (_uiState.value.isPreviewGuide) return false
-        val target = liveVodFinder.target(program, CLICK_TMDB_WAIT_MS) ?: return false
-        return liveVodFinder.awaitStatus(target, CLICK_SOURCES_WAIT_MS) != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE
+        return liveVodFinder.target(program, CLICK_TMDB_WAIT_MS) != null
     }
 
     fun dismissProgramDetails() {
@@ -916,7 +916,6 @@ class LiveTvViewModel @Inject constructor(
     companion object {
         /** Choosing what's on now: how long TMDB, then its sources, are waited for (looked up ahead on focus). */
         private const val CLICK_TMDB_WAIT_MS = 1_500L
-        private const val CLICK_SOURCES_WAIT_MS = 1_500L
         /** A program's details: how long TMDB is waited for its movie or episode. */
         private const val DETAILS_TMDB_WAIT_MS = 20_000L
         /** RCTV: the player left this long ago at most: its channel goes on behind the Guide. */

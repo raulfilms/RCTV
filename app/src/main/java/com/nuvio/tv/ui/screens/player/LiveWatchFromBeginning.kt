@@ -39,7 +39,6 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.data.livetv.LiveVodState
-import com.nuvio.tv.data.livetv.LiveVodStatus
 import kotlinx.coroutines.delay
 
 /*
@@ -85,8 +84,8 @@ internal fun LiveWatchFromBeginningPrompt(
         delay(PROMPT_TIMEOUT_MS)
         currentOnDismiss()
     }
-    // A source is still being looked for: it shows, and can be chosen as soon as one is found.
-    val checking = state.status == LiveVodStatus.CHECKING
+    // RCTV (owner): choosable at once, whatever the quick look at the sources ahead found: the
+    // sources' page searches them all (that look missed movies their page had).
     val target = state.target
     val whatItIs = if (target.isMovie) {
         listOfNotNull(target.title, target.year).joinToString(" · ")
@@ -102,7 +101,7 @@ internal fun LiveWatchFromBeginningPrompt(
         verticalArrangement = Arrangement.Center
     ) {
         Surface(
-            onClick = { if (!checking) onWatch() },
+            onClick = { onWatch() },
             modifier = Modifier
                 .focusRequester(focus)
                 .onPreviewKeyEvent { event ->
@@ -139,7 +138,7 @@ internal fun LiveWatchFromBeginningPrompt(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = stringResource(if (checking) R.string.livetv_vod_looking else R.string.livetv_watch_from_beginning_btn),
+                    text = stringResource(R.string.livetv_watch_from_beginning_btn),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1

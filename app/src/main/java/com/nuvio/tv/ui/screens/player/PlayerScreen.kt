@@ -209,7 +209,8 @@ fun PlayerScreen(
     }
     var gameSpanish by remember { mutableStateOf(false) }
     val liveVod by liveTvViewModel.vod.collectAsState()
-    val liveVodOffered = isLiveTvChannel && liveVod?.let { it.status != com.nuvio.tv.data.livetv.LiveVodStatus.UNAVAILABLE } == true
+    // RCTV (owner): offered whenever TMDB has what's on (its movie or episode); the sources' page searches them all.
+    val liveVodOffered = isLiveTvChannel && liveVod != null
     var liveVodPromptVisible by remember { mutableStateOf(false) }
 
     val exitScope = androidx.compose.runtime.rememberCoroutineScope()

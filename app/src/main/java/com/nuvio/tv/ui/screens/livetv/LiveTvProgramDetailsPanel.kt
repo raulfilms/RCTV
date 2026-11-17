@@ -57,7 +57,6 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
 import com.nuvio.tv.data.livetv.LiveProgramMatch
-import com.nuvio.tv.data.livetv.LiveVodStatus
 import com.nuvio.tv.data.livetv.LiveVodTarget
 import com.nuvio.tv.domain.model.EpgProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
@@ -177,19 +176,20 @@ internal fun LiveTvProgramDetailsOverlay(
             Spacer(modifier = Modifier.height(14.dp))
 
             // The actions, focus starting on the first one.
-            // RCTV: watching it from its sources (shown once TMDB has it; usable once a source is found).
-            val vod = tmdb.vod?.takeIf { onWatchVod != null && it.status != LiveVodStatus.UNAVAILABLE }
+            // RCTV: watching it from its sources, shown once TMDB has its movie or episode. RCTV (owner:
+            // "Looking for it" went away and the movie wasn't offered, yet its page had it): never hidden
+            // nor held by the quick look at the sources ahead; it opens the sources' page, which searches
+            // them all, as the title's page does.
+            val vod = tmdb.vod?.takeIf { onWatchVod != null }
             val vodAction = vod?.let { state ->
-                val checking = state.status == LiveVodStatus.CHECKING
                 DetailsAction(
                     icon = if (airingNow) Icons.Default.Replay else Icons.Default.OndemandVideo,
-                    label = when {
-                        checking -> stringResource(R.string.livetv_vod_looking)
-                        airingNow -> stringResource(R.string.livetv_watch_from_beginning_btn)
-                        else -> stringResource(R.string.livetv_watch_vod_btn)
+                    label = if (airingNow) {
+                        stringResource(R.string.livetv_watch_from_beginning_btn)
+                    } else {
+                        stringResource(R.string.livetv_watch_vod_btn)
                     },
-                    onClick = { onWatchVod?.invoke(state.target) },
-                    enabled = !checking
+                    onClick = { onWatchVod?.invoke(state.target) }
                 )
             }
             val actions = buildList {
