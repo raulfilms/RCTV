@@ -51,6 +51,14 @@ data class LivePlayerEpisodesState(
     val airing: LiveEpisode? = null
 )
 
+/** RCTV (owner): the "More to Watch" tab: titles picked from what's on and what was watched. */
+data class LivePlayerMoreState(
+    /** What they were picked for (what's on now). */
+    val key: String? = null,
+    val isLoading: Boolean = false,
+    val items: List<com.nuvio.tv.domain.model.MetaPreview> = emptyList()
+)
+
 /**
  * The Live TV player's own side (beside the player's controls): the Guide's channels and programs
  * (what's on, the Networks row), the program on now on TMDB ("Add to library", "More info"), and
@@ -62,7 +70,8 @@ class LiveTvPlayerViewModel @Inject constructor(
     private val session: LiveTvPlayerSession,
     private val liveProgramLibrary: LiveProgramLibrary,
     private val liveVodFinder: com.nuvio.tv.data.livetv.LiveVodFinder,
-    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore
+    private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore,
+    private val moreToWatchPicks: com.nuvio.tv.data.livetv.LiveMoreToWatch
 ) : ViewModel() {
 
     val guide: StateFlow<LiveTvPlayerSession.Guide> = session.guide
@@ -235,6 +244,35 @@ class LiveTvPlayerViewModel @Inject constructor(
                 emptyList()
             }
             _episodes.update { if (it.selectedSeason == number) it.copy(episodes = list, isLoadingEpisodes = false) else it }
+        }
+    }
+
+    private val _moreToWatch = MutableStateFlow(LivePlayerMoreState())
+
+    /** RCTV: the More to Watch tab's titles. */
+    val moreToWatch: StateFlow<LivePlayerMoreState> = _moreToWatch.asStateFlow()
+    private var moreToWatchJob: Job? = null
+
+    /**
+     * RCTV: the More to Watch tab showed: its titles, picked again when what's on changes (once TMDB
+     * has told what it is). The last ones stay shown while the new ones come.
+     */
+    fun ensureMoreToWatch() {
+        val state = _program.value
+        if (state.isLoading) return
+        val key = "${state.match?.itemId}|${state.program?.title}"
+        if (_moreToWatch.value.key == key) return
+        moreToWatchJob?.cancel()
+        _moreToWatch.update { it.copy(key = key, isLoading = true) }
+        moreToWatchJob = viewModelScope.launch {
+            val items = try {
+                moreToWatchPicks.picks(state.match, state.program)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _moreToWatch.update { if (it.key == key) it.copy(isLoading = false, items = items) else it }
         }
     }
 

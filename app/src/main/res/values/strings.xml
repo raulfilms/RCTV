@@ -4175,6 +4175,8 @@
     <string name="player_live_added_to_library">Added to library</string>
     <string name="player_live_more_info">More info</string>
     <string name="player_live_episodes">Episodes</string>
+    <string name="player_live_more_to_watch">More to Watch</string>
+    <string name="player_live_more_to_watch_empty">Nothing to suggest right now</string>
     <string name="player_live_season">Season %1$d</string>
     <string name="player_live_episode_code">E%1$d</string>
     <string name="player_live_no_episodes">No episodes on TMDB for this series</string>

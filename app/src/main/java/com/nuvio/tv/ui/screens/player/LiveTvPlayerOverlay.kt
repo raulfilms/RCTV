@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -103,7 +104,7 @@ import java.util.Locale
 import com.nuvio.tv.ui.components.tileCardBorder
 
 /** The live player's tabs: icons on the left, "Networks" after the divider (as on YouTube TV). */
-private enum class LiveTab { MORE, QUALITY, AUDIO, CAPTIONS, LIBRARY, NETWORKS, EPISODES }
+private enum class LiveTab { MORE, QUALITY, AUDIO, CAPTIONS, LIBRARY, NETWORKS, EPISODES, MORE_TO_WATCH }
 
 /**
  * RCTV (owner): a La Liga or Champions League game's audio: English (its channel in English) or
@@ -122,7 +123,8 @@ internal class LiveGameLanguage(val spanish: Boolean, val onChoose: (spanish: Bo
  * - ✓: the program's TMDB card, Add to library and More info;
  * - Networks: the channels and what's on them; choosing one switches to it;
  * - Episodes (a series on TMDB only): its seasons and episodes, the one airing marked; choosing
- *   one opens the series' page on it.
+ *   one opens the series' page on it;
+ * - More to Watch (always last): titles like what's on and what was watched; choosing one opens its page.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -147,13 +149,16 @@ internal fun LiveTvPlayerOverlay(
     /** RCTV: English or Español, for a La Liga or Champions League game; null for any other. */
     gameLanguage: LiveGameLanguage? = null,
     /** RCTV (owner): the bug report's list ("Report a Problem", after Stats for nerds). */
-    onReportProblem: (() -> Unit)? = null
+    onReportProblem: (() -> Unit)? = null,
+    /** RCTV (owner): a title chosen in More to Watch (its page opens). */
+    onOpenMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {}
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
     val programState by liveViewModel.program.collectAsState()
     val episodesState by liveViewModel.episodes.collectAsState()
     val recentIds by liveViewModel.recentChannelIds.collectAsState()
+    val moreState by liveViewModel.moreToWatch.collectAsState()
     val channel = remember(guide, uiState.title, uiState.logo) {
         liveViewModel.channelFor(uiState.title, uiState.logo, guide)
     }
@@ -166,6 +171,9 @@ internal fun LiveTvPlayerOverlay(
     val shownTab = if (selectedTab == LiveTab.EPISODES && seriesMatch == null) LiveTab.NETWORKS else selectedTab
     LaunchedEffect(shownTab, seriesMatch?.tmdbId) {
         if (shownTab == LiveTab.EPISODES) liveViewModel.ensureEpisodes()
+    }
+    LaunchedEffect(shownTab, programState.isLoading, programState.match?.itemId, program?.title) {
+        if (shownTab == LiveTab.MORE_TO_WATCH) liveViewModel.ensureMoreToWatch()
     }
     val tabRequesters = remember { LiveTab.entries.associateWith { FocusRequester() } }
     val contentEntry = remember { FocusRequester() }
@@ -342,6 +350,7 @@ internal fun LiveTvPlayerOverlay(
                     LiveTab.LIBRARY -> programState.isLoading || programState.match != null
                     LiveTab.NETWORKS -> guide.channels.isNotEmpty()
                     LiveTab.EPISODES -> episodesState.seasons.isNotEmpty()
+                    LiveTab.MORE_TO_WATCH -> moreState.items.isNotEmpty()
                     else -> true
                 }
                 val tabModifier: (LiveTab) -> Modifier = { tab ->
@@ -418,6 +427,14 @@ internal fun LiveTvPlayerOverlay(
                         modifier = tabModifier(LiveTab.EPISODES)
                     )
                 }
+                // RCTV (owner): always the last tab.
+                LiveTextTab(
+                    icon = Icons.Default.ViewCarousel,
+                    label = stringResource(R.string.player_live_more_to_watch),
+                    selected = shownTab == LiveTab.MORE_TO_WATCH,
+                    onClick = { runCatching { contentEntry.requestFocus() } },
+                    modifier = tabModifier(LiveTab.MORE_TO_WATCH)
+                )
             }
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -436,6 +453,14 @@ internal fun LiveTvPlayerOverlay(
                         onFocused = onResetHideTimer,
                         onSelectSeason = liveViewModel::selectSeason,
                         onChoose = { episode -> seriesMatch?.let { onOpenEpisode(it, episode) } }
+                    )
+                    LiveTab.MORE_TO_WATCH -> MoreToWatchRow(
+                        items = moreState.items,
+                        isLoading = moreState.isLoading || programState.isLoading,
+                        entry = contentEntry,
+                        itemModifier = upToTab,
+                        onFocused = onResetHideTimer,
+                        onChoose = onOpenMoreToWatch
                     )
                     LiveTab.NETWORKS -> NetworksRow(
                         guide = guide,
@@ -680,6 +705,46 @@ private fun LiveTextTab(
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * RCTV (owner): More to Watch: the titles as Home's cards (their picture, their name on it); choosing
+ * one opens its page. While they're picked: "Looking up…".
+ */
+@Composable
+private fun MoreToWatchRow(
+    items: List<com.nuvio.tv.domain.model.MetaPreview>,
+    isLoading: Boolean,
+    entry: FocusRequester,
+    itemModifier: Modifier,
+    onFocused: () -> Unit,
+    onChoose: (com.nuvio.tv.domain.model.MetaPreview) -> Unit
+) {
+    if (items.isEmpty()) {
+        Text(
+            text = stringResource(if (isLoading) R.string.livetv_library_looking_up else R.string.player_live_more_to_watch_empty),
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        return
+    }
+    LazyRow(
+        modifier = Modifier.bleedHorizontally(RowBleed),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        // Room above and below for a card growing on focus.
+        contentPadding = PaddingValues(horizontal = RowBleed, vertical = 10.dp)
+    ) {
+        itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+            com.nuvio.tv.ui.components.AppleLandscapeCard(
+                item = item,
+                onClick = { onChoose(item) },
+                modifier = itemModifier,
+                focusRequester = if (index == 0) entry else null,
+                onFocus = { onFocused() }
+            )
         }
     }
 }

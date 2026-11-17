@@ -372,6 +372,13 @@ fun PlayerScreen(
             viewModel.stopAndRelease()
             onOpenLiveTitle(match.itemId, match.itemType, episode.season, episode.episode)
         }
+    // RCTV (owner): a title chosen in the live player's More to Watch: its page opens.
+    val openMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = openMoreToWatch@{ meta ->
+        if (exitDispatched) return@openMoreToWatch
+        exitDispatched = true
+        viewModel.stopAndRelease()
+        onOpenLiveTitle(meta.id, meta.rawType, null, null)
+    }
     val watchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = watchLiveVod@{ target ->
         if (exitDispatched) return@watchLiveVod
         exitDispatched = true
@@ -1653,7 +1660,8 @@ fun PlayerScreen(
                     onOpenEpisode = openLiveEpisode,
                     onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable },
                     gameLanguage = languageGame?.let { LiveGameLanguage(spanish = gameSpanish, onChoose = chooseGameLanguage) },
-                    onReportProblem = { viewModel.openBugReport() }
+                    onReportProblem = { viewModel.openBugReport() },
+                    onOpenMoreToWatch = openMoreToWatch
                 )
             } else if (uiState.usesTitleControls) {
                 // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).
