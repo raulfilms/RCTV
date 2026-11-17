@@ -251,7 +251,8 @@ internal fun LiveTvTimelineGuide(
                     .sortedBy { it.second }
                     .map { it.first }
             }
-            GuideBrowse.CUSTOM -> inCountry.filter { it.id in uiState.customChannelIds }
+            // RCTV (owner): every channel the person favorited, whatever its country (International's too).
+            GuideBrowse.CUSTOM -> distinct.filter { it.id in uiState.customChannelIds }
             // RCTV: 24/7 channels, of the type picked when one is.
             GuideBrowse.CHANNELS_24_7 -> inCountry.filter { channel ->
                 browse in uiState.channelCategories[channel.id].orEmpty() &&
