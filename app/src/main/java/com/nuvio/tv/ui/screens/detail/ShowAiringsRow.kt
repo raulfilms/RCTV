@@ -343,8 +343,20 @@ internal fun AiringCard(
                             )
                         )
                 )
+                // RCTV (owner): no picture anywhere: the channel's logo, large, is its picture.
+                if (image.isNullOrBlank() && !channel.logoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = channel.logoUrl,
+                        contentDescription = channel.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .height(56.dp)
+                            .width(140.dp)
+                    )
+                }
                 // The channel's logo.
-                if (!channel.logoUrl.isNullOrBlank()) {
+                if (!image.isNullOrBlank() && !channel.logoUrl.isNullOrBlank()) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)

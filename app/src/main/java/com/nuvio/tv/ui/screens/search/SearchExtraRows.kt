@@ -79,7 +79,9 @@ internal class SearchExtraActions(
     val onTeam: (SportsTeam) -> Unit,
     val onLeague: (SportsLeague) -> Unit,
     /** A game: on now plays it (its channel), any other opens its page. */
-    val onGame: (SportsEvent) -> Unit
+    val onGame: (SportsEvent) -> Unit,
+    /** RCTV (owner): a program's picture (the guide's, else TMDB's), for every card in Upcoming. */
+    val programArt: suspend (com.nuvio.tv.domain.model.EpgProgram) -> String? = { null }
 )
 
 /** The row's key in Search's focus bookkeeping ("extra_TEAMS"). */
@@ -133,12 +135,15 @@ internal fun SearchExtraRow(
             modifier = modifier
         ) { index, itemModifier ->
             val result = extras.programs[index]
+            val programArt by androidx.compose.runtime.produceState<String?>(null, result.key) {
+                value = runCatching { actions.programArt(result.program) }.getOrNull()
+            }
             AiringCard(
                 // Its channel under it by the name shown everywhere else ("ESPN", not "US: ESPN FHD").
                 airing = ShowAiring(result.channel.copy(name = result.channelName), result.program),
                 isOnNow = result.program.isAiringAt(now),
                 now = now,
-                fallbackImageUrl = null,
+                fallbackImageUrl = programArt,
                 cardText = result.program.title,
                 onClick = {
                     onItemOpened(index)

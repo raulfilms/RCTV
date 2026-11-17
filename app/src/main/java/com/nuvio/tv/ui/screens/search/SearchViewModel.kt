@@ -73,7 +73,9 @@ class SearchViewModel @Inject constructor(
     // RCTV Control: Light searches movies and series only (not the guide, channels or sports).
     private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager? = null,
     // RCTV, Kids profiles: only titles for children up to 13 (no channels or sports); none in tests.
-    private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate? = null
+    private val kidsGate: com.nuvio.tv.core.kids.KidsContentGate? = null,
+    // RCTV: the guide's programs' pictures from TMDB (Upcoming row); none in tests.
+    private val liveProgramLibrary: com.nuvio.tv.data.livetv.LiveProgramLibrary? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -868,6 +870,30 @@ class SearchViewModel @Inject constructor(
     }
 
     /** A guide channel ready to play: its address right now (a Stalker portal hands out short-lived ones). */
+    private val programArtCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * RCTV (owner): a picture for every program in Upcoming: the guide's own, else its movie's or
+     * series' backdrop from TMDB (by its name); null when neither has one. Looked up once per title.
+     */
+    suspend fun programArt(program: com.nuvio.tv.domain.model.EpgProgram): String? {
+        program.imageUrl?.takeIf { it.isNotBlank() }?.let { return it }
+        val library = liveProgramLibrary ?: return null
+        val key = com.nuvio.tv.data.livetv.LiveProgramLibrary.cleanTitle(program.title).lowercase(java.util.Locale.ROOT)
+        programArtCache[key]?.let { return it.ifBlank { null } }
+        val match = try {
+            library.findTitle(program)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // TMDB couldn't be reached: asked again next time.
+            return null
+        }
+        val art = (match?.backdrop ?: match?.poster)?.takeIf { it.isNotBlank() }
+        programArtCache[key] = art.orEmpty()
+        return art
+    }
+
     suspend fun playableChannel(channel: com.nuvio.tv.domain.model.LiveTvChannel): com.nuvio.tv.domain.model.LiveTvChannel {
         val store = liveTvDataStore ?: return channel
         val loader = guideLoader ?: return channel

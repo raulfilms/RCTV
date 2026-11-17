@@ -664,7 +664,8 @@ fun SearchScreen(
                 },
                 onTeam = { team -> latestOnOpenTeam(team) },
                 onLeague = { league -> latestOnOpenLeague(league) },
-                onGame = { event -> latestOnOpenGame(event) }
+                onGame = { event -> latestOnOpenGame(event) },
+                programArt = { program -> viewModel.programArt(program) }
             )
         }
         val extrasShown = extrasForQuery
