@@ -9,6 +9,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -34,11 +37,32 @@ class RctvProfileSyncService @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val mutex = Mutex()
 
+    private val _ready = MutableStateFlow(readKnown().isNotEmpty())
+
+    /**
+     * RCTV (owner: "it opened Profile 1, loaded again, and again, until the right profile"): true
+     * once this TV has the account's profiles: from before (they were agreed on an earlier run), or
+     * pulled now, or after [FIRST_PROFILES_WAIT_MS] at most (no answer: the app goes on with what it
+     * has). Until then the app waits on "Creating Your Experience", so a TV just installed (or with
+     * its data cleared) never opens a default "Profile 1" and then changes under it.
+     */
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
+
     /** Keeps the profiles in sync while the app is open (run it from the screen's lifecycle). */
     suspend fun run() = coroutineScope {
         launch {
             // Disconnected from its account: what was agreed with it no longer counts.
-            access.state.map { it.needsActivation }.distinctUntilChanged().collect { if (it) saveKnown(emptyMap()) }
+            access.state.map { it.needsActivation }.distinctUntilChanged().collectLatest { needsActivation ->
+                if (needsActivation) {
+                    saveKnown(emptyMap())
+                    _ready.value = false
+                    return@collectLatest
+                }
+                // On an account: its profiles are waited for a little at most.
+                if (_ready.value) return@collectLatest
+                delay(FIRST_PROFILES_WAIT_MS)
+                _ready.value = true
+            }
         }
         launch { access.remoteProfiles.filterNotNull().collect { remote -> pull(remote) } }
         launch {
@@ -72,6 +96,7 @@ class RctvProfileSyncService @Inject constructor(
             }
         }
         saveKnown(agreed)
+        _ready.value = true
     }
 
     private suspend fun push() = mutex.withLock {
@@ -111,6 +136,9 @@ class RctvProfileSyncService @Inject constructor(
         private const val PREFS = "rctv_control_profiles"
         private const val KEY_KNOWN = "known"
         private const val PUSH_DELAY_MS = 1_500L
+
+        /** The longest a TV new to its account waits for the account's profiles before going on. */
+        private const val FIRST_PROFILES_WAIT_MS = 20_000L
         private val COLOR = Regex("^#[0-9A-Fa-f]{6}$")
 
         /** A TV profile as the account keeps it. */

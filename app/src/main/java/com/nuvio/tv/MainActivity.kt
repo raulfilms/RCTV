@@ -546,6 +546,10 @@ open class MainActivity : ComponentActivity() {
             // RCTV (owner): a profile that already went through it on another TV of the account
             // doesn't again: its favorites are read from the account first (a few seconds at most).
             val profilePrefsChecked by rctvProfilePrefs.checked.collectAsState()
+            // RCTV (owner): the account's profiles (and the profile last used) are on this TV before
+            // any profile opens, so it never opens one and then changes to another.
+            val accountProfilesReady by rctvProfileSync.ready.collectAsState()
+            val activeProfileLoaded by profileManager.activeProfileReady.collectAsState()
             var customizeNow by remember(activeProfileId, startupSession) { mutableStateOf<Boolean?>(null) }
 
             LaunchedEffect(authState, profiles) {
@@ -881,6 +885,10 @@ open class MainActivity : ComponentActivity() {
                             onActivate = { code -> rctvAccess.activate(code) },
                             onBackPress = { finish() }
                         )
+                    } else if (!(accountProfilesReady && activeProfileLoaded)) {
+                        // RCTV (owner): a few seconds at most, on the same screen the app opens with.
+                        startupDestination = StartupDestination.Setup
+                        com.nuvio.tv.ui.components.RctvExperienceScreen(progress = 0f)
                     } else {
                     // RCTV (owner): after the account's code, straight to the profiles: no Nuvio
                     // sign-in page (the account, its profiles and its library are RCTV's website's).
