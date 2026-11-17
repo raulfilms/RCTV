@@ -1277,6 +1277,13 @@ private fun PlaybackNavHost(
                         popUpTo(Screen.Player.route) { inclusive = true }
                     }
                 },
+                // RCTV: a movie chosen in the live player's More to Watch plays as any movie (where it
+                // was left, if it was started before; Back returns to the Guide).
+                onPlayMoreToWatch = { target ->
+                    navController.navigate(liveVodRoute(target, fromBeginning = false)) {
+                        popUpTo(Screen.Player.route) { inclusive = true }
+                    }
+                },
                 // Live TV: "More info" (or an episode from Episodes) opens what's on as any title,
                 // on that episode (Back returns to the Guide).
                 onOpenLiveTitle = { itemId, itemType, season, episode ->

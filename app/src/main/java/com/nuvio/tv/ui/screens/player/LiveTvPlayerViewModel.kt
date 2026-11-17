@@ -276,6 +276,34 @@ class LiveTvPlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * RCTV (owner): a movie chosen in More to Watch, to play straight away (as any movie): its IMDb id
+     * from TMDB; null when TMDB can't tell it (its page opens instead).
+     */
+    suspend fun moreToWatchMovie(meta: com.nuvio.tv.domain.model.MetaPreview): com.nuvio.tv.data.livetv.LiveVodTarget? {
+        if (!meta.rawType.equals("movie", ignoreCase = true)) return null
+        val tmdbId = meta.id.removePrefix("tmdb:").substringBefore(':').toIntOrNull() ?: return null
+        val match = LiveProgramMatch(
+            isMovie = true,
+            tmdbId = tmdbId,
+            name = meta.name,
+            year = meta.releaseInfo?.take(4)?.toIntOrNull(),
+            poster = meta.poster,
+            backdrop = meta.background,
+            overview = meta.description,
+            rating = meta.imdbRating,
+            genres = meta.genres
+        )
+        val imdb = try {
+            liveProgramLibrary.imdbId(match)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        return com.nuvio.tv.data.livetv.LiveVodTarget(match, imdb, logo = meta.logo)
+    }
+
     /** "Add to library": the program's movie, or its whole series. */
     fun addToLibrary() {
         val state = _program.value

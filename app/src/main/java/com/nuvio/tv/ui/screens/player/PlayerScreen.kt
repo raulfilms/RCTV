@@ -162,6 +162,8 @@ fun PlayerScreen(
     onOpenLiveTitle: (itemId: String, itemType: String, season: Int?, episode: Int?) -> Unit = { _, _, _, _ -> },
     /** RCTV Live TV: "Watch From Beginning": what's on, from its sources. */
     onWatchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = {},
+    /** RCTV Live TV: a movie chosen in More to Watch: it plays (as any movie, where it was left). */
+    onPlayMoreToWatch: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = onWatchLiveVod,
     liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel(),
     gameCenterViewModel: LiveGameCenterViewModel = hiltViewModel()
 ) {
@@ -372,12 +374,26 @@ fun PlayerScreen(
             viewModel.stopAndRelease()
             onOpenLiveTitle(match.itemId, match.itemType, episode.season, episode.episode)
         }
-    // RCTV (owner): a title chosen in the live player's More to Watch: its page opens.
+    // RCTV (owner): a title chosen in the live player's More to Watch: a movie plays straight away
+    // (as any movie); a series' page opens (its page too for a movie TMDB can't place).
+    var moreToWatchOpening by remember { mutableStateOf(false) }
     val openMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = openMoreToWatch@{ meta ->
-        if (exitDispatched) return@openMoreToWatch
-        exitDispatched = true
-        viewModel.stopAndRelease()
-        onOpenLiveTitle(meta.id, meta.rawType, null, null)
+        if (exitDispatched || moreToWatchOpening) return@openMoreToWatch
+        moreToWatchOpening = true
+        liveScope.launch {
+            val movie = try {
+                liveTvViewModel.moreToWatchMovie(meta)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            moreToWatchOpening = false
+            if (exitDispatched) return@launch
+            exitDispatched = true
+            viewModel.stopAndRelease()
+            if (movie != null) onPlayMoreToWatch(movie) else onOpenLiveTitle(meta.id, meta.rawType, null, null)
+        }
     }
     val watchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = watchLiveVod@{ target ->
         if (exitDispatched) return@watchLiveVod
