@@ -353,6 +353,9 @@
     <string name="tmdb_entity_empty_title">No se encontraron títulos</string>
     <string name="tmdb_entity_empty_subtitle">Actualmente, TMDB no tiene títulos disponibles para explorar con esta selección.</string>
     <string name="episodes_unavailable">No disponible</string>
+    <string name="episodes_aired_on">Estrenado: %1$s</string>
+    <string name="episodes_upcoming">Próximamente</string>
+    <string name="episodes_releases_on">Sale el %1$s</string>
     <!-- Status labels for series (some languages need gendered forms) -->
     <string name="series_status_ended">Finalizada</string>
     <string name="series_status_continuing">En emisión</string>

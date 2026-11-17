@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nuvio.tv.core.util.isEpisodeReleaseAired
 import com.nuvio.tv.core.util.parseEpisodeReleaseLocalDate
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -530,7 +531,14 @@ private fun EpisodeCard(
     val ratingLabel = remember(imdbRating) {
         imdbRating?.takeIf { it > 0.0 }?.let { String.format(Locale.US, "%.1f", it) }
     }
-    val description = remember(episode.overview) { episode.overview?.trim().orEmpty() }
+    // RCTV (owner's choice): "Aired: November 15, 2026" once it's out; before that "45 min · Upcoming"
+    // and "Releases November 24, 2026" (an add-on's own "Release date: ..." in place of a story is left out).
+    val releaseAired = remember(episode.released) { isEpisodeReleaseAired(episode.released) }
+    val isUpcoming = releaseAired == false
+    val description = remember(episode.overview, formattedDate) {
+        val overview = episode.overview?.trim().orEmpty()
+        if (formattedDate.isNotEmpty() && overview.isReleaseDatePlaceholder()) "" else overview
+    }
     val isWatched = remember(watchProgress, isMarkedWatched) { watchProgress?.isCompleted() == true || isMarkedWatched }
     val shouldBlur = remember(blurUnwatched, isWatched) { blurUnwatched && !isWatched }
     val progressPercent = remember(watchProgress) { watchProgress?.progressPercentage ?: 0f }
@@ -679,7 +687,16 @@ private fun EpisodeCard(
         val name = episode.title.localizeEpisodeTitle(context)
         episode.episode?.let { "$it. $name" } ?: name
     }
-    val runtimeSuffix = remember(runtimeLabel) { runtimeLabel?.let { " ($it)" } }
+    val runtimeSuffix = remember(runtimeLabel, isUpcoming) { runtimeLabel?.takeUnless { isUpcoming }?.let { " ($it)" } }
+    val strUpcoming = stringResource(R.string.episodes_upcoming)
+    val upcomingLine = remember(episode.runtime, strUpcoming) {
+        listOfNotNull(episode.runtime?.takeIf { it > 0 }?.let(::formatUpcomingRuntime), strUpcoming).joinToString(" · ")
+    }
+    val releaseLine = when {
+        formattedDate.isEmpty() || releaseAired == null -> null
+        isUpcoming -> stringResource(R.string.episodes_releases_on, formattedDate)
+        else -> stringResource(R.string.episodes_aired_on, formattedDate)
+    }
     val belowTitleStyle = remember(typography) { typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
     val belowRuntimeStyle = remember(typography) { typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal) }
     val belowDescriptionStyle = remember(typography) { typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp) }
@@ -903,6 +920,26 @@ private fun EpisodeCard(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        if (isUpcoming) {
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = upcomingLine,
+                style = belowDescriptionStyle,
+                color = textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        releaseLine?.let { line ->
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = line,
+                style = belowDescriptionStyle,
+                color = textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -1107,6 +1144,26 @@ private fun formatEpisodeRuntime(runtimeMinutes: Int): String {
         hours > 0 -> "${hours}h"
         else -> "${minutes}m"
     }
+}
+
+/** RCTV: "45 min", "1h 5 min", "2h" (the upcoming line). */
+private fun formatUpcomingRuntime(runtimeMinutes: Int): String {
+    val hours = runtimeMinutes / 60
+    val minutes = runtimeMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h $minutes min"
+        hours > 0 -> "${hours}h"
+        else -> "$minutes min"
+    }
+}
+
+/** RCTV: an add-on's "Release date: Nov 16, 2026" (any language) given where the story goes. */
+private val RELEASE_DATE_PLACEHOLDER = Regex("^[^:\\n]{2,40}:\\s*[\\p{L}\\d .,/-]{6,30}$")
+private val YEAR_IN_TEXT = Regex("\\b(19|20)\\d{2}\\b")
+
+internal fun String.isReleaseDatePlaceholder(): Boolean {
+    val text = trim().trimEnd('.')
+    return text.length <= 70 && RELEASE_DATE_PLACEHOLDER.matches(text) && YEAR_IN_TEXT.containsMatchIn(text)
 }
 
 private fun formatEpisodeCardDate(isoDate: String): String {

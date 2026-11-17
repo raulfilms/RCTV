@@ -59,6 +59,9 @@
     <string name="cw_percent_watched">%1$d%% visto</string>
     <string name="cw_hours_min_left">%1$dh %2$dm restantes</string>
     <string name="cw_min_left">%1$dm restantes</string>
+    <string name="episodes_aired_on">Estrenado: %1$s</string>
+    <string name="episodes_upcoming">Próximamente</string>
+    <string name="episodes_releases_on">Sale el %1$s</string>
     <string name="cw_min_remaining">%1$d min restantes</string>
     <string name="cw_hours_min_remaining">%1$dh %2$d min restantes</string>
     <string name="cw_season_episode">T%1$d:E%2$d</string>

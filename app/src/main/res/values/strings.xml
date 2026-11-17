@@ -357,6 +357,9 @@
     <string name="tmdb_entity_empty_title">No titles found</string>
     <string name="tmdb_entity_empty_subtitle">TMDB does not currently have browseable titles for this selection.</string>
     <string name="episodes_unavailable">Unavailable</string>
+    <string name="episodes_aired_on">Aired: %1$s</string>
+    <string name="episodes_upcoming">Upcoming</string>
+    <string name="episodes_releases_on">Releases %1$s</string>
     <!-- Status labels for series (some languages need gendered forms) -->
     <string name="series_status_ended">Ended</string>
     <string name="series_status_continuing">Ongoing</string>
