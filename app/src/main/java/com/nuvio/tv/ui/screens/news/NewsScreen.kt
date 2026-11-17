@@ -1,6 +1,5 @@
 package com.nuvio.tv.ui.screens.news
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,12 +38,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.R
+import com.nuvio.tv.ui.components.AppleLandscapeCardHeight
+import com.nuvio.tv.ui.components.AppleLandscapeCardWidth
+import com.nuvio.tv.ui.components.AppleRowTitle
+import com.nuvio.tv.ui.components.AppleTvCardSpacing
+import com.nuvio.tv.ui.components.AppleTvColors
+import com.nuvio.tv.ui.components.AppleTvContentStart
+import com.nuvio.tv.ui.components.AppleTvFocusGlow
+import com.nuvio.tv.ui.components.AppleTvFocusScale
+import com.nuvio.tv.ui.components.AppleTvRadius
+import com.nuvio.tv.ui.components.AppleTvSpacing
+import com.nuvio.tv.ui.components.AppleTvType
+import com.nuvio.tv.ui.components.tileSurfaceBorder
 import com.nuvio.tv.data.livetv.LiveProgramMatch
 import com.nuvio.tv.domain.model.LiveTvChannel
 import kotlinx.coroutines.launch
@@ -52,9 +62,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val Background = Color(0xFF070B18)
-private val CardColor = Color(0xFF151C2E)
-private val CardBorder = Color(0x33FFFFFF)
 private val LiveRed = Color(0xFFE5232B)
 private val Dim = Color(0xB3FFFFFF)
 private val ChipColor = Color(0x26FFFFFF)
@@ -98,22 +105,23 @@ fun NewsScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Background),
-        contentPadding = PaddingValues(top = 28.dp, bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(26.dp)
+        modifier = Modifier.fillMaxSize().background(AppleTvColors.Background),
+        contentPadding = PaddingValues(top = AppleTvSpacing.SafeY, bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item(key = "header") {
             Column {
+                // RCTV (owner): in the app's style and size (as Home's rows).
                 Text(
                     text = stringResource(R.string.news_title),
-                    color = Color.White,
-                    fontSize = 32.sp,
+                    color = AppleTvColors.Label,
+                    style = AppleTvType.Title3,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 48.dp, bottom = 14.dp)
+                    modifier = Modifier.padding(start = AppleTvContentStart, bottom = 10.dp)
                 )
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 48.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(horizontal = AppleTvContentStart, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item(key = "all") {
                         NewsChipButton(
@@ -139,8 +147,8 @@ fun NewsScreen(
                 Text(
                     text = stringResource(if (state.loading) R.string.news_loading else R.string.news_empty),
                     color = Dim,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(start = 48.dp, top = 24.dp)
+                    style = AppleTvType.Callout,
+                    modifier = Modifier.padding(start = AppleTvContentStart, top = 16.dp)
                 )
             }
         }
@@ -148,9 +156,10 @@ fun NewsScreen(
         if (state.picked.isNotEmpty()) {
             item(key = "picked") {
                 NewsRow(stringResource(R.string.news_picked), state.picked) { card ->
-                    ShowCard(
+                    NewsTile(
                         card = card,
                         match = state.titles[NewsViewModel.titleKey(card.program.title)],
+                        showName = true,
                         onClick = { open(card, preferShow = true) },
                         onLongClick = { onOpenChannelProfile(card.channel) }
                     )
@@ -161,9 +170,10 @@ fun NewsScreen(
         if (state.onNow.isNotEmpty()) {
             item(key = "on_now") {
                 NewsRow(stringResource(R.string.news_on_now), state.onNow) { card ->
-                    ProgramCard(
+                    NewsTile(
                         card = card,
                         match = state.titles[NewsViewModel.titleKey(card.program.title)],
+                        showName = false,
                         onClick = { open(card, preferShow = false) },
                         onLongClick = { onOpenChannelProfile(card.channel) }
                     )
@@ -174,9 +184,10 @@ fun NewsScreen(
         state.channelRows.forEach { row ->
             item(key = "channel_${row.channel.id}") {
                 NewsRow(row.channel.name, row.cards) { card ->
-                    ProgramCard(
+                    NewsTile(
                         card = card,
                         match = state.titles[NewsViewModel.titleKey(card.program.title)],
+                        showName = false,
                         onClick = { open(card, preferShow = false) },
                         onLongClick = { onOpenChannelProfile(card.channel) }
                     )
@@ -186,19 +197,14 @@ fun NewsScreen(
     }
 }
 
+/** A row as Home's: its name, then its cards from the page's edge (room for a card growing on focus). */
 @Composable
 private fun NewsRow(title: String, cards: List<NewsCard>, card: @Composable (NewsCard) -> Unit) {
     Column {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 48.dp, bottom = 12.dp)
-        )
+        AppleRowTitle(text = title, bottomGap = 0.dp)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(18.dp)
+            contentPadding = PaddingValues(horizontal = AppleTvContentStart, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppleTvCardSpacing)
         ) {
             items(cards, key = { it.key }) { card(it) }
         }
@@ -207,14 +213,14 @@ private fun NewsRow(title: String, cards: List<NewsCard>, card: @Composable (New
 
 @Composable
 private fun NewsChipButton(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(50)
     Surface(
         onClick = onClick,
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) ChipSelected else ChipColor,
             focusedContainerColor = Color.White,
             contentColor = Color.White,
-            focusedContentColor = Color(0xFF0A1022)
+            focusedContentColor = Color.Black
         ),
         shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
@@ -222,123 +228,108 @@ private fun NewsChipButton(label: String, selected: Boolean, onClick: () -> Unit
     ) {
         Text(
             text = label,
-            fontSize = 16.sp,
+            style = AppleTvType.Caption1,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
         )
     }
 }
 
-/** A show: its picture (TMDB's when the guide has none) and its name under it. */
+/**
+ * RCTV (owner): a News card exactly like Home's live cards (same size, outline and focus): the
+ * program's picture (TMDB's when the guide has none, else the channel's logo), the channel's logo
+ * in the corner, LIVE and how far along, its name and when (and on which channel) at the bottom.
+ * [showName]: the show's name (TMDB's) rather than the guide's program title.
+ */
 @Composable
-private fun ShowCard(card: NewsCard, match: LiveProgramMatch?, onClick: () -> Unit, onLongClick: () -> Unit) {
-    Column(modifier = Modifier.width(CardWidth)) {
-        NewsFocusCard(onClick = onClick, onLongClick = onLongClick) {
-            Art(card, match)
-            if (card.live) {
-                Box(modifier = Modifier.align(Alignment.BottomStart).padding(10.dp)) { LiveBadge() }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = match?.name ?: card.program.title,
-            color = Color.White,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/** A program on a channel: LIVE and how far it is, or when it starts; the time and channel under it. */
-@Composable
-private fun ProgramCard(card: NewsCard, match: LiveProgramMatch?, onClick: () -> Unit, onLongClick: () -> Unit) {
-    Column(modifier = Modifier.width(CardWidth)) {
-        NewsFocusCard(onClick = onClick, onLongClick = onLongClick) {
-            Art(card, match)
-            if (card.live) {
-                Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp)) { LiveBadge() }
-                val now = System.currentTimeMillis()
-                val fraction = ((now - card.program.startMs).toFloat() / (card.program.endMs - card.program.startMs).coerceAtLeast(1))
-                    .coerceIn(0f, 1f)
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x55FFFFFF))) {
-                    Box(modifier = Modifier.fillMaxWidth(fraction).fillMaxHeight().background(LiveRed))
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = "${whenText(card.program.startMs)} • ${card.channel.name}",
-            color = Dim,
-            fontSize = 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = card.program.title,
-            color = Color.White,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/** The program's picture, else TMDB's, else the channel's logo on RCTV's dark. */
-@Composable
-private fun BoxScope.Art(card: NewsCard, match: LiveProgramMatch?) {
-    val picture = card.program.imageUrl ?: match?.backdrop
-    if (picture != null) {
-        AsyncImage(model = picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-    } else {
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .background(Brush.linearGradient(listOf(Color(0xFF14254D), Color(0xFF0A1022), Color(0xFF3A0E1E))))
-        )
-        AsyncImage(
-            model = card.channel.logoUrl,
-            contentDescription = card.channel.name,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.5f).height(64.dp)
-        )
-    }
-}
-
-@Composable
-private fun NewsFocusCard(onClick: () -> Unit, onLongClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+private fun NewsTile(
+    card: NewsCard,
+    match: LiveProgramMatch?,
+    showName: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(AppleTvRadius.Poster)
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = CardColor,
-            focusedContainerColor = CardColor,
+            containerColor = AppleTvColors.Surface2,
+            focusedContainerColor = AppleTvColors.Surface2,
             contentColor = Color.White,
             focusedContentColor = Color.White
         ),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(border = BorderStroke(1.dp, CardBorder), shape = shape),
-            focusedBorder = Border(border = BorderStroke(3.dp, Color.White), shape = shape)
-        ),
+        border = tileSurfaceBorder(shape),
         shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-        modifier = Modifier.width(CardWidth).height(CardHeight)
+        scale = ClickableSurfaceDefaults.scale(focusedScale = AppleTvFocusScale),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = AppleTvFocusGlow),
+        modifier = Modifier.width(AppleLandscapeCardWidth).height(AppleLandscapeCardHeight)
     ) {
-        Box(modifier = Modifier.fillMaxSize().clip(shape), content = content)
+        Box(modifier = Modifier.fillMaxSize().clip(shape)) {
+            val picture = card.program.imageUrl ?: match?.backdrop
+            if (picture != null) {
+                AsyncImage(model = picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                AsyncImage(
+                    model = card.channel.logoUrl,
+                    contentDescription = card.channel.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.5f).height(48.dp).padding(bottom = 18.dp)
+                )
+            }
+            Box(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.65f)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
+            )
+            if (picture != null && !card.channel.logoUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = card.channel.logoUrl,
+                    contentDescription = card.channel.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp).width(48.dp).height(24.dp)
+                )
+            }
+            if (card.live) {
+                Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) { LiveBadge() }
+            }
+            val title = if (showName) match?.name ?: card.program.title else card.program.title
+            val line = if (card.live) {
+                "${card.channel.name} · ${timeRange(card.program.startMs, card.program.endMs)}"
+            } else {
+                "${card.channel.name} · ${whenText(card.program.startMs)}"
+            }
+            Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, end = 10.dp, bottom = 8.dp)) {
+                Text(title, color = Color.White, style = AppleTvType.Caption1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(line, color = Dim, style = AppleTvType.Caption2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (card.live) {
+                    Spacer(Modifier.height(4.dp))
+                    val now = System.currentTimeMillis()
+                    val fraction = ((now - card.program.startMs).toFloat() / (card.program.endMs - card.program.startMs).coerceAtLeast(1))
+                        .coerceIn(0f, 1f)
+                    Box(modifier = Modifier.fillMaxWidth().height(4.dp).background(Color(0x55FFFFFF), RoundedCornerShape(2.dp))) {
+                        Box(modifier = Modifier.fillMaxWidth(fraction).fillMaxHeight().background(LiveRed, RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun LiveBadge() {
     Row(
-        modifier = Modifier.background(LiveRed, RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
+        modifier = Modifier.background(LiveRed, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(stringResource(R.string.news_live), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
+}
+
+/** "8:00 PM – 9:00 PM". */
+private fun timeRange(startMs: Long, endMs: Long): String {
+    val format = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
+    return "${format.format(Date(startMs))} – ${format.format(Date(endMs))}"
 }
 
 /** "Nov 13, 9:00 PM". */
@@ -347,5 +338,3 @@ private fun whenText(startMs: Long): String =
 
 private const val FOCUS_TRIES = 20
 private const val FOCUS_RETRY_MS = 50L
-private val CardWidth = 320.dp
-private val CardHeight = 180.dp

@@ -142,13 +142,14 @@ class NewsViewModel @Inject constructor(
         fun programsOf(channel: LiveTvChannel): List<EpgProgram> =
             guide.epgByChannel[channel.epgChannelId ?: channel.id].orEmpty().distinctBy { it.startMs }
 
+        // RCTV (owner): nothing twice on the page: a program shown in a row above isn't shown again
+        // below (Picked for you first, then On now & upcoming, then each channel's row).
         val onNowLive = shown.mapNotNull { channel ->
             programsOf(channel).firstOrNull { it.startMs <= now && it.endMs > now }?.let { NewsCard(channel, it, live = true) }
         }
         val upcoming = shown.flatMap { channel ->
             programsOf(channel).filter { it.startMs > now && it.startMs < now + UPCOMING_MS }.take(2).map { NewsCard(channel, it, live = false) }
         }.sortedBy { it.program.startMs }
-        val onNow = (onNowLive + upcoming).distinctBy { it.key }.take(ON_NOW_SIZE)
 
         // One card a show: its next airing (on now first), the channels in the Guide's order.
         val seenTitles = HashSet<String>()
@@ -162,10 +163,16 @@ class NewsViewModel @Inject constructor(
             }
         }
         val pickedSorted = picked.distinctBy { it.key }.sortedBy { if (it.live) 0 else 1 }.take(PICKED_SIZE)
+        val shownKeys = pickedSorted.mapTo(HashSet()) { it.key }
+        val onNow = (onNowLive + upcoming).distinctBy { it.key }.filter { it.key !in shownKeys }.take(ON_NOW_SIZE)
+        onNow.forEach { shownKeys.add(it.key) }
 
         val channelRows = shown.take(CHANNEL_ROWS).mapNotNull { channel ->
-            val cards = programsOf(channel).filter { it.endMs > now }.take(CHANNEL_ROW_SIZE)
+            val cards = programsOf(channel).filter { it.endMs > now }
                 .map { NewsCard(channel, it, live = it.startMs <= now) }
+                .filter { it.key !in shownKeys }
+                .take(CHANNEL_ROW_SIZE)
+            cards.forEach { shownKeys.add(it.key) }
             cards.takeIf { it.isNotEmpty() }?.let { NewsChannelRow(channel, it) }
         }
 
