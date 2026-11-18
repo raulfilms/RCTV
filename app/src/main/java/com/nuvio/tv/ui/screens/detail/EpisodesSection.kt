@@ -699,7 +699,7 @@ private fun EpisodeCard(
     }
     val belowTitleStyle = remember(typography) { typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
     val belowRuntimeStyle = remember(typography) { typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal) }
-    val belowDescriptionStyle = remember(typography) { typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp) }
+    val belowDescriptionStyle = remember(typography) { typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 19.sp) }
     val strEpisode = stringResource(R.string.episodes_episode)
     val strUnavailable = stringResource(R.string.episodes_unavailable)
     val episodeCode = remember(episode.episode, strEpisode) {
@@ -911,7 +911,7 @@ private fun EpisodeCard(
             }
         }
         if (description.isNotBlank()) {
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(5.dp))
             Text(
                 text = description,
                 style = belowDescriptionStyle.copy(textDirection = description.contentTextDirection()),
@@ -930,8 +930,9 @@ private fun EpisodeCard(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        // RCTV (owner): "Aired:" a little apart from the story, not stuck to it.
         releaseLine?.let { line ->
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(9.dp))
             Text(
                 text = line,
                 style = belowDescriptionStyle,
