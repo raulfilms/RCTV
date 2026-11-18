@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Newspaper
@@ -334,6 +335,27 @@ fun MainHomeScreen(
                         }
                     }
                 }
+                // RCTV (owner, the DVR as YouTube TV's): shows the IPTV provider recorded on the profile's
+                // channels; one plays from its start on its channel (the timeline goes back and forth).
+                rowWithBanners(MainHomeRows.CATCH_UP, state.banners, onBannerAction) {
+                    if (state.catchUp.isNotEmpty()) {
+                        item(key = "catch_up") {
+                            HomeRow(stringResource(R.string.main_home_catch_up), state.catchUp, { it.key }) { card, modifier ->
+                                CatchUpTile(
+                                    card,
+                                    modifier,
+                                    onClick = {
+                                        scope.launch {
+                                            com.nuvio.tv.ui.screens.player.LiveDvrHandoff.set(card.channel.id, card.program.startMs)
+                                            onPlayChannel(viewModel.playable(card.channel))
+                                        }
+                                    },
+                                    onLongClick = { onOpenChannelProfile(card.channel) }
+                                )
+                            }
+                        }
+                    }
+                }
                 titlesRow(MainHomeRows.RECOMMENDED, R.string.main_home_recommended, state.recommended, state.banners, onOpenTitle, onBannerAction)
                 rowWithBanners(MainHomeRows.CATEGORIES, state.banners, onBannerAction) {
                     item(key = "categories") {
@@ -601,6 +623,76 @@ private fun LiveCard(
                 ProgressLine(fraction)
             }
         }
+    }
+}
+
+/**
+ * RCTV (owner, the DVR): a recorded show: its picture (else its channel's logo), the catch-up mark
+ * and its length where LIVE goes on a live card, its name, its channel and when it aired.
+ */
+@Composable
+private fun CatchUpTile(card: CatchUpCard, modifier: Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.width(LiveWidth).height(LiveHeight)) {
+        if (card.art != null) {
+            AsyncImage(model = card.art, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            AsyncImage(
+                model = card.channel.logoUrl,
+                contentDescription = card.channel.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).width(48.dp).height(24.dp)
+            )
+        } else {
+            AsyncImage(
+                model = card.channel.logoUrl,
+                contentDescription = card.channel.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth(0.5f).height(48.dp).padding(bottom = 18.dp)
+            )
+        }
+        BottomShade()
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .background(Color(0xCC000000), RoundedCornerShape(6.dp))
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.History, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("${card.program.durationMinutes} min", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, end = 10.dp, bottom = 8.dp)) {
+            Text(
+                com.nuvio.tv.data.livetv.LiveProgramLibrary.cleanTitle(card.program.title),
+                color = Color.White,
+                style = AppleTvType.Caption1,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "${card.channel.name} · ${airedLabel(card.program.startMs)}",
+                color = Dim,
+                style = AppleTvType.Caption2,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/** "Today, 9:00 PM", "Yesterday, 9:00 PM" or "Nov 15, 9:00 PM". */
+@Composable
+private fun airedLabel(startMs: Long): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val day = java.time.Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate()
+    val today = java.time.LocalDate.now(zone)
+    val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(startMs))
+    return when (day) {
+        today -> stringResource(R.string.livetv_details_today, time)
+        today.minusDays(1) -> stringResource(R.string.player_live_catch_up_yesterday, time)
+        else -> java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(Date(startMs)) + ", " + time
     }
 }
 

@@ -243,7 +243,11 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                     val eofNow = view.isEofReached()
                     if (!eofNow) mpvEofSeenClear = true
                     val mpvEofReached = mpvEofSeenClear && eofNow
-                    val naturalEnded = !isLiveTvStreamNow() && !view.isLiveStreamNow() && (nearEnd || mpvEofReached) && shouldTreatAsNaturalPlaybackCompletion(
+                    // RCTV (owner, the DVR): the channel's recording ending is the live player's business.
+                    if (liveRecordingPlayback && mpvEofReached && firstFrameReady && !_uiState.value.liveRecordingEnded) {
+                        _uiState.update { it.copy(liveRecordingEnded = true) }
+                    }
+                    val naturalEnded = !liveRecordingPlayback && !isLiveTvStreamNow() && !view.isLiveStreamNow() && (nearEnd || mpvEofReached) && shouldTreatAsNaturalPlaybackCompletion(
                         hasRenderedFirstFrame = firstFrameReady,
                         hasFatalError = !_uiState.value.error.isNullOrBlank(),
                         durationMs = effectiveDuration
@@ -682,6 +686,12 @@ private fun PlayerRuntimeController.isShortPlaceholderStream(): Boolean {
  * watched or trigger auto-play next.
  */
 internal fun PlayerRuntimeController.handleNaturalPlaybackEnded() {
+    // RCTV (owner, the DVR): a channel's recording ended: the live player goes on (to live, or the
+    // next part of the recording); nothing is marked watched and the player doesn't close.
+    if (liveRecordingPlayback) {
+        _uiState.update { it.copy(playbackEnded = false, liveRecordingEnded = true) }
+        return
+    }
     val position = currentPlaybackPositionMs() ?: 0L
     val duration = getEffectiveDuration(position)
     val hasFatalError = !_uiState.value.error.isNullOrBlank()

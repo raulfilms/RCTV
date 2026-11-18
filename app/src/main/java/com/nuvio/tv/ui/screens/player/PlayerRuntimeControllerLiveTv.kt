@@ -101,6 +101,8 @@ internal val PlayerRuntimeController.isLiveTvPlayback: Boolean
  */
 internal fun PlayerRuntimeController.isLiveTvStreamNow(): Boolean {
     if (!isLiveTvPlayback) return false
+    // RCTV (owner, the DVR): the channel's recording plays like a show (it ends, pauses and seeks).
+    if (liveRecordingPlayback) return false
     if (isUsingMpvEngine()) {
         val view = mpvView ?: return true
         return view.isLiveStreamNow() || view.durationMs() <= 0L

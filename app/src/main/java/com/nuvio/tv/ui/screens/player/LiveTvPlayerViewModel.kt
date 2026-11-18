@@ -59,6 +59,21 @@ data class LivePlayerCatchUpState(
     val programs: List<com.nuvio.tv.domain.model.LiveCatchUpProgram> = emptyList()
 )
 
+/**
+ * RCTV (owner, the DVR as YouTube TV's): what the player shows of a channel the provider records:
+ * live, or its recording from [segmentStartMs] (the real time at the recording's start) to
+ * [segmentEndMs].
+ */
+data class LiveDvrState(
+    val channelId: String? = null,
+    val recording: Boolean = false,
+    val segmentStartMs: Long = 0L,
+    val segmentEndMs: Long = 0L
+)
+
+/** RCTV (owner, the DVR): a recording to play: its address and where in it to start. */
+data class LiveDvrStart(val url: String, val startPositionMs: Long, val segmentStartMs: Long, val segmentEndMs: Long)
+
 data class LivePlayerMoreState(
     /** What they were picked for (what's on now). */
     val key: String? = null,
@@ -302,6 +317,73 @@ class LiveTvPlayerViewModel @Inject constructor(
         }
     }
 
+    private val _dvr = MutableStateFlow(LiveDvrState())
+
+    /** RCTV (owner, the DVR): live, or the channel's recording (and which part of it). */
+    val dvr: StateFlow<LiveDvrState> = _dvr.asStateFlow()
+
+    /**
+     * RCTV (owner, the DVR): the recording that plays [channel] from [targetMs] on: from that minute,
+     * up to now (at most [DVR_SEGMENT_MINUTES]; the next part follows when it ends). Null when the
+     * provider's time can't be told or the address can't be made.
+     */
+    suspend fun dvrStart(channel: LiveTvChannel, targetMs: Long): LiveDvrStart? {
+        if (channel.archiveDays <= 0) return null
+        val zone = try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { xtreamClient.serverZone(channel) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("LiveTvPlayerVM", "Catch-up time zone failed: ${e.javaClass.simpleName}")
+            null
+        } ?: return null
+        val now = System.currentTimeMillis()
+        val oldest = now - channel.archiveDays * DAY_MS
+        val target = targetMs.coerceIn(oldest + MINUTE_MS, now)
+        val segmentStart = (target / MINUTE_MS) * MINUTE_MS
+        val minutes = ((now - segmentStart + MINUTE_MS - 1) / MINUTE_MS).toInt().coerceIn(1, DVR_SEGMENT_MINUTES)
+        val url = xtreamClient.timeshiftUrl(channel, segmentStart, minutes, zone) ?: return null
+        return LiveDvrStart(
+            url = url,
+            startPositionMs = target - segmentStart,
+            segmentStartMs = segmentStart,
+            segmentEndMs = segmentStart + minutes * MINUTE_MS
+        )
+    }
+
+    /** RCTV (owner, the DVR): the channel's recording now plays ([start]). */
+    fun dvrPlayingRecording(channel: LiveTvChannel, start: LiveDvrStart) {
+        _dvr.value = LiveDvrState(
+            channelId = channel.id,
+            recording = true,
+            segmentStartMs = start.segmentStartMs,
+            segmentEndMs = start.segmentEndMs
+        )
+    }
+
+    /** RCTV (owner, the DVR): the channel plays live again. */
+    fun dvrPlayingLive(channel: LiveTvChannel?) {
+        _dvr.value = LiveDvrState(channelId = channel?.id)
+    }
+
+    /**
+     * RCTV (owner, the DVR): what was on [channel] at [atMs]: from the guide, else from the
+     * provider's recordings (the guide keeps only a little of the past).
+     */
+    fun programAt(channel: LiveTvChannel, atMs: Long): EpgProgram? {
+        session.guide.value.programAt(channel, atMs)?.let { return it }
+        val recorded = _catchUp.value.takeIf { it.channelId == channel.id }?.programs
+            ?.firstOrNull { atMs >= it.startMs && atMs < it.endMs }
+            ?: return null
+        return EpgProgram(
+            channelId = channel.epgChannelId ?: channel.id,
+            title = recorded.title,
+            description = recorded.description,
+            startMs = recorded.startMs,
+            endMs = recorded.endMs
+        )
+    }
+
     /** RCTV (owner): the address that plays a recorded program (null when it can't be made). */
     fun catchUpUrl(channel: LiveTvChannel, program: com.nuvio.tv.domain.model.LiveCatchUpProgram): String? =
         xtreamClient.catchUpUrl(channel, program)
@@ -409,6 +491,10 @@ class LiveTvPlayerViewModel @Inject constructor(
         const val TICK_MS = 20_000L
         /** How often the Catch Up tab asks the provider again (new programs get recorded). */
         const val CATCH_UP_REFRESH_MS = 5 * 60_000L
+        const val MINUTE_MS = 60_000L
+        const val DAY_MS = 24L * 60 * MINUTE_MS
+        /** The longest piece of a recording asked for at once (the next piece follows). */
+        const val DVR_SEGMENT_MINUTES = 240
         /** How long TMDB is waited for what's on now's movie or episode. */
         const val VOD_TMDB_WAIT_MS = 30_000L
     }

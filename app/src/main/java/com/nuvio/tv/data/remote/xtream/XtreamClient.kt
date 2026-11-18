@@ -233,6 +233,7 @@ class XtreamClient @Inject constructor(
             val archived = item.opt("has_archive")?.toString()?.trim()
             if (!airing && archived != null && archived != "1" && !archived.equals("true", ignoreCase = true)) continue
             val serverStart = serverStartOf(item.optString("start")) ?: continue
+            if (address.server !in serverZones) learnZone(address.server, item.optString("start"), startMs)
             val title = decodedText(item.optString("title")) ?: continue
             programs += LiveCatchUpProgram(
                 title = title,
@@ -246,11 +247,61 @@ class XtreamClient @Inject constructor(
         return programs.distinctBy { it.startMs }.sortedByDescending { it.startMs }.take(MAX_CATCH_UP_PROGRAMS)
     }
 
+    /** RCTV (owner): each provider server's own time zone (catch-up's times are written in it). */
+    private val serverZones = java.util.concurrent.ConcurrentHashMap<String, java.time.ZoneId>()
+
+    /**
+     * RCTV (owner): the time zone [channel]'s provider writes catch-up times in: the one its server
+     * names, else worked out from the server's clock. Null when it can't be told.
+     */
+    fun serverZone(channel: LiveTvChannel): java.time.ZoneId? {
+        val address = liveAddressOf(channel.streamUrl) ?: return null
+        serverZones[address.server]?.let { return it }
+        val info = runCatching { authenticate(address.server, address.user, address.pass) }.getOrNull()
+            ?.optJSONObject("server_info")
+        val zone = info?.optString("timezone")?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { name -> runCatching { java.time.ZoneId.of(name) }.getOrNull() }
+            ?: info?.optString("time_now")?.let(::offsetZoneOf)
+            ?: return null
+        serverZones[address.server] = zone
+        return zone
+    }
+
+    /** The server's clock ("2026-11-17 21:03:10") against this TV's: its offset from UTC, to the quarter hour. */
+    private fun offsetZoneOf(timeNow: String): java.time.ZoneId? {
+        val local = runCatching { java.time.LocalDateTime.parse(timeNow.trim().replace(' ', 'T')) }.getOrNull() ?: return null
+        val diffSeconds = local.toEpochSecond(java.time.ZoneOffset.UTC) - System.currentTimeMillis() / 1000
+        val quarters = Math.round(diffSeconds / 900.0)
+        if (kotlin.math.abs(quarters) > 14 * 4) return null
+        return java.time.ZoneOffset.ofTotalSeconds((quarters * 900).toInt())
+    }
+
+    /**
+     * RCTV (owner, the DVR): the address that plays [channel]'s recording from [startMs] (a whole
+     * minute) for [minutes], in the provider's [zone].
+     */
+    fun timeshiftUrl(channel: LiveTvChannel, startMs: Long, minutes: Int, zone: java.time.ZoneId): String? {
+        val address = liveAddressOf(channel.streamUrl) ?: return null
+        val start = java.time.Instant.ofEpochMilli(startMs).atZone(zone).format(TIMESHIFT_START)
+        return "${address.server}/timeshift/${address.user}/${address.pass}/" +
+            "${minutes.coerceIn(1, MAX_PROGRAM_MINUTES)}/$start/${address.streamId}.${address.extension}"
+    }
+
     /** RCTV (owner): the address that plays [program] again from the provider's recording. */
     fun catchUpUrl(channel: LiveTvChannel, program: LiveCatchUpProgram): String? {
         val address = liveAddressOf(channel.streamUrl) ?: return null
         return "${address.server}/timeshift/${address.user}/${address.pass}/" +
             "${program.durationMinutes}/${program.serverStart}/${address.streamId}.${address.extension}"
+    }
+
+    /** A program's start in the server's time against its real time: the server's offset from UTC. */
+    private fun learnZone(server: String, start: String, startMs: Long) {
+        val local = runCatching {
+            java.time.LocalDateTime.parse(start.trim().replace(' ', 'T').take(19))
+        }.getOrNull() ?: return
+        val diffSeconds = local.toEpochSecond(java.time.ZoneOffset.UTC) - startMs / 1000
+        if (diffSeconds % 900 != 0L || kotlin.math.abs(diffSeconds) > 14 * 3600) return
+        serverZones.putIfAbsent(server, java.time.ZoneOffset.ofTotalSeconds(diffSeconds.toInt()))
     }
 
     /** "2026-11-17 21:00:00" (the server's own time) -> "2026-11-17:21-00", as catch-up asks for it. */
@@ -501,5 +552,7 @@ class XtreamClient @Inject constructor(
         const val MAX_CATCH_UP_PROGRAMS = 200
         val SERVER_TIME = Regex("""^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})""")
         val BASE64 = Regex("^[A-Za-z0-9+/=\\s]+$")
+        val TIMESHIFT_START: java.time.format.DateTimeFormatter =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd:HH-mm", java.util.Locale.US)
     }
 }

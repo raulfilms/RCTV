@@ -61,6 +61,8 @@ data class PlayerUiState(
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = true,
     val playbackEnded: Boolean = false,
+    /** RCTV (owner, the DVR): the channel's recording being played reached its end. */
+    val liveRecordingEnded: Boolean = false,
     val pendingExitReason: PlayerExitReason? = null,
     val title: String = "",
     val contentName: String? = null, // Series/show name (for series content)

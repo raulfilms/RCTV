@@ -222,6 +222,14 @@ class PlayerViewModel @Inject constructor(
         controller.switchToLiveChannel(url, name, logo)
     }
 
+    /**
+     * RCTV (owner, the DVR): plays the channel's recording (catch-up) from [startPositionMs] in this
+     * same player, or ([recording] false) its live stream again.
+     */
+    fun playLiveRecording(url: String, name: String, logo: String?, recording: Boolean, startPositionMs: Long = 0L) {
+        controller.switchToLiveChannel(url, name, logo, recording = recording, startPositionMs = startPositionMs)
+    }
+
     fun playPostPlayTrailer() {
         postPlayRecommendationController.playTrailer()
     }

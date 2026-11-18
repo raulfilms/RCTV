@@ -652,6 +652,8 @@ class PlayerRuntimeController(
     internal var liveTvHasPlayed: Boolean = false
     internal var liveTvUrl: String? = null
     internal var liveStuckSinceMs: Long = 0L
+    // RCTV (owner, the DVR): the channel's recording (catch-up) plays instead of the live stream.
+    internal var liveRecordingPlayback: Boolean = false
     // RCTV: the Networks row's in-place channel switch (PlayerRuntimeControllerLiveChannels.kt).
     internal var liveChannelSwitchJob: Job? = null
     // RCTV (seek preview): the timeline's pictures, and the pause before a moved timeline plays.

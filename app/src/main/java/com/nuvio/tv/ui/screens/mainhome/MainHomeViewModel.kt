@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -49,6 +51,19 @@ sealed class LiveNowCard {
     data class Channel(val channel: LiveTvChannel, val program: EpgProgram?) : LiveNowCard() {
         override val key get() = "channel_${channel.id}"
     }
+}
+
+/**
+ * RCTV (owner, the DVR as YouTube TV's): a show that aired on one of the profile's channels and
+ * that the IPTV provider recorded, to watch from its start; [art] is the guide's picture of it.
+ */
+@Immutable
+data class CatchUpCard(
+    val channel: LiveTvChannel,
+    val program: com.nuvio.tv.domain.model.LiveCatchUpProgram,
+    val art: String?
+) {
+    val key: String get() = "catchup_${channel.id}_${program.startMs}"
 }
 
 /** RCTV (owner, like YouTube TV's Home): a Guide category's channels and what's on each right now. */
@@ -81,6 +96,8 @@ data class MainHomeUiState(
     val trending: List<MetaPreview> = emptyList(),
     val recentlyAdded: List<MetaPreview> = emptyList(),
     val favoriteNetworks: List<LiveNowCard.Channel> = emptyList(),
+    /** RCTV (owner, the DVR): recorded shows from the channels this profile watches, newest first. */
+    val catchUp: List<CatchUpCard> = emptyList(),
     /** RCTV: a row per Guide category with its channels live now (Entertainment, News, Sports...). */
     val liveCategories: List<LiveCategoryRow> = emptyList(),
     val popular: List<MetaPreview> = emptyList(),
@@ -106,7 +123,9 @@ class MainHomeViewModel @Inject constructor(
     private val homeBanners: RctvHomeBanners,
     private val playerSession: LiveTvPlayerSession,
     private val experienceUpdater: com.nuvio.tv.core.rctvcontrol.RctvExperienceUpdater,
-    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService
+    private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
+    /** RCTV (owner, the DVR): the IPTV provider's recordings of the profile's channels. */
+    private val xtreamClient: com.nuvio.tv.data.remote.xtream.XtreamClient
 ) : ViewModel() {
 
     /**
@@ -153,6 +172,20 @@ class MainHomeViewModel @Inject constructor(
                             featuredCollection = featured,
                             banners = mine.filter { it.afterRow != MainHomeRows.HERO }.groupBy { it.afterRow }
                         ).withHero(mine.filter { it.afterRow == MainHomeRows.HERO })
+                    }
+                }
+        }
+        // RCTV (owner, the DVR): Catch Up: what the profile's recorded channels aired (the channels
+        // watched last, then the favorites), asked again every few minutes.
+        viewModelScope.launch {
+            combine(guideLoader.guide, liveTvDataStore.recentChannelIds, liveTvDataStore.customChannelIds) { guide, recent, favorites ->
+                catchUpChannels(guide, recent, favorites)
+            }
+                .distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } }
+                .collectLatest { channels ->
+                    while (isActive) {
+                        loadCatchUp(channels)
+                        delay(CATCH_UP_REFRESH_MS)
                     }
                 }
         }
@@ -212,6 +245,54 @@ class MainHomeViewModel @Inject constructor(
             }
         }
         return runCatching { channel.copy(streamUrl = guideLoader.resolvePlaybackUrl(channel, sources)) }.getOrDefault(channel)
+    }
+
+    /** The recorded channels Catch Up looks at: the ones watched last, the favorites, else the Guide's first. */
+    private fun catchUpChannels(
+        guide: com.nuvio.tv.ui.screens.livetv.LiveGuideSnapshot?,
+        recent: List<String>,
+        favorites: Set<String>
+    ): List<LiveTvChannel> {
+        val recorded = guide?.takeIf { !it.isPreview }?.channels?.filter { it.archiveDays > 0 }.orEmpty()
+        if (recorded.isEmpty()) return emptyList()
+        val byId = recorded.associateBy { it.id }
+        val mine = (recent + favorites).mapNotNull { byId[it] }.distinctBy { it.id }
+        return mine.ifEmpty { recorded }.take(CATCH_UP_CHANNELS)
+    }
+
+    private suspend fun loadCatchUp(channels: List<LiveTvChannel>) {
+        if (channels.isEmpty()) {
+            _uiState.update { it.copy(catchUp = emptyList()) }
+            return
+        }
+        val now = System.currentTimeMillis()
+        val guide = guideLoader.guide.value
+        val cards = coroutineScope {
+            channels.map { channel ->
+                async(kotlinx.coroutines.Dispatchers.IO) {
+                    val recorded = try {
+                        xtreamClient.fetchCatchUp(channel, now)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Never the address (it carries the account's login): only what kind of failure.
+                        android.util.Log.w("MainHomeVM", "Catch-up list failed: ${e.javaClass.simpleName}")
+                        emptyList()
+                    }
+                    val programs = channel.epgChannelId?.let { guide?.epgByChannel?.get(it) }.orEmpty()
+                    recorded.filter { it.endMs <= now }.take(CATCH_UP_PER_CHANNEL).map { program ->
+                        CatchUpCard(
+                            channel = channel,
+                            program = program,
+                            art = programs.firstOrNull { it.startMs == program.startMs }?.imageUrl
+                        )
+                    }
+                }
+            }.map { it.await() }.flatten()
+        }
+        _uiState.update { state ->
+            state.copy(catchUp = cards.sortedByDescending { it.program.endMs }.distinctBy { it.key }.take(ROW_SIZE))
+        }
     }
 
     private suspend fun loadTitles() {
@@ -327,6 +408,10 @@ class MainHomeViewModel @Inject constructor(
 
         const val MINUTE_MS = 60_000L
         const val ROW_SIZE = 20
+        /** Catch Up: how many channels it looks at, how many shows from each, and how often. */
+        const val CATCH_UP_CHANNELS = 6
+        const val CATCH_UP_PER_CHANNEL = 4
+        const val CATCH_UP_REFRESH_MS = 10 * MINUTE_MS
         /** Another provider's guide: its usual categories with a live row each. */
         val OTHER_PROVIDER_CATEGORIES = listOf(
             GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.TV_SHOWS, GuideBrowse.MOVIES, GuideBrowse.KIDS, GuideBrowse.LATINO
@@ -345,6 +430,8 @@ object MainHomeRows {
     const val HERO = "main_hero"
     const val LIVE_NOW = "main_live_now"
     const val CONTINUE_WATCHING = "main_continue_watching"
+    /** RCTV (owner, the DVR): recorded shows from the profile's channels. */
+    const val CATCH_UP = "main_catch_up"
     const val RECOMMENDED = "main_recommended"
     const val CATEGORIES = "main_categories"
     const val TRENDING = "main_trending"

@@ -18,8 +18,17 @@ import kotlinx.coroutines.launch
  * live reconnects and then its error screen, whose retry plays this channel again.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal fun PlayerRuntimeController.switchToLiveChannel(url: String, name: String, logo: String?) {
+internal fun PlayerRuntimeController.switchToLiveChannel(
+    url: String,
+    name: String,
+    logo: String?,
+    /** RCTV (owner, the DVR): [url] is the channel's recording (catch-up), played from [startPositionMs]. */
+    recording: Boolean = false,
+    startPositionMs: Long = 0L
+) {
     liveChannelSwitchJob?.cancel()
+    liveRecordingPlayback = recording
+    val startAtMs = if (recording) startPositionMs.coerceAtLeast(0L) else 0L
     liveChannelSwitchJob = null
     if (url.isBlank()) {
         _uiState.update { it.copy(error = context.getString(com.nuvio.tv.R.string.player_error_no_stream_url)) }
@@ -69,6 +78,8 @@ internal fun PlayerRuntimeController.switchToLiveChannel(url: String, name: Stri
             isBuffering = true,
             showPauseOverlay = false,
             playbackEnded = false,
+            liveRecordingEnded = false,
+            pendingSeekPosition = null,
             currentStreamUrl = request.url,
             audioTracks = emptyList(),
             subtitleTracks = emptyList(),
@@ -80,7 +91,7 @@ internal fun PlayerRuntimeController.switchToLiveChannel(url: String, name: Stri
     val playbackUrl = currentStreamUrl
     val playbackHeaders = currentHeaders
 
-    if (!needsFreshPlayer && isUsingMpvEngine()) {
+    if (!needsFreshPlayer && isUsingMpvEngine() && startAtMs == 0L) {
         val view = mpvView
         if (view != null) {
             // The same way a live reconnect hands mpv the stream again.
@@ -98,6 +109,8 @@ internal fun PlayerRuntimeController.switchToLiveChannel(url: String, name: Stri
     val player = _exoPlayer
     if (needsFreshPlayer || player == null || isUsingMpvEngine()) {
         releasePlayer(flushPlaybackState = false)
+        // A recording starts where it was asked to (once the new player is ready).
+        if (startAtMs > 0L) _uiState.update { it.copy(pendingSeekPosition = startAtMs) }
         initializePlayer(playbackUrl, playbackHeaders)
         return
     }
@@ -115,18 +128,18 @@ internal fun PlayerRuntimeController.switchToLiveChannel(url: String, name: Stri
             // A newer switch (or leaving the player) since: this one is outdated.
             if (_exoPlayer !== player || currentStreamUrl != playbackUrl) return@launch
             player.stop()
-            player.setMediaSource(
-                mediaSourceFactory.createMediaSource(
-                    context = context,
-                    url = playbackUrl,
-                    headers = playbackHeaders,
-                    filename = currentFilename,
-                    responseHeaders = currentStreamResponseHeaders,
-                    mimeTypeOverride = currentStreamMimeType,
-                    audioDelayUsProvider = audioDelayUs::get,
-                    cacheKey = currentStreamCacheKey
-                )
+            val source = mediaSourceFactory.createMediaSource(
+                context = context,
+                url = playbackUrl,
+                headers = playbackHeaders,
+                filename = currentFilename,
+                responseHeaders = currentStreamResponseHeaders,
+                mimeTypeOverride = currentStreamMimeType,
+                audioDelayUsProvider = audioDelayUs::get,
+                cacheKey = currentStreamCacheKey
             )
+            // RCTV (owner, the DVR): a recording starts where it was asked to.
+            if (startAtMs > 0L) player.setMediaSource(source, startAtMs) else player.setMediaSource(source)
             player.playWhenReady = true
             player.prepare()
             startLiveTvWatchdog(playbackUrl)
@@ -137,6 +150,7 @@ internal fun PlayerRuntimeController.switchToLiveChannel(url: String, name: Stri
             Log.w(PlayerRuntimeController.TAG, "LIVE_SWITCH: handing over failed (${e.javaClass.simpleName}), building the player again")
             if (currentStreamUrl != playbackUrl) return@launch
             releasePlayer(flushPlaybackState = false)
+            if (startAtMs > 0L) _uiState.update { it.copy(pendingSeekPosition = startAtMs) }
             initializePlayer(playbackUrl, playbackHeaders)
         }
     }

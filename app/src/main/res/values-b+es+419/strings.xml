@@ -3649,6 +3649,9 @@
     <string name="player_live_catch_up_empty">Este canal todavía no tiene programas grabados</string>
     <string name="player_live_catch_up_yesterday">Ayer, %1$s</string>
     <string name="player_live_catch_up_start_over">Desde el inicio</string>
+    <string name="player_live_go_live">Ir al vivo</string>
+    <string name="player_live_dvr_started">Empezó hace %1$d min</string>
+    <string name="player_live_dvr_unavailable">Esta parte no se puede ver ahora</string>
     <string name="now_playing_live">EN VIVO</string>
     <string name="now_playing_playing">Reproduciendo</string>
     <string name="player_live_season">Temporada %1$d</string>
@@ -4114,6 +4117,7 @@
     <string name="main_home_categories">Explorar por categoría</string>
     <string name="main_home_trending">Tendencias en RCTV</string>
     <string name="main_home_recently_added">Agregado recientemente</string>
+    <string name="main_home_catch_up">Repetición</string>
     <string name="main_home_favorite_networks">Canales favoritos</string>
     <string name="main_home_live_category">En vivo: %1$s</string>
     <string name="news_title">Noticias</string>

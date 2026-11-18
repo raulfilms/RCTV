@@ -156,7 +156,12 @@ internal fun LiveTvPlayerOverlay(
     /** RCTV (owner): a title chosen in More to Watch (its page opens). */
     onOpenMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {},
     /** RCTV (owner): a recorded program chosen in Catch Up (it plays from the provider's recording). */
-    onPlayCatchUp: (LiveTvChannel, com.nuvio.tv.domain.model.LiveCatchUpProgram) -> Unit = { _, _ -> }
+    onPlayCatchUp: (LiveTvChannel, com.nuvio.tv.domain.model.LiveCatchUpProgram) -> Unit = { _, _ -> },
+    /**
+     * RCTV (owner, the DVR as YouTube TV's): a channel the provider records: the timeline moves back
+     * and forward through it; null for any other channel (the timeline stays put).
+     */
+    dvr: LiveDvrUi? = null
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
@@ -170,8 +175,12 @@ internal fun LiveTvPlayerOverlay(
     }
     // RCTV (owner): Catch Up only on a channel the provider records.
     val hasCatchUp = (channel?.archiveDays ?: 0) > 0
-    val program = channel?.let { guide.programAt(it, nowMs) }
+    // RCTV (owner, the DVR): what's on where the timeline is (behind live: what was on then).
+    val atMs = dvr?.let { it.previewMs ?: it.positionMs } ?: nowMs
+    val program = channel?.let { if (dvr != null) liveViewModel.programAt(it, atMs) else guide.programAt(it, nowMs) }
     LaunchedEffect(program) { liveViewModel.bindProgram(program) }
+    // The provider's recordings: what was on before the guide's hours.
+    LaunchedEffect(channel?.id, dvr != null) { if (dvr != null) liveViewModel.ensureCatchUp(channel) }
 
     var selectedTab by remember { mutableStateOf(LiveTab.NETWORKS) }
     // Episodes: only for a series on TMDB (not a movie, a game or a newscast).
@@ -253,7 +262,8 @@ internal fun LiveTvPlayerOverlay(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                 }
-                LiveBadge()
+                // RCTV (owner, the DVR): behind live, the time playing instead of LIVE.
+                if (dvr != null && dvr.isBehind(atMs)) DvrTimeBadge(atMs = atMs, nowMs = dvr.nowMs) else LiveBadge()
             }
             Spacer(modifier = Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.Bottom) {
@@ -328,7 +338,9 @@ internal fun LiveTvPlayerOverlay(
             // it): Up from it goes to the game's stats, or back to full screen; Down to the tabs.
             LiveTimeline(
                 program = program,
-                nowMs = nowMs,
+                nowMs = dvr?.nowMs ?: nowMs,
+                dvr = dvr,
+                atMs = atMs,
                 onFocused = onResetHideTimer,
                 modifier = Modifier
                     .focusRequester(progressFocusRequester)
@@ -344,10 +356,26 @@ internal fun LiveTvPlayerOverlay(
                                 }
                                 true
                             }
-                            // Nothing to move to on a live channel: the timeline stays selected.
+                            // RCTV (owner, the DVR): back and forward through the recording, faster
+                            // while held; it plays from there a moment after letting go (or on OK).
                             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 onResetHideTimer()
+                                dvr?.onScrub(
+                                    PlayerScrubRates.deltaMsForKeyRepeat(
+                                        repeatCount = event.nativeKeyEvent.repeatCount,
+                                        forward = event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                                    )
+                                )
+                                // Without one, nothing to move to on a live channel: it stays selected.
                                 true
+                            }
+                            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                                if (dvr != null && dvr.previewMs != null) {
+                                    dvr.onCommit()
+                                    true
+                                } else {
+                                    false
+                                }
                             }
                             else -> false
                         }
@@ -382,6 +410,14 @@ internal fun LiveTvPlayerOverlay(
                                 onResetHideTimer()
                             }
                         }
+                }
+                // RCTV (owner, the DVR as YouTube TV): behind live, back to live in one press.
+                if (dvr != null && dvr.isBehind(atMs)) {
+                    DvrGoLiveButton(
+                        onClick = dvr.onGoLive,
+                        modifier = Modifier.focusProperties { up = progressFocusRequester }
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
                 LiveIconTab(
                     icon = Icons.Default.MoreVert,
@@ -628,10 +664,26 @@ private fun LiveBadge() {
  * it grows, with a white dot where the channel is now.
  */
 @Composable
-private fun LiveTimeline(program: EpgProgram?, nowMs: Long, onFocused: () -> Unit, modifier: Modifier = Modifier) {
+private fun LiveTimeline(
+    program: EpgProgram?,
+    nowMs: Long,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** RCTV (owner, the DVR): a recorded channel: [atMs] is where it plays (or was moved to). */
+    dvr: LiveDvrUi? = null,
+    atMs: Long = nowMs
+) {
     val accent = NuvioTheme.palette.accentBrush()
     var focused by remember { mutableStateOf(false) }
-    val progress = program?.progressAt(nowMs) ?: 1f
+    // RCTV (owner, the DVR): the playhead where it plays; the part recorded so far (up to live)
+    // shows lighter after it, as YouTube TV's.
+    val progress = program?.let { p ->
+        if (dvr == null) p.progressAt(nowMs)
+        else ((atMs - p.startMs).toFloat() / (p.endMs - p.startMs).coerceAtLeast(1L)).coerceIn(0f, 1f)
+    } ?: 1f
+    val recordedUpTo = program?.takeIf { dvr != null }?.let { p ->
+        ((nowMs - p.startMs).toFloat() / (p.endMs - p.startMs).coerceAtLeast(1L)).coerceIn(progress, 1f)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -654,6 +706,15 @@ private fun LiveTimeline(program: EpgProgram?, nowMs: Long, onFocused: () -> Uni
                     .clip(RoundedCornerShape(3.dp))
                     .background(Color.White.copy(alpha = if (focused) 0.45f else 0.3f))
             ) {
+                if (recordedUpTo != null && recordedUpTo > progress) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(recordedUpTo)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color.White.copy(alpha = 0.55f))
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
@@ -662,7 +723,7 @@ private fun LiveTimeline(program: EpgProgram?, nowMs: Long, onFocused: () -> Uni
                         .background(accent)
                 )
             }
-            if (focused) {
+            if (focused || (dvr != null && dvr.isBehind(atMs))) {
                 Box(
                     modifier = Modifier
                         .offset(x = (maxWidth * progress - 7.dp).coerceAtLeast(0.dp))
@@ -672,7 +733,16 @@ private fun LiveTimeline(program: EpgProgram?, nowMs: Long, onFocused: () -> Uni
                 )
             }
         }
-        if (program != null) {
+        if (dvr != null && (dvr.previewMs != null || dvr.isBehind(atMs))) {
+            // RCTV (owner, the DVR): the time there and how far behind live ("9:14 PM · −12:30").
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = dvrPositionLabel(atMs, nowMs),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        } else if (program != null) {
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = timeRange(program),

@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
@@ -1013,6 +1014,9 @@ private fun GuideRow(
                         GuideBlock(
                             title = title,
                             timeText = timeText,
+                            // RCTV (owner): recorded by the provider: it can be watched from the start.
+                            catchUp = channel.archiveDays > 0 && program.startMs <= nowMs &&
+                                program.startMs >= nowMs - channel.archiveDays * 24L * 60 * 60 * 1000,
                             isAiring = program.isAiringAt(nowMs),
                             isLive = program.isLive,
                             liveLabel = liveLabel,
@@ -1038,6 +1042,8 @@ private fun GuideRow(
 private fun GuideBlock(
     title: String,
     timeText: String?,
+    /** RCTV (owner): the catch-up mark beside the name (the provider recorded it). */
+    catchUp: Boolean = false,
     isAiring: Boolean,
     isLive: Boolean,
     liveLabel: String,
@@ -1080,6 +1086,15 @@ private fun GuideBlock(
             verticalArrangement = Arrangement.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (catchUp && !compact) {
+                    androidx.tv.material3.Icon(
+                        imageVector = Icons.Filled.History,
+                        contentDescription = androidx.compose.ui.res.stringResource(com.nuvio.tv.R.string.player_live_catch_up),
+                        tint = AppleTvColors.Label,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                }
                 Text(
                     text = title,
                     style = AppleTvType.Body,

@@ -1177,7 +1177,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         // Only mark playbackEnded for real finishes so PlayerScreen does not
                         // dispatch next-episode navigation for short debrid/error placeholders.
                         val liveChannelEnded = playbackState == Player.STATE_ENDED && isLiveTvStreamNow()
-                        val naturalEnded = !liveChannelEnded && playbackState == Player.STATE_ENDED &&
+                        val naturalEnded = !liveChannelEnded && !liveRecordingPlayback && playbackState == Player.STATE_ENDED &&
                             shouldTreatAsNaturalPlaybackCompletion(
                                 hasRenderedFirstFrame = hasRenderedFirstFrame,
                                 hasFatalError = !_uiState.value.error.isNullOrBlank(),

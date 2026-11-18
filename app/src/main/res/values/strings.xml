@@ -4182,6 +4182,9 @@
     <string name="player_live_catch_up_empty">No recorded shows on this channel yet</string>
     <string name="player_live_catch_up_yesterday">Yesterday, %1$s</string>
     <string name="player_live_catch_up_start_over">Start over</string>
+    <string name="player_live_go_live">Go Live</string>
+    <string name="player_live_dvr_started">Started %1$d min ago</string>
+    <string name="player_live_dvr_unavailable">This part can\'t be played right now</string>
     <string name="now_playing_live">LIVE</string>
     <string name="now_playing_playing">Playing</string>
     <string name="player_live_season">Season %1$d</string>
@@ -4624,6 +4627,7 @@
     <string name="main_home_categories">Browse by Category</string>
     <string name="main_home_trending">Trending on RCTV</string>
     <string name="main_home_recently_added">Recently Added</string>
+    <string name="main_home_catch_up">Catch Up</string>
     <string name="main_home_favorite_networks">Favorite Networks</string>
     <string name="main_home_live_category">Live %1$s</string>
     <string name="news_title">News</string>

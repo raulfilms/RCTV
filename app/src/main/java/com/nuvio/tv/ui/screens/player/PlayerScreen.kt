@@ -217,8 +217,17 @@ fun PlayerScreen(
     var gameSpanish by remember { mutableStateOf(false) }
     val liveVod by liveTvViewModel.vod.collectAsState()
     // RCTV (owner): offered whenever TMDB has what's on (its movie or episode); the sources' page searches them all.
-    val liveVodOffered = isLiveTvChannel && liveVod != null
+    // RCTV (owner, the DVR): a channel the provider records goes back through its own recording
+    // instead (the real broadcast), so the sources' "Watch From Beginning" isn't offered on it.
+    val earlyLiveGuide by liveTvViewModel.guide.collectAsState()
+    val earlyRecordedDays = remember(earlyLiveGuide, uiState.title, uiState.logo) {
+        liveTvViewModel.channelFor(uiState.title, uiState.logo, earlyLiveGuide)?.archiveDays ?: 0
+    }
+    val liveChannelRecorded = isLiveTvChannel && !earlyLiveGuide.isPreview && earlyRecordedDays > 0
+    val liveVodOffered = isLiveTvChannel && liveVod != null && !liveChannelRecorded
     var liveVodPromptVisible by remember { mutableStateOf(false) }
+    // RCTV (owner, the DVR): "Watch From Beginning / Watch Live" when a recorded channel opens mid-program.
+    var dvrPromptVisible by remember { mutableStateOf(false) }
 
     val exitScope = androidx.compose.runtime.rememberCoroutineScope()
     val sessionContext = LocalContext.current
@@ -360,6 +369,147 @@ fun PlayerScreen(
     var showGameCenter by remember { mutableStateOf(false) }
     val gameCenterState by gameCenterViewModel.state.collectAsState()
     val liveNowMs by liveTvViewModel.nowMs.collectAsState()
+
+    // RCTV (owner, the DVR as YouTube TV's): a channel the IPTV provider records (catch-up) plays
+    // like a recording: it goes back and forward, pauses, starts a program over, and goes back live.
+    val dvrChannel = playingLiveChannel?.takeIf { it.archiveDays > 0 && !liveGuide.isPreview }
+    val dvrState by liveTvViewModel.dvr.collectAsState()
+    val dvrRecording = dvrChannel != null && dvrState.recording && dvrState.channelId == dvrChannel.id
+    // Where the timeline was moved to (it plays there a moment after letting go).
+    var dvrPreviewMs by remember { mutableStateOf<Long?>(null) }
+    // [0]: the wait before a moved timeline plays; [1]: the recording (or live) being opened.
+    val dvrJobs = remember { arrayOfNulls<kotlinx.coroutines.Job>(2) }
+    // The live stream was paused at this real time (0: it wasn't).
+    val dvrPausedLiveAt = remember { longArrayOf(0L) }
+    // The program "Watch From Beginning / Watch Live" was last offered for.
+    var dvrOfferedFor by remember { mutableStateOf<String?>(null) }
+    /** The real time playing now (now when live); read when needed, never watched. */
+    val dvrPositionNow: () -> Long = {
+        val state = liveTvViewModel.dvr.value
+        if (state.recording) state.segmentStartMs + viewModel.playbackTimeline.value.currentPosition
+        else System.currentTimeMillis()
+    }
+    val dvrGoLive: () -> Unit = dvrGoLive@{
+        val channel = dvrChannel ?: return@dvrGoLive
+        dvrJobs[0]?.cancel()
+        dvrPreviewMs = null
+        dvrJobs[1]?.cancel()
+        dvrJobs[1] = liveScope.launch {
+            val url = try {
+                liveTvViewModel.playableUrl(channel).takeIf { it.isNotBlank() }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            } ?: return@launch
+            if (exitDispatched) return@launch
+            liveTvViewModel.dvrPlayingLive(channel)
+            viewModel.playLiveRecording(url, channel.name, channel.logoUrl, recording = false)
+        }
+    }
+    val dvrPlayAt: (Long) -> Unit = dvrPlayAt@{ targetMs ->
+        val channel = dvrChannel ?: return@dvrPlayAt
+        dvrJobs[0]?.cancel()
+        dvrPreviewMs = null
+        dvrPausedLiveAt[0] = 0L
+        val state = liveTvViewModel.dvr.value
+        val recordingNow = state.recording && state.channelId == channel.id
+        if (targetMs >= System.currentTimeMillis() - DVR_LIVE_EDGE_MS) {
+            if (recordingNow) dvrGoLive()
+            return@dvrPlayAt
+        }
+        // Inside the part of the recording already playing: just there.
+        val playedLengthMs = viewModel.playbackTimeline.value.duration
+        if (recordingNow && playedLengthMs > 0L && targetMs >= state.segmentStartMs &&
+            targetMs < state.segmentStartMs + playedLengthMs - 3_000L
+        ) {
+            viewModel.onEvent(PlayerEvent.OnSeekTo(targetMs - state.segmentStartMs))
+            return@dvrPlayAt
+        }
+        dvrJobs[1]?.cancel()
+        dvrJobs[1] = liveScope.launch {
+            val start = liveTvViewModel.dvrStart(channel, targetMs)
+            if (exitDispatched) return@launch
+            if (start == null) {
+                android.widget.Toast.makeText(
+                    liveContext,
+                    liveContext.getString(R.string.player_live_dvr_unavailable),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                return@launch
+            }
+            liveTvViewModel.dvrPlayingRecording(channel, start)
+            viewModel.playLiveRecording(
+                url = start.url,
+                name = channel.name,
+                logo = channel.logoUrl,
+                recording = true,
+                startPositionMs = start.startPositionMs
+            )
+        }
+    }
+    val dvrScrub: (Long) -> Unit = dvrScrub@{ deltaMs ->
+        val channel = dvrChannel ?: return@dvrScrub
+        val now = System.currentTimeMillis()
+        val oldest = now - channel.archiveDays * 24L * 60 * 60 * 1000 + 60_000L
+        val target = ((dvrPreviewMs ?: dvrPositionNow()) + deltaMs).coerceIn(oldest, now)
+        dvrPreviewMs = target
+        dvrJobs[0]?.cancel()
+        dvrJobs[0] = liveScope.launch {
+            kotlinx.coroutines.delay(DVR_SCRUB_COMMIT_MS)
+            dvrPlayAt(target)
+        }
+    }
+    // Another channel: it starts live, with nothing moved.
+    LaunchedEffect(playingLiveChannel?.id) {
+        dvrJobs[0]?.cancel()
+        dvrPreviewMs = null
+        dvrPausedLiveAt[0] = 0L
+        if (liveTvViewModel.dvr.value.channelId != playingLiveChannel?.id) liveTvViewModel.dvrPlayingLive(playingLiveChannel)
+    }
+    // A recorded show chosen on Home's Catch Up: the channel opens on it, from its start.
+    val dvrHandoffMs = remember(dvrChannel?.id) { dvrChannel?.let { LiveDvrHandoff.take(it.id) } }
+    LaunchedEffect(dvrChannel?.id) { dvrHandoffMs?.let { dvrPlayAt(it) } }
+    // The end of the recording: live again, or (far behind) the next part of it.
+    LaunchedEffect(uiState.liveRecordingEnded) {
+        if (!uiState.liveRecordingEnded) return@LaunchedEffect
+        val state = liveTvViewModel.dvr.value
+        if (!state.recording || dvrChannel == null) return@LaunchedEffect
+        if (state.segmentEndMs >= System.currentTimeMillis() - 90_000L) dvrGoLive() else dvrPlayAt(state.segmentEndMs)
+    }
+    // Live paused and played again: it goes on from where it was paused (as a recording).
+    LaunchedEffect(uiState.isPlaying, uiState.isBuffering, dvrChannel?.id) {
+        if (dvrChannel == null || liveTvViewModel.dvr.value.recording) {
+            dvrPausedLiveAt[0] = 0L
+            return@LaunchedEffect
+        }
+        if (!uiState.isPlaying && !uiState.isBuffering && uiState.error == null) {
+            if (dvrPausedLiveAt[0] == 0L) dvrPausedLiveAt[0] = System.currentTimeMillis()
+        } else if (uiState.isPlaying && dvrPausedLiveAt[0] != 0L) {
+            val pausedAt = dvrPausedLiveAt[0]
+            dvrPausedLiveAt[0] = 0L
+            if (System.currentTimeMillis() - pausedAt > DVR_RESUME_FROM_PAUSE_MS) dvrPlayAt(pausedAt)
+        }
+    }
+    // "Watch From Beginning / Watch Live": once per program, when it has been on for a while.
+    val dvrNowProgram = remember(dvrChannel?.id, liveGuide, liveNowMs / 60_000L) {
+        dvrChannel?.let { liveGuide.programAt(it, System.currentTimeMillis()) }
+    }
+    LaunchedEffect(dvrChannel?.id, dvrNowProgram?.startMs) {
+        val channel = dvrChannel ?: return@LaunchedEffect
+        val program = dvrNowProgram ?: return@LaunchedEffect
+        if (dvrHandoffMs != null || liveTvViewModel.dvr.value.recording) return@LaunchedEffect
+        val key = "${channel.id}|${program.startMs}"
+        if (dvrOfferedFor == key) return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        if (now - program.startMs < DVR_OFFER_FROM_BEGINNING_MS) return@LaunchedEffect
+        if (program.startMs < now - channel.archiveDays * 24L * 60 * 60 * 1000) return@LaunchedEffect
+        dvrOfferedFor = key
+        dvrPromptVisible = true
+    }
+    LaunchedEffect(uiState.showControls, dvrChannel?.id) {
+        if (uiState.showControls || dvrChannel == null) dvrPromptVisible = false
+    }
     val liveProgramText = remember(isLiveTvChannel, playingLiveChannel, liveGuide, liveNowMs / 60_000L) {
         val channel = playingLiveChannel
         if (!isLiveTvChannel || channel == null) null else {
@@ -513,6 +663,12 @@ fun PlayerScreen(
         // RCTV: Back on "Watch From Beginning" goes back to the channel.
         if (liveVodPromptVisible) {
             liveVodPromptVisible = false
+            runCatching { containerFocusRequester.requestFocus() }
+            return@handleBackPress
+        }
+        // RCTV (owner, the DVR): Back on "Watch From Beginning / Watch Live": live goes on.
+        if (dvrPromptVisible) {
+            dvrPromptVisible = false
             runCatching { containerFocusRequester.requestFocus() }
             return@handleBackPress
         }
@@ -1012,6 +1168,7 @@ fun PlayerScreen(
                         postPlayRecommendationState.isVisible ||
                         uiState.error != null ||
                         liveVodPromptVisible ||
+                        dvrPromptVisible ||
                         showGameCenter
                 if (panelOrDialogOpen) return@onKeyEvent false
 
@@ -1107,7 +1264,19 @@ fun PlayerScreen(
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
                             val overlayButtonsCoexist = skipButtonActuallyVisible &&
                                 uiState.postPlayMode is PostPlayMode.AutoPlay
-                            if (liveVodOffered && !uiState.showControls &&
+                            if (dvrChannel != null && !uiState.showControls) {
+                                // RCTV (owner, the DVR): back or forward through the recording, on the
+                                // timeline (the controls open on it).
+                                liveUpToTimeline = true
+                                viewModel.onEvent(PlayerEvent.OnToggleControls)
+                                dvrScrub(
+                                    PlayerScrubRates.deltaMsForKeyRepeat(
+                                        repeatCount = keyEvent.nativeKeyEvent.repeatCount,
+                                        forward = keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                                    )
+                                )
+                                true
+                            } else if (liveVodOffered && !uiState.showControls &&
                                 keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                             ) {
                                 // RCTV: a live channel can't go back: "Watch From Beginning" instead.
@@ -1185,6 +1354,15 @@ fun PlayerScreen(
                             true
                         }
                         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                            // RCTV (owner, the DVR): forward through the recording.
+                            if (dvrChannel != null) {
+                                if (!uiState.showControls) {
+                                    liveUpToTimeline = true
+                                    viewModel.onEvent(PlayerEvent.OnToggleControls)
+                                }
+                                dvrScrub(PlayerScrubRates.deltaMsForKeyRepeat(keyEvent.nativeKeyEvent.repeatCount, forward = true))
+                                return@onKeyEvent true
+                            }
                             viewModel.onEvent(
                                 PlayerEvent.OnSeekBy(
                                     PlayerScrubRates.deltaMsForKeyRepeat(
@@ -1196,6 +1374,15 @@ fun PlayerScreen(
                             true
                         }
                         KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                            // RCTV (owner, the DVR): back through the recording.
+                            if (dvrChannel != null) {
+                                if (!uiState.showControls) {
+                                    liveUpToTimeline = true
+                                    viewModel.onEvent(PlayerEvent.OnToggleControls)
+                                }
+                                dvrScrub(PlayerScrubRates.deltaMsForKeyRepeat(keyEvent.nativeKeyEvent.repeatCount, forward = false))
+                                return@onKeyEvent true
+                            }
                             // RCTV: rewinding a live channel offers "Watch From Beginning".
                             if (liveVodOffered) {
                                 liveVodPromptVisible = true
@@ -1710,7 +1897,36 @@ fun PlayerScreen(
                     gameLanguage = languageGame?.let { LiveGameLanguage(spanish = gameSpanish, onChoose = chooseGameLanguage) },
                     onReportProblem = { viewModel.openBugReport() },
                     onOpenMoreToWatch = openMoreToWatch,
-                    onPlayCatchUp = playCatchUp
+                    // RCTV (owner, the DVR): a recorded program of the channel playing: right here,
+                    // from its start, on the timeline.
+                    onPlayCatchUp = { channel, program ->
+                        if (dvrChannel != null && channel.id == dvrChannel.id) {
+                            viewModel.hideControls()
+                            dvrPlayAt(program.startMs)
+                        } else {
+                            playCatchUp(channel, program)
+                        }
+                    },
+                    dvr = if (dvrChannel != null) {
+                        // Watched here only (the controls), so the whole player doesn't redraw each second.
+                        val dvrTimeline by viewModel.playbackTimeline.collectAsState()
+                        val dvrClock by androidx.compose.runtime.produceState(System.currentTimeMillis()) {
+                            while (true) {
+                                value = System.currentTimeMillis()
+                                kotlinx.coroutines.delay(1_000L)
+                            }
+                        }
+                        LiveDvrUi(
+                            positionMs = if (dvrRecording) dvrState.segmentStartMs + dvrTimeline.currentPosition else dvrClock,
+                            previewMs = dvrPreviewMs,
+                            nowMs = dvrClock,
+                            onScrub = dvrScrub,
+                            onCommit = { dvrPreviewMs?.let(dvrPlayAt) },
+                            onGoLive = dvrGoLive
+                        )
+                    } else {
+                        null
+                    }
                 )
             } else if (uiState.usesTitleControls) {
                 // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).
@@ -1811,6 +2027,24 @@ fun PlayerScreen(
             LiveVodWatcher(liveViewModel = liveTvViewModel, channelName = uiState.title, channelLogo = uiState.logo)
             LaunchedEffect(liveVodOffered, uiState.showControls) {
                 if (!liveVodOffered || uiState.showControls) liveVodPromptVisible = false
+            }
+            // RCTV (owner, the DVR): a recorded channel opened mid-program.
+            val promptProgram = dvrNowProgram
+            if (dvrPromptVisible && promptProgram != null && !uiState.showControls) {
+                LiveDvrStartPrompt(
+                    programTitle = com.nuvio.tv.data.livetv.LiveProgramLibrary.cleanTitle(promptProgram.title),
+                    startedMinutesAgo = ((System.currentTimeMillis() - promptProgram.startMs) / 60_000L).toInt().coerceAtLeast(1),
+                    onFromBeginning = {
+                        dvrPromptVisible = false
+                        runCatching { containerFocusRequester.requestFocus() }
+                        dvrPlayAt(promptProgram.startMs)
+                    },
+                    onLive = {
+                        dvrPromptVisible = false
+                        runCatching { containerFocusRequester.requestFocus() }
+                    },
+                    modifier = Modifier.align(Alignment.Center)
+                )
             }
             val promptVod = liveVod
             if (liveVodPromptVisible && liveVodOffered && promptVod != null) {
