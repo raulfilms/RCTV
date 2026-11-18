@@ -125,6 +125,9 @@ private fun liveVodRoute(target: com.nuvio.tv.data.livetv.LiveVodTarget, fromBeg
         startFromBeginning = fromBeginning
     )
 
+/** RCTV (owner): what a Catch Up recording opens the player with (never saved to Continue Watching). */
+private const val CATCH_UP_CONTENT_TYPE = "catchup"
+
 /** RCTV Control: where a Home banner's button goes. */
 private fun rctvBannerRoute(action: com.nuvio.tv.core.rctvcontrol.RctvBannerAction): String = when (action) {
     is com.nuvio.tv.core.rctvcontrol.RctvBannerAction.Collection -> Screen.RctvCollection.createRoute(action.collectionId)
@@ -1019,7 +1022,10 @@ private fun PlaybackNavHost(
             val guardContext = androidx.compose.ui.platform.LocalContext.current
             val guardArgs = backStackEntry.arguments
             com.nuvio.tv.ui.components.RctvPlaybackGuard(
-                kind = if (guardArgs?.getString("contentType").equals("live", ignoreCase = true)) "iptv" else "vod",
+                // A Catch Up recording comes from the IPTV too.
+                kind = guardArgs?.getString("contentType").let { type ->
+                    if (type.equals("live", ignoreCase = true) || type.equals(CATCH_UP_CONTENT_TYPE, ignoreCase = true)) "iptv" else "vod"
+                },
                 title = guardArgs?.getString("contentName")?.takeIf { it.isNotBlank() }
                     ?: guardArgs?.getString("title").orEmpty(),
                 onStop = { messageRes ->
@@ -1284,6 +1290,21 @@ private fun PlaybackNavHost(
                 // was left, if it was started before; Back returns to the Guide).
                 onPlayMoreToWatch = { target ->
                     navController.navigate(liveVodRoute(target, fromBeginning = false)) {
+                        popUpTo(Screen.Player.route) { inclusive = true }
+                    }
+                },
+                // RCTV (owner): a recorded program from the live player's Catch Up plays from the IPTV
+                // provider's recording, as a show (pause, back and forward; Back returns to the Guide).
+                onPlayCatchUp = { url, programTitle, channel ->
+                    navController.navigate(
+                        Screen.Player.createRoute(
+                            streamUrl = url,
+                            title = programTitle,
+                            contentType = CATCH_UP_CONTENT_TYPE,
+                            contentName = channel.name,
+                            logo = channel.logoUrl
+                        )
+                    ) {
                         popUpTo(Screen.Player.route) { inclusive = true }
                     }
                 },

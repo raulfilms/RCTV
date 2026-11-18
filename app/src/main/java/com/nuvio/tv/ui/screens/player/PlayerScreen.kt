@@ -164,6 +164,11 @@ fun PlayerScreen(
     onWatchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = {},
     /** RCTV Live TV: a movie chosen in More to Watch: it plays (as any movie, where it was left). */
     onPlayMoreToWatch: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = onWatchLiveVod,
+    /**
+     * RCTV (owner): a recorded program chosen in the live player's Catch Up: its recording's address,
+     * the program's name and its channel.
+     */
+    onPlayCatchUp: (url: String, title: String, channel: com.nuvio.tv.domain.model.LiveTvChannel) -> Unit = { _, _, _ -> },
     liveTvViewModel: LiveTvPlayerViewModel = hiltViewModel(),
     gameCenterViewModel: LiveGameCenterViewModel = hiltViewModel()
 ) {
@@ -413,6 +418,15 @@ fun PlayerScreen(
             if (movie != null) onPlayMoreToWatch(movie) else onOpenLiveTitle(meta.id, meta.rawType, null, null)
         }
     }
+    // RCTV (owner): a recorded program from Catch Up plays from the provider's recording.
+    val playCatchUp: (com.nuvio.tv.domain.model.LiveTvChannel, com.nuvio.tv.domain.model.LiveCatchUpProgram) -> Unit =
+        playCatchUp@{ channel, program ->
+            if (exitDispatched) return@playCatchUp
+            val url = liveTvViewModel.catchUpUrl(channel, program) ?: return@playCatchUp
+            exitDispatched = true
+            viewModel.stopAndRelease()
+            onPlayCatchUp(url, com.nuvio.tv.data.livetv.LiveProgramLibrary.cleanTitle(program.title), channel)
+        }
     val watchLiveVod: (com.nuvio.tv.data.livetv.LiveVodTarget) -> Unit = watchLiveVod@{ target ->
         if (exitDispatched) return@watchLiveVod
         exitDispatched = true
@@ -1695,7 +1709,8 @@ fun PlayerScreen(
                     onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable },
                     gameLanguage = languageGame?.let { LiveGameLanguage(spanish = gameSpanish, onChoose = chooseGameLanguage) },
                     onReportProblem = { viewModel.openBugReport() },
-                    onOpenMoreToWatch = openMoreToWatch
+                    onOpenMoreToWatch = openMoreToWatch,
+                    onPlayCatchUp = playCatchUp
                 )
             } else if (uiState.usesTitleControls) {
                 // RCTV: a movie's or an episode's controls, as designed (the rest keep the row below).

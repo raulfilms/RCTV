@@ -4177,6 +4177,11 @@
     <string name="player_live_episodes">Episodes</string>
     <string name="player_live_more_to_watch">More to Watch</string>
     <string name="player_live_more_to_watch_empty">Nothing to suggest right now</string>
+    <string name="player_live_catch_up">Catch Up</string>
+    <string name="player_live_catch_up_loading">Looking for recorded shows…</string>
+    <string name="player_live_catch_up_empty">No recorded shows on this channel yet</string>
+    <string name="player_live_catch_up_yesterday">Yesterday, %1$s</string>
+    <string name="player_live_catch_up_start_over">Start over</string>
     <string name="now_playing_live">LIVE</string>
     <string name="now_playing_playing">Playing</string>
     <string name="player_live_season">Season %1$d</string>

@@ -793,6 +793,7 @@ class LiveTvGuideLoader @Inject constructor(
             writeOptional(channel.number)
             writeOptional(channel.guideCategory)
             writeOptional(channel.versionOf)
+            writeInt(channel.archiveDays)
         }
     }
 
@@ -808,7 +809,8 @@ class LiveTvGuideLoader @Inject constructor(
             country = readOptional(),
             number = readOptional(),
             guideCategory = readOptional(),
-            versionOf = readOptional()
+            versionOf = readOptional(),
+            archiveDays = readInt().coerceIn(0, 30)
         )
     }
 
@@ -867,7 +869,8 @@ class LiveTvGuideLoader @Inject constructor(
          * 5: RCTV, the owner's new guide (14-nov-2026: his categories, no 24/7, local stations inside):
          *    a guide kept with the earlier list is loaded again.
          */
-        private const val SAVED_VERSION = 5
+        // RCTV: 6 keeps each channel's catch-up days.
+        private const val SAVED_VERSION = 6
         private const val MAX_SAVED_TEXT_BYTES = 1_000_000
     }
 }

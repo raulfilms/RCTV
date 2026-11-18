@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.remote.xtream
 
+import com.nuvio.tv.domain.model.LiveCatchUpProgram
 import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.LiveTvConnection
 import com.nuvio.tv.domain.model.XtreamSeriesEpisode
@@ -141,6 +142,8 @@ class XtreamClient @Inject constructor(
                         var categoryId: String? = null
                         var logo: String? = null
                         var epgChannelId: String? = null
+                        var tvArchive: String? = null
+                        var archiveDuration: String? = null
                         reader.beginObject()
                         while (reader.hasNext()) {
                             when (reader.nextName()) {
@@ -149,6 +152,9 @@ class XtreamClient @Inject constructor(
                                 "category_id" -> categoryId = reader.textOrNull()
                                 "stream_icon" -> logo = reader.textOrNull()
                                 "epg_channel_id" -> epgChannelId = reader.textOrNull()
+                                // RCTV (owner): the provider keeps its programs to watch again (catch-up).
+                                "tv_archive" -> tvArchive = reader.textOrNull()
+                                "tv_archive_duration" -> archiveDuration = reader.textOrNull()
                                 else -> reader.skipValue()
                             }
                         }
@@ -161,7 +167,8 @@ class XtreamClient @Inject constructor(
                             streamUrl = "$server/live/$user/$pass/$id.$extension",
                             logoUrl = logo?.takeIf { it.isNotBlank() },
                             groupTitle = categoryNames[category] ?: category.takeIf { it.isNotBlank() },
-                            epgChannelId = epgChannelId?.takeIf { it.isNotBlank() }
+                            epgChannelId = epgChannelId?.takeIf { it.isNotBlank() },
+                            archiveDays = archiveDaysOf(tvArchive, archiveDuration)
                         )
                     }
                     reader.endArray()
@@ -173,6 +180,98 @@ class XtreamClient @Inject constructor(
             }
             return channels
         }
+    }
+
+    /** RCTV: the days of catch-up a channel has ("tv_archive" 1 and its "tv_archive_duration"). */
+    private fun archiveDaysOf(tvArchive: String?, duration: String?): Int {
+        val on = tvArchive?.trim()?.removeSuffix(".0") == "1" || tvArchive.equals("true", ignoreCase = true)
+        if (!on) return 0
+        return (duration?.trim()?.removeSuffix(".0")?.toIntOrNull() ?: 1).coerceIn(1, MAX_ARCHIVE_DAYS)
+    }
+
+    /** A channel's Xtream address in its parts, read from its live address (never logged). */
+    private class LiveAddress(
+        val server: String,
+        val user: String,
+        val pass: String,
+        val streamId: String,
+        val extension: String
+    )
+
+    private fun liveAddressOf(streamUrl: String): LiveAddress? {
+        val at = streamUrl.indexOf("/live/")
+        if (at <= 0) return null
+        val parts = streamUrl.substring(at + "/live/".length).split('/')
+        if (parts.size != 3 || parts[0].isBlank() || parts[1].isBlank()) return null
+        val file = parts[2].substringBefore('?')
+        val streamId = file.substringBeforeLast('.').takeIf { id -> id.isNotEmpty() && id.all(Char::isDigit) } ?: return null
+        val extension = file.substringAfterLast('.', "ts").lowercase().takeIf { it == "m3u8" || it == "ts" } ?: "ts"
+        return LiveAddress(streamUrl.substring(0, at), parts[0], parts[1], streamId, extension)
+    }
+
+    /**
+     * RCTV (owner): the programs the provider recorded on [channel] in its catch-up days (the one on
+     * now too, to start it over), newest first. Empty when it keeps none or doesn't say.
+     */
+    fun fetchCatchUp(channel: LiveTvChannel, nowMs: Long = System.currentTimeMillis()): List<LiveCatchUpProgram> {
+        if (channel.archiveDays <= 0) return emptyList()
+        val address = liveAddressOf(channel.streamUrl) ?: return emptyList()
+        val url = playerApiUrl(address.server, address.user, address.pass, "get_simple_data_table")
+            .newBuilder()
+            .addQueryParameter("stream_id", address.streamId)
+            .build()
+        val listings = runCatching { JSONObject(get(url)).optJSONArray("epg_listings") }.getOrNull()
+            ?: return emptyList()
+        val oldestMs = nowMs - channel.archiveDays * DAY_MS
+        val programs = ArrayList<LiveCatchUpProgram>()
+        for (i in 0 until listings.length()) {
+            val item = listings.optJSONObject(i) ?: continue
+            val startMs = item.optString("start_timestamp").trim().toLongOrNull()?.times(1000) ?: continue
+            val endMs = item.optString("stop_timestamp").trim().toLongOrNull()?.times(1000) ?: continue
+            if (endMs <= startMs || startMs >= nowMs || startMs < oldestMs) continue
+            val airing = nowMs < endMs
+            val archived = item.opt("has_archive")?.toString()?.trim()
+            if (!airing && archived != null && archived != "1" && !archived.equals("true", ignoreCase = true)) continue
+            val serverStart = serverStartOf(item.optString("start")) ?: continue
+            val title = decodedText(item.optString("title")) ?: continue
+            programs += LiveCatchUpProgram(
+                title = title,
+                description = decodedText(item.optString("description")),
+                startMs = startMs,
+                endMs = endMs,
+                serverStart = serverStart,
+                durationMinutes = ((endMs - startMs + 59_999L) / 60_000L).toInt().coerceIn(1, MAX_PROGRAM_MINUTES)
+            )
+        }
+        return programs.distinctBy { it.startMs }.sortedByDescending { it.startMs }.take(MAX_CATCH_UP_PROGRAMS)
+    }
+
+    /** RCTV (owner): the address that plays [program] again from the provider's recording. */
+    fun catchUpUrl(channel: LiveTvChannel, program: LiveCatchUpProgram): String? {
+        val address = liveAddressOf(channel.streamUrl) ?: return null
+        return "${address.server}/timeshift/${address.user}/${address.pass}/" +
+            "${program.durationMinutes}/${program.serverStart}/${address.streamId}.${address.extension}"
+    }
+
+    /** "2026-11-17 21:00:00" (the server's own time) -> "2026-11-17:21-00", as catch-up asks for it. */
+    private fun serverStartOf(start: String): String? {
+        val match = SERVER_TIME.find(start.trim()) ?: return null
+        val (day, hour, minute) = match.destructured
+        return "$day:$hour-$minute"
+    }
+
+    /** The guide's text, sent in Base64 by most panels (as is by some). */
+    private fun decodedText(value: String?): String? {
+        val text = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (text.length % 4 == 0 && BASE64.matches(text)) {
+            val decoded = runCatching {
+                String(android.util.Base64.decode(text, android.util.Base64.DEFAULT), Charsets.UTF_8).trim()
+            }.getOrNull()
+            if (!decoded.isNullOrEmpty() && decoded.none { it == '\uFFFD' || (it.isISOControl() && it != '\n' && it != '\t' && it != '\r') }) {
+                return decoded
+            }
+        }
+        return text
     }
 
     private fun android.util.JsonReader.textOrNull(): String? = when (peek()) {
@@ -394,5 +493,13 @@ class XtreamClient @Inject constructor(
     private companion object {
         /** A widely accepted IPTV player's name (VLC's). */
         const val PLAYER_USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20"
+
+        // RCTV: catch-up.
+        const val DAY_MS = 24L * 60 * 60 * 1000
+        const val MAX_ARCHIVE_DAYS = 30
+        const val MAX_PROGRAM_MINUTES = 24 * 60
+        const val MAX_CATCH_UP_PROGRAMS = 200
+        val SERVER_TIME = Regex("""^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})""")
+        val BASE64 = Regex("^[A-Za-z0-9+/=\\s]+$")
     }
 }

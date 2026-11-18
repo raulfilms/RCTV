@@ -3644,6 +3644,11 @@
     <string name="player_live_episodes">Episodios</string>
     <string name="player_live_more_to_watch">Más para ver</string>
     <string name="player_live_more_to_watch_empty">No hay sugerencias por ahora</string>
+    <string name="player_live_catch_up">Repetición</string>
+    <string name="player_live_catch_up_loading">Buscando programas grabados…</string>
+    <string name="player_live_catch_up_empty">Este canal todavía no tiene programas grabados</string>
+    <string name="player_live_catch_up_yesterday">Ayer, %1$s</string>
+    <string name="player_live_catch_up_start_over">Desde el inicio</string>
     <string name="now_playing_live">EN VIVO</string>
     <string name="now_playing_playing">Reproduciendo</string>
     <string name="player_live_season">Temporada %1$d</string>

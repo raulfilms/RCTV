@@ -52,6 +52,13 @@ data class LivePlayerEpisodesState(
 )
 
 /** RCTV (owner): the "More to Watch" tab: titles picked from what's on and what was watched. */
+/** RCTV (owner): the Catch Up tab: what the IPTV provider recorded on the channel, newest first. */
+data class LivePlayerCatchUpState(
+    val channelId: String? = null,
+    val isLoading: Boolean = false,
+    val programs: List<com.nuvio.tv.domain.model.LiveCatchUpProgram> = emptyList()
+)
+
 data class LivePlayerMoreState(
     /** What they were picked for (what's on now). */
     val key: String? = null,
@@ -71,7 +78,9 @@ class LiveTvPlayerViewModel @Inject constructor(
     private val liveProgramLibrary: LiveProgramLibrary,
     private val liveVodFinder: com.nuvio.tv.data.livetv.LiveVodFinder,
     private val liveTvDataStore: com.nuvio.tv.data.local.LiveTvDataStore,
-    private val moreToWatchPicks: com.nuvio.tv.data.livetv.LiveMoreToWatch
+    private val moreToWatchPicks: com.nuvio.tv.data.livetv.LiveMoreToWatch,
+    /** RCTV (owner): the IPTV provider's catch-up (its recordings of a channel's programs). */
+    private val xtreamClient: com.nuvio.tv.data.remote.xtream.XtreamClient
 ) : ViewModel() {
 
     val guide: StateFlow<LiveTvPlayerSession.Guide> = session.guide
@@ -253,6 +262,50 @@ class LiveTvPlayerViewModel @Inject constructor(
     val moreToWatch: StateFlow<LivePlayerMoreState> = _moreToWatch.asStateFlow()
     private var moreToWatchJob: Job? = null
 
+    private val _catchUp = MutableStateFlow(LivePlayerCatchUpState())
+
+    /** RCTV (owner): the Catch Up tab (only for a channel the provider records). */
+    val catchUp: StateFlow<LivePlayerCatchUpState> = _catchUp.asStateFlow()
+    private var catchUpJob: Job? = null
+    private var catchUpLoadedAtMs = 0L
+
+    /** RCTV (owner): the Catch Up tab showed: the channel's recordings (asked again every few minutes). */
+    fun ensureCatchUp(channel: LiveTvChannel?) {
+        if (channel == null || channel.archiveDays <= 0 || session.guide.value.isPreview) {
+            catchUpJob?.cancel()
+            _catchUp.value = LivePlayerCatchUpState(channelId = channel?.id)
+            return
+        }
+        val now = System.currentTimeMillis()
+        val current = _catchUp.value
+        if (current.channelId == channel.id && (current.isLoading || now - catchUpLoadedAtMs < CATCH_UP_REFRESH_MS)) return
+        catchUpJob?.cancel()
+        _catchUp.value = LivePlayerCatchUpState(
+            channelId = channel.id,
+            isLoading = true,
+            programs = current.programs.takeIf { current.channelId == channel.id }.orEmpty()
+        )
+        catchUpJob = viewModelScope.launch {
+            val programs = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { xtreamClient.fetchCatchUp(channel) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Never the address (it carries the account's login): only what kind of failure.
+                android.util.Log.w("LiveTvPlayerVM", "Catch-up list failed: ${e.javaClass.simpleName}")
+                null
+            }
+            catchUpLoadedAtMs = if (programs != null) System.currentTimeMillis() else 0L
+            _catchUp.update {
+                if (it.channelId == channel.id) it.copy(isLoading = false, programs = programs ?: it.programs) else it
+            }
+        }
+    }
+
+    /** RCTV (owner): the address that plays a recorded program (null when it can't be made). */
+    fun catchUpUrl(channel: LiveTvChannel, program: com.nuvio.tv.domain.model.LiveCatchUpProgram): String? =
+        xtreamClient.catchUpUrl(channel, program)
+
     /**
      * RCTV: the More to Watch tab showed: its titles, picked again when what's on changes (once TMDB
      * has told what it is). The last ones stay shown while the new ones come.
@@ -354,6 +407,8 @@ class LiveTvPlayerViewModel @Inject constructor(
 
     private companion object {
         const val TICK_MS = 20_000L
+        /** How often the Catch Up tab asks the provider again (new programs get recorded). */
+        const val CATCH_UP_REFRESH_MS = 5 * 60_000L
         /** How long TMDB is waited for what's on now's movie or episode. */
         const val VOD_TMDB_WAIT_MS = 30_000L
     }

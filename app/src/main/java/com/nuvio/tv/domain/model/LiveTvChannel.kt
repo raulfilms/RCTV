@@ -18,8 +18,29 @@ data class LiveTvChannel(
     /** RCTV (owner's channel list): its Guide category (a GuideBrowse name), or null to sort it from its programs. */
     val guideCategory: String? = null,
     /** RCTV: another version of the Guide's channel with this id (the player turns to it when that one fails). */
-    val versionOf: String? = null
+    val versionOf: String? = null,
+    /**
+     * RCTV (owner): how many days back the IPTV provider keeps this channel's programs to watch
+     * again (catch-up); 0 when it keeps none.
+     */
+    val archiveDays: Int = 0
 )
+
+/**
+ * RCTV (owner): a program the IPTV provider recorded on a channel (catch-up), to watch again.
+ * [serverStart] is its start as the provider's server writes it ("2026-11-17:21-00").
+ */
+data class LiveCatchUpProgram(
+    val title: String,
+    val description: String?,
+    val startMs: Long,
+    val endMs: Long,
+    val serverStart: String,
+    val durationMinutes: Int
+) {
+    /** Still on (it can be started over from the beginning). */
+    fun isAiringAt(timeMs: Long): Boolean = timeMs in startMs until endMs
+}
 
 /**
  * A channel in the Guide's "Custom" list as Home's Top Channels shows it: its name and logo are

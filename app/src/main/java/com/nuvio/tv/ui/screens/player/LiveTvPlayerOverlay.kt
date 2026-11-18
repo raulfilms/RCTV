@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -104,7 +105,7 @@ import java.util.Locale
 import com.nuvio.tv.ui.components.tileCardBorder
 
 /** The live player's tabs: icons on the left, "Networks" after the divider (as on YouTube TV). */
-private enum class LiveTab { MORE, QUALITY, AUDIO, CAPTIONS, LIBRARY, NETWORKS, EPISODES, MORE_TO_WATCH }
+private enum class LiveTab { MORE, QUALITY, AUDIO, CAPTIONS, LIBRARY, NETWORKS, CATCH_UP, EPISODES, MORE_TO_WATCH }
 
 /**
  * RCTV (owner): a La Liga or Champions League game's audio: English (its channel in English) or
@@ -122,6 +123,8 @@ internal class LiveGameLanguage(val spanish: Boolean, val onChoose: (spanish: Bo
  * - CC: no captions, each caption track, caption style;
  * - ✓: the program's TMDB card, Add to library and More info;
  * - Networks: the channels and what's on them; choosing one switches to it;
+ * - Catch Up (a channel the IPTV provider records only): its recorded programs, newest first;
+ *   choosing one plays it from the recording (the one on now starts over);
  * - Episodes (a series on TMDB only): its seasons and episodes, the one airing marked; choosing
  *   one opens the series' page on it;
  * - More to Watch (always last): titles like what's on and what was watched; choosing one opens its page.
@@ -151,7 +154,9 @@ internal fun LiveTvPlayerOverlay(
     /** RCTV (owner): the bug report's list ("Report a Problem", after Stats for nerds). */
     onReportProblem: (() -> Unit)? = null,
     /** RCTV (owner): a title chosen in More to Watch (its page opens). */
-    onOpenMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {}
+    onOpenMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = {},
+    /** RCTV (owner): a recorded program chosen in Catch Up (it plays from the provider's recording). */
+    onPlayCatchUp: (LiveTvChannel, com.nuvio.tv.domain.model.LiveCatchUpProgram) -> Unit = { _, _ -> }
 ) {
     val guide by liveViewModel.guide.collectAsState()
     val nowMs by liveViewModel.nowMs.collectAsState()
@@ -159,16 +164,26 @@ internal fun LiveTvPlayerOverlay(
     val episodesState by liveViewModel.episodes.collectAsState()
     val recentIds by liveViewModel.recentChannelIds.collectAsState()
     val moreState by liveViewModel.moreToWatch.collectAsState()
+    val catchUpState by liveViewModel.catchUp.collectAsState()
     val channel = remember(guide, uiState.title, uiState.logo) {
         liveViewModel.channelFor(uiState.title, uiState.logo, guide)
     }
+    // RCTV (owner): Catch Up only on a channel the provider records.
+    val hasCatchUp = (channel?.archiveDays ?: 0) > 0
     val program = channel?.let { guide.programAt(it, nowMs) }
     LaunchedEffect(program) { liveViewModel.bindProgram(program) }
 
     var selectedTab by remember { mutableStateOf(LiveTab.NETWORKS) }
     // Episodes: only for a series on TMDB (not a movie, a game or a newscast).
     val seriesMatch = programState.match?.takeIf { !it.isMovie }
-    val shownTab = if (selectedTab == LiveTab.EPISODES && seriesMatch == null) LiveTab.NETWORKS else selectedTab
+    val shownTab = when {
+        selectedTab == LiveTab.EPISODES && seriesMatch == null -> LiveTab.NETWORKS
+        selectedTab == LiveTab.CATCH_UP && !hasCatchUp -> LiveTab.NETWORKS
+        else -> selectedTab
+    }
+    LaunchedEffect(shownTab, channel?.id) {
+        if (shownTab == LiveTab.CATCH_UP) liveViewModel.ensureCatchUp(channel)
+    }
     LaunchedEffect(shownTab, seriesMatch?.tmdbId) {
         if (shownTab == LiveTab.EPISODES) liveViewModel.ensureEpisodes()
     }
@@ -351,6 +366,7 @@ internal fun LiveTvPlayerOverlay(
                     LiveTab.NETWORKS -> guide.channels.isNotEmpty()
                     LiveTab.EPISODES -> episodesState.seasons.isNotEmpty()
                     LiveTab.MORE_TO_WATCH -> moreState.items.isNotEmpty()
+                    LiveTab.CATCH_UP -> catchUpState.programs.isNotEmpty()
                     else -> true
                 }
                 val tabModifier: (LiveTab) -> Modifier = { tab ->
@@ -418,6 +434,15 @@ internal fun LiveTvPlayerOverlay(
                     onClick = { runCatching { contentEntry.requestFocus() } },
                     modifier = tabModifier(LiveTab.NETWORKS)
                 )
+                if (hasCatchUp) {
+                    LiveTextTab(
+                        icon = Icons.Default.History,
+                        label = stringResource(R.string.player_live_catch_up),
+                        selected = shownTab == LiveTab.CATCH_UP,
+                        onClick = { runCatching { contentEntry.requestFocus() } },
+                        modifier = tabModifier(LiveTab.CATCH_UP)
+                    )
+                }
                 if (seriesMatch != null) {
                     LiveTextTab(
                         icon = Icons.AutoMirrored.Filled.List,
@@ -453,6 +478,15 @@ internal fun LiveTvPlayerOverlay(
                         onFocused = onResetHideTimer,
                         onSelectSeason = liveViewModel::selectSeason,
                         onChoose = { episode -> seriesMatch?.let { onOpenEpisode(it, episode) } }
+                    )
+                    LiveTab.CATCH_UP -> CatchUpRow(
+                        channel = channel,
+                        state = catchUpState,
+                        nowMs = nowMs,
+                        entry = contentEntry,
+                        itemModifier = upToTab,
+                        onFocused = onResetHideTimer,
+                        onChoose = { program -> channel?.let { onPlayCatchUp(it, program) } }
                     )
                     LiveTab.MORE_TO_WATCH -> MoreToWatchRow(
                         items = moreState.items,
@@ -746,6 +780,155 @@ private fun MoreToWatchRow(
                 onFocus = { onFocused() }
             )
         }
+    }
+}
+
+/**
+ * RCTV (owner): Catch Up: the programs the IPTV provider recorded on this channel, newest first, as
+ * the Networks cards (the channel's logo, the day and time, the program's name). The one on now
+ * says "Start over". Choosing one plays it from the recording.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun CatchUpRow(
+    channel: LiveTvChannel?,
+    state: LivePlayerCatchUpState,
+    nowMs: Long,
+    entry: FocusRequester,
+    itemModifier: Modifier,
+    onFocused: () -> Unit,
+    onChoose: (com.nuvio.tv.domain.model.LiveCatchUpProgram) -> Unit
+) {
+    if (state.programs.isEmpty()) {
+        Text(
+            text = stringResource(if (state.isLoading) R.string.player_live_catch_up_loading else R.string.player_live_catch_up_empty),
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        return
+    }
+    LazyRow(
+        modifier = Modifier.bleedHorizontally(RowBleed),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(horizontal = RowBleed, vertical = 8.dp)
+    ) {
+        itemsIndexed(state.programs, key = { _, item -> item.startMs }) { index, item ->
+            val airing = item.isAiringAt(nowMs)
+            Column(modifier = Modifier.width(176.dp)) {
+                Card(
+                    onClick = { onChoose(item) },
+                    modifier = itemModifier
+                        .then(if (index == 0) Modifier.focusRequester(entry) else Modifier)
+                        .fillMaxWidth()
+                        .height(99.dp)
+                        .onFocusChanged { if (it.isFocused) onFocused() },
+                    shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                    colors = CardDefaults.colors(
+                        containerColor = Color.White.copy(alpha = 0.14f),
+                        focusedContainerColor = Color.White.copy(alpha = 0.22f)
+                    ),
+                    border = tileCardBorder(RoundedCornerShape(10.dp)),
+                    scale = CardDefaults.scale(focusedScale = 1.04f)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (!channel?.logoUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = channel?.logoUrl,
+                                contentDescription = channel?.name,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 36.dp, vertical = 22.dp)
+                            )
+                        } else {
+                            Text(
+                                text = channel?.name.orEmpty(),
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(12.dp)
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(6.dp)
+                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (airing) stringResource(R.string.player_live_catch_up_start_over) else "${item.durationMinutes} min",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                        if (airing) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .background(Color.White.copy(alpha = 0.25f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(
+                                            ((nowMs - item.startMs).toFloat() / (item.endMs - item.startMs).coerceAtLeast(1L)).coerceIn(0f, 1f)
+                                        )
+                                        .background(NuvioTheme.palette.accentBrush())
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = LiveProgramLibrary.cleanTitle(item.title),
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = catchUpDayLabel(item),
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/** "Today, 9:00 PM", "Yesterday, 9:00 PM" or "Nov 15, 9:00 PM". */
+@Composable
+private fun catchUpDayLabel(program: com.nuvio.tv.domain.model.LiveCatchUpProgram): String {
+    val zone = ZoneId.systemDefault()
+    val day = Instant.ofEpochMilli(program.startMs).atZone(zone).toLocalDate()
+    val today = LocalDate.now(zone)
+    val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(program.startMs))
+    return when (day) {
+        today -> stringResource(R.string.livetv_details_today, time)
+        today.minusDays(1) -> stringResource(R.string.player_live_catch_up_yesterday, time)
+        else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(program.startMs)) + ", " + time
     }
 }
 
