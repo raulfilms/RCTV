@@ -233,7 +233,7 @@ class XtreamClient @Inject constructor(
             val archived = item.opt("has_archive")?.toString()?.trim()
             if (!airing && archived != null && archived != "1" && !archived.equals("true", ignoreCase = true)) continue
             val serverStart = serverStartOf(item.optString("start")) ?: continue
-            if (address.server !in serverZones) learnZone(address.server, item.optString("start"), startMs)
+            if (!serverZones.containsKey(address.server)) learnZone(address.server, item.optString("start"), startMs)
             val title = decodedText(item.optString("title")) ?: continue
             programs += LiveCatchUpProgram(
                 title = title,
