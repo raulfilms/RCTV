@@ -1383,11 +1383,18 @@ open class MainActivity : ComponentActivity() {
                             // RCTV (owner, as YouTube TV): while something goes on playing behind the
                             // app, the pages start under the Now Playing bar (the playback shows in it).
                             val nowPlayingBar by com.nuvio.tv.core.playback.PlaybackSession.nowPlaying.collectAsState()
-                            val barShown = nowPlayingBar != null && !onPlayerScreen
+                            // Moving down Home, the bar slides away (and the page up with it).
+                            val barHidden = com.nuvio.tv.ui.components.NowPlayingBarScroll.pageScrolled
+                            val barShown = nowPlayingBar != null && !onPlayerScreen && !barHidden
+                            val barSpace by androidx.compose.animation.core.animateDpAsState(
+                                targetValue = if (barShown) com.nuvio.tv.ui.components.NowPlayingBarHeight else 0.dp,
+                                animationSpec = androidx.compose.animation.core.tween(com.nuvio.tv.ui.components.BAR_SLIDE_MS),
+                                label = "nowPlayingBarSpace"
+                            )
                             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
                             val pageModifier = Modifier
                                 .fillMaxSize()
-                                .padding(top = if (barShown) com.nuvio.tv.ui.components.NowPlayingBarHeight else 0.dp)
+                                .padding(top = barSpace)
                                 .focusRequester(pageFocus)
                                 .focusRestorer { FocusRequester.Default }
                             Box(modifier = pageModifier) {
@@ -1501,8 +1508,7 @@ open class MainActivity : ComponentActivity() {
                                 navController = navController,
                                 onPlayerScreen = onPlayerScreen,
                                 onBackToPage = { runCatching { pageFocus.requestFocus() }.isSuccess },
-                                // The Guide shows the playback behind itself: the bar leaves it there.
-                                showVideo = currentRoute != Screen.LiveTv.route,
+                                hidden = barHidden,
                                 modifier = Modifier.align(Alignment.TopCenter)
                             )
 

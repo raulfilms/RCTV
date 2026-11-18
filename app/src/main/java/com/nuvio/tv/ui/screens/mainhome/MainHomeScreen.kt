@@ -252,6 +252,12 @@ fun MainHomeScreen(
     val pageScrolled by remember {
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
     }
+    // RCTV (owner, as YouTube TV): the Now Playing bar is only at the start of Home: moving down, it
+    // goes away (what plays is still heard); back at the top, it's there again.
+    LaunchedEffect(pageScrolled) { com.nuvio.tv.ui.components.NowPlayingBarScroll.pageScrolled = pageScrolled }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { com.nuvio.tv.ui.components.NowPlayingBarScroll.pageScrolled = false }
+    }
     BackHandler(enabled = contentHasFocus.value && (if (heroVisible) !heroHasFocus.value else pageScrolled)) {
         scope.launch {
             runCatching { listState.scrollToItem(0, 0) }
