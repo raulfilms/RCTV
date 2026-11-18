@@ -803,15 +803,16 @@ class PluginManager @Inject constructor(
         }
     }
 
-    // RCTV (owner): the app's own last-resort source, for a movie or episode nothing else found.
-    // It is one script (kept on the TV, refreshed once a day), separate from the plugins in
-    // Settings (they can be off), and it runs on its own thread, never waiting behind them.
-    private val lastResortMutex = Mutex()
-    @Volatile private var lastResortCode: String? = null
-    @Volatile private var lastResortRefreshedAt = 0L
+    // RCTV (owner): the app's own last-resort sources, for a movie or episode nothing else found:
+    // a few scripts (kept on the TV, each refreshed once a day), separate from the plugins in
+    // Settings (they can be off). They run all at once on their own threads, never waiting behind
+    // the other plugins, and each one's streams come as soon as it has them.
+    private val lastResortMutexes = ConcurrentHashMap<String, Mutex>()
+    private val lastResortCode = ConcurrentHashMap<String, String>()
+    private val lastResortRefreshedAt = ConcurrentHashMap<String, Long>()
 
     private val lastResortDispatcher: CoroutineDispatcher by lazy {
-        Executors.newSingleThreadExecutor { runnable ->
+        Executors.newFixedThreadPool(LAST_RESORT_SOURCES.size) { runnable ->
             Thread({
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
                 runnable.run()
@@ -819,15 +820,30 @@ class PluginManager @Inject constructor(
         }.asCoroutineDispatcher()
     }
 
-    /** RCTV: the last-resort source's results for the title (TMDB id; "movie" or "tv"). */
-    suspend fun executeRctvLastResort(
+    /** RCTV: the last-resort sources' results for the title (TMDB id; "movie" or "tv"), as each finds them. */
+    fun rctvLastResortStreaming(
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ): Flow<List<LocalScraperResult>> = channelFlow {
+        LAST_RESORT_SOURCES.forEach { sourceId ->
+            launch {
+                val results = runLastResortSource(sourceId, tmdbId, mediaType, season, episode)
+                if (results.isNotEmpty()) send(results)
+            }
+        }
+    }
+
+    private suspend fun runLastResortSource(
+        sourceId: String,
         tmdbId: String,
         mediaType: String,
         season: Int?,
         episode: Int?
     ): List<LocalScraperResult> {
         return try {
-            val code = lastResortScript() ?: return emptyList()
+            val code = lastResortScript(sourceId) ?: return emptyList()
             val results = withTimeoutOrNull(LAST_RESORT_TIMEOUT_MS) {
                 withContext(lastResortDispatcher) {
                     runtime.executePlugin(
@@ -836,7 +852,7 @@ class PluginManager @Inject constructor(
                         mediaType = mediaType,
                         season = season,
                         episode = episode,
-                        scraperId = LAST_RESORT_ID,
+                        scraperId = "rctv_last_resort_$sourceId",
                         scraperSettings = emptyMap()
                     )
                 }
@@ -854,32 +870,33 @@ class PluginManager @Inject constructor(
         }
     }
 
-    /** The script: the copy on the TV (refreshed in the background once a day), or downloaded now. */
-    private suspend fun lastResortScript(): String? = lastResortMutex.withLock {
-        val file = File(context.filesDir, LAST_RESORT_FILE)
-        val cached = lastResortCode ?: withContext(Dispatchers.IO) {
-            runCatching { file.takeIf { it.isFile }?.readText() }.getOrNull()
-        }?.takeIf { it.isNotBlank() }
-        if (cached != null) {
-            lastResortCode = cached
-            if (lastResortRefreshedAt == 0L) lastResortRefreshedAt = file.lastModified()
-            if (System.currentTimeMillis() - lastResortRefreshedAt > LAST_RESORT_REFRESH_MS) {
-                lastResortRefreshedAt = System.currentTimeMillis()
-                syncScope.launch { downloadLastResortScript(file)?.let { lastResortCode = it } }
+    /** A source's script: the copy on the TV (refreshed in the background once a day), or downloaded now. */
+    private suspend fun lastResortScript(sourceId: String): String? =
+        lastResortMutexes.getOrPut(sourceId) { Mutex() }.withLock {
+            val file = File(context.filesDir, "$LAST_RESORT_DIR/$sourceId.js")
+            val cached = lastResortCode[sourceId] ?: withContext(Dispatchers.IO) {
+                runCatching { file.takeIf { it.isFile }?.readText() }.getOrNull()
+            }?.takeIf { it.isNotBlank() }
+            if (cached != null) {
+                lastResortCode[sourceId] = cached
+                val refreshedAt = lastResortRefreshedAt.getOrPut(sourceId) { file.lastModified() }
+                if (System.currentTimeMillis() - refreshedAt > LAST_RESORT_REFRESH_MS) {
+                    lastResortRefreshedAt[sourceId] = System.currentTimeMillis()
+                    syncScope.launch { downloadLastResortScript(sourceId, file)?.let { lastResortCode[sourceId] = it } }
+                }
+                return@withLock cached
             }
-            return@withLock cached
+            withTimeoutOrNull(LAST_RESORT_DOWNLOAD_TIMEOUT_MS) { downloadLastResortScript(sourceId, file) }
+                ?.also {
+                    lastResortCode[sourceId] = it
+                    lastResortRefreshedAt[sourceId] = System.currentTimeMillis()
+                }
         }
-        withTimeoutOrNull(LAST_RESORT_DOWNLOAD_TIMEOUT_MS) { downloadLastResortScript(file) }
-            ?.also {
-                lastResortCode = it
-                lastResortRefreshedAt = System.currentTimeMillis()
-            }
-    }
 
-    private suspend fun downloadLastResortScript(file: File): String? = withContext(Dispatchers.IO) {
+    private suspend fun downloadLastResortScript(sourceId: String, file: File): String? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url(LAST_RESORT_URL)
+                .url("$LAST_RESORT_BASE_URL/$sourceId.js")
                 .header("User-Agent", "RCTV/1.0")
                 .build()
             val code = httpClient.newCall(request).execute().use { response ->
@@ -1247,11 +1264,12 @@ class PluginManager @Inject constructor(
     companion object {
         private const val MAX_PARALLEL_DOWNLOADS = 10
 
-        // RCTV: the last-resort source (PlayIMDb, from NuvioPlugin/All-in-One-Nuvio).
-        private const val LAST_RESORT_ID = "rctv_last_resort"
-        private const val LAST_RESORT_URL =
-            "https://raw.githubusercontent.com/NuvioPlugin/All-in-One-Nuvio/main/providers/playimdb.js"
-        private const val LAST_RESORT_FILE = "rctv_last_resort/source.js"
+        // RCTV: the last-resort sources (from NuvioPlugin/All-in-One-Nuvio): PlayIMDb, and for
+        // series (US networks' too) and movies by their TMDB id, VidEasy, VidLink and VidSrc.
+        private val LAST_RESORT_SOURCES = listOf("playimdb", "videasy", "vidlink", "vidsrc")
+        private const val LAST_RESORT_BASE_URL =
+            "https://raw.githubusercontent.com/NuvioPlugin/All-in-One-Nuvio/main/providers"
+        private const val LAST_RESORT_DIR = "rctv_last_resort"
         private const val LAST_RESORT_TIMEOUT_MS = 25_000L
         private const val LAST_RESORT_DOWNLOAD_TIMEOUT_MS = 10_000L
         private const val LAST_RESORT_REFRESH_MS = 24 * 60 * 60 * 1000L
