@@ -23,7 +23,9 @@ object SmartScoreEngine {
         val judged = sources.map { judge(it, request, context) }
         val (rejected, kept) = judged.partition { it.rejection?.removesFromAll == true }
         val ordered = kept.sortedWith(SMART_ORDER)
-        val eligible = wantedFirst(ordered.filter { it.rejection == null }, request, context)
+        // RCTV (owner's rule): nothing within the size limit: the title's bigger files are offered
+        // anyway (a long movie may only come in big files), rather than nothing.
+        val eligible = wantedFirst(ordered.filter { it.rejection == null }.ifEmpty { ordered.filter { it.rejection == RejectReason.TOO_LARGE } }, request, context)
         val shown = if (listLanguage == null) eligible else listable(eligible, listLanguage, context)
         val groups = group(shown, context.config).take(context.config.maxSmartSources.coerceAtLeast(1))
         val smart = label(groups, context)
@@ -49,7 +51,8 @@ object SmartScoreEngine {
      * in [language] and within the connection ([listable]), one of each file.
      */
     fun manualBase(all: List<ScoredSource>, language: AudioLanguage, context: SmartRankingContext): List<ScoredSource> {
-        val shown = listable(all.filter { it.rejection == null }, language, context)
+        val withinRules = all.filter { it.rejection == null }.ifEmpty { all.filter { it.rejection == RejectReason.TOO_LARGE } }
+        val shown = listable(withinRules, language, context)
         return if (context.config.duplicateGrouping) shown.distinctBy { SourceProviderAdapters.releaseKey(it.source) } else shown
     }
 

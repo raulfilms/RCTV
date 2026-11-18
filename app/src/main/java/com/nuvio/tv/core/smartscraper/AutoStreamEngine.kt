@@ -550,15 +550,17 @@ object AutoStreamEngine {
     ): List<ScoredSource> {
         if (sources.isEmpty()) return emptyList()
         val config = context.config.autoStream
-        val candidates = sources
+        val playable = sources
             .map { SmartScoreEngine.judge(it, request, context) }
             .filter { it.rejection?.removesFromAll != true }
             // RCTV (owner's rule): only what plays at once on a debrid service, and the Spanish servers.
             .filter { it.source.isInstantOrSpanishServer }
-            .filter { scored ->
-                val size = fileSize(scored.release, request)
-                if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries)
-            }
+        val withinSize = playable.filter { scored ->
+            val size = fileSize(scored.release, request)
+            if (size == null) scored.release.source != ReleaseSource.REMUX else size <= config.maxFileSizeBytesFor(request.runtimeMinutes, request.isSeries)
+        }
+        // RCTV (owner's rule): nothing within the size: the title's bigger files, to choose from anyway.
+        val candidates = withinSize.ifEmpty { playable.filter { fileSize(it.release, request) != null } }
             .map { candidate(it, request, context, AutoStreamPool.MAIN) }
         val device = context.device
         // RCTV: with the 1080p and 4K the measured speed takes (as Auto Stream plays them).

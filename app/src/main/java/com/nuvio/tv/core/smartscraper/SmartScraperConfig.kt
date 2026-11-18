@@ -73,7 +73,8 @@ data class SmartScraperConfig(
     fun maxFileSizeBytesFor(runtimeMinutes: Int?, isSeries: Boolean): Long? {
         val base = maxFileSizeBytes ?: return null
         val minutes = runtimeMinutes?.takeIf { !isSeries && it > LENGTH_OF_BASE_LIMIT_MINUTES } ?: return base
-        return (base * (minutes / LENGTH_OF_BASE_LIMIT_MINUTES.toDouble())).toLong()
+        val scaled = (base * (minutes / LENGTH_OF_BASE_LIMIT_MINUTES.toDouble())).toLong()
+        return maxOf(scaled, longMovieLimitBytes(minutes, ParsedRelease.BYTES_PER_GB.toDouble()))
     }
 
     companion object {
@@ -229,7 +230,8 @@ data class AutoStreamConfig(
      */
     fun maxFileSizeBytesFor(runtimeMinutes: Int?, isSeries: Boolean): Long {
         val minutes = runtimeMinutes?.takeIf { !isSeries && it > LENGTH_OF_BASE_LIMIT_MINUTES } ?: return maxFileSizeBytes
-        return (maxFileSizeBytes * (minutes / LENGTH_OF_BASE_LIMIT_MINUTES.toDouble())).toLong()
+        val scaled = (maxFileSizeBytes * (minutes / LENGTH_OF_BASE_LIMIT_MINUTES.toDouble())).toLong()
+        return maxOf(scaled, longMovieLimitBytes(minutes, bytesPerGb.toDouble()))
     }
 
     /** [provider]'s place in [serverOrder] and [debridOrder] (lower first). */
@@ -323,3 +325,18 @@ data class SmartRankingContext(
 
 /** The movie length the size limit is for (a longer movie's limit grows with it). */
 const val LENGTH_OF_BASE_LIMIT_MINUTES = 120
+
+/**
+ * RCTV (owner's rule): a long movie's files run far bigger (a 3-hour IMAX epic's are 20 to 40 GB),
+ * so its limit goes up: 20 GB past 2 h 30 min, 30 GB past 3 h, 40 GB past 3 h 30 min. A short
+ * movie (and an episode) keeps the usual limit. 0 for a movie no longer than 2 h 30 min.
+ */
+fun longMovieLimitBytes(runtimeMinutes: Int, bytesPerGb: Double): Long {
+    val gb = when {
+        runtimeMinutes > 210 -> 40.0
+        runtimeMinutes > 180 -> 30.0
+        runtimeMinutes > 150 -> 20.0
+        else -> return 0L
+    }
+    return (gb * bytesPerGb).toLong()
+}

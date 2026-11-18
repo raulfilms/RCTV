@@ -69,6 +69,43 @@ class AutoStreamLongMovieTest {
     }
 
     @Test
+    fun `a movie past 2 h 30 min may have files of 20, 30 or 40 GB - a short one keeps the limit`() {
+        val config = SmartScraperConfig()
+        assertEquals((20.0 * GB).toLong(), config.maxFileSizeBytesFor(170, isSeries = false))
+        assertEquals((30.0 * GB).toLong(), config.maxFileSizeBytesFor(185, isSeries = false))
+        assertEquals((40.0 * GB).toLong(), config.maxFileSizeBytesFor(240, isSeries = false))
+        assertEquals(config.maxFileSizeBytes, config.maxFileSizeBytesFor(95, isSeries = false))
+        assertEquals(config.maxFileSizeBytes, config.maxFileSizeBytesFor(240, isSeries = true))
+        val auto = config.autoStream
+        assertEquals((30.0 * GB).toLong(), auto.maxFileSizeBytesFor(185, isSeries = false))
+        assertEquals(auto.maxFileSizeBytes, auto.maxFileSizeBytesFor(95, isSeries = false))
+    }
+
+    @Test
+    fun `a 3 h movie's 25 GB file is its own`() {
+        val longOdyssey = odyssey.copy(runtimeMinutes = 185)
+        val streams = listOf(
+            stream("4k-25", "The.Odyssey.2026.2160p.WEB-DL.DDP5.1.HEVC", 25.0),
+            stream("1997", "The.Odyssey.1997.1080p.BluRay.DD5.1.x264", 1.5)
+        )
+        val result = SmartScoreEngine.rank(streams.map(SourceProviderAdapters::normalize), longOdyssey)
+        val smart = result.smart.flatMap { listOf(it.best) + it.copies }.map { it.stream.infoHash }
+        assertEquals(listOf("4k-25"), smart)
+    }
+
+    @Test
+    fun `only files over the limit - they're offered anyway, never another movie`() {
+        val streams = listOf(
+            stream("4k-25", "The.Odyssey.2026.2160p.WEB-DL.DDP5.1.HEVC", 25.0),
+            stream("1997", "The.Odyssey.1997.1080p.BluRay.DD5.1.x264", 1.5)
+        )
+        // 2 h 30 min: a 10 GB limit, the right movie's only file is 25 GB.
+        val result = SmartScoreEngine.rank(streams.map(SourceProviderAdapters::normalize), odyssey)
+        val smart = result.smart.flatMap { listOf(it.best) + it.copies }.map { it.stream.infoHash }
+        assertEquals(listOf("4k-25"), smart)
+    }
+
+    @Test
     fun `another title needs the movie's exact year - a sequel or a sibling is never played on its own`() {
         val darkKnight = SmartSourceRequest(title = "The Dark Knight", year = 2008, isSeries = false, runtimeMinutes = 152)
         val dark = AutoStreamEngine.rank(
