@@ -201,7 +201,7 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 "targetMb=${NuvioExoPlayerPerformanceHelper.targetBufferSizeMb} " +
                 "safeNativeMb=${NuvioExoPlayerPerformanceHelper.getSafeNativeMemoryLimitMb(context)} " +
                 "parallel=${if (useParallelConnections) parallelConnectionCount else 0} chunkKb=$parallelChunkSizeKb " +
-                PlayerMemoryReporter.snapshot(context)
+                (if (PlayerMemoryReporter.enabled) PlayerMemoryReporter.snapshot(context) else "")
         )
         PlayerMemoryReporter.startSampling(context)
         val useChunkSessionSource = useParallelConnections && !liveStream && !isHls && !isDash

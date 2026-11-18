@@ -176,6 +176,11 @@ fun PlayerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val postPlayRecommendationState by viewModel.postPlayRecommendationUiState.collectAsState()
+    // RCTV (owner, smoothness): only whether it's live, never the position (it moves twice a
+    // second): reading the position here redrew the whole player each time.
+    val timelineIsLive by remember(viewModel) {
+        viewModel.playbackTimeline.map { it.isLive }.distinctUntilChanged()
+    }.collectAsState(initial = viewModel.playbackTimeline.value.isLive)
     val effectiveAutoplayEnabled by viewModel.effectiveAutoplayEnabled.collectAsState(initial = false)
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -1659,7 +1664,7 @@ fun PlayerScreen(
             brandName = uiState.brandName,
             ageRating = uiState.ageRating,
             runtime = uiState.runtime,
-            showClock = !viewModel.playbackTimeline.collectAsState().value.isLive,
+            showClock = !timelineIsLive,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2.5f)
@@ -2160,7 +2165,7 @@ fun PlayerScreen(
                 !uiState.showLoadingOverlay && !uiState.showPauseOverlay &&
                 !uiState.showSubtitleDelayOverlay && !uiState.showSubtitleTimingDialog &&
                 !uiState.showMoreDialog &&
-                !viewModel.playbackTimeline.collectAsState().value.isLive,
+                !timelineIsLive,
             enter = fadeIn(animationSpec = tween(150)),
             exit = fadeOut(animationSpec = tween(150)),
             modifier = Modifier.align(Alignment.BottomCenter)

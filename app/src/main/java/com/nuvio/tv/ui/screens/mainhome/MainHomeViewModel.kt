@@ -158,15 +158,20 @@ class MainHomeViewModel @Inject constructor(
             _uiState.update { it.copy(withLiveTv = sources.isNotEmpty()) }
         }
         // Live Now, Favorite Networks and the banner: again every minute (what's on changes).
+        // RCTV (owner, smoothness): worked out away from the screen's thread, and only while Home is
+        // on screen (once at first, so it's ready): never beside a channel or a movie playing.
         viewModelScope.launch {
-            combine(guideLoader.guide, liveTvDataStore.customChannelIds, sportsIndex.state) { guide, favorites, sports ->
-                Triple(guide, favorites, sports.games.map { it.event })
-            }.collect { (guide, favorites, games) -> refreshLive(guide, favorites, games) }
-        }
-        viewModelScope.launch {
-            while (isActive) {
-                delay(MINUTE_MS)
-                refreshLive(guideLoader.guide.value, liveTvDataStore.customChannelIds.value, sportsIndex.state.value.games.map { it.event })
+            var liveWorkedOut = false
+            combine(guideLoader.guide, liveTvDataStore.customChannelIds, sportsIndex.state, shown) { guide, favorites, sports, onScreen ->
+                LiveInputs(guide, favorites, sports.games.map { it.event }, onScreen)
+            }.collectLatest { inputs ->
+                if (!inputs.onScreen && liveWorkedOut) return@collectLatest
+                while (isActive) {
+                    refreshLive(inputs.guide, inputs.favorites, inputs.games)
+                    liveWorkedOut = true
+                    if (!inputs.onScreen) break
+                    delay(MINUTE_MS)
+                }
             }
         }
         viewModelScope.launch {
@@ -353,7 +358,33 @@ class MainHomeViewModel @Inject constructor(
         }.distinctBy { it.id }
     }
 
-    private fun refreshLive(guide: LiveGuideSnapshot?, favorites: Set<String>, games: List<SportsEvent>) {
+    private class LiveInputs(
+        val guide: LiveGuideSnapshot?,
+        val favorites: Set<String>,
+        val games: List<SportsEvent>,
+        val onScreen: Boolean
+    )
+
+    private class LiveRows(
+        val liveNow: List<LiveNowCard>,
+        val favoriteNetworks: List<LiveNowCard.Channel>,
+        val liveCategories: List<LiveCategoryRow>
+    )
+
+    private suspend fun refreshLive(guide: LiveGuideSnapshot?, favorites: Set<String>, games: List<SportsEvent>) {
+        val rows = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            liveRowsOf(guide, favorites, games)
+        }
+        _uiState.update { state ->
+            state.copy(
+                liveNow = rows.liveNow,
+                favoriteNetworks = rows.favoriteNetworks,
+                liveCategories = rows.liveCategories
+            ).withHero(null, null)
+        }
+    }
+
+    private fun liveRowsOf(guide: LiveGuideSnapshot?, favorites: Set<String>, games: List<SportsEvent>): LiveRows {
         val now = System.currentTimeMillis()
         val liveGames = games.filter { it.isLiveAt(now) }.sortedBy { it.startTimeMs ?: Long.MAX_VALUE }.take(MAX_GAMES)
         val usable = guide?.takeIf { !it.isPreview && it.channels.isNotEmpty() }
@@ -370,13 +401,7 @@ class MainHomeViewModel @Inject constructor(
         val liveCategories = usable?.let { snapshot ->
             liveCategoryRows(snapshot) { channel -> cardOf(channel) }
         }.orEmpty()
-        _uiState.update { state ->
-            state.copy(
-                liveNow = liveNow,
-                favoriteNetworks = favoriteCards.take(ROW_SIZE),
-                liveCategories = liveCategories
-            ).withHero(null, null)
-        }
+        return LiveRows(liveNow, favoriteCards.take(ROW_SIZE), liveCategories)
     }
 
     /**
@@ -394,12 +419,21 @@ class MainHomeViewModel @Inject constructor(
             OTHER_PROVIDER_CATEGORIES
         }
         return categories.mapNotNull { category ->
-            val cards = guide.channels.asSequence()
-                .filter { category in guide.channelCategories[it.id].orEmpty() }
-                .map(cardOf)
-                .toList()
-                .sortedBy { if (it.program != null) 0 else 1 }
-                .take(ROW_SIZE)
+            // The ones with something on first (in the Guide's order), then the others: it stops
+            // once the row is full of channels with something on.
+            val onNow = ArrayList<LiveNowCard.Channel>(ROW_SIZE)
+            val others = ArrayList<LiveNowCard.Channel>(ROW_SIZE)
+            for (channel in guide.channels) {
+                if (category !in guide.channelCategories[channel.id].orEmpty()) continue
+                val card = cardOf(channel)
+                if (card.program != null) {
+                    onNow += card
+                    if (onNow.size == ROW_SIZE) break
+                } else if (others.size < ROW_SIZE) {
+                    others += card
+                }
+            }
+            val cards = (onNow + others).take(ROW_SIZE)
             cards.takeIf { it.isNotEmpty() }?.let { LiveCategoryRow(category, it) }
         }
     }

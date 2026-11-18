@@ -23,6 +23,12 @@ object PlayerMemoryReporter {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * RCTV (owner, smoothness): test builds only. Reading the process's memory map is slow on a TV
+     * box and stalls the other threads while it runs (playback and the screen included).
+     */
+    val enabled: Boolean = com.nuvio.tv.BuildConfig.IS_DEBUG_BUILD
+
     @Volatile
     private var samplerJob: Job? = null
 
@@ -63,6 +69,7 @@ object PlayerMemoryReporter {
 
     // Peak is what matters for calibration, and a single reading at playback start misses it.
     fun startSampling(context: Context) {
+        if (!enabled) return
         if (samplerJob?.isActive == true) return
         peakRssMb = 0
         val appContext = context.applicationContext
@@ -80,6 +87,6 @@ object PlayerMemoryReporter {
     fun stopSampling(context: Context) {
         samplerJob?.cancel()
         samplerJob = null
-        Log.i(TAG, "MEM_FINAL: ${snapshot(context.applicationContext)}")
+        if (enabled) Log.i(TAG, "MEM_FINAL: ${snapshot(context.applicationContext)}")
     }
 }
