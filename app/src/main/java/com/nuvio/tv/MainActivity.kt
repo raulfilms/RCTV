@@ -1268,7 +1268,13 @@ open class MainActivity : ComponentActivity() {
                                 icon = Icons.Default.Settings
                             )
                         )
-                        val planItems = if (rctvLight) everyItem.filter { it.route in RCTV_LIGHT_MENU_ROUTES } else everyItem
+                        // RCTV (owner): Light's menu in this order: Home, Search, Library, Settings.
+                        val planItems = if (rctvLight) {
+                            everyItem.filter { it.route in RCTV_LIGHT_MENU_ROUTES }
+                                .sortedBy { RCTV_LIGHT_MENU_ORDER.indexOf(it.route) }
+                        } else {
+                            everyItem
+                        }
                         if (kidsProfileActive) planItems.filterNot { it.route == Screen.Sports.route } else planItems
                     }
 
@@ -1921,7 +1927,7 @@ private fun LegacySidebarScaffold(
                             .align(Alignment.CenterStart)
                             .offset(y = 28.dp)
                             .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(menuItemSpacing(drawerItems.size)),
                         horizontalAlignment = Alignment.Start
                     ) {
                         drawerItems.forEach { item ->
@@ -2708,6 +2714,20 @@ private val menuOnBackRoutes: Set<String> = setOf(
     Screen.Sports.route,
     Screen.MoviesTv.route
 )
+
+/** RCTV (owner): Light's menu order. */
+private val RCTV_LIGHT_MENU_ORDER: List<String> = listOf(
+    Screen.Home.route,
+    Screen.Search.route,
+    Screen.Library.route,
+    Screen.Settings.route
+)
+
+/**
+ * RCTV (owner): the space between the menu's buttons: a short menu (Light's four) spread out down
+ * the side as in Full, not bunched in the middle.
+ */
+private fun menuItemSpacing(itemCount: Int) = if (itemCount <= 5) 34.dp else 10.dp
 
 /** RCTV Control, Light plan: the menu's only sections (Home is movies and series). */
 private val RCTV_LIGHT_MENU_ROUTES: Set<String> = setOf(

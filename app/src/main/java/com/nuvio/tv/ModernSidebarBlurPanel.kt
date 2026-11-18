@@ -213,7 +213,8 @@ internal fun ModernSidebarBlurPanel(
             modifier = Modifier
                 .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(ItemSpacing)
+            // RCTV (owner): a short menu (Light's four) spread out, not bunched together.
+            verticalArrangement = Arrangement.spacedBy(if (drawerItems.size <= 5) 22.dp else ItemSpacing)
         ) {
             drawerItems.forEachIndexed { index, item ->
                 key(item.route) {
