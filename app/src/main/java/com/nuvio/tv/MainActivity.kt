@@ -552,8 +552,13 @@ open class MainActivity : ComponentActivity() {
             val activeProfileLoaded by profileManager.activeProfileReady.collectAsState()
             var customizeNow by remember(activeProfileId, startupSession) { mutableStateOf<Boolean?>(null) }
 
-            LaunchedEffect(authState, profiles) {
-                if (authState is AuthState.FullAccount) {
+            // RCTV (owner): on an RCTV account, its profiles' PINs (kept on the TV too, so a locked
+            // profile asks for its PIN from the moment the app opens).
+            val rctvPinSlots by rctvAccess.pinSlots.collectAsState()
+            LaunchedEffect(authState, profiles, rctvPinSlots, rctvAccessState.needsActivation) {
+                if (!rctvAccessState.needsActivation) {
+                    profilePinStates = profiles.associate { it.id to (it.id in rctvPinSlots) }
+                } else if (authState is AuthState.FullAccount) {
                     profileSyncService.pullProfileLockStates()
                         .onSuccess { profilePinStates = it }
                         .onFailure { profilePinStates = emptyMap() }

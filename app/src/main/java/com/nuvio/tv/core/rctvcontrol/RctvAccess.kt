@@ -141,8 +141,13 @@ data class RctvDeviceConfig(
      * debrid services' own files), on the website; null from a website without it (none can).
      */
     val cloudSlots: Set<Int>? = null,
+    /** RCTV (owner): the profiles (places 1 to 8) with a PIN; null from a website without PINs. */
+    val pinSlots: Set<Int>? = null,
     val publicUrls: RctvPublicUrls = RctvPublicUrls()
 )
+
+/** RCTV: what the account said to a profile's PIN being set, changed or removed on the TV. */
+enum class RctvPinChange { DONE, CURRENT_REQUIRED, WRONG_CURRENT, LOCKED, FAILED }
 
 /** Reads the website's answers. The account's services are read here but never logged. */
 object RctvControlParser {
@@ -204,6 +209,7 @@ object RctvControlParser {
             services = servicesOf(json),
             profiles = json.optJSONArray("profiles")?.let(::profilesOf),
             cloudSlots = json.optJSONArray("profiles")?.let(::cloudSlotsOf),
+            pinSlots = json.optJSONArray("profiles")?.let(::pinSlotsOf),
             publicUrls = json.optJSONObject("public_urls")?.let { urls ->
                 val announcements = urls.optStringOrNull("announcements")?.takeIf(::isHttps)
                 RctvPublicUrls(
@@ -300,6 +306,21 @@ object RctvControlParser {
             val slot = p.optInt("slot", 0).takeIf { it in 1..8 } ?: continue
             if (p.optBoolean("cloud_allowed", false)) add(slot)
         }
+    }
+
+    /** The profiles' places with a PIN; null when the website doesn't say (before PINs). */
+    fun pinSlotsOf(array: org.json.JSONArray): Set<Int>? {
+        var told = false
+        val slots = buildSet {
+            for (i in 0 until array.length()) {
+                val p = array.optJSONObject(i) ?: continue
+                if (!p.has("has_pin")) continue
+                told = true
+                val slot = p.optInt("slot", 0).takeIf { it in 1..8 } ?: continue
+                if (p.optBoolean("has_pin", false)) add(slot)
+            }
+        }
+        return slots.takeIf { told || array.length() == 0 }
     }
 
     private fun isHttps(value: String): Boolean = value.startsWith("https://") && value.length <= 500

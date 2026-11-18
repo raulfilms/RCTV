@@ -53,7 +53,9 @@ class ProfileSelectionViewModel @Inject constructor(
     private val profileLockStateDataStore: ProfileLockStateDataStore,
     private val themeDataStore: com.nuvio.tv.data.local.ThemeDataStore,
     /** RCTV: a new profile goes through "Customize your experience" the first time it opens. */
-    private val rctvCustomize: com.nuvio.tv.core.rctvcontrol.RctvCustomizeStore
+    private val rctvCustomize: com.nuvio.tv.core.rctvcontrol.RctvCustomizeStore,
+    /** RCTV (owner): on an RCTV account, its profiles' PINs are kept there (set here, on the TV). */
+    private val rctvAccess: com.nuvio.tv.core.rctvcontrol.RctvAccessManager
 ) : ViewModel() {
     val activeProfileId: StateFlow<Int> = profileManager.activeProfileId
     val profiles: StateFlow<List<UserProfile>> = profileManager.profiles
@@ -94,6 +96,9 @@ class ProfileSelectionViewModel @Inject constructor(
 
     private val _isPinOperationInProgress = MutableStateFlow(false)
     val isPinOperationInProgress: StateFlow<Boolean> = _isPinOperationInProgress.asStateFlow()
+
+    /** RCTV: watches the account's profiles with a PIN (declared before init, which starts it). */
+    private var rctvPinStates: kotlinx.coroutines.Job? = null
 
     init {
         refreshProfilePinStates()
@@ -272,6 +277,16 @@ class ProfileSelectionViewModel @Inject constructor(
     }
 
     fun refreshProfilePinStates() {
+        if (rctvAccess.keepsProfilePins) {
+            // The account's: which profiles have a PIN (the same on every TV), kept up to date.
+            if (rctvPinStates?.isActive == true) return
+            rctvPinStates = viewModelScope.launch {
+                combine(rctvAccess.pinSlots, profiles) { slots, list -> list.associate { it.id to (it.id in slots) } }
+                    .distinctUntilChanged()
+                    .collect { states -> profileLockStateDataStore.replaceAll(states) }
+            }
+            return
+        }
         viewModelScope.launch {
             var attempt = 0
             while (attempt < 4) {
@@ -304,7 +319,15 @@ class ProfileSelectionViewModel @Inject constructor(
         if (_isPinOperationInProgress.value) return
         viewModelScope.launch {
             _isPinOperationInProgress.value = true
-            val result = profileSyncService.setProfilePin(profileId, pin, currentPin)
+            val result = if (rctvAccess.keepsProfilePins) {
+                when (rctvAccess.setProfilePin(profileId, pin, currentPin)) {
+                    com.nuvio.tv.core.rctvcontrol.RctvPinChange.DONE -> SetProfilePinResult.Success
+                    com.nuvio.tv.core.rctvcontrol.RctvPinChange.CURRENT_REQUIRED -> SetProfilePinResult.CurrentPinRequired
+                    else -> SetProfilePinResult.Failure(IllegalStateException("PIN not saved"))
+                }
+            } else {
+                profileSyncService.setProfilePin(profileId, pin, currentPin)
+            }
             // Server reporting CurrentPinRequired means a PIN exists remotely —
             // reconcile local cache so we never forget it again.
             if (result is SetProfilePinResult.Success || result is SetProfilePinResult.CurrentPinRequired) {
@@ -319,7 +342,11 @@ class ProfileSelectionViewModel @Inject constructor(
         if (_isPinOperationInProgress.value) return
         viewModelScope.launch {
             _isPinOperationInProgress.value = true
-            val success = profileSyncService.clearProfilePin(profileId, currentPin).isSuccess
+            val success = if (rctvAccess.keepsProfilePins) {
+                rctvAccess.clearProfilePin(profileId, currentPin) == com.nuvio.tv.core.rctvcontrol.RctvPinChange.DONE
+            } else {
+                profileSyncService.clearProfilePin(profileId, currentPin).isSuccess
+            }
             if (success) {
                 profileLockStateDataStore.setPinEnabled(profileId, false)
             }
@@ -332,7 +359,13 @@ class ProfileSelectionViewModel @Inject constructor(
         if (_isPinOperationInProgress.value) return
         viewModelScope.launch {
             _isPinOperationInProgress.value = true
-            val result = profileSyncService.verifyProfilePin(profileId, pin)
+            val result = if (rctvAccess.keepsProfilePins) {
+                rctvAccess.verifyProfilePin(profileId, pin)
+                    ?.let { (unlocked, wait) -> Result.success(SupabaseProfilePinVerifyResult(unlocked = unlocked, retryAfterSeconds = wait)) }
+                    ?: Result.failure(IllegalStateException("PIN not checked"))
+            } else {
+                profileSyncService.verifyProfilePin(profileId, pin)
+            }
             _isPinOperationInProgress.value = false
             onComplete(result)
         }

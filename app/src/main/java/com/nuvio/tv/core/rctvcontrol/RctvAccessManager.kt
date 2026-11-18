@@ -97,6 +97,17 @@ class RctvAccessManager @Inject constructor(
      */
     val cloudSlots: StateFlow<Set<Int>> = _cloudSlots.asStateFlow()
 
+    private val _pinSlots = MutableStateFlow(readSlots(KEY_PIN_SLOTS))
+
+    /**
+     * RCTV (owner): the account's profiles (places 1 to 8) with a PIN, the same on every TV. Kept on
+     * the TV, so a locked profile asks for its PIN from the moment the app opens.
+     */
+    val pinSlots: StateFlow<Set<Int>> = _pinSlots.asStateFlow()
+
+    /** True while this TV is on an RCTV account: its profiles' PINs are kept there. */
+    val keepsProfilePins: Boolean get() = !_state.value.needsActivation
+
     /** Enters the account's code. On success the app opens with the account's plan. */
     suspend fun activate(rawCode: String): RctvActivation {
         val url = baseUrl ?: return RctvActivation.NoConnection
@@ -128,6 +139,7 @@ class RctvAccessManager @Inject constructor(
             // (another account's Library, Continue Watching, IMDb...) goes up to this account or
             // shows in it. The account's own things come down from the website next.
             dataGuard.startClean()
+            savePinSlots(emptySet())
             saveToken(result.token)
             saveAccount(result.account)
             publish()
@@ -188,6 +200,7 @@ class RctvAccessManager @Inject constructor(
                 managed.save(outcome.config.services, outcome.config.publicUrls)
                 outcome.config.profiles?.let { _remoteProfiles.value = it }
                 saveCloudSlots(outcome.config.cloudSlots.orEmpty())
+                outcome.config.pinSlots?.let(::savePinSlots)
                 publish()
                 nextWaitSeconds(outcome.config.checkEverySeconds.toLong(), outcome.config.account)
             }
@@ -207,11 +220,14 @@ class RctvAccessManager @Inject constructor(
         managed.clear()
         _remoteProfiles.value = null
         _cloudSlots.value = emptySet()
+        _pinSlots.value = emptySet()
         publish()
     }
 
-    private fun readCloudSlots(): Set<Int> =
-        prefs.getString(KEY_CLOUD_SLOTS, null)
+    private fun readCloudSlots(): Set<Int> = readSlots(KEY_CLOUD_SLOTS)
+
+    private fun readSlots(key: String): Set<Int> =
+        prefs.getString(key, null)
             ?.split(',')
             ?.mapNotNull { it.trim().toIntOrNull()?.takeIf { slot -> slot in 1..8 } }
             ?.toSet()
@@ -220,6 +236,54 @@ class RctvAccessManager @Inject constructor(
     private fun saveCloudSlots(slots: Set<Int>) {
         prefs.edit().putString(KEY_CLOUD_SLOTS, slots.sorted().joinToString(",")).apply()
         _cloudSlots.value = slots
+    }
+
+    private fun savePinSlots(slots: Set<Int>) {
+        prefs.edit().putString(KEY_PIN_SLOTS, slots.sorted().joinToString(",")).apply()
+        _pinSlots.value = slots
+    }
+
+    /**
+     * RCTV (owner): opens a profile with a PIN (the account checks it; after 5 wrong tries it waits).
+     * Unlocked and the seconds to wait; null when the account can't be asked.
+     */
+    suspend fun verifyProfilePin(slot: Int, pin: String): Pair<Boolean, Int>? {
+        val answer = post("profiles", JSONObject().put("action", "pin_verify").put("slot", slot).put("pin", pin))
+        if (answer?.first != 200) return null
+        val json = answer.second?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return null
+        if (json.optString("status") != "ok") return null
+        return json.optBoolean("unlocked", false) to json.optInt("retry_after_seconds", 0).coerceIn(0, 3600)
+    }
+
+    /** RCTV (owner): puts or changes a profile's PIN (with the current one, if it has one). */
+    suspend fun setProfilePin(slot: Int, pin: String, currentPin: String?): RctvPinChange {
+        val body = JSONObject().put("action", "pin_set").put("slot", slot).put("pin", pin)
+        if (!currentPin.isNullOrBlank()) body.put("current_pin", currentPin)
+        val change = pinChangeOf(post("profiles", body))
+        if (change == RctvPinChange.DONE || change == RctvPinChange.CURRENT_REQUIRED) savePinSlots(_pinSlots.value + slot)
+        return change
+    }
+
+    /** RCTV (owner): removes a profile's PIN (with the current one). */
+    suspend fun clearProfilePin(slot: Int, currentPin: String?): RctvPinChange {
+        if (currentPin.isNullOrBlank()) return RctvPinChange.CURRENT_REQUIRED
+        val change = pinChangeOf(
+            post("profiles", JSONObject().put("action", "pin_clear").put("slot", slot).put("current_pin", currentPin))
+        )
+        if (change == RctvPinChange.DONE) savePinSlots(_pinSlots.value - slot)
+        return change
+    }
+
+    private fun pinChangeOf(answer: Pair<Int, String?>?): RctvPinChange {
+        if (answer?.first != 200) return RctvPinChange.FAILED
+        val status = answer.second?.let { runCatching { JSONObject(it).optString("status") }.getOrNull() }
+        return when (status) {
+            "ok" -> RctvPinChange.DONE
+            "current_required" -> RctvPinChange.CURRENT_REQUIRED
+            "wrong_current" -> RctvPinChange.WRONG_CURRENT
+            "locked" -> RctvPinChange.LOCKED
+            else -> RctvPinChange.FAILED
+        }
     }
 
     /** Saves a profile of this TV on its account (made or changed here). */
@@ -434,6 +498,7 @@ class RctvAccessManager @Inject constructor(
         const val KEY_PLAN = "base_plan"
         const val KEY_MASTER = "master"
         const val KEY_CLOUD_SLOTS = "cloud_slots"
+        const val KEY_PIN_SLOTS = "pin_slots"
         const val KEY_TRIAL_ENDS = "trial_ends_at"
         const val KEY_LABEL_ACCOUNT_ID = "report_account_id"
         const val KEY_LABEL_ACCOUNT_NAME = "report_account_name"
