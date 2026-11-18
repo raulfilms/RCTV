@@ -1509,6 +1509,8 @@ open class MainActivity : ComponentActivity() {
                                 onPlayerScreen = onPlayerScreen,
                                 onBackToPage = { runCatching { pageFocus.requestFocus() }.isSuccess },
                                 hidden = barHidden,
+                                // The Guide shows the playback behind itself: the bar leaves it there.
+                                showVideo = currentRoute != Screen.LiveTv.route,
                                 modifier = Modifier.align(Alignment.TopCenter)
                             )
 

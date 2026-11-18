@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RCTV: what plays behind the app, seen only inside the Now Playing bar (a texture: it stays
+     inside the bar; a surface would show the whole picture over the page below it). -->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/now_playing_bar_player_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="true"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
+    app:surface_type="texture_view"
+    app:use_controller="false"
+    app:show_buffering="never"
+    app:shutter_background_color="@android:color/transparent" />

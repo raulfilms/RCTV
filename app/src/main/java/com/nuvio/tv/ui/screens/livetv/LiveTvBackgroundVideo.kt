@@ -183,10 +183,16 @@ internal fun LiveTvBackgroundVideo(
  */
 @OptIn(UnstableApi::class)
 @Composable
-internal fun LiveTvSessionVideo(player: Player, modifier: Modifier = Modifier) {
+internal fun LiveTvSessionVideo(
+    player: Player,
+    modifier: Modifier = Modifier,
+    /** RCTV (owner): inside the Now Playing bar only (cut to it, never over the page below). */
+    inBar: Boolean = false
+) {
+    val layout = if (inBar) R.layout.now_playing_bar_player_view else R.layout.live_background_player_view
     AndroidView(
         factory = { ctx ->
-            (LayoutInflater.from(ctx).inflate(R.layout.live_background_player_view, null) as PlayerView).apply {
+            (LayoutInflater.from(ctx).inflate(layout, null) as PlayerView).apply {
                 this.player = player
                 // The Guide keeps the remote: the picture never takes focus.
                 isFocusable = false
