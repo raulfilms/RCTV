@@ -220,6 +220,11 @@ class XtreamClient @Inject constructor(
             .newBuilder()
             .addQueryParameter("stream_id", address.streamId)
             .build()
+        // RCTV (owner): Home and the player ask for the same lists: one download every few minutes.
+        val cacheKey = "${address.server}|${address.streamId}|${channel.archiveDays}"
+        synchronized(catchUpCache) { catchUpCache[cacheKey] }
+            ?.takeIf { nowMs - it.first in 0 until CATCH_UP_CACHE_MS }
+            ?.let { cached -> return cached.second.filter { it.startMs < nowMs } }
         val listings = runCatching { JSONObject(get(url)).optJSONArray("epg_listings") }.getOrNull()
             ?: return emptyList()
         val oldestMs = nowMs - channel.archiveDays * DAY_MS
@@ -244,7 +249,15 @@ class XtreamClient @Inject constructor(
                 durationMinutes = ((endMs - startMs + 59_999L) / 60_000L).toInt().coerceIn(1, MAX_PROGRAM_MINUTES)
             )
         }
-        return programs.distinctBy { it.startMs }.sortedByDescending { it.startMs }.take(MAX_CATCH_UP_PROGRAMS)
+        val found = programs.distinctBy { it.startMs }.sortedByDescending { it.startMs }.take(MAX_CATCH_UP_PROGRAMS)
+        synchronized(catchUpCache) { catchUpCache[cacheKey] = nowMs to found }
+        return found
+    }
+
+    /** RCTV (owner): the channels' recordings just read (when, and what), the last few channels only. */
+    private val catchUpCache = object : LinkedHashMap<String, Pair<Long, List<LiveCatchUpProgram>>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, List<LiveCatchUpProgram>>>?): Boolean =
+            size > CATCH_UP_CACHE_SIZE
     }
 
     /** RCTV (owner): each provider server's own time zone (catch-up's times are written in it). */
@@ -550,6 +563,9 @@ class XtreamClient @Inject constructor(
         const val MAX_ARCHIVE_DAYS = 30
         const val MAX_PROGRAM_MINUTES = 24 * 60
         const val MAX_CATCH_UP_PROGRAMS = 200
+        /** A channel's recordings are read again after this long. */
+        const val CATCH_UP_CACHE_MS = 5L * 60 * 1000
+        const val CATCH_UP_CACHE_SIZE = 16
         val SERVER_TIME = Regex("""^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})""")
         val BASE64 = Regex("^[A-Za-z0-9+/=\\s]+$")
         val TIMESHIFT_START: java.time.format.DateTimeFormatter =

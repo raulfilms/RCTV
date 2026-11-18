@@ -180,7 +180,12 @@ internal fun LiveTvPlayerOverlay(
     val program = channel?.let { if (dvr != null) liveViewModel.programAt(it, atMs) else guide.programAt(it, nowMs) }
     LaunchedEffect(program) { liveViewModel.bindProgram(program) }
     // The provider's recordings: what was on before the guide's hours.
-    LaunchedEffect(channel?.id, dvr != null) { if (dvr != null) liveViewModel.ensureCatchUp(channel) }
+    // (A moment after the controls show: the channel starting goes first.)
+    LaunchedEffect(channel?.id, dvr != null) {
+        if (dvr == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(CATCH_UP_AFTER_CONTROLS_MS)
+        liveViewModel.ensureCatchUp(channel)
+    }
 
     var selectedTab by remember { mutableStateOf(LiveTab.NETWORKS) }
     // Episodes: only for a series on TMDB (not a movie, a game or a newscast).
@@ -1644,3 +1649,6 @@ private fun airingLabel(program: EpgProgram): String {
         else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(program.startMs)) + ", " + range
     }
 }
+
+/** RCTV (owner, the DVR): the channel's recordings are asked for once the controls stayed this long. */
+private const val CATCH_UP_AFTER_CONTROLS_MS = 2_000L

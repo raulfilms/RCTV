@@ -156,6 +156,18 @@ fun MainHomeScreen(
     viewModel: MainHomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    // RCTV (owner): Home on screen (its page started; not under the player or in the background).
+    val homeLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(homeLifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            viewModel.setShown(homeLifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+        }
+        homeLifecycle.addObserver(observer)
+        onDispose {
+            homeLifecycle.removeObserver(observer)
+            viewModel.setShown(false)
+        }
+    }
     val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
     val continueWatching = if (homeState.continueWatchingEnabled) homeState.continueWatchingItems else emptyList()

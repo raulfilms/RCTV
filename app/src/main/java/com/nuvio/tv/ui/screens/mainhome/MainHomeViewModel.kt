@@ -135,6 +135,13 @@ class MainHomeViewModel @Inject constructor(
     val titleArt: com.nuvio.tv.domain.repository.TitleArtResolver get() = titleArtService
 
     private val _uiState = MutableStateFlow(MainHomeUiState())
+
+    /** RCTV (owner): Home is on screen (not under the player, nor the app in the background). */
+    private val shown = MutableStateFlow(false)
+
+    fun setShown(onScreen: Boolean) {
+        shown.value = onScreen
+    }
     val uiState: StateFlow<MainHomeUiState> = _uiState.asStateFlow()
 
     private var recommendedFor: String? = null
@@ -177,14 +184,28 @@ class MainHomeViewModel @Inject constructor(
         }
         // RCTV (owner, the DVR): Catch Up: what the profile's recorded channels aired (the channels
         // watched last, then the favorites), asked again every few minutes.
+        // Only while Home is on screen (never while a channel or a movie plays), a moment after it
+        // shows, and not again for the same channels until it's due.
         viewModelScope.launch {
+            var loadedAtMs = 0L
+            var loadedFor: Set<String>? = null
             combine(guideLoader.guide, liveTvDataStore.recentChannelIds, liveTvDataStore.customChannelIds) { guide, recent, favorites ->
                 catchUpChannels(guide, recent, favorites)
             }
-                .distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } }
+                .distinctUntilChanged { a, b -> a.map { it.id }.toSet() == b.map { it.id }.toSet() }
+                .combine(shown) { channels, onScreen -> channels.takeIf { onScreen } }
                 .collectLatest { channels ->
+                    if (channels == null) return@collectLatest
+                    val ids = channels.map { it.id }.toSet()
+                    val sinceLoadMs = System.currentTimeMillis() - loadedAtMs
+                    delay(
+                        if (ids != loadedFor || sinceLoadMs !in 0 until CATCH_UP_REFRESH_MS) CATCH_UP_SETTLE_MS
+                        else CATCH_UP_REFRESH_MS - sinceLoadMs
+                    )
                     while (isActive) {
                         loadCatchUp(channels)
+                        loadedAtMs = System.currentTimeMillis()
+                        loadedFor = ids
                         delay(CATCH_UP_REFRESH_MS)
                     }
                 }
@@ -267,9 +288,11 @@ class MainHomeViewModel @Inject constructor(
         }
         val now = System.currentTimeMillis()
         val guide = guideLoader.guide.value
-        val cards = coroutineScope {
-            channels.map { channel ->
-                async(kotlinx.coroutines.Dispatchers.IO) {
+        // One channel at a time: never a burst of downloads beside what plays.
+        val cards = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            channels.flatMap { channel ->
+                if (!isActive) throw CancellationException()
+                run {
                     val recorded = try {
                         xtreamClient.fetchCatchUp(channel, now)
                     } catch (e: CancellationException) {
@@ -288,7 +311,7 @@ class MainHomeViewModel @Inject constructor(
                         )
                     }
                 }
-            }.map { it.await() }.flatten()
+            }
         }
         _uiState.update { state ->
             state.copy(catchUp = cards.sortedByDescending { it.program.endMs }.distinctBy { it.key }.take(ROW_SIZE))
@@ -412,6 +435,8 @@ class MainHomeViewModel @Inject constructor(
         const val CATCH_UP_CHANNELS = 6
         const val CATCH_UP_PER_CHANNEL = 4
         const val CATCH_UP_REFRESH_MS = 10 * MINUTE_MS
+        /** Home shown this long before Catch Up is asked for (what was opened goes first). */
+        const val CATCH_UP_SETTLE_MS = 4_000L
         /** Another provider's guide: its usual categories with a live row each. */
         val OTHER_PROVIDER_CATEGORIES = listOf(
             GuideBrowse.NEWS, GuideBrowse.SPORTS, GuideBrowse.TV_SHOWS, GuideBrowse.MOVIES, GuideBrowse.KIDS, GuideBrowse.LATINO

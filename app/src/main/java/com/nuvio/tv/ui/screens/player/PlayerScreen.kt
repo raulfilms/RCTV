@@ -8,6 +8,8 @@ package com.nuvio.tv.ui.screens.player
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import com.nuvio.tv.ui.theme.accentBrush
 
@@ -372,7 +374,13 @@ fun PlayerScreen(
     // the video. The game: the one opened from Sports, or else the one the channel's program is.
     var showGameCenter by remember { mutableStateOf(false) }
     val gameCenterState by gameCenterViewModel.state.collectAsState()
-    val liveNowMs by liveTvViewModel.nowMs.collectAsState()
+    // RCTV (owner): the minute only (what's on changes by the minute): the whole player isn't
+    // redrawn each time the clock ticks.
+    val liveMinute by remember(liveTvViewModel) {
+        liveTvViewModel.nowMs
+            .map { it / 60_000L }
+            .distinctUntilChanged()
+    }.collectAsState(initial = System.currentTimeMillis() / 60_000L)
 
     // RCTV (owner, the DVR as YouTube TV's): a channel the IPTV provider records (catch-up) plays
     // like a recording: it goes back and forward, pauses, starts a program over, and goes back live.
@@ -496,7 +504,7 @@ fun PlayerScreen(
         }
     }
     // "Watch From Beginning / Watch Live": once per program, when it has been on for a while.
-    val dvrNowProgram = remember(dvrChannel?.id, liveGuide, liveNowMs / 60_000L) {
+    val dvrNowProgram = remember(dvrChannel?.id, liveGuide, liveMinute) {
         dvrChannel?.let { liveGuide.programAt(it, System.currentTimeMillis()) }
     }
     LaunchedEffect(dvrChannel?.id, dvrNowProgram?.startMs) {
@@ -514,7 +522,7 @@ fun PlayerScreen(
     LaunchedEffect(uiState.showControls, dvrChannel?.id) {
         if (uiState.showControls || dvrChannel == null) dvrPromptVisible = false
     }
-    val liveProgramText = remember(isLiveTvChannel, playingLiveChannel, liveGuide, liveNowMs / 60_000L) {
+    val liveProgramText = remember(isLiveTvChannel, playingLiveChannel, liveGuide, liveMinute) {
         val channel = playingLiveChannel
         if (!isLiveTvChannel || channel == null) null else {
             liveGuide.programAt(channel, System.currentTimeMillis())
@@ -1915,10 +1923,12 @@ fun PlayerScreen(
                     dvr = if (dvrChannel != null) {
                         // Watched here only (the controls), so the whole player doesn't redraw each second.
                         val dvrTimeline by viewModel.playbackTimeline.collectAsState()
-                        val dvrClock by androidx.compose.runtime.produceState(System.currentTimeMillis()) {
+                        // Each second only behind live or while the timeline moves (live: now and then).
+                        val dvrTicking = dvrRecording || dvrPreviewMs != null
+                        val dvrClock by androidx.compose.runtime.produceState(System.currentTimeMillis(), dvrTicking) {
                             while (true) {
                                 value = System.currentTimeMillis()
-                                kotlinx.coroutines.delay(1_000L)
+                                kotlinx.coroutines.delay(if (dvrTicking) 1_000L else 15_000L)
                             }
                         }
                         LiveDvrUi(
