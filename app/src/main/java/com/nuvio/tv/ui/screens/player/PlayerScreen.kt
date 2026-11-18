@@ -198,6 +198,9 @@ fun PlayerScreen(
     var subtitleTimingConsumeNextConfirmKeyUp by remember { mutableStateOf(false) }
     var reportCodeVisible by remember { mutableStateOf(false) }
     var exitDispatched by remember { mutableStateOf(false) }
+    // RCTV (owner, as YouTube TV): left with Back to go on playing behind the app (the Now Playing
+    // banner): leaving the screen doesn't pause it (only the app going to the background does).
+    val minimizedOnExit = remember { booleanArrayOf(false) }
     var externalHandoffInProgress by remember { mutableStateOf(false) }
     // RCTV movie controls: their Settings dialog; the movie is in the watchlist.
     var showMovieSettings by remember { mutableStateOf(false) }
@@ -250,6 +253,7 @@ fun PlayerScreen(
         if (canMinimizePlayback(viewModel, uiState, postPlayRecommendationState.isVisible)) {
             val nowPlaying = nowPlayingOf(uiState, liveTvViewModel.program.value.program?.title, sessionContext)
             if (com.nuvio.tv.core.playback.PlaybackSession.minimize(store = null, nowPlaying = nowPlaying)) {
+                minimizedOnExit[0] = true
                 onBackPress(
                     uiState.currentVideoId,
                     uiState.currentSeason,
@@ -790,7 +794,8 @@ fun PlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
-                    viewModel.pauseForLifecycle()
+                    // Minimized (Back to browse the app): it goes on playing, sound and all.
+                    if (!minimizedOnExit[0]) viewModel.pauseForLifecycle()
                 }
                 Lifecycle.Event.ON_STOP -> wentToBackground[0] = true
                 Lifecycle.Event.ON_RESUME -> {

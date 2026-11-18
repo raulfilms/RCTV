@@ -83,6 +83,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
@@ -1376,6 +1377,15 @@ open class MainActivity : ComponentActivity() {
                                     }
                                 }
                         ) {
+                            // RCTV (owner): the pages under the Now Playing banner: Down from the banner goes
+                            // back to where it was on the page (Up to it from anywhere, Down back there).
+                            val pageFocus = remember { FocusRequester() }
+                            @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+                            val pageModifier = Modifier
+                                .fillMaxSize()
+                                .focusRequester(pageFocus)
+                                .focusRestorer { FocusRequester.Default }
+                            Box(modifier = pageModifier) {
                             if (modernSidebarEnabled) {
                                 ModernSidebarScaffold(
                                     longPressBackHeld = longPressBackHeld,
@@ -1416,6 +1426,7 @@ open class MainActivity : ComponentActivity() {
                                     onNavigate = { optimisticRoute = it },
                                     onExitApp = handleExitApp
                                 )
+                            }
                             }
 
                             // RCTV Control: a message the owner published on the website, shown once on Home.
@@ -1484,6 +1495,7 @@ open class MainActivity : ComponentActivity() {
                             com.nuvio.tv.ui.components.NowPlayingBannerHost(
                                 navController = navController,
                                 onPlayerScreen = onPlayerScreen,
+                                onBackToPage = { runCatching { pageFocus.requestFocus() }.isSuccess },
                                 modifier = Modifier.align(Alignment.TopCenter)
                             )
 

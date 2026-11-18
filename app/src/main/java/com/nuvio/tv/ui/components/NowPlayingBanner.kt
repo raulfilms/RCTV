@@ -25,7 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +61,8 @@ import com.nuvio.tv.core.playback.PlaybackSession
 fun NowPlayingBannerHost(
     navController: NavController,
     onPlayerScreen: Boolean,
+    /** RCTV (owner): focus back on the page, where it was before Up to the banner (true when it went). */
+    onBackToPage: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
     val nowPlaying by PlaybackSession.nowPlaying.collectAsState()
@@ -68,10 +77,27 @@ fun NowPlayingBannerHost(
         }
     )
     if (onPlayerScreen) return
+    val focusManager = LocalFocusManager.current
     NowPlayingBanner(
         nowPlaying = current,
         onClick = { PlaybackSession.resume(navController) },
-        modifier = modifier
+        // RCTV (owner): never a dead end: Down goes back to the page (where it was), as do Left and
+        // Right when nothing is beside the banner.
+        modifier = modifier.onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionDown -> {
+                    if (!onBackToPage()) focusManager.moveFocus(FocusDirection.Down)
+                    true
+                }
+                Key.DirectionLeft, Key.DirectionRight -> {
+                    val direction = if (event.key == Key.DirectionLeft) FocusDirection.Left else FocusDirection.Right
+                    if (!focusManager.moveFocus(direction)) onBackToPage()
+                    true
+                }
+                else -> false
+            }
+        }
     )
 }
 
