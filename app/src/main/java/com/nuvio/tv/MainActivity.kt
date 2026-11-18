@@ -1380,9 +1380,14 @@ open class MainActivity : ComponentActivity() {
                             // RCTV (owner): the pages under the Now Playing banner: Down from the banner goes
                             // back to where it was on the page (Up to it from anywhere, Down back there).
                             val pageFocus = remember { FocusRequester() }
+                            // RCTV (owner, as YouTube TV): while something goes on playing behind the
+                            // app, the pages start under the Now Playing bar (the playback shows in it).
+                            val nowPlayingBar by com.nuvio.tv.core.playback.PlaybackSession.nowPlaying.collectAsState()
+                            val barShown = nowPlayingBar != null && !onPlayerScreen
                             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
                             val pageModifier = Modifier
                                 .fillMaxSize()
+                                .padding(top = if (barShown) com.nuvio.tv.ui.components.NowPlayingBarHeight else 0.dp)
                                 .focusRequester(pageFocus)
                                 .focusRestorer { FocusRequester.Default }
                             Box(modifier = pageModifier) {
@@ -1496,6 +1501,8 @@ open class MainActivity : ComponentActivity() {
                                 navController = navController,
                                 onPlayerScreen = onPlayerScreen,
                                 onBackToPage = { runCatching { pageFocus.requestFocus() }.isSuccess },
+                                // The Guide shows the playback behind itself: the bar leaves it there.
+                                showVideo = currentRoute != Screen.LiveTv.route,
                                 modifier = Modifier.align(Alignment.TopCenter)
                             )
 
