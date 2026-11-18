@@ -1,5 +1,6 @@
 package com.nuvio.tv.core.plugin
 
+import android.content.Context
 import android.util.Log
 import com.nuvio.tv.core.plugin.cloudstream.toNuvioType
 import com.nuvio.tv.core.plugin.cloudstream.tvTypeFromString
@@ -17,7 +18,10 @@ import com.nuvio.tv.domain.model.ScraperInfo
 import com.nuvio.tv.domain.model.ScraperManifestInfo
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -37,6 +41,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -61,6 +66,7 @@ private const val MANIFEST_SUFFIX = "/manifest.json"
 
 @Singleton
 class PluginManager @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val dataStore: PluginDataStore,
     private val runtime: PluginRuntime,
     private val pluginSyncService: com.nuvio.tv.core.sync.PluginSyncService,
@@ -797,6 +803,115 @@ class PluginManager @Inject constructor(
         }
     }
 
+    // RCTV (owner): the app's own last-resort source, for a movie or episode nothing else found.
+    // It is one script (kept on the TV, refreshed once a day), separate from the plugins in
+    // Settings (they can be off), and it runs on its own thread, never waiting behind them.
+    private val lastResortMutex = Mutex()
+    @Volatile private var lastResortCode: String? = null
+    @Volatile private var lastResortRefreshedAt = 0L
+
+    private val lastResortDispatcher: CoroutineDispatcher by lazy {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                runnable.run()
+            }, "rctv-last-resort").apply { isDaemon = true }
+        }.asCoroutineDispatcher()
+    }
+
+    /** RCTV: the last-resort source's results for the title (TMDB id; "movie" or "tv"). */
+    suspend fun executeRctvLastResort(
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ): List<LocalScraperResult> {
+        return try {
+            val code = lastResortScript() ?: return emptyList()
+            val results = withTimeoutOrNull(LAST_RESORT_TIMEOUT_MS) {
+                withContext(lastResortDispatcher) {
+                    runtime.executePlugin(
+                        code = code,
+                        tmdbId = tmdbId,
+                        mediaType = mediaType,
+                        season = season,
+                        episode = episode,
+                        scraperId = LAST_RESORT_ID,
+                        scraperSettings = emptyMap()
+                    )
+                }
+            }
+            if (results == null) Log.w(TAG, "Last-resort source timed out")
+            results.orEmpty().filter { it.url.isNotBlank() }.take(MAX_RESULT_ITEMS)
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "Last-resort source timed out")
+            emptyList()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Last-resort source failed: ${e.javaClass.simpleName}")
+            emptyList()
+        }
+    }
+
+    /** The script: the copy on the TV (refreshed in the background once a day), or downloaded now. */
+    private suspend fun lastResortScript(): String? = lastResortMutex.withLock {
+        val file = File(context.filesDir, LAST_RESORT_FILE)
+        val cached = lastResortCode ?: withContext(Dispatchers.IO) {
+            runCatching { file.takeIf { it.isFile }?.readText() }.getOrNull()
+        }?.takeIf { it.isNotBlank() }
+        if (cached != null) {
+            lastResortCode = cached
+            if (lastResortRefreshedAt == 0L) lastResortRefreshedAt = file.lastModified()
+            if (System.currentTimeMillis() - lastResortRefreshedAt > LAST_RESORT_REFRESH_MS) {
+                lastResortRefreshedAt = System.currentTimeMillis()
+                syncScope.launch { downloadLastResortScript(file)?.let { lastResortCode = it } }
+            }
+            return@withLock cached
+        }
+        withTimeoutOrNull(LAST_RESORT_DOWNLOAD_TIMEOUT_MS) { downloadLastResortScript(file) }
+            ?.also {
+                lastResortCode = it
+                lastResortRefreshedAt = System.currentTimeMillis()
+            }
+    }
+
+    private suspend fun downloadLastResortScript(file: File): String? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(LAST_RESORT_URL)
+                .header("User-Agent", "RCTV/1.0")
+                .build()
+            val code = httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Last-resort source download failed: ${response.code}")
+                    return@withContext null
+                }
+                val body = response.body ?: return@withContext null
+                if (body.contentLength() > MAX_RESPONSE_SIZE) return@withContext null
+                body.string()
+            }
+            if (code.isBlank() || code.length > MAX_RESPONSE_SIZE || !code.contains("getStreams")) {
+                return@withContext null
+            }
+            runCatching {
+                file.parentFile?.mkdirs()
+                val temp = File(file.parentFile, "${file.name}.tmp")
+                temp.writeText(code)
+                if (!temp.renameTo(file)) {
+                    file.writeText(code)
+                    temp.delete()
+                }
+            }
+            code
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Last-resort source download failed: ${e.javaClass.simpleName}")
+            null
+        }
+    }
+
     private suspend fun executeJsScraper(
         scraper: ScraperInfo,
         tmdbId: String,
@@ -1131,5 +1246,14 @@ class PluginManager @Inject constructor(
 
     companion object {
         private const val MAX_PARALLEL_DOWNLOADS = 10
+
+        // RCTV: the last-resort source (PlayIMDb, from NuvioPlugin/All-in-One-Nuvio).
+        private const val LAST_RESORT_ID = "rctv_last_resort"
+        private const val LAST_RESORT_URL =
+            "https://raw.githubusercontent.com/NuvioPlugin/All-in-One-Nuvio/main/providers/playimdb.js"
+        private const val LAST_RESORT_FILE = "rctv_last_resort/source.js"
+        private const val LAST_RESORT_TIMEOUT_MS = 25_000L
+        private const val LAST_RESORT_DOWNLOAD_TIMEOUT_MS = 10_000L
+        private const val LAST_RESORT_REFRESH_MS = 24 * 60 * 60 * 1000L
     }
 }

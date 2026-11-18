@@ -70,6 +70,13 @@ class PluginManager {
         episode: Int?
     ): List<LocalScraperResult> = emptyList()
 
+    suspend fun executeRctvLastResort(
+        tmdbId: String,
+        mediaType: String,
+        season: Int?,
+        episode: Int?
+    ): List<LocalScraperResult> = emptyList()
+
     suspend fun testScraper(scraperId: String): Result<Pair<List<LocalScraperResult>, TestDiagnostics>> =
         Result.failure(UnsupportedOperationException("Plugins are not available in this build."))
 }

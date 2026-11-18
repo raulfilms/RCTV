@@ -1,5 +1,6 @@
 package com.nuvio.tv.di
 
+import android.content.Context
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.plugin.PluginManager
 import com.nuvio.tv.core.plugin.PluginRuntime
@@ -11,6 +12,7 @@ import com.nuvio.tv.data.local.PluginDataStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
@@ -27,6 +29,7 @@ object PluginModule {
     @Provides
     @Singleton
     fun providePluginManager(
+        @ApplicationContext context: Context,
         dataStore: PluginDataStore,
         runtime: PluginRuntime,
         pluginSyncService: PluginSyncService,
@@ -36,7 +39,7 @@ object PluginModule {
         externalExtensionRunner: ExternalExtensionRunner
     ): PluginManager {
         return PluginManager(
-            dataStore, runtime, pluginSyncService, authManager,
+            context, dataStore, runtime, pluginSyncService, authManager,
             externalRepoParser, externalExtensionLoader, externalExtensionRunner
         )
     }

@@ -48,6 +48,11 @@ import javax.inject.Inject
 
 private const val TAG = "StreamRepositoryImpl"
 
+// RCTV: the app's last-resort source: shown as the app's own; how long the others get first.
+private const val LAST_RESORT_NAME = "RCTV"
+private const val LAST_RESORT_HEAD_START_MS = 1_500L
+private val LAST_RESORT_SOURCE_NAME = Regex("(?i)play\\s*-?\\s*imdb")
+
 class StreamRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
@@ -190,6 +195,18 @@ class StreamRepositoryImpl @Inject constructor(
                 val totalJobs = streamAddons.size + 1
                 val completedJobs = java.util.concurrent.atomic.AtomicInteger(0)
 
+                // RCTV (owner): the app's last-resort source, for when nothing else finds the title.
+                // If nothing has come in a moment it starts alongside the others, so it's ready the
+                // instant they all end empty; once anything is found, it stops.
+                val foundStreams = java.util.concurrent.atomic.AtomicBoolean(false)
+                val lastResort = async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                    findLastResortStreams(type, videoId, season, episode)
+                }
+                val lastResortHeadStart = launch {
+                    kotlinx.coroutines.delay(LAST_RESORT_HEAD_START_MS)
+                    if (!foundStreams.get()) lastResort.start()
+                }
+
                 // Launch addon jobs
                 streamAddons.forEach { addon ->
                     launch {
@@ -305,8 +322,24 @@ class StreamRepositoryImpl @Inject constructor(
                     val checkingResult = localDebridAvailabilityService.markChecking(listOf(result)).firstOrNull() ?: result
                     val checkedResult = localDebridAvailabilityService.annotateCachedAvailability(listOf(checkingResult)).firstOrNull() ?: checkingResult
                     mergePresentedResult(accumulatedResults, checkedResult, debridSettings)
+                    if (checkedResult.streams.isNotEmpty() && foundStreams.compareAndSet(false, true)) {
+                        lastResortHeadStart.cancel()
+                        lastResort.cancel()
+                    }
                     emit(NetworkResult.Success(accumulatedResults.toList()))
                     Log.d(TAG, "Emitted ${accumulatedResults.size} addon(s), latest: ${checkedResult.addonName} with ${checkedResult.streams.size} streams")
+                }
+
+                // RCTV: nothing found anywhere: the last-resort source's streams (often already in).
+                lastResortHeadStart.cancel()
+                if (!foundStreams.get()) {
+                    lastResort.await()?.let { fallback ->
+                        mergePresentedResult(accumulatedResults, fallback, debridSettings)
+                        emit(NetworkResult.Success(accumulatedResults.toList()))
+                        Log.d(TAG, "Emitted ${fallback.streams.size} last-resort streams")
+                    }
+                } else {
+                    lastResort.cancel()
                 }
             }
 
@@ -366,6 +399,85 @@ class StreamRepositoryImpl @Inject constructor(
         MessageDigest.getInstance("SHA-256")
             .digest(toByteArray(Charsets.UTF_8))
             .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
+    /**
+     * RCTV (owner): the app's built-in last-resort source (full build only), for a movie or a
+     * series episode. Shown under the app's own name: never the source's.
+     */
+    private suspend fun findLastResortStreams(
+        type: String,
+        videoId: String,
+        season: Int?,
+        episode: Int?
+    ): AddonStreams? {
+        return try {
+            val mediaType = when (type.lowercase()) {
+                "movie" -> "movie"
+                "series", "show" -> "tv"
+                else -> return null
+            }
+            val tmdbId = tmdbService.ensureTmdbId(videoId, type) ?: return null
+            val (pluginSeason, pluginEpisode) = resolvePluginSeasonEpisode(
+                videoId = videoId,
+                season = season,
+                episode = episode
+            )
+            if (mediaType == "tv" && (pluginSeason == null || pluginEpisode == null)) return null
+            val streams = pluginManager.executeRctvLastResort(
+                tmdbId = tmdbId,
+                mediaType = mediaType,
+                season = pluginSeason,
+                episode = pluginEpisode
+            ).map { it.toLastResortStream() }
+            if (streams.isEmpty()) null
+            else AddonStreams(addonName = LAST_RESORT_NAME, addonLogo = null, streams = streams)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "Last-resort search failed: ${e.javaClass.simpleName}")
+            null
+        }
+    }
+
+    private fun LocalScraperResult.toLastResortStream(): Stream {
+        val quality = quality?.withoutSourceName()?.takeIf { it.isNotBlank() }
+        val qualityLabel = quality ?: context.getString(com.nuvio.tv.R.string.stream_quality_unknown)
+        val cleanTitle = title.withoutSourceName().takeIf { it.isNotBlank() }
+        return Stream(
+            name = "$LAST_RESORT_NAME - $qualityLabel",
+            title = cleanTitle ?: qualityLabel,
+            url = url,
+            addonName = LAST_RESORT_NAME,
+            addonLogo = null,
+            description = listOfNotNull(
+                size?.takeIf { it.isNotBlank() },
+                language?.withoutSourceName()?.takeIf { it.isNotBlank() }
+            ).joinToString(" • ").takeIf { it.isNotBlank() },
+            behaviorHints = headers?.let { headers ->
+                StreamBehaviorHints(
+                    notWebReady = null,
+                    bingeGroup = null,
+                    countryWhitelist = null,
+                    proxyHeaders = ProxyHeaders(request = headers, response = null)
+                )
+            },
+            infoHash = null,
+            fileIdx = null,
+            ytId = null,
+            externalUrl = null,
+            quality = quality,
+            qualityValue = parseQualityValue(quality),
+            subtitles = subtitles
+        )
+    }
+
+    /** The source's own name never shows (it puts it in its titles). */
+    private fun String.withoutSourceName(): String =
+        replace(LAST_RESORT_SOURCE_NAME, "")
+            .replace(Regex("[\\p{So}\\uFE0F]"), " ")
+            .replace(Regex("\\s*\\|\\s*(\\|\\s*)+"), " | ")
+            .replace(Regex("\\s{2,}"), " ")
+            .trim()
+            .trim('|', '-', '•', ' ')
 
     private data class PluginRequest(
         val id: String,
