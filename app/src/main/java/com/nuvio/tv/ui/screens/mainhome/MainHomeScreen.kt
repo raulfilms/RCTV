@@ -253,8 +253,16 @@ fun MainHomeScreen(
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
     }
     // RCTV (owner, as YouTube TV): the Now Playing bar is only at the start of Home: moving down, it
-    // goes away (what plays is still heard); back at the top, it's there again.
-    LaunchedEffect(pageScrolled) { com.nuvio.tv.ui.components.NowPlayingBarScroll.pageScrolled = pageScrolled }
+    // goes away (what plays is still heard); back at the top, it's there again. Moved down past a
+    // little (not the nudge the page itself makes when the bar comes back and leaves it less room,
+    // which hid the bar again at the top).
+    val barHideOffsetPx = remember(density) { with(density) { NOW_PLAYING_BAR_HIDE_AFTER.roundToPx() } }
+    val pastBarStart by remember(barHideOffsetPx) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > barHideOffsetPx
+        }
+    }
+    LaunchedEffect(pastBarStart) { com.nuvio.tv.ui.components.NowPlayingBarScroll.pageScrolled = pastBarStart }
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose { com.nuvio.tv.ui.components.NowPlayingBarScroll.pageScrolled = false }
     }
@@ -818,3 +826,6 @@ private const val HOME_READY_MAX_MS = 20_000L
 
 /** At most this many cards in a row (as the other rows). */
 private const val ROW_SIZE = 20
+
+/** RCTV (owner): Home moved down past this hides the Now Playing bar (more than the bar's own height). */
+private val NOW_PLAYING_BAR_HIDE_AFTER = 96.dp
