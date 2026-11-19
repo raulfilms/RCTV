@@ -26,7 +26,8 @@ import javax.inject.Inject
 class SubtitleRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val addonRepository: AddonRepositoryImpl
+    private val addonRepository: AddonRepositoryImpl,
+    private val tmdbService: com.nuvio.tv.core.tmdb.TmdbService
 ) : SubtitleRepository {
 
     companion object {
@@ -56,12 +57,21 @@ class SubtitleRepositoryImpl @Inject constructor(
             return@withContext emptyList()
         }
 
-        // Filter addons that support subtitles resource
-        val subtitleAddons = addons.filter { addon ->
-            addon.resources.any { resource ->
-                isSubtitleResource(resource.name) && supportsType(addon, resource, requestType, id)
+        // Filter addons that support subtitles resource. RCTV: a title known by its TMDB id
+        // ("tmdb:188166") is asked of the subtitle servers that only take IMDb ids by its IMDb id.
+        val imdbId = imdbFormOf(type, id)
+        fun takes(addon: Addon, candidate: String) = addon.resources.any { resource ->
+            isSubtitleResource(resource.name) && supportsType(addon, resource, requestType, candidate)
+        }
+        val subtitleRequests = addons.mapNotNull { addon ->
+            when {
+                takes(addon, id) -> Triple(addon, id, videoId)
+                imdbId != null && takes(addon, imdbId) ->
+                    Triple(addon, imdbId, videoId?.let { imdbFormOf(type, it) } ?: videoId)
+                else -> null
             }
         }
+        val subtitleAddons = subtitleRequests.map { it.first }
         
         Log.d(TAG, "Found ${subtitleAddons.size} subtitle addons: ${subtitleAddons.map { it.name }}")
 
@@ -77,12 +87,12 @@ class SubtitleRepositoryImpl @Inject constructor(
 
         // Fetch subtitles from all addons in parallel and stream results immediately
         val result = supervisorScope {
-            subtitleAddons.map { addon ->
+            subtitleRequests.map { (addon, addonId, addonVideoId) ->
                 async {
                     val addonStartMs = System.currentTimeMillis()
                     val subtitles = try {
                         withTimeoutOrNull(PER_ADDON_TIMEOUT_MS) {
-                            fetchSubtitlesFromAddon(addon, type, id, videoId, videoHash, videoSize, filename)
+                            fetchSubtitlesFromAddon(addon, type, addonId, addonVideoId, videoHash, videoSize, filename)
                         }
                     } catch (e: CancellationException) {
                         throw e
@@ -123,6 +133,22 @@ class SubtitleRepositoryImpl @Inject constructor(
             "Subtitle fetch completed total=${result.size} fromAddons=${subtitleAddons.size} in ${System.currentTimeMillis() - startedAtMs}ms"
         )
         result
+    }
+
+    /** RCTV: a "tmdb:" id as an IMDb one ("tt…", with an episode's ":1:2"); null otherwise. */
+    private suspend fun imdbFormOf(type: String, value: String): String? {
+        if (!value.startsWith("tmdb:", ignoreCase = true)) return null
+        val rest = value.substring("tmdb:".length)
+        val tmdbId = rest.substringBefore(':').toIntOrNull() ?: return null
+        val tail = rest.substringAfter(':', "")
+        val imdb = try {
+            tmdbService.tmdbToImdb(tmdbId, type)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }?.takeIf { it.startsWith("tt") } ?: return null
+        return if (tail.isBlank()) imdb else "$imdb:$tail"
     }
 
     private fun canonicalSubtitleType(type: String): String {

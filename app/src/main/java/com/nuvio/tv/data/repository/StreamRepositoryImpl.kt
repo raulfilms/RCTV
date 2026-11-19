@@ -162,6 +162,26 @@ class StreamRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * RCTV: [videoId] as the servers that only take IMDb ids ask for it, when it's a TMDB id
+     * ("tmdb:188166" → "tt2359024", "tmdb:1399:1:2" → "tt0944947:1:2"); null when it isn't one, or
+     * TMDB doesn't know its IMDb id (or can't be reached).
+     */
+    private suspend fun imdbFormOf(type: String, videoId: String): String? {
+        if (!videoId.startsWith("tmdb:", ignoreCase = true)) return null
+        val rest = videoId.substring("tmdb:".length)
+        val tmdbId = rest.substringBefore(':').toIntOrNull() ?: return null
+        val tail = rest.substringAfter(':', "")
+        val imdb = try {
+            tmdbService.tmdbToImdb(tmdbId, type)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }?.takeIf { it.startsWith("tt") } ?: return null
+        return if (tail.isBlank()) imdb else "$imdb:$tail"
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun fetchStreamsFromAllSources(
         type: String,
@@ -175,10 +195,19 @@ class StreamRepositoryImpl @Inject constructor(
         emit(NetworkResult.Loading)
 
         try {
-            // Filter addons that support streams for this type and id
-            val streamAddons = addons.filter { addon ->
-                addon.supportsStreamResource(type, videoId)
+            // Filter addons that support streams for this type and id. RCTV (owner: "Blue Ruin" found
+            // only the last-resort sources): a title known by its TMDB id ("tmdb:188166", from the
+            // TMDB rows) is asked of the servers that only take IMDb ids (Torrentio, AIO Stream...)
+            // by its IMDb id ("tt2359024"; an episode "tt…:1:2").
+            val imdbVideoId = imdbFormOf(type, videoId)
+            val addonRequests = addons.mapNotNull { addon ->
+                when {
+                    addon.supportsStreamResource(type, videoId) -> addon to videoId
+                    imdbVideoId != null && addon.supportsStreamResource(type, imdbVideoId) -> addon to imdbVideoId
+                    else -> null
+                }
             }
+            val streamAddons = addonRequests.map { it.first }
 
             val attemptedAddonNames = streamAddons.map { it.displayName }
             val attemptedFailures = java.util.Collections.synchronizedList(
@@ -214,7 +243,7 @@ class StreamRepositoryImpl @Inject constructor(
                 }
 
                 // Launch addon jobs
-                streamAddons.forEach { addon ->
+                addonRequests.forEach { (addon, addonVideoId) ->
                     launch {
                         val startedAtMs = System.currentTimeMillis()
                         try {
@@ -222,7 +251,7 @@ class StreamRepositoryImpl @Inject constructor(
                             // one never holds the others' results; how each does is learned.
                             val timeoutMs = SmartScraperEnvironment.config.providerTimeoutSeconds * 1_000L
                             val streamsResult = withTimeoutOrNull(timeoutMs) {
-                                getStreamsFromAddon(addon, type, videoId)
+                                getStreamsFromAddon(addon, type, addonVideoId)
                             } ?: NetworkResult.Error(
                                 context.getString(com.nuvio.tv.R.string.stream_error_detail_addon_timeout)
                             )
