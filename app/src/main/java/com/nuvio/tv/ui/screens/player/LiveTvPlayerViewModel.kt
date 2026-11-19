@@ -439,6 +439,26 @@ class LiveTvPlayerViewModel @Inject constructor(
         return com.nuvio.tv.data.livetv.LiveVodTarget(match, imdb, logo = meta.logo)
     }
 
+    /**
+     * RCTV (owner): an episode chosen in the live player's Episodes: what plays it straight away from
+     * its sources (as any episode), or null when its series has no IMDb id (then its page opens).
+     */
+    suspend fun episodeToPlay(
+        match: LiveProgramMatch,
+        episode: com.nuvio.tv.data.livetv.LiveEpisode
+    ): com.nuvio.tv.data.livetv.LiveVodTarget? {
+        if (match.isMovie) return null
+        val onEpisode = match.copy(episode = episode)
+        val imdb = try {
+            liveProgramLibrary.imdbId(onEpisode)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        return com.nuvio.tv.data.livetv.LiveVodTarget(onEpisode, imdb)
+    }
+
     /** "Add to library": the program's movie, or its whole series. */
     fun addToLibrary() {
         val state = _program.value

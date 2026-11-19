@@ -557,16 +557,34 @@ fun PlayerScreen(
         // RCTV: on the episode airing, when it could be told.
         onOpenLiveTitle(match.itemId, match.itemType, match.episode?.season, match.episode?.episode)
     }
-    val openLiveEpisode: (com.nuvio.tv.data.livetv.LiveProgramMatch, com.nuvio.tv.data.livetv.LiveEpisode) -> Unit =
-        openLiveEpisode@{ match, episode ->
-            if (exitDispatched) return@openLiveEpisode
-            exitDispatched = true
-            viewModel.stopAndRelease()
-            onOpenLiveTitle(match.itemId, match.itemType, episode.season, episode.episode)
-        }
     // RCTV (owner): a title chosen in the live player's More to Watch: a movie plays straight away
     // (as any movie); a series' page opens (its page too for a movie TMDB can't place).
     var moreToWatchOpening by remember { mutableStateOf(false) }
+    // RCTV (owner): an episode chosen in the live player's Episodes plays straight away (Auto Stream,
+    // as any episode), without going to its page; its page opens only when it can't be placed.
+    val openLiveEpisode: (com.nuvio.tv.data.livetv.LiveProgramMatch, com.nuvio.tv.data.livetv.LiveEpisode) -> Unit =
+        openLiveEpisode@{ match, episode ->
+            if (exitDispatched || moreToWatchOpening) return@openLiveEpisode
+            moreToWatchOpening = true
+            liveScope.launch {
+                val target = try {
+                    liveTvViewModel.episodeToPlay(match, episode)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                moreToWatchOpening = false
+                if (exitDispatched) return@launch
+                exitDispatched = true
+                viewModel.stopAndRelease()
+                if (target != null) {
+                    onPlayMoreToWatch(target)
+                } else {
+                    onOpenLiveTitle(match.itemId, match.itemType, episode.season, episode.episode)
+                }
+            }
+        }
     val openMoreToWatch: (com.nuvio.tv.domain.model.MetaPreview) -> Unit = openMoreToWatch@{ meta ->
         if (exitDispatched || moreToWatchOpening) return@openMoreToWatch
         moreToWatchOpening = true
