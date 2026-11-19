@@ -6,8 +6,8 @@ import com.nuvio.tv.core.playback.PlaybackSession
 import com.nuvio.tv.data.livetv.LiveProgramLibrary
 
 /**
- * RCTV (owner): whether Back can leave this playback going while the app is browsed: it plays (or
- * is paused) with ExoPlayer, hasn't ended, has no error, and isn't the player's design preview.
+ * RCTV (owner): whether Back can leave this playback going while the app is browsed: it plays (not
+ * paused) with ExoPlayer, hasn't ended, has no error, and isn't the player's design preview.
  * The MPV engine keeps its picture in its own view, so it ends with the screen, as before.
  */
 internal fun canMinimizePlayback(
@@ -16,7 +16,11 @@ internal fun canMinimizePlayback(
     postPlayVisible: Boolean
 ): Boolean {
     val url = uiState.currentStreamUrl
+    // RCTV (owner): only what's playing goes on behind the app (Now Playing). Paused, it's left as
+    // it was: the player closes and the page shows as always (Continue Watching has it).
+    val playing = viewModel.exoPlayer?.playWhenReady == true
     return viewModel.exoPlayer != null &&
+        playing &&
         !viewModel.controller.isUsingMpvEngine() &&
         uiState.error == null &&
         !uiState.playbackEnded &&
