@@ -234,12 +234,14 @@ class LiveTvGuideLoader @Inject constructor(
                 continue
             }
             if (sources.isEmpty() || keyOf(sources) != current.key) continue
+            // RCTV (owner): nothing is asked of the provider while a channel or a video plays (its
+            // server keeps all it has for the picture: no extra calls beside the stream).
+            if (com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value) continue
             // RCTV (owner): a game or an event the provider just added (a fight, a PPV): the guide
             // is read again for it, without waiting for the hour (its small list of event channels
             // is asked each time; never the whole list).
             if (providerAddedEvents(sources)) newEventsWaiting = true
             if (!current.isStale() && !newEventsWaiting) continue
-            if (com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value) continue
             newEventsWaiting = false
             ensure(sources, force = true)
         }
