@@ -32,6 +32,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -72,8 +77,8 @@ private val Divider = Color.White.copy(alpha = 0.14f)
 /**
  * RCTV (game center, as YouTube TV): the panel beside the video while a live game plays: tabs
  * (Scores, Stats, Key plays) over a list of cards, kept up to date by [LiveGameCenterViewModel].
- * Up and Down move between the cards (and up to the tabs); Left and Right change tabs; Back (in the
- * player) closes it. Only the cards on screen are built, and only they load their pictures.
+ * It opens on the tabs; Up and Down move between the cards (and up to the tabs); Left and Right
+ * change tabs at once, from a card too; Back (in the player) closes it. Only the cards on screen are built, and only they load their pictures.
  */
 @Composable
 fun LiveGameCenterPanel(
@@ -85,6 +90,14 @@ fun LiveGameCenterPanel(
     val tab = savedTab.takeIf { it in SHOWN_TABS } ?: GameCenterTab.SCORES
     val tabFocus = remember { GameCenterTab.entries.associateWith { FocusRequester() } }
     val listEntry = remember { FocusRequester() }
+    // RCTV (owner, as YouTube TV): Left and Right change tabs at once, from the tabs or from a card
+    // (focus goes up to the tab chosen); at either end they do what they did.
+    fun switchTab(step: Int): Boolean {
+        val next = SHOWN_TABS.getOrNull(SHOWN_TABS.indexOf(tab) + step) ?: return false
+        savedTab = next
+        runCatching { tabFocus.getValue(next).requestFocus() }
+        return true
+    }
 
     Column(modifier = modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -107,7 +120,16 @@ fun LiveGameCenterPanel(
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionLeft -> switchTab(-1)
+                        Key.DirectionRight -> switchTab(1)
+                        else -> false
+                    }
+                }
         ) {
             when (tab) {
                 GameCenterTab.SCORES -> scoresItems(state, listEntry)
@@ -117,11 +139,12 @@ fun LiveGameCenterPanel(
         }
     }
 
-    // Opened: the first card of the tab (or the tab, while there are none yet).
+    // Opened: on the tabs (as YouTube TV), so Left and Right change them at once; Down goes into
+    // the cards (or the first card, when the tabs can't take focus yet).
     LaunchedEffect(Unit) {
         delay(FOCUS_DELAY_MS)
-        val onCard = runCatching { listEntry.requestFocus() }.isSuccess
-        if (!onCard) runCatching { tabFocus.getValue(tab).requestFocus() }
+        val onTab = runCatching { tabFocus.getValue(tab).requestFocus() }.isSuccess
+        if (!onTab) runCatching { listEntry.requestFocus() }
     }
 }
 
