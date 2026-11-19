@@ -224,9 +224,8 @@ class LiveTvGuideLoader @Inject constructor(
         while (true) {
             delay(KEEP_FRESH_CHECK_MS)
             com.nuvio.tv.core.runtime.AppForeground.awaitForeground()
-            if (com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value) continue
             val current = _guide.value ?: continue
-            if (current.isPreview || !current.isUsable() || !current.isStale()) continue
+            if (current.isPreview || !current.isUsable()) continue
             val sources = try {
                 liveTvDataStore.sources.first().filter { it.enabled }
             } catch (e: CancellationException) {
@@ -235,8 +234,33 @@ class LiveTvGuideLoader @Inject constructor(
                 continue
             }
             if (sources.isEmpty() || keyOf(sources) != current.key) continue
-            ensure(sources)
+            // RCTV (owner): a game or an event the provider just added (a fight, a PPV): the guide
+            // is read again for it, without waiting for the hour (its small list of event channels
+            // is asked each time; never the whole list).
+            if (providerAddedEvents(sources)) newEventsWaiting = true
+            if (!current.isStale() && !newEventsWaiting) continue
+            if (com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value) continue
+            newEventsWaiting = false
+            ensure(sources, force = true)
         }
+    }
+
+    /** RCTV: each Xtream source's event channels as last seen (to know when the provider adds one). */
+    private val knownEventChannels = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
+    /** RCTV: the provider added a game or an event; the guide is read again as soon as nothing plays. */
+    @Volatile private var newEventsWaiting = false
+
+    /** Whether any Xtream source has event channels it didn't have the last time it was asked. */
+    private fun providerAddedEvents(sources: List<LiveTvSource>): Boolean {
+        var added = false
+        sources.forEach { source ->
+            val connection = source.connection as? LiveTvConnection.Xtream ?: return@forEach
+            val now = xtreamClient.eventChannelIds(connection) ?: return@forEach
+            val before = knownEventChannels.put(source.id, now)
+            if (before != null && (now - before).isNotEmpty()) added = true
+        }
+        return added
     }
 
     /**
@@ -851,10 +875,11 @@ class LiveTvGuideLoader @Inject constructor(
         private const val EPG_WINDOW_AHEAD_MS = 36L * 60 * 60 * 1000
         /**
          * A guide this old is loaded again in the background (the one loaded still shows). RCTV:
-         * every 3 hours (owner: the provider's new channels during the day; it was 6, and 2 before
-         * that): never while a video plays (reading the provider's huge guide could slow the TV).
+         * every hour (owner: the provider's new games and events during the day; it was 3, 6 and 2
+         * before), and sooner when the provider adds an event: never while a video plays (reading
+         * the provider's huge guide could slow the TV).
          */
-        private const val REFRESH_AFTER_MS = 3L * 60 * 60 * 1000
+        private const val REFRESH_AFTER_MS = 60L * 60 * 1000
         /** How often the app checks whether the guide is due ([keepFresh]). */
         private const val KEEP_FRESH_CHECK_MS = 10L * 60 * 1000
         /** How long after the app starts the guide starts loading (Home first). */

@@ -95,6 +95,55 @@ class XtreamClient @Inject constructor(
     }
 
     /**
+     * RCTV (owner): the channels in the provider's event categories (PPV, events, fights, the
+     * leagues' games), their ids only: a small list asked every few minutes to know when the
+     * provider adds a game or an event (the guide is then read again). Never the whole channel list.
+     * Null when the provider couldn't be asked (nothing is decided on it).
+     */
+    fun eventChannelIds(connection: LiveTvConnection.Xtream): Set<String>? = runCatching {
+        val server = normalizedServerUrl(connection.serverUrl)
+        val user = connection.username.trim()
+        val pass = connection.password.trim()
+        if (user.isBlank() || pass.isBlank()) return null
+        val categories = fetchCategoryNames(server, user, pass, "get_live_categories")
+        if (categories.isEmpty()) return null
+        val ids = HashSet<String>()
+        categories.filterValues { EVENT_CATEGORY.containsMatchIn(it) }.keys.take(MAX_EVENT_CATEGORIES).forEach { category ->
+            val url = playerApiUrl(server, user, pass, "get_live_streams").newBuilder()
+                .addQueryParameter("category_id", category)
+                .build()
+            clientFor(url).newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) throw XtreamException("HTTP ${response.code}")
+                val body = response.body ?: throw XtreamException("Empty response")
+                android.util.JsonReader(body.charStream()).use { reader ->
+                    if (reader.peek() != android.util.JsonToken.BEGIN_ARRAY) {
+                        reader.skipValue()
+                        return@use
+                    }
+                    reader.beginArray()
+                    while (reader.hasNext()) {
+                        if (reader.peek() != android.util.JsonToken.BEGIN_OBJECT) {
+                            reader.skipValue()
+                            continue
+                        }
+                        reader.beginObject()
+                        while (reader.hasNext()) {
+                            if (reader.nextName() == "stream_id") {
+                                reader.textOrNull()?.trim()?.removeSuffix(".0")?.takeIf { it.isNotBlank() }?.let(ids::add)
+                            } else {
+                                reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+                    }
+                    reader.endArray()
+                }
+            }
+        }
+        ids
+    }.getOrNull()
+
+    /**
      * RCTV: the live format the account may play: HLS (m3u8) when it's allowed or not said, else
      * MPEG-TS (an account that only allows "ts" gets nothing from an .m3u8 address).
      */
@@ -563,6 +612,14 @@ class XtreamClient @Inject constructor(
         const val MAX_ARCHIVE_DAYS = 30
         const val MAX_PROGRAM_MINUTES = 24 * 60
         const val MAX_CATCH_UP_PROGRAMS = 200
+        /** RCTV: the provider's categories where its games and events come (their names). */
+        private val EVENT_CATEGORY = Regex(
+            "ppv|pay ?per ?view|event|fight|ufc|boxing|\\bbox\\b|wwe|aew|nfl|nba|wnba|mlb|nhl|ncaa|mls|" +
+                "league pass|game pass|sunday ticket|espn\\+|dazn|flo ?sports|match|games?\\b",
+            RegexOption.IGNORE_CASE
+        )
+        /** At most this many of those categories are asked each time. */
+        private const val MAX_EVENT_CATEGORIES = 16
         /** A channel's recordings are read again after this long. */
         const val CATCH_UP_CACHE_MS = 5L * 60 * 1000
         const val CATCH_UP_CACHE_SIZE = 16
