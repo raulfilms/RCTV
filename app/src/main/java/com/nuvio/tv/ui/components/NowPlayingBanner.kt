@@ -64,7 +64,8 @@ object NowPlayingBarScroll {
  * bar with what plays behind it (darkened, and only inside the bar: the page below never shows it),
  * the channel's logo at the left and what's on in the middle. Up reaches
  * the name (it turns white, as YouTube TV's); OK, or Play on the remote, opens the full player again
- * on the same playback (nothing restarts). Down goes back to the page. Moving down Home hides it
+ * on the same playback (nothing restarts); OK held closes it (the bar goes away). Down goes back
+ * to the page. Moving down Home hides it
  * ([hidden]). It counts as this TV playing for RCTV Control, as the player did.
  */
 @Composable
@@ -103,6 +104,12 @@ fun NowPlayingBannerHost(
             nowPlaying = current,
             player = player,
             onClick = { PlaybackSession.resume(navController) },
+            // RCTV (owner): OK held on the name closes what plays (where it was is kept for
+            // Continue Watching) and the bar goes away; focus goes back to the page first.
+            onLongClick = {
+                onBackToPage()
+                PlaybackSession.stopMinimized()
+            },
             // RCTV (owner): never a dead end: Down goes back to the page (where it was), as do Left
             // and Right when nothing is beside the name.
             nameModifier = Modifier.onPreviewKeyEvent { event ->
@@ -133,6 +140,7 @@ private fun NowPlayingBar(
     nowPlaying: PlaybackSession.NowPlaying,
     player: androidx.media3.common.Player?,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     nameModifier: Modifier,
     modifier: Modifier = Modifier
 ) {
@@ -184,6 +192,7 @@ private fun NowPlayingBar(
         val shape = RoundedCornerShape(50)
         Surface(
             onClick = onClick,
+            onLongClick = onLongClick,
             modifier = nameModifier
                 .align(Alignment.Center)
                 .height(38.dp)
