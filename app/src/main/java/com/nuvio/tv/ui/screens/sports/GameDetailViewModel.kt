@@ -13,6 +13,7 @@ import com.nuvio.tv.domain.model.SportsEventStatus
 import com.nuvio.tv.domain.model.SportsGameStat
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,6 +110,7 @@ class GameDetailViewModel @Inject constructor(
         val parsed = EspnSportsClient.parseEventId(event.id)
         if (parsed == null) {
             _uiState.update { it.copy(isLoadingStats = false, stats = emptyList()) }
+            prefetchRecap()
             return
         }
         if (event.isGolf()) {
@@ -163,6 +165,7 @@ class GameDetailViewModel @Inject constructor(
             }
             homeAliases = summary?.homeTeamAliases.orEmpty()
             awayAliases = summary?.awayTeamAliases.orEmpty()
+            prefetchRecap()
             _uiState.update {
                 it.copy(
                     isLoadingStats = false,
@@ -182,62 +185,95 @@ class GameDetailViewModel @Inject constructor(
      */
     fun watchRecap() {
         if (recapJob?.isActive == true) return
+        // RCTV (owner): found while the page was open: it plays at once ("pam"), as if recorded.
+        val ready = recapFound?.takeIf { it.first.isNotEmpty() }
+        if (ready != null) {
+            recapCandidates = ready.first
+            recapAt = ready.second
+            showRecapCandidate()
+            return
+        }
         _uiState.update { it.copy(recap = GameRecapState(isLoading = true)) }
         recapJob = viewModelScope.launch {
-            val game = event.copy(
-                homeTeamAliases = (event.homeTeamAliases + homeAliases).distinct(),
-                awayTeamAliases = (event.awayTeamAliases + awayAliases).distinct()
-            )
-            val now = System.currentTimeMillis()
-            val found = ArrayList<com.nuvio.tv.data.trailer.YouTubeSearchResult>()
-            val spanish = SportsRecapPicker.isSpanish(game)
-            val week = _uiState.value.week
-            // RCTV (owner's list): a league with its own channel (NBA, NFL, LaLiga...) only from there:
-            // its newest uploads first (a game that just ended), then a search of that channel.
-            val official = OfficialRecapChannels.of(game)
-            if (official != null) {
-                val daysSinceGame = game.startTimeMs?.let { (now - it) / 86_400_000.0 }
-                if (daysSinceGame == null || daysSinceGame <= RECAP_IN_LATEST_DAYS) {
-                    val latest = runCatching { youTubeSearch.latestOfChannel(official.handle) }.getOrDefault(emptyList())
-                    ensureActive() // Closed meanwhile.
-                    found += SportsRecapPicker.pick(latest, game, now, week = week, channel = official)
-                }
-                if (found.isEmpty()) {
-                    for (query in SportsRecapPicker.channelQueriesFor(game, official)) {
-                        val results = runCatching {
-                            youTubeSearch.searchChannel(query, official.handle, spanish = official.spanish)
-                        }.getOrDefault(emptyList())
-                        ensureActive()
-                        found += SportsRecapPicker.pick(results, game, now, week = week, channel = official)
-                        if (found.isNotEmpty()) break
-                    }
-                }
-            } else {
-                for (query in SportsRecapPicker.queriesFor(game)) {
-                    val results = runCatching { youTubeSearch.search(query, spanish = spanish) }.getOrDefault(emptyList())
-                    ensureActive() // Closed meanwhile.
-                    found += SportsRecapPicker.pick(results, game, now, week = week)
-                        .filter { candidate -> found.none { it.videoId == candidate.videoId } }
+            // Still being found: waited for; none found earlier (it may have come out since): found now.
+            val pending = recapLookup?.takeIf { it.isActive }
+            val found = pending?.let { runCatching { it.await() }.getOrNull() }?.takeIf { it.first.isNotEmpty() }
+                ?: findRecap().also { recapFound = it }
+            recapCandidates = found.first
+            recapAt = found.second
+            showRecapCandidate()
+        }
+    }
+
+    /**
+     * RCTV (owner: Watch Recap at once): a game that's over has its recap looked for as soon as its
+     * page opens (its teams' full names first), so pressing Watch Recap plays it straight away.
+     */
+    private var recapLookup: kotlinx.coroutines.Deferred<Pair<List<com.nuvio.tv.data.trailer.YouTubeSearchResult>, Int>>? = null
+
+    /** What [recapLookup] found: the recaps, and the first one to play. */
+    @Volatile private var recapFound: Pair<List<com.nuvio.tv.data.trailer.YouTubeSearchResult>, Int>? = null
+
+    private fun prefetchRecap() {
+        if (!isOver || recapLookup != null) return
+        recapLookup = viewModelScope.async { findRecap().also { recapFound = it } }
+    }
+
+    /**
+     * The game's highlights on YouTube (both teams, "Highlights", after the game), the likeliest
+     * first, and the first of them that isn't a Short (vertical).
+     */
+    private suspend fun findRecap(): Pair<List<com.nuvio.tv.data.trailer.YouTubeSearchResult>, Int> {
+        val game = event.copy(
+            homeTeamAliases = (event.homeTeamAliases + homeAliases).distinct(),
+            awayTeamAliases = (event.awayTeamAliases + awayAliases).distinct()
+        )
+        val now = System.currentTimeMillis()
+        val found = ArrayList<com.nuvio.tv.data.trailer.YouTubeSearchResult>()
+        val spanish = SportsRecapPicker.isSpanish(game)
+        val week = _uiState.value.week
+        // RCTV (owner's list): a league with its own channel (NBA, NFL, LaLiga...) only from there:
+        // its newest uploads first (a game that just ended), then a search of that channel.
+        val official = OfficialRecapChannels.of(game)
+        if (official != null) {
+            val daysSinceGame = game.startTimeMs?.let { (now - it) / 86_400_000.0 }
+            if (daysSinceGame == null || daysSinceGame <= RECAP_IN_LATEST_DAYS) {
+                val latest = runCatching { youTubeSearch.latestOfChannel(official.handle) }.getOrDefault(emptyList())
+                ensureActiveRecap() // Closed meanwhile.
+                found += SportsRecapPicker.pick(latest, game, now, week = week, channel = official)
+            }
+            if (found.isEmpty()) {
+                for (query in SportsRecapPicker.channelQueriesFor(game, official)) {
+                    val results = runCatching {
+                        youTubeSearch.searchChannel(query, official.handle, spanish = official.spanish)
+                    }.getOrDefault(emptyList())
+                    ensureActiveRecap()
+                    found += SportsRecapPicker.pick(results, game, now, week = week, channel = official)
                     if (found.isNotEmpty()) break
                 }
             }
-            // RCTV Smart Player: the likeliest one, in YouTube's official player, inside RCTV. One its
-            // owner keeps off other sites gives its place to the next one (never the YouTube app).
-            recapCandidates = found.distinctBy { it.videoId }
-            // RCTV (owner's rule): always 16:9: a vertical Short gives its place to the next one.
-            recapAt = firstHorizontalFrom(0)
-            showRecapCandidate()
+        } else {
+            for (query in SportsRecapPicker.queriesFor(game)) {
+                val results = runCatching { youTubeSearch.search(query, spanish = spanish) }.getOrDefault(emptyList())
+                ensureActiveRecap() // Closed meanwhile.
+                found += SportsRecapPicker.pick(results, game, now, week = week)
+                    .filter { candidate -> found.none { it.videoId == candidate.videoId } }
+                if (found.isNotEmpty()) break
+            }
         }
+        val candidates = found.distinctBy { it.videoId }
+        // RCTV (owner's rule): always 16:9: a vertical Short gives its place to the next one.
+        return candidates to firstHorizontalFrom(candidates, 0)
     }
 
     /**
      * RCTV: from [start], the first recap that YouTube doesn't say is a Short (vertical). One YouTube
      * says nothing about is kept (a recap from an official channel, not a Short in its search).
      */
-    private suspend fun firstHorizontalFrom(start: Int): Int {
+    private suspend fun firstHorizontalFrom(candidates: List<com.nuvio.tv.data.trailer.YouTubeSearchResult>, start: Int): Int {
         var index = start
-        while (index < recapCandidates.size) {
-            val short = runCatching { youTubeSearch.isShort(recapCandidates[index].videoId) }.getOrNull()
+        while (index < candidates.size) {
+            val short = runCatching { youTubeSearch.isShort(candidates[index].videoId) }.getOrNull()
             ensureActiveRecap()
             if (short != true) return index
             index++
@@ -269,7 +305,9 @@ class GameDetailViewModel @Inject constructor(
         if (_uiState.value.recap == null) return
         if (recapJob?.isActive == true) return
         recapJob = viewModelScope.launch {
-            recapAt = firstHorizontalFrom(recapAt + 1)
+            recapAt = firstHorizontalFrom(recapCandidates, recapAt + 1)
+            // Next time it opens on this one (the one before can't play here).
+            recapFound = recapCandidates to recapAt
             showRecapCandidate()
         }
     }
