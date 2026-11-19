@@ -2191,9 +2191,26 @@ fun PlayerScreen(
             SeekOverlayHost(viewModel = viewModel)
         }
 
-        // Episodes/streams side panel (slides in from right)
+        // RCTV (owner, as the live player's Episodes): the series' episodes in a row at the bottom
+        // of the picture (the side panel stays only for an episode's sources).
         AnimatedVisibility(
-            visible = uiState.showEpisodesPanel && uiState.error == null,
+            visible = uiState.showEpisodesPanel && !uiState.showEpisodeStreams && uiState.error == null,
+            enter = slideInVertically(animationSpec = tween(220)) { it / 3 } + fadeIn(animationSpec = tween(180)),
+            exit = slideOutVertically(animationSpec = tween(180)) { it / 3 } + fadeOut(animationSpec = tween(150))
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                EpisodesBottomRow(
+                    uiState = uiState,
+                    onSeasonSelected = { viewModel.onEvent(PlayerEvent.OnEpisodeSeasonSelected(it)) },
+                    onEpisodeSelected = { viewModel.onEvent(PlayerEvent.OnEpisodeSelected(it)) },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
+        }
+
+        // Episodes/streams side panel (slides in from right): an episode's sources only.
+        AnimatedVisibility(
+            visible = uiState.showEpisodesPanel && uiState.showEpisodeStreams && uiState.error == null,
             enter = fadeIn(animationSpec = tween(120)),
             exit = fadeOut(animationSpec = tween(120))
         ) {
@@ -2207,7 +2224,7 @@ fun PlayerScreen(
 
         // Panel itself (slides in from right)
         AnimatedVisibility(
-            visible = uiState.showEpisodesPanel && uiState.error == null,
+            visible = uiState.showEpisodesPanel && uiState.showEpisodeStreams && uiState.error == null,
             enter = slideInHorizontally(
                 animationSpec = tween(220),
                 initialOffsetX = { it }
