@@ -31,24 +31,40 @@ internal data class RecapChannel(
     /** A title with this first (NBC Sports' "Extended Highlights" for the Premier League). */
     val preferred: String? = null,
     /** Any video of the game there will do (Banana Ball's), not only one called highlights. */
-    val anyVideo: Boolean = false
-)
+    val anyVideo: Boolean = false,
+    /**
+     * RCTV (owner's rule: official recaps only): words the channel's own name has ("nba", "nbc
+     * sports"): a video said to be this channel's but under another name is left out.
+     */
+    val names: List<String> = emptyList()
+) {
+    /** Whether [result] is this channel's: its handle, and its name when the search gives one. */
+    fun owns(result: com.nuvio.tv.data.trailer.YouTubeSearchResult): Boolean {
+        if (!result.channelHandle.equals(handle, ignoreCase = true)) return false
+        val name = result.channel?.let(SportsGameChannels::normalize)?.takeIf { it.isNotBlank() } ?: return true
+        return names.isEmpty() || names.any { " $name ".contains(" $it ") }
+    }
+}
 
 internal object OfficialRecapChannels {
 
     private val BY_LEAGUE: Map<String, RecapChannel> = mapOf(
-        "soccer:esp.1" to RecapChannel("@LaLiga", spanish = true, words = "resumen"),
-        "soccer:eng.1" to RecapChannel("@NBCSports", spanish = false, words = "extended highlights", preferred = "extended"),
-        "soccer:ger.1" to RecapChannel("@bundesliga", spanish = false, words = "highlights"),
-        "soccer:ita.1" to RecapChannel("@seriea", spanish = false, words = "highlights"),
-        "soccer:usa.1" to RecapChannel("@mls", spanish = false, words = "highlights"),
-        "soccer:uefa.champions" to RecapChannel("@tudn_usa", spanish = true, words = "resumen"),
-        "hockey:nhl" to RecapChannel("@NHL", spanish = false, words = "highlights"),
-        "basketball:wnba" to RecapChannel("@WNBA", spanish = false, words = "highlights"),
-        "baseball:mlb" to RecapChannel("@MLB", spanish = false, words = "highlights"),
-        "football:nfl" to RecapChannel("@NFL", spanish = false, words = "highlights"),
-        "basketball:nba" to RecapChannel("@NBA", spanish = false, words = "highlights"),
-        BananaBallSource.LEAGUE_ID to RecapChannel("@officialbananaball", spanish = false, words = "highlights", anyVideo = true)
+        "soccer:esp.1" to RecapChannel("@LaLiga", spanish = true, words = "resumen", names = listOf("laliga", "la liga")),
+        "soccer:eng.1" to RecapChannel(
+            "@NBCSports", spanish = false, words = "extended highlights", preferred = "extended", names = listOf("nbc sports")
+        ),
+        "soccer:ger.1" to RecapChannel("@bundesliga", spanish = false, words = "highlights", names = listOf("bundesliga")),
+        "soccer:ita.1" to RecapChannel("@seriea", spanish = false, words = "highlights", names = listOf("serie a", "seriea")),
+        "soccer:usa.1" to RecapChannel("@mls", spanish = false, words = "highlights", names = listOf("major league soccer", "mls")),
+        "soccer:uefa.champions" to RecapChannel("@tudn_usa", spanish = true, words = "resumen", names = listOf("tudn")),
+        "hockey:nhl" to RecapChannel("@NHL", spanish = false, words = "highlights", names = listOf("nhl")),
+        "basketball:wnba" to RecapChannel("@WNBA", spanish = false, words = "highlights", names = listOf("wnba")),
+        "baseball:mlb" to RecapChannel("@MLB", spanish = false, words = "highlights", names = listOf("mlb")),
+        "football:nfl" to RecapChannel("@NFL", spanish = false, words = "highlights", names = listOf("nfl")),
+        "basketball:nba" to RecapChannel("@NBA", spanish = false, words = "highlights", names = listOf("nba")),
+        BananaBallSource.LEAGUE_ID to RecapChannel(
+            "@officialbananaball", spanish = false, words = "highlights", anyVideo = true, names = listOf("banana", "bananas")
+        )
     )
 
     /** College football, basketball and baseball: the official highlights only (see [SportsRecapPicker]). */
@@ -104,6 +120,9 @@ internal object SportsRecapPicker {
     /** "NBA 2K26", "FC 26", "Madden 27": video games. */
     private val VIDEO_GAME = Regex("""\b(2k\d{0,2}|fc \d{2}|madden \d{2})\b""")
 
+    /** RCTV: a game's whole recap, not a clip of it. */
+    private val FULL_RECAP_WORDS = listOf("full game highlights", "extended highlights", "full highlights", "resumen completo", "resumen extendido")
+
     private val HIGHLIGHT_WORDS = listOf(
         "highlights", "highlight", "recap", "resumen", "resumenes", "goles", "all goals", "extended highlights",
         "mejores jugadas", "lo mejor"
@@ -154,9 +173,24 @@ internal object SportsRecapPicker {
         "compilation", "compilations", "replay", "replays", "goals", "goles", "videos", "zone", "hub"
     )
 
-    /** RCTV: a channel named as an official one ("ESPN", "ESPN Deportes", "TUDN USA"), not one that only mentions it. */
-    private fun isOfficialName(channel: String): Boolean =
-        OFFICIAL_CHANNELS.any { channel == it || channel.startsWith("$it ") }
+    /**
+     * RCTV (owner's rule: official recaps only): a channel named exactly as an official one ("ESPN",
+     * "ESPN Deportes", "TUDN USA"), never one that only starts with it ("NBA Central", "NFL Daily").
+     */
+    private fun isOfficialName(channel: String): Boolean = channel in OFFICIAL_NAMES
+
+    /** The official channels' names, and their official variants (a network's other channels). */
+    private val OFFICIAL_NAMES: Set<String> by lazy {
+        (OFFICIAL_CHANNELS + listOf(
+            "espn deportes", "espn fc", "espn mx", "espn fc latam", "espn ringside", "espn mma", "espn college football",
+            "fox deportes", "fox sports mexico", "tudn usa", "tudn mexico", "nbc sports soccer", "cbs sports hq",
+            "nfl network", "nfl throwback", "nba on tnt", "nba on espn", "mlb network", "nhl on tnt", "nhl on sportsnet",
+            "sportsnet", "tsn", "sky sports", "sky sports football", "sky sports premier league", "sky sports f1",
+            "bein sports usa", "bein sports xtra", "dazn football", "dazn usa", "telemundo deportes", "univision deportes",
+            "liga mx", "ufc espanol", "pbc on prime", "top rank boxing", "lidom", "lidom oficial", "liga de beisbol dominicano",
+            "lbprc", "liga de beisbol profesional roberto clemente", "mlb en espanol"
+        )).map { SportsGameChannels.normalize(it) }.toSet()
+    }
 
     /** Words too common to stand for a team on their own ("City", "United"). */
     private val GENERIC_WORDS = setOf(
@@ -349,7 +383,7 @@ internal object SportsRecapPicker {
      */
     fun leagueHighlights(results: List<YouTubeSearchResult>, channel: RecapChannel?): List<YouTubeSearchResult> =
         results.asSequence()
-            .filter { channel == null || it.channelHandle == null || it.channelHandle.equals(channel.handle, ignoreCase = true) }
+            .filter { channel == null || channel.owns(it) }
             .filter { result ->
                 val seconds = result.durationSeconds ?: return@filter false
                 if (result.isShort || isShortTitle(result.title)) return@filter false
@@ -396,7 +430,7 @@ internal object SportsRecapPicker {
         )
         val college = channel == null && OfficialRecapChannels.isCollege(event)
         return results
-            .filter { channel == null || it.channelHandle.equals(channel.handle, ignoreCase = true) }
+            .filter { channel == null || channel.owns(it) }
             .mapNotNull { result -> scoreOf(result, home, away, daysSinceGame, spanish, game, channel, college)?.let { result to it } }
             .sortedByDescending { it.second }
             .map { it.first }
@@ -427,7 +461,9 @@ internal object SportsRecapPicker {
         if (!homeIn || !awayIn) return null
         val highlights = HIGHLIGHT_WORDS.any { has(title, it) }
         val fanChannel = FAN_CHANNEL_WORDS.any { has(channel, it) }
-        val teamChannel = !fanChannel && (home.any { has(channel, it) } || away.any { has(channel, it) })
+        // RCTV (owner's rule): a team's own channel is named as the team ("Los Angeles Lakers",
+        // "Lakers"), not a fans' one that only has its name in it ("Lakers Nation").
+        val teamChannel = !fanChannel && (home + away).any { channel == it || channel == "$it official" || channel == "official $it" }
         val official = when {
             // The league's own channel (only its videos get here).
             recapChannel != null -> true
@@ -478,10 +514,13 @@ internal object SportsRecapPicker {
         recapChannel?.preferred?.let { if (has(title, it)) score += 30 }
         score += when {
             seconds < 45 -> -30
-            seconds <= 25 * 60 -> 10
+            // RCTV (owner): the full recap before a short clip of the game.
+            seconds < 4 * 60 -> 0
+            seconds <= 25 * 60 -> 15
             seconds <= 40 * 60 -> -5
             else -> -40
         }
+        if (FULL_RECAP_WORDS.any { has(title, it) }) score += 25
         // Out soon after the game: the nearest to it first (two games days apart).
         if (age != null && daysSinceGame != null) {
             val expected = (daysSinceGame - HOURS_TO_HIGHLIGHTS / 24.0).coerceAtLeast(0.0)
