@@ -72,11 +72,17 @@ internal fun PlayerRuntimeController.isSidecarAddonSubtitleActive(): Boolean {
 
 internal fun PlayerRuntimeController.bindExoSubtitleView(subtitleView: SubtitleView?) {
     exoSubtitleViewRef = subtitleView?.let { WeakReference(it) }
-    if (subtitleView == null && activeSidecarSubtitleKey != null) {
+    val activeKey = activeSidecarSubtitleKey
+    if (subtitleView == null || activeKey == null) {
         // View unbound while sidecar still active; ticker will no-op until rebound.
         return
     }
-    if (activeSidecarSubtitleKey != null && sidecarTimedCues.isNotEmpty()) {
+    // RCTV (owner): a new picture for the same playback (the player opened again from Now Playing
+    // after browsing the app): the subtitle chosen goes on showing there at once. The new view
+    // didn't carry the subtitle's mark, so every cue was skipped and the subtitles were gone.
+    subtitleView.setTag(R.id.player_view_sidecar_generation_tag, activeKey)
+    lastSidecarCueSignature = null
+    if (sidecarTimedCues.isNotEmpty()) {
         renderSidecarCuesAtCurrentPosition()
     }
 }
