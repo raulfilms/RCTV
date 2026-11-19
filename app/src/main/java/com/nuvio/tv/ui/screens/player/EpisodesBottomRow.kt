@@ -326,8 +326,10 @@ private fun EpisodeTile(
             overflow = TextOverflow.Ellipsis
         )
         if (date != null) {
+            // When it aired, under its name (as the series' page: "Aired: November 17, 2026").
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = date,
+                text = stringResource(R.string.episodes_aired_on, date),
                 color = Color.White.copy(alpha = 0.65f),
                 fontSize = 11.sp,
                 maxLines = 1

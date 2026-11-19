@@ -1609,12 +1609,12 @@ private fun EpisodesContent(
                         overflow = TextOverflow.Ellipsis
                     )
                     episode.airDate?.let { date ->
+                        // RCTV (owner): when it aired, under its name ("Aired: November 17, 2026").
+                        val shown = runCatching { com.nuvio.tv.ui.screens.detail.formatReleaseDate(date) }
+                            .getOrNull()?.takeIf { it.isNotBlank() } ?: date
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = runCatching {
-                                LocalDate.parse(date).format(
-                                    java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
-                                )
-                            }.getOrDefault(date),
+                            text = stringResource(R.string.episodes_aired_on, shown),
                             color = Color.White.copy(alpha = 0.65f),
                             fontSize = 10.sp,
                             maxLines = 1
