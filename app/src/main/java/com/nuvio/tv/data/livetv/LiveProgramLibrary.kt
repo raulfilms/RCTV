@@ -134,7 +134,7 @@ class LiveProgramLibrary @Inject constructor(
      * generic one ("News", "Paid Programming"). Throws when TMDB can't be reached (nothing is
      * remembered then, so it's asked again next time).
      */
-    suspend fun findTitle(program: EpgProgram): LiveProgramMatch? = withContext(Dispatchers.IO) {
+    suspend fun findTitle(program: EpgProgram, retryNow: Boolean = false): LiveProgramMatch? = withContext(Dispatchers.IO) {
         val rawTitle = cleanTitle(program.title)
         val year = TRAILING_YEAR.find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val title = rawTitle.replace(TRAILING_YEAR, "").trim()
@@ -145,7 +145,8 @@ class LiveProgramLibrary @Inject constructor(
         titleCache[key]?.let { return@withContext it.value }
         // TMDB didn't answer for this title a moment ago: not asked again for every focus or open
         // (it's asked again in a minute; nothing is remembered as "not on TMDB").
-        failedTitles[key]?.let { failedAt ->
+        // ([retryNow]: the player asking again for what's on, a few times, on its own.)
+        if (!retryNow) failedTitles[key]?.let { failedAt ->
             if (System.currentTimeMillis() - failedAt < FAILED_RETRY_MS) throw java.io.IOException("TMDB unavailable for now")
         }
         val language = language()

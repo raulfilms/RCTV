@@ -1281,6 +1281,8 @@ private fun LibraryCard(
                         modifier = itemModifier.onFocusChanged { if (it.isFocused) onFocused() }
                     )
                 }
+                // RCTV: TMDB couldn't be asked: nothing said (it isn't "not on TMDB").
+                state.lookupFailed -> Unit
                 else -> Text(
                     text = stringResource(R.string.livetv_library_not_on_tmdb),
                     color = Color.White.copy(alpha = 0.7f),

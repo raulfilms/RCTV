@@ -34,7 +34,12 @@ data class LivePlayerProgramState(
     /** Its movie or series (null: TMDB doesn't have it, once [isLoading] is over). */
     val match: LiveProgramMatch? = null,
     val inLibrary: Boolean = false,
-    val isAdding: Boolean = false
+    val isAdding: Boolean = false,
+    /**
+     * RCTV: TMDB couldn't be asked (the network, TMDB busy), even after asking again: nothing is
+     * said about it (never "Not on TMDB" for a show that is).
+     */
+    val lookupFailed: Boolean = false
 )
 
 /** The Episodes tab: the series airing now, its seasons and the chosen season's episodes. */
@@ -187,14 +192,23 @@ class LiveTvPlayerViewModel @Inject constructor(
         }
         _program.value = LivePlayerProgramState(program = program, isLoading = true)
         programJob = viewModelScope.launch {
-            val match = try {
-                liveProgramLibrary.findTitle(program)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                null
+            // RCTV (owner: "Chicago Med" said "Not on TMDB"): TMDB not answering isn't "not on
+            // TMDB": asked again a few times (a moment, then a little longer), still "Looking up".
+            var match: LiveProgramMatch? = null
+            var failed = false
+            for (attempt in 0..TITLE_RETRY_DELAYS_MS.size) {
+                if (attempt > 0) kotlinx.coroutines.delay(TITLE_RETRY_DELAYS_MS[attempt - 1])
+                failed = try {
+                    match = liveProgramLibrary.findTitle(program, retryNow = attempt > 0)
+                    false
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    true
+                }
+                if (!failed) break
             }
-            _program.update { it.copy(isLoading = false, match = match) }
+            _program.update { it.copy(isLoading = false, match = match, lookupFailed = failed) }
             if (match != null) {
                 liveProgramLibrary.isInLibrary(match).collect { inLibrary ->
                     _program.update { it.copy(inLibrary = inLibrary) }
@@ -508,6 +522,9 @@ class LiveTvPlayerViewModel @Inject constructor(
         if (session.guide.value.isPreview) PlayerDesignPreview.URL else session.playableUrl(channel)
 
     private companion object {
+        /** How long the player waits before asking TMDB again for what's on (it didn't answer). */
+        private val TITLE_RETRY_DELAYS_MS = longArrayOf(2_000L, 6_000L, 15_000L, 40_000L)
+
         const val TICK_MS = 20_000L
         /** How often the Catch Up tab asks the provider again (new programs get recorded). */
         const val CATCH_UP_REFRESH_MS = 5 * 60_000L
