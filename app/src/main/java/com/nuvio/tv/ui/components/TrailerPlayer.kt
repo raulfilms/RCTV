@@ -67,7 +67,12 @@ fun TrailerPlayer(
      * RCTV: a YouTube video that can't be read here ([YOUTUBE_NOT_READABLE]): told instead of [onEnded]
      * when set (a recap then tries the next one).
      */
-    onYouTubeError: ((code: Int) -> Unit)? = null
+    onYouTubeError: ((code: Int) -> Unit)? = null,
+    /**
+     * RCTV (owner): the video fills the screen on its own (a game's recap): drawn straight to the
+     * screen, as the movies' player, for smooth pictures (the in-page trailers keep their fades).
+     */
+    fullScreen: Boolean = false
 ) {
     // RCTV (owner's choice): a YouTube video plays in the app's own player again, from the
     // addresses RCTV reads off YouTube: YouTube's official player gave sound and no picture on the
@@ -83,7 +88,7 @@ fun TrailerPlayer(
             onEnded = onEnded, onFirstFrameRendered = onFirstFrameRendered, muted = muted,
             seekRequestToken = seekRequestToken, seekDeltaMs = seekDeltaMs, onProgressChanged = onProgressChanged,
             onRemoteKey = onRemoteKey, cropToFill = cropToFill, overscanZoom = overscanZoom, modifier = modifier,
-            enter = enter, exit = exit, trailerPlayerPool = trailerPlayerPool
+            enter = enter, exit = exit, trailerPlayerPool = trailerPlayerPool, fullScreen = fullScreen
         )
         return
     }
@@ -115,7 +120,7 @@ fun TrailerPlayer(
         onEnded = onEnded, onFirstFrameRendered = onFirstFrameRendered, muted = muted,
         seekRequestToken = seekRequestToken, seekDeltaMs = seekDeltaMs, onProgressChanged = onProgressChanged,
         onRemoteKey = onRemoteKey, cropToFill = cropToFill, overscanZoom = overscanZoom, modifier = modifier,
-        enter = enter, exit = exit, trailerPlayerPool = trailerPlayerPool
+        enter = enter, exit = exit, trailerPlayerPool = trailerPlayerPool, fullScreen = fullScreen
     )
 }
 
@@ -148,7 +153,8 @@ private fun ExoTrailerPlayer(
     modifier: Modifier,
     enter: EnterTransition,
     exit: ExitTransition,
-    trailerPlayerPool: TrailerPlayerPool?
+    trailerPlayerPool: TrailerPlayerPool?,
+    fullScreen: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -316,7 +322,10 @@ private fun ExoTrailerPlayer(
         ) {
             AndroidView(
                 factory = { ctx ->
-                    (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null) as PlayerView).apply {
+                    // RCTV (owner): full screen, straight to the screen (a SurfaceView, as the movies'
+                    // player): a TextureView goes through the app's drawing and its pictures stuttered.
+                    val layout = if (fullScreen) R.layout.trailer_player_surface_view else R.layout.trailer_player_view
+                    (LayoutInflater.from(ctx).inflate(layout, null) as PlayerView).apply {
                         player = trailerPlayer
                         isFocusable = true
                         isFocusableInTouchMode = true
@@ -349,7 +358,9 @@ private fun ExoTrailerPlayer(
                 modifier = modifier
                     .clipToBounds()
                     .graphicsLayer {
-                        alpha = playerAlphaState.value
+                        // Full screen: never see-through (the screen's own surface shows only then);
+                        // black covers it until its first picture.
+                        alpha = if (fullScreen) 1f else playerAlphaState.value
                         scaleX = zoomScale
                         scaleY = zoomScale
                     }

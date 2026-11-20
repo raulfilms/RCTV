@@ -30,6 +30,13 @@ private const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 12; Android TV) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
 private const val PREFERRED_SEPARATE_CLIENT = "visionos"
+/** RCTV (owner): the biggest picture taken off YouTube (more stuttered on TV boxes). */
+private const val MAX_SMOOTH_VIDEO_HEIGHT = 1080
+/** RCTV: AV1 only when nothing else reaches this. */
+private const val AV1_ONLY_UNDER_HEIGHT = 720
+private const val CODEC_AVC = "avc"
+private const val CODEC_VP9 = "vp9"
+private const val CODEC_AV1 = "av1"
 
 private val VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
 private const val API_KEY_MARKER = "\"INNERTUBE_API_KEY\":\""
@@ -63,6 +70,8 @@ internal data class StreamCandidate(
     val height: Int,
     val fps: Int,
     val ext: String,
+    /** RCTV: the picture's codec (avc, vp9, av1), "" when not told or for audio. */
+    val codec: String = "",
     // Only meaningful for audio candidates: false means this format is an
     // alternate-language dub track, not the video's original/default audio.
     // Always true for video/progressive candidates, so it never affects them.
@@ -386,7 +395,8 @@ class InAppYouTubeExtractor @Inject constructor() {
                         itag = format.stringValue("itag").orEmpty(),
                         height = height,
                         fps = fps,
-                        ext = if (mimeType.contains("webm")) "webm" else "mp4"
+                        ext = if (mimeType.contains("webm")) "webm" else "mp4",
+                        codec = videoCodecOf(mimeType)
                     )
                 }
 
@@ -414,7 +424,8 @@ class InAppYouTubeExtractor @Inject constructor() {
                             itag = format.stringValue("itag").orEmpty(),
                             height = height,
                             fps = fps,
-                            ext = if (mimeType.contains("webm")) "webm" else "mp4"
+                            ext = if (mimeType.contains("webm")) "webm" else "mp4",
+                            codec = videoCodecOf(mimeType)
                         )
                     } else if (hasAudio) {
                         val bitrate = format.numberValue("bitrate")
@@ -488,7 +499,11 @@ class InAppYouTubeExtractor @Inject constructor() {
         }
 
         val bestProgressive = sortCandidates(progressive).firstOrNull()
-        val bestVideo = pickBestForClient(adaptiveVideo, PREFERRED_SEPARATE_CLIENT)
+        // RCTV (owner): the picture a TV box plays smoothly, as YouTube's own app (not simply the biggest).
+        val bestVideo = pickSmoothVideo(adaptiveVideo, PREFERRED_SEPARATE_CLIENT)
+        bestVideo?.let {
+            Log.d(TAG, "Video picked: itag=${it.itag} ${it.height}p${it.fps} codec=${it.codec.ifBlank { "?" }}")
+        }
         val bestAudio = pickBestForClient(adaptiveAudio, PREFERRED_SEPARATE_CLIENT)
 
         // Try adaptive video + audio first (best quality, separate streams)
@@ -749,6 +764,48 @@ class InAppYouTubeExtractor @Inject constructor() {
             "mp4", "m4a" -> 0
             "webm" -> 1
             else -> 2
+        }
+    }
+
+    /**
+     * RCTV (owner): the picture YouTube's own app plays smoothly on a TV box. Recaps stuttered (the
+     * picture jumped ahead and back): the biggest picture was taken whatever it was (1440p or 4K, in
+     * codecs many boxes decode slowly). Now: at most 1080p; addresses YouTube doesn't slow down
+     * first; then the biggest picture, the smoothest (60 fps) and H.264, then VP9; AV1 (decoded in
+     * software on most boxes) only when there's nothing else from 720p up.
+     */
+    internal fun pickSmoothVideo(items: List<StreamCandidate>, clientKey: String): StreamCandidate? {
+        val pool = items.filter { it.client == clientKey }.ifEmpty { items }
+        if (pool.isEmpty()) return null
+        val fitting = pool.filter { it.height in 1..MAX_SMOOTH_VIDEO_HEIGHT }
+            .ifEmpty { listOf(pool.minBy { if (it.height > 0) it.height else Int.MAX_VALUE }) }
+        val bestOtherThanAv1 = fitting.filter { it.codec != CODEC_AV1 }.maxOfOrNull { it.height } ?: 0
+        val usable = if (bestOtherThanAv1 >= AV1_ONLY_UNDER_HEIGHT) fitting.filter { it.codec != CODEC_AV1 } else fitting
+        return usable.sortedWith(
+            compareBy<StreamCandidate> { if (it.hasN) 1 else 0 }
+                .thenByDescending { it.height }
+                .thenByDescending { it.fps }
+                .thenBy { videoCodecRank(it.codec) }
+                .thenByDescending { it.score }
+                .thenBy { it.priority }
+        ).firstOrNull()
+    }
+
+    private fun videoCodecRank(codec: String): Int = when (codec) {
+        CODEC_AVC -> 0
+        CODEC_VP9 -> 1
+        CODEC_AV1 -> 3
+        else -> 2
+    }
+
+    /** The picture's codec from YouTube's mimeType (video/mp4; codecs="avc1.640028"). */
+    private fun videoCodecOf(mimeType: String): String {
+        val codecs = mimeType.substringAfter("codecs=", "").lowercase()
+        return when {
+            codecs.contains("avc1") || codecs.contains("avc3") -> CODEC_AVC
+            codecs.contains("vp09") || codecs.contains("vp9") -> CODEC_VP9
+            codecs.contains("av01") -> CODEC_AV1
+            else -> ""
         }
     }
 

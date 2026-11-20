@@ -201,7 +201,9 @@ internal fun SportsRecapPlayer(
                     // Never the YouTube app: a video that can't play here gives its place to the next one.
                     onYouTubeError = { code -> if (code == ERROR_WEBVIEW_GONE) onDismiss() else onUnplayable() },
                     modifier = Modifier.fillMaxSize(),
-                    youTubeAllowed = true
+                    youTubeAllowed = true,
+                    // RCTV (owner): smooth, as a YouTube video on YouTube.
+                    fullScreen = true
                 )
             }
 

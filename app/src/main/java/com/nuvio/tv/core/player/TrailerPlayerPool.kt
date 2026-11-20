@@ -152,7 +152,8 @@ class TrailerPlayerPool @Inject constructor(
                     .setMaxVideoSizeSd()
                     .clearVideoSizeConstraints()
                     .setForceHighestSupportedBitrate(true)
-                    .setMaxVideoSize(Integer.MAX_VALUE, Integer.MAX_VALUE)
+                    // RCTV (owner): at most 1080p from YouTube's list too (bigger stuttered on TV boxes).
+                    .setMaxVideoSize(1920, 1080)
             )
         }
         return ExoPlayer.Builder(context)
