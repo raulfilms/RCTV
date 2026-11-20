@@ -2361,7 +2361,12 @@ private fun MetaDetailsContent(
                         SeasonTabs(
                             seasons = seasons,
                             selectedSeason = selectedSeason,
-                            onSeasonSelected = onSeasonSelected,
+                            // RCTV (owner): the person picks the season: the page stops bringing
+                            // back the one just played (it pulled every other pick back to it).
+                            onSeasonSelected = { season ->
+                                if (detailReturnEpisodeFocusRequest?.season != null) onDetailReturnEpisodeFocusConsumed()
+                                onSeasonSelected(season)
+                            },
                             onSeasonLongPress = { seasonOptionsDialogSeason = it },
                             selectedTabFocusRequester = selectedSeasonFocusRequester,
                             upFocusRequester = episodesTabFocusRequester,

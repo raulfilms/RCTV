@@ -315,7 +315,16 @@ class MetaDetailsViewModel @Inject constructor(
             if (state.nextToWatch == nextToWatch) return@update state
             val nextSeason = nextToWatch.nextSeason
             val meta = state.meta
+            // RCTV (owner): only when the next episode itself changed (one finished), never as the
+            // one playing goes on (its progress is saved every few seconds while it plays, even in
+            // the Now Playing bar): that pulled the page back to its season while another was being
+            // looked at, so the other seasons' episodes couldn't be reached.
+            val previous = state.nextToWatch
+            val nextEpisodeMoved = previous == null ||
+                previous.nextSeason != nextToWatch.nextSeason ||
+                previous.nextVideoId != nextToWatch.nextVideoId
             val shouldSwitchSeason = !suppressSeasonAutoSwitch &&
+                nextEpisodeMoved &&
                 nextSeason != null &&
                 nextSeason != state.selectedSeason &&
                 meta != null &&
