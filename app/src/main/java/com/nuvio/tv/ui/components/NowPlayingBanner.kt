@@ -1,6 +1,12 @@
 package com.nuvio.tv.ui.components
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -8,11 +14,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -43,14 +55,78 @@ import com.nuvio.tv.core.playback.PlaybackSession
 val NowPlayingBarHeight = 56.dp
 
 /**
+ * RCTV (owner, as YouTube TV): Home or Movies & TV moved down off its banner: the Now Playing bar
+ * goes away (what plays goes on being heard) and is back as soon as focus is up on the banner again.
+ * Set by those pages only ([NowPlayingBarFollowsBanner]).
+ */
+object NowPlayingBarScroll {
+    var pageScrolled by mutableStateOf(false)
+        private set
+    private var owner: Any? = null
+
+    fun set(page: Any, scrolled: Boolean) {
+        owner = page
+        pageScrolled = scrolled
+    }
+
+    /** The page went away: only the page that set it last clears it (not one leaving after another came). */
+    fun release(page: Any) {
+        if (owner !== page) return
+        owner = null
+        pageScrolled = false
+    }
+}
+
+/** How long the bar takes to slide away (and back), with the page moving under it. */
+const val BAR_SLIDE_MS = 220
+
+/**
+ * RCTV (owner, as YouTube TV): on a page with a banner at its top, the Now Playing bar slides away once
+ * focus moves down off the banner, and is there again as soon as focus is back up on the banner, the
+ * page then back at its very top, whole under the bar (never left halfway with nothing above to move
+ * Up to). Where focus is decides, not how far the page moved: the bar taking its room back never hides
+ * it again. Focus on the bar itself (or on the menu) changes nothing. Only while something plays.
+ */
+@Composable
+fun NowPlayingBarFollowsBanner(
+    listState: LazyListState,
+    bannerShown: Boolean,
+    pageHasFocus: Boolean,
+    bannerHasFocus: Boolean
+) {
+    val nowPlaying by PlaybackSession.nowPlaying.collectAsState()
+    val playing = nowPlaying != null
+    val page = remember { Any() }
+    LaunchedEffect(playing, bannerShown, pageHasFocus, bannerHasFocus) {
+        if (!playing || !bannerShown) {
+            NowPlayingBarScroll.set(page, false)
+            return@LaunchedEffect
+        }
+        if (!pageHasFocus) return@LaunchedEffect
+        NowPlayingBarScroll.set(page, !bannerHasFocus)
+        if (!bannerHasFocus) return@LaunchedEffect
+        // Back up on the banner: the page goes all the way back to its top (moving onto the banner's
+        // buttons only brings the buttons into view, which left the banner cut).
+        repeat(3) {
+            withFrameNanos { }
+            if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) return@LaunchedEffect
+            runCatching { listState.animateScrollToItem(0, 0) }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { NowPlayingBarScroll.release(page) }
+    }
+}
+
+/**
  * RCTV (owner, as YouTube TV): the Now Playing bar across the top of the app's pages while a
  * channel, movie or episode goes on playing behind the app (the player was left with Back): a black
  * bar with what plays behind it (darkened, and only inside the bar: the page below never shows it),
  * the channel's logo at the left and what's on in the middle. Up reaches
  * the name (it turns white, as YouTube TV's); OK, or Play on the remote, opens the full player again
  * on the same playback (nothing restarts); OK held closes it (the bar goes away). Down goes back
- * to the page. It stays on every page, the page whole under it (owner: it never slides away). It
- * counts as this TV playing for RCTV Control, as the player did.
+ * to the page. It stays on every page, the page whole under it; moving down Home or Movies & TV
+ * it slides away and is back up on the banner ([hidden]). It counts as this TV playing for RCTV Control, as the player did.
  */
 @Composable
 fun NowPlayingBannerHost(
@@ -58,6 +134,8 @@ fun NowPlayingBannerHost(
     onPlayerScreen: Boolean,
     /** RCTV (owner): focus back on the page, where it was before Up to the bar (true when it went). */
     onBackToPage: () -> Boolean = { false },
+    /** Focus moved down off the page's banner: the bar slides away (the playback goes on). */
+    hidden: Boolean = false,
     /** False where the page itself shows the playback (the Guide, behind it): the bar doesn't take it. */
     showVideo: Boolean = true,
     modifier: Modifier = Modifier
@@ -76,7 +154,12 @@ fun NowPlayingBannerHost(
     if (onPlayerScreen) return
     val focusManager = LocalFocusManager.current
     val player = remember(current, showVideo) { if (showVideo) PlaybackSession.minimizedPlayer() else null }
-    run {
+    AnimatedVisibility(
+        visible = !hidden,
+        enter = slideInVertically(animationSpec = tween(BAR_SLIDE_MS)) { -it } + fadeIn(tween(BAR_SLIDE_MS)),
+        exit = slideOutVertically(animationSpec = tween(BAR_SLIDE_MS)) { -it } + fadeOut(tween(BAR_SLIDE_MS)),
+        modifier = modifier
+    ) {
         NowPlayingBar(
             nowPlaying = current,
             player = player,
@@ -103,8 +186,7 @@ fun NowPlayingBannerHost(
                     }
                     else -> false
                 }
-            },
-            modifier = modifier
+            }
         )
     }
 }

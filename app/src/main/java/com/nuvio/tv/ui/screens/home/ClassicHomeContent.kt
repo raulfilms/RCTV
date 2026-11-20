@@ -421,6 +421,14 @@ fun ClassicHomeContent(
     val pageScrolled by remember {
         derivedStateOf { columnListState.firstVisibleItemIndex > 0 || columnListState.firstVisibleItemScrollOffset > 0 }
     }
+    // RCTV (owner, as YouTube TV): moving down off the banner the Now Playing bar goes away; back up
+    // on the banner, it's there again with the page whole under it.
+    com.nuvio.tv.ui.components.NowPlayingBarFollowsBanner(
+        listState = columnListState,
+        bannerShown = heroVisible,
+        pageHasFocus = contentHasFocus.value,
+        bannerHasFocus = heroHasFocus.value
+    )
     BackHandler(enabled = contentHasFocus.value && (if (heroVisible) !heroHasFocus.value else pageScrolled)) {
         currentFocusSnapshot.rowIndex = -2
         currentFocusSnapshot.itemIndex = 0
