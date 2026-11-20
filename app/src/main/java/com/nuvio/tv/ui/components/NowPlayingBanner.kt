@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -136,6 +138,8 @@ fun NowPlayingBannerHost(
     onBackToPage: () -> Boolean = { false },
     /** Focus moved down off the page's banner: the bar slides away (the playback goes on). */
     hidden: Boolean = false,
+    /** RCTV (owner): Up from the top of any page lands on the name through this. */
+    nameFocusRequester: FocusRequester? = null,
     /** False where the page itself shows the playback (the Guide, behind it): the bar doesn't take it. */
     showVideo: Boolean = true,
     modifier: Modifier = Modifier
@@ -172,21 +176,23 @@ fun NowPlayingBannerHost(
             },
             // RCTV (owner): never a dead end: Down goes back to the page (where it was), as do Left
             // and Right when nothing is beside the name.
-            nameModifier = Modifier.onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.DirectionDown -> {
-                        if (!onBackToPage()) focusManager.moveFocus(FocusDirection.Down)
-                        true
+            nameModifier = Modifier
+                .then(if (nameFocusRequester != null) Modifier.focusRequester(nameFocusRequester) else Modifier)
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionDown -> {
+                            if (!onBackToPage()) focusManager.moveFocus(FocusDirection.Down)
+                            true
+                        }
+                        Key.DirectionLeft, Key.DirectionRight -> {
+                            val direction = if (event.key == Key.DirectionLeft) FocusDirection.Left else FocusDirection.Right
+                            if (!focusManager.moveFocus(direction)) onBackToPage()
+                            true
+                        }
+                        else -> false
                     }
-                    Key.DirectionLeft, Key.DirectionRight -> {
-                        val direction = if (event.key == Key.DirectionLeft) FocusDirection.Left else FocusDirection.Right
-                        if (!focusManager.moveFocus(direction)) onBackToPage()
-                        true
-                    }
-                    else -> false
                 }
-            }
         )
     }
 }

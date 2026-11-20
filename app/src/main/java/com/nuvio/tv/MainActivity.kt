@@ -1394,10 +1394,22 @@ open class MainActivity : ComponentActivity() {
                                 animationSpec = androidx.compose.animation.core.tween(com.nuvio.tv.ui.components.BAR_SLIDE_MS),
                                 label = "nowPlayingBarSpace"
                             )
+                            // RCTV (owner): Up from the top of any page reaches the bar, also where the
+                            // page itself stops Up there (a title's buttons): Up moves on the page as
+                            // always, and only when it can't go anywhere it goes to the bar.
+                            val barFocus = remember { FocusRequester() }
+                            val pageFocusManager = LocalFocusManager.current
                             @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
                             val pageModifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = barSpace)
+                                .onKeyEvent { event ->
+                                    if (!barShown || event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
+                                        return@onKeyEvent false
+                                    }
+                                    if (pageFocusManager.moveFocus(FocusDirection.Up)) true
+                                    else runCatching { barFocus.requestFocus() }.isSuccess
+                                }
                                 .focusRequester(pageFocus)
                                 .focusRestorer { FocusRequester.Default }
                             Box(modifier = pageModifier) {
@@ -1512,6 +1524,7 @@ open class MainActivity : ComponentActivity() {
                                 onPlayerScreen = onPlayerScreen,
                                 onBackToPage = { runCatching { pageFocus.requestFocus() }.isSuccess },
                                 hidden = barHidden,
+                                nameFocusRequester = barFocus,
                                 // The Guide shows the playback behind itself: the bar leaves it there.
                                 showVideo = currentRoute != Screen.LiveTv.route,
                                 modifier = Modifier.align(Alignment.TopCenter)
