@@ -16,6 +16,8 @@ internal fun PlayerRuntimeController.startInitialPlaybackIfNeeded() {
     if (initialPlaybackStarted) return
 
     initialPlaybackStarted = true
+    // RCTV (owner): a picture that gets stuck while it plays picks up again by itself.
+    startVideoFreezeGuard()
 
     // RCTV: no video, only the player's screen (to design it).
     if (PlayerDesignPreview.isPreview(initialStreamUrl)) {

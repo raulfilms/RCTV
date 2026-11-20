@@ -583,6 +583,8 @@ class PlayerRuntimeController(
     internal var pendingSeekFlush: Boolean = false
     internal var suppressBufferingUiForSeek: Boolean = false
     internal var isScrubbingModeActive: Boolean = false
+    /** RCTV (owner): the watch that gets a stuck picture moving again (see startVideoFreezeGuard). */
+    internal var videoFreezeGuardJob: Job? = null
     internal var seekBufferingUiJob: Job? = null
     internal var seekBufferingUiDeferred: Boolean = false
     internal val seekBufferingUiDelayMs = 1000L
