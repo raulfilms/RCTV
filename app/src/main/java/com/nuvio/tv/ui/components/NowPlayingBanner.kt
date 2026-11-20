@@ -61,6 +61,31 @@ val NowPlayingBarHeight = 56.dp
  * goes away (what plays goes on being heard) and is back as soon as focus is up on the banner again.
  * Set by those pages only ([NowPlayingBarFollowsBanner]).
  */
+/**
+ * RCTV (owner): OK held on the Now Playing bar closed what plays; until that OK is let go, its key
+ * presses go nowhere (the page doesn't get them: they pressed the banner under the bar).
+ */
+object NowPlayingBarKeys {
+    @Volatile
+    var okHeldAfterClose: Boolean = false
+
+    /** True when [event] is the rest of that held OK (swallowed); the release ends it. */
+    fun swallow(event: androidx.compose.ui.input.key.KeyEvent): Boolean {
+        if (!okHeldAfterClose) return false
+        if (event.key != Key.DirectionCenter && event.key != Key.Enter && event.key != Key.NumPadEnter) return false
+        if (event.type == KeyEventType.KeyUp) {
+            okHeldAfterClose = false
+            return true
+        }
+        // A new press (its release went astray): it's the page's again.
+        if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+            okHeldAfterClose = false
+            return false
+        }
+        return true
+    }
+}
+
 object NowPlayingBarScroll {
     var pageScrolled by mutableStateOf(false)
         private set
@@ -171,6 +196,9 @@ fun NowPlayingBannerHost(
             // RCTV (owner): OK held on the name closes what plays (where it was is kept for
             // Continue Watching) and the bar goes away; focus goes back to the page first.
             onLongClick = {
+                // The rest of this press (OK still held, then let go) isn't for the page: it used to
+                // press what's under the bar (the banner) once the bar was gone.
+                NowPlayingBarKeys.okHeldAfterClose = true
                 onBackToPage()
                 PlaybackSession.stopMinimized()
             },

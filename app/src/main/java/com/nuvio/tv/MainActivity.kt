@@ -1403,6 +1403,9 @@ open class MainActivity : ComponentActivity() {
                             val pageModifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = barSpace)
+                                // RCTV (owner): OK held on the bar closed it; the rest of that press
+                                // doesn't press the banner the focus came back to.
+                                .onPreviewKeyEvent { event -> com.nuvio.tv.ui.components.NowPlayingBarKeys.swallow(event) }
                                 .onKeyEvent { event ->
                                     if (!barShown || event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
                                         return@onKeyEvent false
