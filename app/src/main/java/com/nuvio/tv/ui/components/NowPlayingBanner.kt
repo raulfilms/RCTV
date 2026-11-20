@@ -1,12 +1,6 @@
 package com.nuvio.tv.ui.components
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -18,9 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -51,22 +43,14 @@ import com.nuvio.tv.core.playback.PlaybackSession
 val NowPlayingBarHeight = 56.dp
 
 /**
- * RCTV (owner, as YouTube TV): Home moved down past its start: the Now Playing bar goes away (what
- * plays goes on being heard) and comes back at the top of Home. Set by Home only.
- */
-object NowPlayingBarScroll {
-    var pageScrolled by mutableStateOf(false)
-}
-
-/**
  * RCTV (owner, as YouTube TV): the Now Playing bar across the top of the app's pages while a
  * channel, movie or episode goes on playing behind the app (the player was left with Back): a black
  * bar with what plays behind it (darkened, and only inside the bar: the page below never shows it),
  * the channel's logo at the left and what's on in the middle. Up reaches
  * the name (it turns white, as YouTube TV's); OK, or Play on the remote, opens the full player again
  * on the same playback (nothing restarts); OK held closes it (the bar goes away). Down goes back
- * to the page. Moving down Home hides it
- * ([hidden]). It counts as this TV playing for RCTV Control, as the player did.
+ * to the page. It stays on every page, the page whole under it (owner: it never slides away). It
+ * counts as this TV playing for RCTV Control, as the player did.
  */
 @Composable
 fun NowPlayingBannerHost(
@@ -74,8 +58,6 @@ fun NowPlayingBannerHost(
     onPlayerScreen: Boolean,
     /** RCTV (owner): focus back on the page, where it was before Up to the bar (true when it went). */
     onBackToPage: () -> Boolean = { false },
-    /** The page moved down past its start: the bar slides away (the playback goes on). */
-    hidden: Boolean = false,
     /** False where the page itself shows the playback (the Guide, behind it): the bar doesn't take it. */
     showVideo: Boolean = true,
     modifier: Modifier = Modifier
@@ -94,12 +76,7 @@ fun NowPlayingBannerHost(
     if (onPlayerScreen) return
     val focusManager = LocalFocusManager.current
     val player = remember(current, showVideo) { if (showVideo) PlaybackSession.minimizedPlayer() else null }
-    AnimatedVisibility(
-        visible = !hidden,
-        enter = slideInVertically(animationSpec = tween(BAR_SLIDE_MS)) { -it } + fadeIn(tween(BAR_SLIDE_MS)),
-        exit = slideOutVertically(animationSpec = tween(BAR_SLIDE_MS)) { -it } + fadeOut(tween(BAR_SLIDE_MS)),
-        modifier = modifier
-    ) {
+    run {
         NowPlayingBar(
             nowPlaying = current,
             player = player,
@@ -126,13 +103,11 @@ fun NowPlayingBannerHost(
                     }
                     else -> false
                 }
-            }
+            },
+            modifier = modifier
         )
     }
 }
-
-/** How long the bar takes to slide away (and back), with the page moving under it. */
-const val BAR_SLIDE_MS = 220
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
