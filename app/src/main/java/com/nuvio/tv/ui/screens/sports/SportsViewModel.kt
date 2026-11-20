@@ -111,7 +111,8 @@ class SportsViewModel @Inject constructor(
     private val tmdbApi: com.nuvio.tv.data.remote.api.TmdbApi,
     private val tmdbSettingsDataStore: com.nuvio.tv.data.local.TmdbSettingsDataStore,
     private val titleArtService: com.nuvio.tv.core.tmdb.TmdbTitleArtService,
-    private val bananaBallLive: BananaBallLive
+    private val bananaBallLive: BananaBallLive,
+    private val sportsSearchIndex: com.nuvio.tv.ui.screens.search.SportsSearchIndex
 ) : ViewModel() {
 
     /** Title art for the Sports Talk cards (the show's name on its backdrop). */
@@ -123,6 +124,11 @@ class SportsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SportsUiState())
     val uiState: StateFlow<SportsUiState> = _uiState.asStateFlow()
 
+    // Sports Talk's pages (before init: init may set them from what was loaded before).
+    private var talkPage = 0
+    private var talkTotalPages = 1
+    private var talkJob: kotlinx.coroutines.Job? = null
+
     init {
         // Back on Sports: the games it last loaded show at once (they load again quietly).
         lastLoaded?.let { (loaded, at) ->
@@ -130,9 +136,20 @@ class SportsViewModel @Inject constructor(
             loadedAtMs = at
         }
         viewModelScope.launch {
+            // RCTV (owner, faster Sports): the first time, the games loaded behind "Creating Your
+            // Experience" show at once (instead of "Loading" while every league loads again).
+            if (lastLoaded == null) seedFromStartupGames()
+            var entering = true
             combine(preferences.favoriteSports, preferences.favoriteTeamIds) { sports, teamIds -> sports to teamIds }
                 .collect { (sports, teamIds) ->
                     _uiState.update { it.copy(favoriteSportNames = sports, favoriteTeamKeys = teamIds) }
+                    // RCTV (owner, faster Sports): opened again within a couple of minutes with the
+                    // same teams: what it loaded is current; no reload of every league as the page
+                    // opens (keepCurrent reloads while games are on).
+                    val fresh = entering && teamIds == lastLoadedTeamIds &&
+                        lastLoaded?.let { (_, at) -> System.currentTimeMillis() - at < QUIET_REFRESH_MS } == true
+                    entering = false
+                    if (fresh) return@collect
                     refresh(favoriteTeamIds = teamIds, quiet = _uiState.value.leagues.isNotEmpty())
                 }
         }
@@ -151,14 +168,36 @@ class SportsViewModel @Inject constructor(
             }
         }
         loadAddonEvents()
-        loadSportsTalk()
+        // RCTV (owner, faster Sports): the talk shows found before show at once (not ten TMDB
+        // searches each time the page opens).
+        val talk = lastTalk?.takeIf { it.shows.isNotEmpty() && System.currentTimeMillis() - it.atMs < TALK_KEEP_MS }
+        if (talk != null) {
+            talkPage = talk.page
+            talkTotalPages = talk.totalPages
+            _uiState.update { it.copy(sportsTalkShows = talk.shows, hasMoreTalk = talk.page < talk.totalPages) }
+        } else {
+            loadSportsTalk()
+        }
+    }
+
+    /** The games loaded as the app opened, shown until this page's own load is in. */
+    private suspend fun seedFromStartupGames() {
+        val results = sportsSearchIndex.recentFixtures() ?: return
+        val teamIds = preferences.favoriteTeamIds.value
+        val seeded = withContext(Dispatchers.Default) {
+            runCatching { aggregate(results, teamIds, homeTeamRowPicks = emptyList()) }.getOrNull()
+        } ?: return
+        if (lastLoaded != null || _uiState.value.leagues.isNotEmpty()) return
+        applyLoaded(seeded)
+    }
+
+    /** Sports Talk as loaded so far, for the next time the page opens. */
+    private fun rememberTalk() {
+        val shows = _uiState.value.sportsTalkShows
+        if (shows.isNotEmpty()) lastTalk = TalkCache(shows, talkPage, talkTotalPages, System.currentTimeMillis())
     }
 
     // ------------------------------------------------------------------ Sports Talk
-
-    private var talkPage = 0
-    private var talkTotalPages = 1
-    private var talkJob: kotlinx.coroutines.Job? = null
 
     /** The most popular sports talk shows first, then TMDB's sports talk shows by popularity. */
     private fun loadSportsTalk() {
@@ -180,13 +219,17 @@ class SportsViewModel @Inject constructor(
                 state.copy(sportsTalkShows = (curated.mapNotNull { it.toShow() } + state.sportsTalkShows).distinctBy { it.id })
             }
             loadMoreSportsTalkNow()
+            rememberTalk()
         }
     }
 
     /** The next page of sports talk shows (See All, as it scrolls). */
     fun loadMoreSportsTalk() {
         if (talkJob?.isActive == true || !uiState.value.hasMoreTalk) return
-        talkJob = viewModelScope.launch { loadMoreSportsTalkNow() }
+        talkJob = viewModelScope.launch {
+            loadMoreSportsTalkNow()
+            rememberTalk()
+        }
     }
 
     private suspend fun loadMoreSportsTalkNow() {
@@ -412,6 +455,7 @@ class SportsViewModel @Inject constructor(
         result.onSuccess { loaded ->
             loadedAtMs = System.currentTimeMillis()
             lastLoaded = loaded to loadedAtMs
+            lastLoadedTeamIds = favoriteTeamIds
             // RCTV: "My Teams" saved with the number alone are named with their league, as this
             // page found them (once every league is in).
             runCatching { preferences.qualifyLegacyTeams(loaded.legacyTeamKeys) }
@@ -448,6 +492,13 @@ class SportsViewModel @Inject constructor(
             )
         }
     }
+
+    private data class TalkCache(
+        val shows: List<com.nuvio.tv.domain.model.MetaPreview>,
+        val page: Int,
+        val totalPages: Int,
+        val atMs: Long
+    )
 
     private data class LoadedData(
         val liveNow: List<SportsEvent>,
@@ -532,6 +583,12 @@ class SportsViewModel @Inject constructor(
     private companion object {
         /** The games and leagues Sports last loaded (and when), kept while the app runs. */
         @Volatile var lastLoaded: Pair<LoadedData, Long>? = null
+        /** The person's teams [lastLoaded] was loaded with. */
+        @Volatile var lastLoadedTeamIds: Set<String>? = null
+        /** Sports Talk as last loaded (while the app runs). */
+        @Volatile var lastTalk: TalkCache? = null
+        /** How long Sports Talk's shows are kept. */
+        const val TALK_KEEP_MS = 6L * 60 * 60 * 1000
 
         /** How often the games load again while some are on (scores, ends, new games live). */
         const val QUIET_REFRESH_MS = 2L * 60 * 1000

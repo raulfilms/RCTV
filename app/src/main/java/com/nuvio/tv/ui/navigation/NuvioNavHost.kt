@@ -289,7 +289,7 @@ private fun PlaybackNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeIn(animationSpec = tween(PAGE_FADE_MS))
             }
         },
         exitTransition = {
@@ -301,7 +301,7 @@ private fun PlaybackNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeOut(animationSpec = tween(PAGE_FADE_MS))
             }
         },
         popEnterTransition = {
@@ -313,7 +313,7 @@ private fun PlaybackNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeIn(animationSpec = tween(PAGE_FADE_MS))
             }
         },
         popExitTransition = {
@@ -325,7 +325,7 @@ private fun PlaybackNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeOut(animationSpec = tween(PAGE_FADE_MS))
             }
         }
     ) {
@@ -2461,3 +2461,9 @@ private fun HomeRouteContent(
         }
     )
 }
+
+/**
+ * RCTV (owner, faster app): how long one page fades into the next. It was 350 ms, both pages drawn
+ * the whole time (heavy on a TV box): a page now comes in sooner, the same fade.
+ */
+private const val PAGE_FADE_MS = 200

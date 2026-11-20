@@ -63,6 +63,16 @@ class SportsSearchIndex @Inject constructor(
     private var gamesJob: Job? = null
     @Volatile private var teamsLoadedAtMs = 0L
     @Volatile private var gamesLoadedAtMs = 0L
+    /** RCTV (owner, faster Sports): the leagues' games as loaded last (and when), for Sports' first open. */
+    @Volatile private var lastFixtures: Pair<List<EspnSportsClient.FeedResult>, Long>? = null
+
+    /**
+     * RCTV (owner, faster Sports): every league's games loaded behind "Creating Your Experience" (or
+     * by Search) in the last few minutes, for the Sports page to show at once the first time it
+     * opens (it loads its own quietly after). Null when there are none that recent.
+     */
+    fun recentFixtures(): List<EspnSportsClient.FeedResult>? =
+        lastFixtures?.takeIf { (results, at) -> results.isNotEmpty() && System.currentTimeMillis() - at < GAMES_MAX_AGE_MS }?.first
     private val fileLock = Any()
 
     /**
@@ -225,6 +235,7 @@ class SportsSearchIndex @Inject constructor(
             return
         }
         gamesLoadedAtMs = System.currentTimeMillis()
+        if (results.isNotEmpty()) lastFixtures = results to gamesLoadedAtMs
         val all = synchronized(games) { games.values.toList() }
         _state.update { it.copy(games = all) }
         publishLeagues()
