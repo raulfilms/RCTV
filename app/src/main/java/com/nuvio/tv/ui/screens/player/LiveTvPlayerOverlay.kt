@@ -145,6 +145,8 @@ internal fun LiveTvPlayerOverlay(
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit,
     onPlayChannel: (LiveTvChannel) -> Unit,
+    /** RCTV (owner): a version of the channel picked in Quality (its address). */
+    onPlayVersion: (String) -> Unit = {},
     onOpenTitle: (LiveProgramMatch) -> Unit,
     onOpenEpisode: (LiveProgramMatch, LiveEpisode) -> Unit,
     /** RCTV: the game center (YouTube TV's stats panel); null when what's on isn't a known game. */
@@ -188,6 +190,14 @@ internal fun LiveTvPlayerOverlay(
     }
 
     var selectedTab by remember { mutableStateOf(LiveTab.NETWORKS) }
+    // RCTV: the channel's version picked by hand in Quality (null = Auto).
+    var chosenVersion by remember { mutableStateOf<String?>(null) }
+    // RCTV: what each version really plays at, so Quality can say 4K / 1080p.
+    LaunchedEffect(uiState.currentStreamUrl, uiState.playingVideoHeight) {
+        val url = uiState.currentStreamUrl ?: return@LaunchedEffect
+        val height = uiState.playingVideoHeight ?: return@LaunchedEffect
+        com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.learnHeight(url, height)
+    }
     // Episodes: only for a series on TMDB (not a movie, a game or a newscast).
     val seriesMatch = programState.match?.takeIf { !it.isMovie }
     val shownTab = when {
@@ -617,6 +627,52 @@ internal fun LiveTvPlayerOverlay(
                     LiveTab.QUALITY -> OptionsRow(
                         options = buildList {
                             val autoLabel = stringResource(R.string.player_live_quality_auto)
+                            // RCTV (owner, as YouTube TV): a channel the provider has in more than one
+                            // quality (4K, 1080p...) shows them all; Auto plays the Guide's version
+                            // (and turns to another by itself when it fails).
+                            val playingUrl = uiState.currentStreamUrl
+                            val versions = playingUrl?.let { com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.of(it) }.orEmpty()
+                            if (playingUrl != null && versions.size > 1) {
+                                val autoUrl = versions.first()
+                                val pickedByHand = chosenVersion != null && chosenVersion == playingUrl
+                                add(
+                                    LiveOption(
+                                        glyph = "A",
+                                        label = uiState.playingVideoHeight
+                                            ?.takeIf { !pickedByHand }
+                                            ?.let { "$autoLabel (${versionLabel(it)})" } ?: autoLabel,
+                                        checked = !pickedByHand
+                                    ) {
+                                        chosenVersion = null
+                                        onPlayVersion(autoUrl)
+                                    }
+                                )
+                                val withHeights = versions
+                                    .map { url -> url to com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.heightOf(url) }
+                                    .sortedByDescending { (_, height) -> height ?: 0 }
+                                val seen = mutableMapOf<Int, Int>()
+                                withHeights.forEachIndexed { index, (url, height) ->
+                                        // Two versions in the same quality read "1080p", "1080p (2)".
+                                        val repeat = height?.let { h -> ((seen[h] ?: 0) + 1).also { seen[h] = it } } ?: 1
+                                        add(
+                                            LiveOption(
+                                                glyph = when {
+                                                    height == null -> "HD"
+                                                    height >= 2160 -> "4K"
+                                                    height >= 720 -> "HD"
+                                                    else -> "SD"
+                                                },
+                                                label = height?.let { versionLabel(it) + if (repeat > 1) " ($repeat)" else "" }
+                                                    ?: stringResource(R.string.player_live_quality_version, index + 1),
+                                                checked = pickedByHand && url == playingUrl
+                                            ) {
+                                                chosenVersion = url
+                                                onPlayVersion(url)
+                                            }
+                                        )
+                                    }
+                                return@buildList
+                            }
                             add(
                                 LiveOption(
                                     glyph = "A",
@@ -1699,6 +1755,9 @@ private fun EpisodesContent(
 }
 
 /** "1080p60", "720p", "480p". */
+/** RCTV: "4K" for 2160 lines and up, else "1080p". */
+private fun versionLabel(height: Int): String = if (height >= 2160) "4K" else "${height}p"
+
 private fun qualityLabel(quality: VideoQualityOption): String =
     "${quality.height}p" + if (quality.frameRate >= 49f) "60" else ""
 

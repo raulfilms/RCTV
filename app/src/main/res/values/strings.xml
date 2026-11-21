@@ -4168,6 +4168,7 @@
     <string name="player_live_networks">Networks</string>
     <string name="player_live_quality">Quality</string>
     <string name="player_live_quality_auto">Auto</string>
+    <string name="player_live_quality_version">Version %1$d</string>
     <string name="player_live_no_captions">No captions</string>
     <string name="player_live_caption_style">Edit style</string>
     <string name="player_live_audio">Audio</string>

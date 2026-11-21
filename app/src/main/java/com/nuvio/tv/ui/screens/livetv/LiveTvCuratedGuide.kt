@@ -274,23 +274,55 @@ internal object LiveTvCuratedGuide {
  */
 object LiveTvChannelVersions {
     @Volatile private var byUrl: Map<String, List<String>> = emptyMap()
+    /** RCTV (owner): each version's picture height, as its name says it ("4K", "FHD", "HD"). */
+    @Volatile private var namedHeight: Map<String, Int> = emptyMap()
+    /** RCTV (owner): each version's picture height as it played (truer than its name). */
+    private val playedHeight = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /** From the Guide's channels and their versions ([LiveTvChannel.versionOf]). */
     fun update(channels: List<LiveTvChannel>, hidden: List<LiveTvChannel>) {
         val versions = hidden.filter { it.versionOf != null }.groupBy { it.versionOf }
         if (versions.isEmpty()) {
             byUrl = emptyMap()
+            namedHeight = emptyMap()
             return
         }
         val map = HashMap<String, List<String>>()
+        val heights = HashMap<String, Int>()
         channels.forEach { channel ->
             val others = versions[channel.id] ?: return@forEach
-            val urls = (listOf(channel) + others).map { it.streamUrl }
-                .filter { it.startsWith("http://") || it.startsWith("https://") }
-                .distinct()
-            if (urls.size > 1) urls.forEach { map[it] = urls }
+            val all = (listOf(channel) + others)
+                .filter { it.streamUrl.startsWith("http://") || it.streamUrl.startsWith("https://") }
+                .distinctBy { it.streamUrl }
+            val urls = all.map { it.streamUrl }
+            if (urls.size > 1) {
+                urls.forEach { map[it] = urls }
+                all.forEach { version -> heightInName(version.name)?.let { heights[version.streamUrl] = it } }
+            }
         }
         byUrl = map
+        namedHeight = heights
+    }
+
+    /** RCTV (owner): a version's picture height: as it played, else as its name says; null unknown. */
+    fun heightOf(url: String): Int? = playedHeight[url] ?: namedHeight[url]
+
+    /** RCTV: the picture height [url] played at (its quality shown truly from then on). */
+    fun learnHeight(url: String, height: Int) {
+        if (height > 0 && byUrl.containsKey(url)) playedHeight[url] = height
+    }
+
+    private val heightWords = listOf(
+        Regex("\\b(4k|uhd|2160p?)\\b") to 2160,
+        Regex("\\b(fhd|1080[pi]?)\\b") to 1080,
+        Regex("\\b(hd|720p?)\\b") to 720,
+        Regex("\\b(sd|480p?|576p?)\\b") to 480
+    )
+
+    /** "Bravo 4K" 2160, "Bravo FHD" 1080, "Bravo HD" 720, "Bravo SD" 480; null when it doesn't say. */
+    internal fun heightInName(name: String): Int? {
+        val text = name.lowercase(java.util.Locale.ROOT)
+        return heightWords.firstOrNull { (words, _) -> words.containsMatchIn(text) }?.second
     }
 
     /** The channel's versions in order (the first is the one the Guide shows), or just [url]. */

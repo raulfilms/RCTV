@@ -1435,6 +1435,7 @@
     <string name="player_live_networks">Canales</string>
     <string name="player_live_quality">Calidad</string>
     <string name="player_live_quality_auto">Auto</string>
+    <string name="player_live_quality_version">Versión %1$d</string>
     <string name="player_live_no_captions">Sin subtítulos</string>
     <string name="player_live_caption_style">Editar estilo</string>
     <string name="player_live_audio">Audio</string>

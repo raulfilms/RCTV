@@ -342,6 +342,11 @@ class PlayerViewModel @Inject constructor(
     }
 
     /** RCTV (owner): OK held on CC: the subtitles on screen are synced again (as turning them off and on). */
+    /** RCTV (owner): the live channel's version picked in Quality (4K, 1080p...). */
+    fun playLiveVersion(url: String) {
+        controller.playLiveVersion(url)
+    }
+
     fun resyncSubtitles() {
         controller.resyncSubtitlesNow()
     }

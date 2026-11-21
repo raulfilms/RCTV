@@ -153,12 +153,13 @@ internal fun PlayerRuntimeController.shouldReconnectLiveTv(error: PlaybackExcept
  * behind HLS window needs); otherwise the stream is opened again from scratch.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal fun PlayerRuntimeController.reconnectLiveTv(reason: String, light: Boolean = false) {
+internal fun PlayerRuntimeController.reconnectLiveTv(reason: String, light: Boolean = false, version: String? = null) {
     val attempt = liveReconnectAttempts
-    liveReconnectAttempts++
+    // A version picked by hand isn't a failure.
+    if (version == null) liveReconnectAttempts++
     // RCTV (owner's rule): a channel the provider has more than once turns to its next version at
     // once instead of opening the same one again (the person stays on the same channel).
-    val otherVersion = if (light) null else com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl)
+    val otherVersion = version ?: if (light) null else com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl)
     // Never the address: it carries the IPTV login.
     Log.w(
         PlayerRuntimeController.TAG,
@@ -207,6 +208,16 @@ internal fun PlayerRuntimeController.reconnectLiveTv(reason: String, light: Bool
         releasePlayer(flushPlaybackState = false)
         initializePlayer(currentStreamUrl, currentHeaders, startPaused = paused)
     }
+}
+
+/**
+ * RCTV (owner, as YouTube TV's Quality): the channel's version picked by hand (4K, 1080p...), played
+ * right there on the same channel. Nothing when it's the one playing.
+ */
+internal fun PlayerRuntimeController.playLiveVersion(url: String) {
+    if (!isLiveTvStreamNow() || url == currentStreamUrl) return
+    if (url !in com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.of(currentStreamUrl)) return
+    reconnectLiveTv(reason = "version picked", version = url)
 }
 
 /**

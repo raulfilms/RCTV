@@ -1927,6 +1927,7 @@ fun PlayerScreen(
                     },
                     onHideControls = { viewModel.hideControls() },
                     onPlayChannel = switchLiveChannel,
+                    onPlayVersion = { viewModel.playLiveVersion(it) },
                     onOpenTitle = openLiveTitle,
                     onOpenEpisode = openLiveEpisode,
                     onOpenGameCenter = openGameCenter.takeIf { gameCenterAvailable },
