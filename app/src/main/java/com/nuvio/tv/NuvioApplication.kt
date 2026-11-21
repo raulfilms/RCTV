@@ -100,7 +100,11 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         // RCTV: the subtitle sync's sound reader runs in a process of its own (":speech"); none of
         // the app's start-up (crash screen, memory guard, channels, plugins) belongs there.
-        if (isSpeechProcess()) return
+        if (isSpeechProcess()) {
+            // Its crash kept for bug reports (it never closes the app).
+            com.nuvio.tv.core.diagnostics.CrashLog.installForHelper(this)
+            return
+        }
         SentryInitializer.start(this, sentrySettingsDataStore)
         // RCTV (owner): Firebase (crashes, bug reports, how the app is used), when the build has it.
         com.nuvio.tv.core.diagnostics.FirebaseDiagnostics.start(this, sentrySettingsDataStore)

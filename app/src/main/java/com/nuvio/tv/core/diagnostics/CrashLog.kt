@@ -24,6 +24,8 @@ object CrashLog {
     private const val MAX_TRACE_CHARS = 6_000
     private const val REPORTED_FILE = "reported_crash.txt"
     private const val REPORTED_KEPT_MS = 7L * 24 * 60 * 60 * 1000
+    /** RCTV: a helper process's crash (the subtitle sync's sound reader): kept for reports only. */
+    private const val HELPER_FILE = "helper_crash.txt"
 
     /**
      * RCTV (bug reports): the last crash or unexpected close as the app showed it, kept a week so a
@@ -33,9 +35,15 @@ object CrashLog {
         runCatching { File(context.applicationContext.filesDir, REPORTED_FILE).writeText(text.take(MAX_CHARS)) }
     }
 
-    /** The crash kept by [keepForReports], when it's from the last week; null otherwise. */
-    fun forReports(context: Context): String? = runCatching {
-        val file = File(context.applicationContext.filesDir, REPORTED_FILE)
+    /** The crash kept by [keepForReports] (and a helper's), when from the last week; null otherwise. */
+    fun forReports(context: Context): String? {
+        val shown = recent(File(context.applicationContext.filesDir, REPORTED_FILE))
+        val helper = recent(File(context.applicationContext.filesDir, HELPER_FILE))
+        return listOfNotNull(shown, helper?.let { "Helper process (the app kept going):\n$it" })
+            .joinToString("\n\n").takeIf { it.isNotBlank() }
+    }
+
+    private fun recent(file: File): String? = runCatching {
         if (!file.exists()) return@runCatching null
         if (System.currentTimeMillis() - file.lastModified() > REPORTED_KEPT_MS) {
             file.delete()
@@ -43,6 +51,24 @@ object CrashLog {
         }
         file.readText().takeIf { it.isNotBlank() }
     }.getOrNull()
+
+    /**
+     * RCTV: in a helper process (":speech", the subtitle sync's sound reader and the timeline's
+     * pictures), its crash is kept for bug reports only: it never closes the app (the app goes on
+     * without it), so it's never shown as the app closing.
+     */
+    fun installForHelper(context: Context) {
+        val appContext = context.applicationContext
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+                File(appContext.filesDir, HELPER_FILE)
+                    .writeText("$time · ${thread.name}\n${error.stackTraceToString()}".take(MAX_TRACE_CHARS))
+            }
+            previous?.uncaughtException(thread, error)
+        }
+    }
 
     /** Keeps every crash's error (then lets the app close as it would have). */
     fun install(context: Context) {
@@ -87,7 +113,11 @@ object CrashLog {
                 .filter { it.timestamp > seen }
             if (exits.isEmpty()) return@runCatching null
             prefs.edit().putLong(LAST_EXIT_KEY, exits.maxOf { it.timestamp }).apply()
-            val exit = exits.sortedByDescending { it.timestamp }.firstOrNull { it.isAbnormal() } ?: return@runCatching null
+            // RCTV: only the app's own process closing is the app closing; a helper process's crash
+            // (the subtitle sync's sound reader) leaves the app playing: kept for reports, not shown.
+            val exit = exits.sortedByDescending { it.timestamp }
+                .firstOrNull { it.isAbnormal() && (it.processName == null || it.processName == appContext.packageName) }
+                ?: return@runCatching null
             describe(exit)
         }.getOrNull()
     }
