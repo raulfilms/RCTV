@@ -307,6 +307,43 @@ class TmdbDiscoverRepository @Inject constructor(
         )
     }
 
+    /** TMDB's keyword ids by name ("tennis" -> its id), asked once. */
+    private val keywordIds = ConcurrentHashMap<String, Int>()
+
+    /**
+     * RCTV (owner, More to Watch): the most popular [mediaType] titles TMDB tags with [keyword]
+     * ("tennis": tennis movies, tennis series), the ones enough people rated; empty when TMDB has no
+     * such keyword.
+     */
+    suspend fun withKeyword(keyword: String, mediaType: TmdbCollectionMediaType, language: String): List<MetaPreview> =
+        withContext(Dispatchers.IO) {
+            val wanted = keyword.trim().lowercase(Locale.ROOT)
+            val keywordId = keywordIds[wanted] ?: run {
+                val found = runCatching { tmdbApi.searchKeywords(apiKey, wanted).body()?.results.orEmpty() }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrNull().orEmpty()
+                (found.firstOrNull { it.name?.trim()?.lowercase(Locale.ROOT) == wanted } ?: found.firstOrNull())
+                    ?.id?.also { keywordIds[wanted] = it }
+            } ?: return@withContext emptyList()
+            val isTv = mediaType == TmdbCollectionMediaType.TV
+            val response = runCatching {
+                if (isTv) {
+                    tmdbApi.discoverTv(
+                        apiKey = apiKey, language = language, page = 1, sortBy = "popularity.desc",
+                        voteCountGte = KEYWORD_MIN_VOTES, withKeywords = keywordId.toString()
+                    )
+                } else {
+                    tmdbApi.discoverMovies(
+                        apiKey = apiKey, language = language, page = 1, sortBy = "popularity.desc",
+                        voteCountGte = KEYWORD_MIN_VOTES, withKeywords = keywordId.toString()
+                    )
+                }
+            }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+            if (response == null || !response.isSuccessful) return@withContext emptyList()
+            val names = genreList(mediaType, language).toMap()
+            response.body()?.results.orEmpty().mapNotNull { it.toPreview(mediaType, names) }
+        }
+
     /**
      * RCTV Home ("Recommended for You"): TMDB's titles like [contentId] (an IMDb "tt…" or a "tmdb:…"
      * id), as cards; empty when TMDB doesn't know it.
@@ -353,6 +390,8 @@ class TmdbDiscoverRepository @Inject constructor(
     private fun String.genreKey(): String = trim().lowercase(Locale.ROOT)
 
     companion object {
+        /** RCTV (More to Watch): a keyword's titles only when this many people rated them. */
+        private const val KEYWORD_MIN_VOTES = 20
         /** TMDB stops paging at 500 (20 titles a page). */
         const val TMDB_MAX_PAGE = 500
         private const val NEW_MIN_VOTES_MOVIE = 5

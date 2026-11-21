@@ -201,8 +201,8 @@ internal fun LiveTvPlayerOverlay(
     LaunchedEffect(shownTab, seriesMatch?.tmdbId) {
         if (shownTab == LiveTab.EPISODES) liveViewModel.ensureEpisodes()
     }
-    LaunchedEffect(shownTab, programState.isLoading, programState.match?.itemId, program?.title) {
-        if (shownTab == LiveTab.MORE_TO_WATCH) liveViewModel.ensureMoreToWatch()
+    LaunchedEffect(shownTab, programState.isLoading, programState.match?.itemId, program?.title, channel?.id) {
+        if (shownTab == LiveTab.MORE_TO_WATCH) liveViewModel.ensureMoreToWatch(channel)
     }
     val tabRequesters = remember { LiveTab.entries.associateWith { FocusRequester() } }
     val contentEntry = remember { FocusRequester() }
@@ -398,7 +398,7 @@ internal fun LiveTvPlayerOverlay(
                     LiveTab.LIBRARY -> programState.isLoading || programState.match != null
                     LiveTab.NETWORKS -> guide.channels.isNotEmpty()
                     LiveTab.EPISODES -> episodesState.seasons.isNotEmpty()
-                    LiveTab.MORE_TO_WATCH -> moreState.items.isNotEmpty()
+                    LiveTab.MORE_TO_WATCH -> moreState.items.isNotEmpty() || moreState.channels.isNotEmpty()
                     LiveTab.CATCH_UP -> catchUpState.programs.isNotEmpty()
                     else -> true
                 }
@@ -548,11 +548,17 @@ internal fun LiveTvPlayerOverlay(
                     )
                     LiveTab.MORE_TO_WATCH -> MoreToWatchRow(
                         items = moreState.items,
+                        channels = moreState.channels,
+                        guide = guide,
+                        nowMs = nowMs,
                         isLoading = moreState.isLoading || programState.isLoading,
                         entry = contentEntry,
                         itemModifier = upToTab,
                         onFocused = onResetHideTimer,
-                        onChoose = onOpenMoreToWatch
+                        onChoose = onOpenMoreToWatch,
+                        onChooseChannel = { chosen ->
+                            if (chosen.id == channel?.id) onHideControls() else onPlayChannel(chosen)
+                        }
                     )
                     LiveTab.NETWORKS -> NetworksRow(
                         guide = guide,
@@ -842,13 +848,17 @@ private fun LiveTextTab(
 @Composable
 private fun MoreToWatchRow(
     items: List<com.nuvio.tv.domain.model.MetaPreview>,
+    channels: List<LiveTvChannel>,
+    guide: LiveTvPlayerSession.Guide,
+    nowMs: Long,
     isLoading: Boolean,
     entry: FocusRequester,
     itemModifier: Modifier,
     onFocused: () -> Unit,
-    onChoose: (com.nuvio.tv.domain.model.MetaPreview) -> Unit
+    onChoose: (com.nuvio.tv.domain.model.MetaPreview) -> Unit,
+    onChooseChannel: (LiveTvChannel) -> Unit
 ) {
-    if (items.isEmpty()) {
+    if (items.isEmpty() && channels.isEmpty()) {
         Text(
             text = stringResource(if (isLoading) R.string.livetv_library_looking_up else R.string.player_live_more_to_watch_empty),
             color = Color.White.copy(alpha = 0.7f),
@@ -863,12 +873,26 @@ private fun MoreToWatchRow(
         // Room above and below for a card growing on focus.
         contentPadding = PaddingValues(horizontal = RowBleed, vertical = 10.dp)
     ) {
+        // RCTV (owner): on sports, the channels with games and sports on now come first.
+        itemsIndexed(channels, key = { _, item -> "channel:${item.id}" }) { index, item ->
+            LiveChannelCard(
+                guide = guide,
+                item = item,
+                isPlaying = false,
+                nowMs = nowMs,
+                isFirst = index == 0,
+                entry = entry,
+                itemModifier = itemModifier,
+                onFocused = onFocused,
+                onChoose = onChooseChannel
+            )
+        }
         itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
             com.nuvio.tv.ui.components.AppleLandscapeCard(
                 item = item,
                 onClick = { onChoose(item) },
                 modifier = itemModifier,
-                focusRequester = if (index == 0) entry else null,
+                focusRequester = if (index == 0 && channels.isEmpty()) entry else null,
                 onFocus = { onFocused() }
             )
         }
@@ -1050,143 +1074,172 @@ private fun NetworksRow(
         contentPadding = PaddingValues(horizontal = RowBleed, vertical = 8.dp)
     ) {
         itemsIndexed(channels, key = { _, item -> item.id }) { index, item ->
-            val onNow = guide.programAt(item, nowMs)
-            val next = remember(item.id, guide.epgByChannel, onNow?.endMs ?: (nowMs / 60_000L)) {
-                guide.programsOf(item).firstOrNull { it.startMs >= (onNow?.endMs ?: nowMs) }
-            }
-            val art = onNow?.imageUrl?.takeIf { it.isNotBlank() }
-            val isPlaying = item.id == current?.id
-            Column(modifier = Modifier.width(176.dp)) {
-                Card(
-                    onClick = { onChoose(item) },
-                    modifier = itemModifier
-                        .then(if (index == 0) Modifier.focusRequester(entry) else Modifier)
-                        .fillMaxWidth()
-                        .height(99.dp)
-                        .onFocusChanged { if (it.isFocused) onFocused() },
-                    shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
-                    colors = CardDefaults.colors(
-                        containerColor = Color.White.copy(alpha = 0.14f),
-                        focusedContainerColor = Color.White.copy(alpha = 0.22f)
-                    ),
-                    border = tileCardBorder(RoundedCornerShape(10.dp)),
-                    scale = CardDefaults.scale(focusedScale = 1.04f)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        if (art != null) {
-                            // What's on, darkened, with the channel's logo in the corner.
-                            AsyncImage(
-                                model = art,
-                                contentDescription = onNow?.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.35f))
-                            )
-                            if (!item.logoUrl.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = item.logoUrl,
-                                    contentDescription = item.name,
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(8.dp)
-                                        .height(20.dp)
-                                        .widthIn(max = 64.dp)
-                                )
-                            }
-                        } else if (!item.logoUrl.isNullOrBlank()) {
-                            AsyncImage(
-                                model = item.logoUrl,
-                                contentDescription = item.name,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 36.dp, vertical = 22.dp)
-                            )
-                        } else {
-                            Text(
-                                text = item.name,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(12.dp)
-                            )
-                        }
-                        Box(
+            LiveChannelCard(
+                guide = guide,
+                item = item,
+                isPlaying = item.id == current?.id,
+                nowMs = nowMs,
+                isFirst = index == 0,
+                entry = entry,
+                itemModifier = itemModifier,
+                onFocused = onFocused,
+                onChoose = onChoose
+            )
+        }
+    }
+}
+
+/**
+ * A channel's card (the Networks row's, and More to Watch's channels): what's on, darkened, with the
+ * channel's logo, LIVE, its progress; its name and what's next under it.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun LiveChannelCard(
+    guide: LiveTvPlayerSession.Guide,
+    item: LiveTvChannel,
+    isPlaying: Boolean,
+    nowMs: Long,
+    isFirst: Boolean,
+    entry: FocusRequester,
+    itemModifier: Modifier,
+    onFocused: () -> Unit,
+    onChoose: (LiveTvChannel) -> Unit
+) {
+    val onNow = guide.programAt(item, nowMs)
+    val next = remember(item.id, guide.epgByChannel, onNow?.endMs ?: (nowMs / 60_000L)) {
+        guide.programsOf(item).firstOrNull { it.startMs >= (onNow?.endMs ?: nowMs) }
+    }
+    val art = onNow?.imageUrl?.takeIf { it.isNotBlank() }
+    Column(modifier = Modifier.width(176.dp)) {
+        Card(
+            onClick = { onChoose(item) },
+            modifier = itemModifier
+                .then(if (isFirst) Modifier.focusRequester(entry) else Modifier)
+                .fillMaxWidth()
+                .height(99.dp)
+                .onFocusChanged { if (it.isFocused) onFocused() },
+            shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+            colors = CardDefaults.colors(
+                containerColor = Color.White.copy(alpha = 0.14f),
+                focusedContainerColor = Color.White.copy(alpha = 0.22f)
+            ),
+            border = tileCardBorder(RoundedCornerShape(10.dp)),
+            scale = CardDefaults.scale(focusedScale = 1.04f)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (art != null) {
+                    // What's on, darkened, with the channel's logo in the corner.
+                    AsyncImage(
+                        model = art,
+                        contentDescription = onNow?.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.35f))
+                    )
+                    if (!item.logoUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = item.logoUrl,
+                            contentDescription = item.name,
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 8.dp, bottom = 8.dp)
-                        ) { LiveBadge() }
-                        if (isPlaying) {
-                            // RCTV: the channel on now, as YouTube TV.
-                            Text(
-                                text = stringResource(R.string.player_live_playing),
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                        if (onNow != null) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .height(3.dp)
-                                    .background(Color.White.copy(alpha = 0.25f))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .fillMaxWidth(onNow.progressAt(nowMs))
-                                        .background(NuvioTheme.palette.accentBrush())
-                                )
-                            }
-                        }
+                                .align(Alignment.TopStart)
+                                .padding(8.dp)
+                                .height(20.dp)
+                                .widthIn(max = 64.dp)
+                        )
                     }
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = onNow?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: item.name,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = if (next != null) 1 else 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = listOfNotNull(item.name, onNow?.let { airingLabel(it) }).joinToString(" · "),
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (next != null) {
+                } else if (!item.logoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = item.logoUrl,
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 36.dp, vertical = 22.dp)
+                    )
+                } else {
                     Text(
-                        text = stringResource(
-                            R.string.player_live_next_program,
-                            LiveProgramLibrary.cleanTitle(next.title)
-                        ),
-                        color = Color.White.copy(alpha = 0.55f),
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = item.name,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(12.dp)
                     )
                 }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 8.dp, bottom = 8.dp)
+                ) { LiveBadge() }
+                if (isPlaying) {
+                    // RCTV: the channel on now, as YouTube TV.
+                    Text(
+                        text = stringResource(R.string.player_live_playing),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                if (onNow != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(Color.White.copy(alpha = 0.25f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(onNow.progressAt(nowMs))
+                                .background(NuvioTheme.palette.accentBrush())
+                        )
+                    }
+                }
             }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = onNow?.let { LiveProgramLibrary.cleanTitle(it.title) } ?: item.name,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = if (next != null) 1 else 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = listOfNotNull(item.name, onNow?.let { airingLabel(it) }).joinToString(" · "),
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (next != null) {
+            Text(
+                text = stringResource(
+                    R.string.player_live_next_program,
+                    LiveProgramLibrary.cleanTitle(next.title)
+                ),
+                color = Color.White.copy(alpha = 0.55f),
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

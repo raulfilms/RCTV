@@ -83,7 +83,9 @@ data class LivePlayerMoreState(
     /** What they were picked for (what's on now). */
     val key: String? = null,
     val isLoading: Boolean = false,
-    val items: List<com.nuvio.tv.domain.model.MetaPreview> = emptyList()
+    val items: List<com.nuvio.tv.domain.model.MetaPreview> = emptyList(),
+    /** RCTV (owner): on sports, the channels with games and sports on now (shown before the titles). */
+    val channels: List<LiveTvChannel> = emptyList()
 )
 
 /**
@@ -406,22 +408,43 @@ class LiveTvPlayerViewModel @Inject constructor(
      * RCTV: the More to Watch tab showed: its titles, picked again when what's on changes (once TMDB
      * has told what it is). The last ones stay shown while the new ones come.
      */
-    fun ensureMoreToWatch() {
+    fun ensureMoreToWatch(channel: LiveTvChannel? = null) {
         val state = _program.value
         if (state.isLoading) return
-        val key = "${state.match?.itemId}|${state.program?.title}"
+        val key = "${channel?.id}|${state.match?.itemId}|${state.program?.title}"
         if (_moreToWatch.value.key == key) return
         moreToWatchJob?.cancel()
         _moreToWatch.update { it.copy(key = key, isLoading = true) }
         moreToWatchJob = viewModelScope.launch {
-            val items = try {
-                moreToWatchPicks.picks(state.match, state.program)
+            // RCTV (owner): sports on now: the channels with games and sports on, then the sport's
+            // movies and series, then the rest.
+            val sports = com.nuvio.tv.data.livetv.LiveMoreToWatch.isSports(channel, state.program)
+            val feeds = if (sports) com.nuvio.tv.data.livetv.LiveMoreToWatch.sportFeedsOf(channel, state.program) else emptyList()
+            val channels = if (!sports) emptyList() else try {
+                val guide = session.guide.value
+                val now = System.currentTimeMillis()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    com.nuvio.tv.data.livetv.LiveMoreToWatch.sportsChannels(
+                        channels = guide.channels,
+                        programAt = { guide.programAt(it, now) },
+                        current = channel,
+                        feeds = feeds
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 emptyList()
             }
-            _moreToWatch.update { if (it.key == key) it.copy(isLoading = false, items = items) else it }
+            _moreToWatch.update { if (it.key == key) it.copy(channels = channels) else it }
+            val items = try {
+                moreToWatchPicks.picks(state.match, state.program, feeds)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _moreToWatch.update { if (it.key == key) it.copy(isLoading = false, items = items, channels = channels) else it }
         }
     }
 

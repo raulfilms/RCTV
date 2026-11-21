@@ -4,7 +4,9 @@ import com.nuvio.tv.data.discover.DiscoverCategory
 import com.nuvio.tv.data.discover.DiscoverGenre
 import com.nuvio.tv.data.discover.DiscoverMediaFilter
 import com.nuvio.tv.data.discover.TmdbDiscoverRepository
+import com.nuvio.tv.data.remote.espn.EspnSportsClient
 import com.nuvio.tv.domain.model.EpgProgram
+import com.nuvio.tv.domain.model.LiveTvChannel
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.TmdbCollectionMediaType
 import com.nuvio.tv.domain.repository.WatchProgressRepository
@@ -23,21 +25,40 @@ import javax.inject.Inject
  * - popular titles of its genre (TMDB's genres for it, else the guide's category: Action, Comedy...);
  * - titles like the ones watched last on this profile.
  * What's on itself is left out; TMDB's trending titles only when nothing else came.
+ *
+ * RCTV (owner): on a sports channel or a game, first the channels with games and sports events on
+ * now (the same league's first: another NFL game, NFL RedZone; then the same sport's; then the other
+ * live sports), then movies and series of that sport (tennis movies, tennis series), then the rest.
  */
 class LiveMoreToWatch @Inject constructor(
     private val tmdb: TmdbDiscoverRepository,
     private val watchProgress: WatchProgressRepository
 ) {
 
-    suspend fun picks(match: LiveProgramMatch?, program: EpgProgram?): List<MetaPreview> = coroutineScope {
+    suspend fun picks(
+        match: LiveProgramMatch?,
+        program: EpgProgram?,
+        sportFeeds: List<EspnSportsClient.Feed> = emptyList()
+    ): List<MetaPreview> = coroutineScope {
         val language = tmdb.language()
+        val ofSport = async { safe { sportTitles(sportFeeds, language) } }
         val likeThis = async {
             safe { match?.let { tmdb.recommendationsFor(it.itemId, !it.isMovie, language) }.orEmpty() }
         }
         val ofGenre = async { safe { genrePicks(match, program, language) } }
         val likeWatched = async { safe { watchedPicks(language, exclude = match?.itemId) } }
-        val shown = mix(likeThis.await(), ofGenre.await(), likeWatched.await()).withArt(match?.itemId)
+        val shown = (ofSport.await() + mix(likeThis.await(), ofGenre.await(), likeWatched.await())).withArt(match?.itemId)
         shown.ifEmpty { safe { trending(language) }.withArt(match?.itemId) }
+    }
+
+    /** Movies and series of the sport on now, the most popular, one of each in turn. */
+    private suspend fun sportTitles(feeds: List<EspnSportsClient.Feed>, language: String): List<MetaPreview> {
+        val keyword = sportKeywordOf(feeds) ?: return emptyList()
+        return coroutineScope {
+            val movies = async { safe { tmdb.withKeyword(keyword, TmdbCollectionMediaType.MOVIE, language) } }
+            val shows = async { safe { tmdb.withKeyword(keyword, TmdbCollectionMediaType.TV, language) } }
+            interleave(movies.await(), shows.await()).take(SPORT_TITLES)
+        }
     }
 
     private fun List<MetaPreview>.withArt(leaveOut: String?): List<MetaPreview> =
@@ -109,6 +130,119 @@ class LiveMoreToWatch @Inject constructor(
 
     companion object {
         const val MAX_PICKS = 24
+        /** How many channels with sports on now lead the row, and how many of the sport's titles follow. */
+        const val MAX_SPORT_CHANNELS = 12
+        private const val SPORT_TITLES = 12
+
+        /**
+         * What's on is sports (a game, an event, a sports channel's program): its leagues, as the
+         * Sports page knows them (tennis: ATP and WTA; an NFL game: the NFL); empty when it isn't.
+         * Only the sport said ("Football") gives that sport's main leagues.
+         */
+        fun sportFeedsOf(channel: LiveTvChannel?, program: EpgProgram?): List<EspnSportsClient.Feed> {
+            if (!isSports(channel, program)) return emptyList()
+            val feeds = EspnSportsClient.feedsForProgram(textOf(channel, program))
+            // Nothing named (only "Sports"): no league in particular.
+            return if (feeds.map { it.leaguePath }.toSet() == UNNAMED_LEAGUES) emptyList() else feeds
+        }
+
+        /** Sports with no league named still count as sports (the channels show; no sport's titles). */
+        fun isSports(channel: LiveTvChannel?, program: EpgProgram?): Boolean =
+            (program != null && com.nuvio.tv.ui.screens.livetv.LiveEventLibrary.looksLikeGame(program)) ||
+                channel?.guideCategory?.contains("sport", ignoreCase = true) == true ||
+                // A sport's own channel by its name (Tennis Channel, Golf Channel, NFL RedZone).
+                (channel != null && EspnSportsClient.feedsForProgram(
+                    com.nuvio.tv.ui.screens.sports.SportsGameChannels.normalize(channel.name)
+                ).map { it.leaguePath }.toSet() != UNNAMED_LEAGUES)
+
+        private val UNNAMED_LEAGUES: Set<String> by lazy {
+            EspnSportsClient.feedsForProgram("").map { it.leaguePath }.toSet()
+        }
+
+        private fun textOf(channel: LiveTvChannel?, program: EpgProgram?): String =
+            com.nuvio.tv.ui.screens.sports.SportsGameChannels.normalize(
+                (listOfNotNull(program?.title, program?.subtitle, program?.category, channel?.name) + program?.categories.orEmpty())
+                    .joinToString(" ")
+            )
+
+        /**
+         * The Guide's channels with sports on now ([current] left out): the same league's first (its
+         * games, and its own channels: NFL RedZone and NFL Network for the NFL, Tennis Channel for
+         * tennis), then the same sport's, then the other live games and events, then other sports
+         * programs; live ones before the others, each in the Guide's order. At most [MAX_SPORT_CHANNELS].
+         */
+        fun sportsChannels(
+            channels: List<LiveTvChannel>,
+            programAt: (LiveTvChannel) -> EpgProgram?,
+            current: LiveTvChannel?,
+            feeds: List<EspnSportsClient.Feed>
+        ): List<LiveTvChannel> {
+            val leagues = feeds.map { it.leaguePath }.toSet()
+            val sports = feeds.map { it.sportPath }.toSet()
+            val ownChannels = leagues.flatMap { LEAGUE_CHANNEL_WORDS[it].orEmpty() }.toSet()
+            val ranked = ArrayList<Pair<Int, LiveTvChannel>>()
+            for (channel in channels) {
+                if (channel.id == current?.id || channel.name.equals(current?.name, ignoreCase = true)) continue
+                val program = programAt(channel)
+                val name = " ${com.nuvio.tv.ui.screens.sports.SportsGameChannels.normalize(channel.name)} "
+                val leagueChannel = ownChannels.any { name.contains(" $it ") }
+                if (program == null && !leagueChannel) continue
+                if (!leagueChannel && !isSports(channel, program)) continue
+                val theirs = if (program != null) EspnSportsClient.feedsForProgram(textOf(channel, program)) else emptyList()
+                val theirLeagues = theirs.map { it.leaguePath }.toSet()
+                val named = theirLeagues != UNNAMED_LEAGUES
+                val event = program != null && (program.isLive || com.nuvio.tv.ui.screens.livetv.LiveEventLibrary.looksLikeGame(program))
+                val rank = when {
+                    leagueChannel || (named && theirLeagues.any { it in leagues }) -> 0
+                    named && theirs.any { it.sportPath in sports } -> 2
+                    event -> 4
+                    else -> 6
+                } + if (program?.isLive == true || leagueChannel) 0 else 1
+                ranked += rank to channel
+            }
+            return ranked.sortedBy { it.first }.map { it.second }.distinctBy { it.id }.take(MAX_SPORT_CHANNELS)
+        }
+
+        /** A league's own channels, by the words of their names. */
+        private val LEAGUE_CHANNEL_WORDS: Map<String, List<String>> = mapOf(
+            "nfl" to listOf("redzone", "red zone", "nfl network"),
+            "college-football" to listOf("sec network", "acc network", "big ten network", "espnu"),
+            "nba" to listOf("nba tv"),
+            "wnba" to listOf("nba tv"),
+            "mens-college-basketball" to listOf("sec network", "acc network", "big ten network", "espnu"),
+            "mlb" to listOf("mlb network", "mlb tv"),
+            "nhl" to listOf("nhl network"),
+            "atp" to listOf("tennis channel", "tennis"),
+            "wta" to listOf("tennis channel", "tennis"),
+            "pga" to listOf("golf channel", "golf"),
+            "lpga" to listOf("golf channel", "golf"),
+            "f1" to listOf("f1 tv"),
+            "ufc" to listOf("ufc"),
+            "usa.1" to listOf("mls"),
+            "esp.1" to listOf("laliga"),
+            "eng.1" to listOf("premier league")
+        )
+
+        /** TMDB's keyword for the sport's movies and series. */
+        internal fun sportKeywordOf(feeds: List<EspnSportsClient.Feed>): String? {
+            val leagues = feeds.map { it.leaguePath }.toSet()
+            return when (feeds.firstOrNull()?.sportPath) {
+                "tennis" -> "tennis"
+                "football" -> "american football"
+                "basketball" -> "basketball"
+                "baseball" -> "baseball"
+                "hockey" -> "ice hockey"
+                "soccer" -> "soccer"
+                "golf" -> "golf"
+                "mma" -> "mixed martial arts"
+                "racing" -> if ("f1" in leagues) "formula 1" else "car race"
+                else -> when {
+                    leagues.any { "nascar" in it } -> "nascar"
+                    leagues.any { "box" in it || "ppv" in it } -> "boxing"
+                    else -> null
+                }
+            }
+        }
         private const val WATCHED_TITLES = 2
         private const val HISTORY_WAIT_MS = 3_000L
 
