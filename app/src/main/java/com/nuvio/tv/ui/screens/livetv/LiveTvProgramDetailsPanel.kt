@@ -101,6 +101,37 @@ internal fun LiveTvProgramDetailsOverlay(
      */
     liveChoice: Boolean = false
 ) {
+    // RCTV (owner): over the whole screen, the Now Playing bar included (the bar stays as it is,
+    // under it), as before there was a bar.
+    com.nuvio.tv.ui.components.ShowAboveNowPlayingBar {
+        ProgramDetailsOverlayContent(
+            channel = channel,
+            program = program,
+            nowMs = nowMs,
+            tmdb = tmdb,
+            onWatch = onWatch,
+            onAddToLibrary = onAddToLibrary,
+            onOpenTitle = onOpenTitle,
+            onDismiss = onDismiss,
+            onWatchVod = onWatchVod,
+            liveChoice = liveChoice
+        )
+    }
+}
+
+@Composable
+private fun ProgramDetailsOverlayContent(
+    channel: LiveTvChannel,
+    program: EpgProgram,
+    nowMs: Long,
+    tmdb: ProgramDetailsTmdb,
+    onWatch: (() -> Unit)?,
+    onAddToLibrary: () -> Unit,
+    onOpenTitle: (LiveProgramMatch) -> Unit,
+    onDismiss: () -> Unit,
+    onWatchVod: ((LiveVodTarget) -> Unit)?,
+    liveChoice: Boolean
+) {
     BackHandler(onBack = onDismiss)
     val airingNow = program.isAiringAt(nowMs)
     val match = tmdb.match

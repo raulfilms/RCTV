@@ -86,6 +86,32 @@ object NowPlayingBarKeys {
     }
 }
 
+/**
+ * RCTV (owner): a page's full-screen panel (a program's details) shown above everything, the Now
+ * Playing bar included; the bar stays where it is, under it. The page shows it with
+ * [ShowAboveNowPlayingBar] while it's open; MainActivity draws it with [AboveNowPlayingBarHost].
+ */
+object AboveNowPlayingBar {
+    internal var content by mutableStateOf<(@Composable () -> Unit)?>(null)
+}
+
+/** RCTV: shows [content] above the whole screen while this is in the page (see [AboveNowPlayingBar]). */
+@Composable
+fun ShowAboveNowPlayingBar(content: @Composable () -> Unit) {
+    val latest = androidx.compose.runtime.rememberUpdatedState(content)
+    DisposableEffect(Unit) {
+        val slot: @Composable () -> Unit = { latest.value() }
+        AboveNowPlayingBar.content = slot
+        onDispose { if (AboveNowPlayingBar.content === slot) AboveNowPlayingBar.content = null }
+    }
+}
+
+/** RCTV: where MainActivity draws a page's panel, above the Now Playing bar. */
+@Composable
+fun AboveNowPlayingBarHost() {
+    AboveNowPlayingBar.content?.invoke()
+}
+
 object NowPlayingBarScroll {
     var pageScrolled by mutableStateOf(false)
         private set

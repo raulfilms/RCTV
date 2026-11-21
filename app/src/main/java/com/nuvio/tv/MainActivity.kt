@@ -1543,6 +1543,10 @@ open class MainActivity : ComponentActivity() {
                                 modifier = Modifier.align(Alignment.TopCenter)
                             )
 
+                            // RCTV (owner): a page's full-screen panel (a program's details) over
+                            // everything, the bar included, as before there was a bar.
+                            com.nuvio.tv.ui.components.AboveNowPlayingBarHost()
+
                             // RCTV (owner): the bug report's list, over any screen, when the bug button opens it.
                             val bugReportOpen by bugReports.isOpen.collectAsState()
                             if (bugReportOpen) {
