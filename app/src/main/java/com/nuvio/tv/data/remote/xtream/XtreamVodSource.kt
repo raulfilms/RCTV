@@ -60,6 +60,9 @@ class XtreamVodSource @Inject constructor(
     fun refreshIfStale() {
         val login = connection() ?: return
         if (isFresh(login) || buildLock.isLocked || System.currentTimeMillis() - lastFailedAtMs < RETRY_AFTER_MS) return
+        // RCTV (owner's rule): nothing is asked of the provider while a channel or a video plays;
+        // the whole catalog is a big download that would take from the stream.
+        if (playbackActive()) return
         scope.launch { ensureIndex(login) }
     }
 
@@ -73,6 +76,8 @@ class XtreamVodSource @Inject constructor(
             val login = connection() ?: return@withContext emptyList()
             val isSeries = type.equals("series", true) || type.equals("tv", true) || type.equals("show", true)
             if (isSeries && (season == null || episode == null)) return@withContext emptyList()
+            // Not built yet and something plays (a channel in the Now Playing bar): not now.
+            if (playbackActive() && !isFresh(login)) return@withContext emptyList()
             if (!ensureIndex(login)) return@withContext emptyList()
             val named = tmdbId?.toIntOrNull()?.let { namesOf(it, isSeries) }
             val keys = named?.keys.orEmpty()
@@ -169,6 +174,9 @@ class XtreamVodSource @Inject constructor(
         MessageDigest.getInstance("SHA-256")
             .digest("${login.serverUrl.trim()}|${login.username.trim()}|${login.password.trim()}".toByteArray())
             .take(12).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    private fun playbackActive(): Boolean =
+        com.nuvio.tv.core.recommendations.TvRecommendationManager.isPlaybackActive.value
 
     private fun isFresh(login: LiveTvConnection.Xtream): Boolean {
         if (!file.exists()) return false
