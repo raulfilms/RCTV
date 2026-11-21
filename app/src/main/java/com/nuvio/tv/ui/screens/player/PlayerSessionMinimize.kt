@@ -61,7 +61,8 @@ internal fun nowPlayingOf(uiState: PlayerUiState, liveProgramTitle: String?, con
         subtitle = episodeLine,
         // The poster from the player's arguments (see PlaybackSession.minimize).
         art = null,
-        guardKind = "vod",
+        // RCTV (owner): from the IPTV's own catalog, it still takes one of the IPTV's connections.
+        guardKind = if (SeekPreviewSources.isIptvAddress(uiState.currentStreamUrl)) "iptv" else "vod",
         guardTitle = name
     )
 }

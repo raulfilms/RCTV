@@ -1022,9 +1022,12 @@ private fun PlaybackNavHost(
             val guardContext = androidx.compose.ui.platform.LocalContext.current
             val guardArgs = backStackEntry.arguments
             com.nuvio.tv.ui.components.RctvPlaybackGuard(
-                // A Catch Up recording comes from the IPTV too.
+                // A Catch Up recording comes from the IPTV too, and so does a movie or an episode
+                // from the IPTV's own catalog (the last option): it takes one of its connections.
                 kind = guardArgs?.getString("contentType").let { type ->
-                    if (type.equals("live", ignoreCase = true) || type.equals(CATCH_UP_CONTENT_TYPE, ignoreCase = true)) "iptv" else "vod"
+                    if (type.equals("live", ignoreCase = true) || type.equals(CATCH_UP_CONTENT_TYPE, ignoreCase = true) ||
+                        com.nuvio.tv.ui.screens.player.SeekPreviewSources.isIptvAddress(guardArgs?.getString("streamUrl"))
+                    ) "iptv" else "vod"
                 },
                 title = guardArgs?.getString("contentName")?.takeIf { it.isNotBlank() }
                     ?: guardArgs?.getString("title").orEmpty(),

@@ -36,6 +36,9 @@ internal object SpeechActivityAnalyzer {
         val host = lower.substringAfter("://").substringBefore('/').substringBefore(':')
         if (host == "localhost" || host == "127.0.0.1" || host == "::1" || host.startsWith("[")) return false
         val path = lower.substringBefore('?')
+        // RCTV (owner): an IPTV's movie or episode: the provider allows only so many connections at
+        // once (a second reader could stop it, or another TV): synced with the sound played only.
+        if (com.nuvio.tv.ui.screens.player.SeekPreviewSources.isIptvAddress(url)) return false
         return !path.endsWith(".m3u8") && !path.endsWith(".mpd") && !path.endsWith(".m3u")
     }
 

@@ -31,6 +31,19 @@ internal object SeekPreviewSources {
     private val iptvPaths = setOf("movie", "series", "live", "timeshift")
 
     /**
+     * RCTV: an IPTV provider's address (Xtream Codes: /movie/, /series/, /live/, /timeshift/ with
+     * the account in it). The provider allows only so many connections at once: such an address is
+     * opened by the player alone (no second reader for previews or the subtitle sync).
+     */
+    fun isIptvAddress(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        val path = url.trim().lowercase().substringAfter("://").substringAfter('/', "")
+            .substringBefore('?').substringBefore('#')
+        val segments = path.split('/').filter { it.isNotBlank() }
+        return segments.size >= 4 && segments.first() in iptvPaths
+    }
+
+    /**
      * A movie or episode file the TV's own reader can open: http(s), not a live or segmented
      * stream (HLS, DASH), not the app's own torrent server on this TV (reading elsewhere in the
      * file would pull its download away from what plays), not an IPTV provider's file (they often

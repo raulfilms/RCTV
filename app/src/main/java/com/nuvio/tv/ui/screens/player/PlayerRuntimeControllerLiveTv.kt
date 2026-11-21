@@ -75,11 +75,24 @@ internal object LiveTvPlaybackTuning {
             BUFFER_FOR_PLAYBACK_MS,
             BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
         )
-        .setTargetBufferBytes(MemoryBudget.budgetMb.coerceAtLeast(MemoryBudget.MIN_BUFFER_MB) * 1024 * 1024)
-        .setPrioritizeTimeOverSizeThresholds(true)
+        .setTargetBufferBytes(liveBufferMb() * 1024 * 1024)
+        // RCTV (owner, 4K channels): on a box with little memory (the Mi Box) the size wins over the
+        // seconds: 30 s of a 4K channel (15-25 Mbps) is 55-95 MB, as much as the app may hold; an HD
+        // channel still fills its 30-60 s within it. Boxes with room (the Shield) keep the seconds.
+        .setPrioritizeTimeOverSizeThresholds(!MemoryBudget.isLowRamTier)
         // Live can't be rewound into, so nothing is kept behind the picture.
         .setBackBuffer(0, false)
         .build()
+
+    /** RCTV: what a live channel may hold ahead, MB (at most [LOW_RAM_LIVE_BUFFER_MB] on a small box). */
+    private fun liveBufferMb(): Int {
+        val budget = MemoryBudget.budgetMb
+        val mb = if (MemoryBudget.isLowRamTier) budget.coerceAtMost(LOW_RAM_LIVE_BUFFER_MB) else budget
+        return mb.coerceAtLeast(MemoryBudget.MIN_BUFFER_MB)
+    }
+
+    /** RCTV: a small box's live buffer: about 15 s of a 4K channel, the full 30-60 s of an HD one. */
+    private const val LOW_RAM_LIVE_BUFFER_MB = 48
 
     /**
      * Plays at exactly 1x: speeding up chases the live edge (where every late segment is a stall)
