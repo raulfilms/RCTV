@@ -511,22 +511,31 @@ class LiveProgramLibrary @Inject constructor(
         } else {
             episodeNumbersOf(program)
         }
-        numbers?.let { (season, number) ->
-            if (season in 1..seasons) numbered(season, number)?.let { return it }
+        // RCTV: guides without an episode title often start the description with it ("The Space
+        // Rock: Trouble follows Henry..."): looked up by that name the same way. RCTV (owner, The
+        // Office): a guide's title can carry its numbers too ("S07 E27 Search Committee").
+        val subtitle = (program.subtitle ?: episodeTitleOf(program.description))
+            ?.let(::cleanTitle)?.let(::withoutEpisodeNumbers)?.takeIf { it.isNotBlank() }
+        val wanted = subtitle?.let(::nameKeys)
+        // RCTV (owner, The Office): the channel's numbers can be a streamer's, not TMDB's (its season
+        // 7 counts 27 episodes, TMDB's 26): the numbered episode counts when its name agrees (or the
+        // guide names none); else the name is looked up first and it's the last resort.
+        var numberedFallback: LiveEpisode? = null
+        if (numbers != null && numbers.first in 1..seasons) {
+            val hit = seasonEpisodes(tvId, numbers.first, language).firstOrNull { it.episodeNumber == numbers.second }
+            if (hit != null) {
+                if (wanted == null || sameName(hit.name, wanted)) return hit.toLiveEpisode(numbers.first)
+                numberedFallback = hit.toLiveEpisode(numbers.first)
+            }
         }
         // RCTV: the day it first aired (the guide's "previously shown"): that day's episode, in the
         // season airing then (a rerun of any season, in one or two requests).
         if (program.originalAirDay > 0) {
             byAirDay(tvId, shape, program.originalAirDay.toLong(), language, recentSeasons = null)?.let { return it }
         }
-        // RCTV: guides without an episode title often start the description with it ("The Space
-        // Rock: Trouble follows Henry..."): looked up by that name the same way.
-        val subtitle = (program.subtitle ?: episodeTitleOf(program.description))
-            ?.let(::cleanTitle)?.takeIf { it.isNotBlank() }
         // By name: several seasons at a time, newest first, stopping at the first match. RCTV: in
         // English too (the guide's names are English) when the app's TMDB language is another.
-        if (subtitle != null) {
-            val wanted = nameKeys(subtitle)
+        if (wanted != null) {
             val languages = if (language.startsWith("en")) listOf(language) else listOf(language, ENGLISH)
             for (batch in newestFirst.take(MAX_SEASONS).chunked(SEASONS_AT_ONCE)) {
                 for (named in languages) {
@@ -534,13 +543,22 @@ class LiveProgramLibrary @Inject constructor(
                         batch.map { season -> async { season to seasonEpisodes(tvId, season, named) } }.awaitAll()
                     }
                     for ((season, episodes) in loaded) {
-                        val hit = episodes.firstOrNull { sameName(it.name, wanted) } ?: continue
+                        val hits = episodes.filter { sameName(it.name, wanted) }
+                        // RCTV (owner): a two-part episode TMDB also has whole ("Search Committee",
+                        // "(1)", "(2)"): the one nearest the guide's number, else the first.
+                        val guideNumber = numbers?.takeIf { it.first == season }?.second
+                        val hit = (if (guideNumber != null) {
+                            hits.minByOrNull { kotlin.math.abs((it.episodeNumber ?: 9_999) - guideNumber) }
+                        } else {
+                            hits.firstOrNull()
+                        }) ?: continue
                         val number = hit.episodeNumber ?: continue
                         return if (named == language) hit.toLiveEpisode(season) else numbered(season, number) ?: hit.toLiveEpisode(season)
                     }
                 }
             }
         }
+        numberedFallback?.let { return it }
         // By date: a new episode first airs the day it's on (the last two seasons are enough).
         val airDay = Instant.ofEpochMilli(program.startMs).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()
         return byAirDay(tvId, shape, airDay, language, recentSeasons = newestFirst.take(2))
@@ -741,6 +759,17 @@ class LiveProgramLibrary @Inject constructor(
         )
 
         /** RCTV: the season and episode the guide gives for [program], if it gives them. */
+        /** RCTV: an episode's name without the numbers a guide put in it ("S07 E27 Search Committee"). */
+        internal fun withoutEpisodeNumbers(name: String): String {
+            val bare = EPISODE_NUMBERS.fold(name) { text, pattern -> pattern.replace(text, " ") }
+            return bare.replace(EMPTY_BRACKETS, " ")
+                .trim { it.isWhitespace() || it in NUMBER_LEFTOVERS }
+                .replace(SPACES, " ")
+        }
+        private const val NUMBER_LEFTOVERS = "-–—:·|,.()[]#"
+        private val EMPTY_BRACKETS = Regex("""\(\s*\)|\[\s*]""")
+        private val SPACES = Regex("""\s{2,}""")
+
         fun episodeNumbersOf(program: EpgProgram): Pair<Int, Int>? {
             for (text in listOfNotNull(program.subtitle, program.description, program.title)) {
                 for (pattern in EPISODE_NUMBERS) {
