@@ -451,7 +451,24 @@ internal fun LiveTvPlayerOverlay(
                     icon = Icons.Default.ClosedCaption,
                     contentDescription = stringResource(R.string.cd_subtitles),
                     selected = shownTab == LiveTab.CAPTIONS,
-                    onClick = { runCatching { contentEntry.requestFocus() } },
+                    // RCTV (owner, as YouTube TV): OK on CC turns the captions on at once (the
+                    // channel's English ones first, else its first), and off again; the row below
+                    // still shows which, and the caption style. A channel without captions: OK
+                    // goes down to the row, as before.
+                    onClick = {
+                        val tracks = uiState.subtitleTracks
+                        val captionsOn = tracks.any { it.isSelected } || uiState.selectedAddonSubtitle != null
+                        when {
+                            captionsOn -> onEvent(PlayerEvent.OnDisableSubtitles)
+                            tracks.isNotEmpty() -> {
+                                val track = tracks.firstOrNull { it.language?.lowercase()?.startsWith("en") == true }
+                                    ?: tracks.first()
+                                onEvent(PlayerEvent.OnSelectSubtitleTrack(track.index))
+                            }
+                            else -> runCatching { contentEntry.requestFocus() }
+                        }
+                        onResetHideTimer()
+                    },
                     modifier = tabModifier(LiveTab.CAPTIONS)
                 )
                 LiveIconTab(
