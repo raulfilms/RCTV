@@ -41,8 +41,10 @@ import kotlin.math.roundToLong
  *    the stream, just ahead, every few minutes, does the same.
  *
  * The first time a language is chosen on a stream, every file of that language the subtitle sources
- * offer is compared with the same speech, and the one that fits the movie best is put on (a file
- * picked by hand after that is kept).
+ * offer is compared with the same speech, and the one that fits the movie best is put on. RCTV
+ * (owner): when the one on doesn't sync (made for another version of the movie), the others are
+ * tried again with what was heard, and the one that syncs is put on; OK held on CC compares them all
+ * again.
  *
  * Only applied when the match is clear (a subtitle of another movie is left as it is), and the sync
  * stops at once when the delay is set by hand. Subtitles inside the file are made for it: left alone.
@@ -91,7 +93,7 @@ private const val AHEAD_LEAD_MS = 15_000L
 private const val AHEAD_EVERY_MS = 6L * 60 * 1000
 
 /** Files of the chosen language compared at most (each a small download), each given this long. */
-private const val MAX_SIBLINGS = 10
+private const val MAX_SIBLINGS = 20
 private const val SIBLING_TIMEOUT_MS = 15_000L
 /** Another file is put on when it stands out this much more clearly than the one chosen. */
 private const val SWITCH_MARGIN = 1.0
@@ -122,6 +124,13 @@ internal class SubtitleChoiceState {
     fun markCompared(url: String, language: String) {
         on(url)
         compared += language
+    }
+
+    /** RCTV: compared again (OK held on CC). */
+    @Synchronized
+    fun forget(url: String, language: String) {
+        on(url)
+        compared -= language
     }
 
     @Synchronized
@@ -207,6 +216,8 @@ internal fun PlayerRuntimeController.resyncSubtitlesNow() {
         return
     }
     Log.i(TAG, "Subtitle sync asked again by hand")
+    // Every file of its language compared again with the movie: the one that syncs goes on.
+    subtitleChoice.forget(currentStreamUrl, PlayerSubtitleUtils.normalizeLanguageCode(subtitle.lang))
     subtitleAutoAlignJob?.cancel()
     setSubtitleTimeScale(1.0)
     subtitleAutoAlignJob = scope.launch {
@@ -322,6 +333,10 @@ private suspend fun PlayerRuntimeController.followAlong(sync: SubtitleSync, tapS
         if (sync.offsets.isEmpty) {
             // No match yet: only the sound played can still give it.
             if (!hearsPlayer) {
+                // RCTV (owner): this file doesn't fit this version of the movie: another one of its
+                // language that does goes on.
+                val heardBefore = HeardSpeech.get(sync.streamUrl)
+                if (heardBefore != null && switchToBestOfLanguage(sync, heardBefore, null, force = true)) return
                 Log.i(TAG, "No clear match for the subtitle (another cut or another movie?): left as it is")
                 return
             }
@@ -338,6 +353,8 @@ private suspend fun PlayerRuntimeController.followAlong(sync: SubtitleSync, tapS
             }
             if (switchToBestOfLanguage(sync, speech, found)) return
             if (found == null && heard >= FIRST_MATCH_GIVE_UP_HEARD_MS) {
+                // RCTV (owner): one more try among the others, with all that was heard.
+                if (switchToBestOfLanguage(sync, speech, null, force = true)) return
                 Log.i(TAG, "No clear match for the subtitle (another cut or another movie?): left as it is")
                 return
             }
@@ -414,10 +431,12 @@ private suspend fun PlayerRuntimeController.followAlong(sync: SubtitleSync, tapS
 private suspend fun PlayerRuntimeController.switchToBestOfLanguage(
     sync: SubtitleSync,
     speech: List<SpeechWindow>,
-    current: SubtitleAlignment?
+    current: SubtitleAlignment?,
+    /** RCTV: compared even when it already was (the one on doesn't sync). */
+    force: Boolean = false
 ): Boolean {
     val language = PlayerSubtitleUtils.normalizeLanguageCode(sync.subtitle.lang)
-    if (language.isBlank() || subtitleChoice.wasCompared(sync.streamUrl, language)) return false
+    if (language.isBlank() || (!force && subtitleChoice.wasCompared(sync.streamUrl, language))) return false
     val others = _uiState.value.addonSubtitles
         .filter { it.url != sync.subtitle.url && PlayerSubtitleUtils.normalizeLanguageCode(it.lang) == language }
         .distinctBy { it.url }
