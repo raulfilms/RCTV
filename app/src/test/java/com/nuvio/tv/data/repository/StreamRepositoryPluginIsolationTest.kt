@@ -174,7 +174,12 @@ class StreamRepositoryPluginIsolationTest {
                 debridSettingsDataStore = debridSettingsDataStore,
                 tmdbService = tmdbService,
                 debridStreamPresentation = presentation,
-                localDebridAvailabilityService = availability
+                localDebridAvailabilityService = availability,
+                // RCTV: the IPTV's own catalog (the last option): nothing in it here.
+                xtreamVod = mockk<com.nuvio.tv.data.remote.xtream.XtreamVodSource>().also { vod ->
+                    every { vod.refreshIfStale() } returns Unit
+                    coEvery { vod.find(any(), any(), any(), any(), any()) } returns emptyList()
+                }
             ),
             api = api,
             tmdbService = tmdbService,

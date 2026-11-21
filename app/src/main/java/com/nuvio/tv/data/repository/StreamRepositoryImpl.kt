@@ -51,6 +51,8 @@ private const val TAG = "StreamRepositoryImpl"
 // RCTV: the app's last-resort source: shown as the app's own; how long the others get first.
 private const val LAST_RESORT_NAME = "RCTV"
 private const val LAST_RESORT_HEAD_START_MS = 1_500L
+/** RCTV (owner): how long the IPTV's own catalog is waited for at the end (its first list can take a while). */
+private const val IPTV_VOD_WAIT_MS = 20_000L
 private val LAST_RESORT_SOURCE_NAME =
     Regex("(?i)\\b(play\\s*-?\\s*imdb|vid\\s*easy|vid\\s*link|vid\\s*src(\\.me)?|vid\\s*king)\\b")
 
@@ -63,7 +65,9 @@ class StreamRepositoryImpl @Inject constructor(
     private val debridSettingsDataStore: DebridSettingsDataStore,
     private val tmdbService: TmdbService,
     private val debridStreamPresentation: DebridStreamPresentation,
-    private val localDebridAvailabilityService: LocalDebridAvailabilityService
+    private val localDebridAvailabilityService: LocalDebridAvailabilityService,
+    /** RCTV (owner): the IPTV's own movies and series, the very last option. */
+    private val xtreamVod: com.nuvio.tv.data.remote.xtream.XtreamVodSource
 ) : StreamRepository {
     private val streamSearchSessions = StreamSearchSessionCache()
     private val localPluginSearchPaused = MutableStateFlow(false)
@@ -237,9 +241,18 @@ class StreamRepositoryImpl @Inject constructor(
                         lastResortChannel.close()
                     }
                 }
+                // RCTV (owner): the IPTV's own movies and series: the very last option of all (after the
+                // servers, the plugins and the app's last-resort sources); looked up early so it's ready.
+                xtreamVod.refreshIfStale()
+                val iptvVod = async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                    findIptvVodStreams(type, videoId, season, episode)
+                }
                 val lastResortHeadStart = launch {
                     kotlinx.coroutines.delay(LAST_RESORT_HEAD_START_MS)
-                    if (!foundStreams.get()) lastResort.start()
+                    if (!foundStreams.get()) {
+                        lastResort.start()
+                        iptvVod.start()
+                    }
                 }
 
                 // Launch addon jobs
@@ -360,6 +373,7 @@ class StreamRepositoryImpl @Inject constructor(
                     if (checkedResult.streams.isNotEmpty() && foundStreams.compareAndSet(false, true)) {
                         lastResortHeadStart.cancel()
                         lastResort.cancel()
+                        iptvVod.cancel()
                     }
                     emit(NetworkResult.Success(accumulatedResults.toList()))
                     Log.d(TAG, "Emitted ${accumulatedResults.size} addon(s), latest: ${checkedResult.addonName} with ${checkedResult.streams.size} streams")
@@ -378,6 +392,17 @@ class StreamRepositoryImpl @Inject constructor(
                 } else {
                     lastResort.cancel()
                 }
+                // RCTV (owner): still nothing anywhere: the IPTV's own version, when it has the title.
+                if (accumulatedResults.none { it.streams.isNotEmpty() }) {
+                    iptvVod.start()
+                    val vod = kotlinx.coroutines.withTimeoutOrNull(IPTV_VOD_WAIT_MS) { iptvVod.await() }
+                    if (vod != null) {
+                        mergePresentedResult(accumulatedResults, vod, debridSettings)
+                        emit(NetworkResult.Success(accumulatedResults.toList()))
+                        Log.d(TAG, "Emitted ${vod.streams.size} IPTV catalog stream(s)")
+                    }
+                }
+                iptvVod.cancel()
             }
 
             // Emit final result (even if empty)
@@ -476,6 +501,46 @@ class StreamRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.w(TAG, "Last-resort search failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * RCTV (owner): the movie or episode in the IPTV's own catalog (see [com.nuvio.tv.data.remote.xtream.XtreamVodSource]),
+     * shown under the app's own name; null when the IPTV doesn't have it (or there's no IPTV).
+     */
+    private suspend fun findIptvVodStreams(type: String, videoId: String, season: Int?, episode: Int?): AddonStreams? {
+        return try {
+            val tmdbId = tmdbService.ensureTmdbId(videoId, type)
+            val imdbId = videoId.substringBefore(':').takeIf { it.startsWith("tt") }
+            val (vodSeason, vodEpisode) = resolvePluginSeasonEpisode(videoId = videoId, season = season, episode = episode)
+            val hits = xtreamVod.find(type, tmdbId, imdbId, vodSeason, vodEpisode)
+            if (hits.isEmpty()) return null
+            val unknown = context.getString(com.nuvio.tv.R.string.stream_quality_unknown)
+            val episodeTag = if (vodSeason != null && vodEpisode != null && !type.equals("movie", true)) {
+                " S%02dE%02d".format(vodSeason, vodEpisode)
+            } else ""
+            val streams = hits.map { hit ->
+                Stream(
+                    name = "$LAST_RESORT_NAME - ${hit.quality ?: unknown}",
+                    title = (hit.label + episodeTag).trim().ifBlank { hit.quality ?: unknown },
+                    description = null,
+                    url = hit.url,
+                    ytId = null,
+                    infoHash = null,
+                    fileIdx = null,
+                    externalUrl = null,
+                    behaviorHints = null,
+                    addonName = LAST_RESORT_NAME,
+                    addonLogo = null,
+                    quality = hit.quality,
+                    qualityValue = parseQualityValue(hit.quality)
+                )
+            }
+            AddonStreams(addonName = LAST_RESORT_NAME, addonLogo = null, streams = streams)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "IPTV catalog search failed: ${e.javaClass.simpleName}")
+            null
         }
     }
 

@@ -574,6 +574,33 @@ class XtreamClient @Inject constructor(
         return episodes
     }
 
+    /**
+     * RCTV: one of the account's lists (`player_api.php?action=...`: its movies, its series) as it
+     * downloads, to be read as it comes (a provider's catalog is tens of thousands of titles). The
+     * caller closes [read]'s stream by returning from it. The address carries the login: never logged.
+     */
+    fun <T> streamPlayerApi(connection: LiveTvConnection.Xtream, action: String, read: (java.io.InputStream) -> T): T {
+        val url = playerApiUrl(
+            normalizedServerUrl(connection.serverUrl),
+            connection.username.trim(),
+            connection.password.trim(),
+            action
+        )
+        val request = Request.Builder().url(url).build()
+        clientFor(url).newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw XtreamException("HTTP ${response.code}")
+            val body = response.body ?: throw XtreamException("Empty list")
+            return read(body.byteStream())
+        }
+    }
+
+    /** RCTV: the address that plays one of the account's movies (carries the login: never logged). */
+    fun movieUrl(connection: LiveTvConnection.Xtream, streamId: String, extension: String): String {
+        val server = normalizedServerUrl(connection.serverUrl)
+        val ext = extension.trim().trimStart('.').ifBlank { "mp4" }
+        return "$server/movie/${connection.username.trim()}/${connection.password.trim()}/$streamId.$ext"
+    }
+
     /** Fetches the account's full XMLTV EPG export (`xmltv.php`), raw, for [XmltvParser] to parse. */
     fun fetchXmltv(connection: LiveTvConnection.Xtream): String = get(xmltvUrl(connection))
 
