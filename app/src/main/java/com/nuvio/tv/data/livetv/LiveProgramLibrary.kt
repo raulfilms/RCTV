@@ -460,9 +460,33 @@ class LiveProgramLibrary @Inject constructor(
         val exact = results.filter { result ->
             normalize(result.title ?: result.name ?: "") == wanted ||
                 normalize(result.originalTitle ?: result.originalName ?: "") == wanted
+        }.ifEmpty {
+            // RCTV (owner: "The Expendables 4" is "Expend4bles" on TMDB): none named so, but TMDB
+            // found it by another of its names: the first few results' other titles are checked.
+            val names = setOf(wanted, wanted.removePrefix("the"))
+            results.take(MAX_ALT_TITLE_LOOKUPS).filter { result ->
+                otherTitlesOf(result.id, isTv).any { other -> normalize(other).let { it in names || it.removePrefix("the") in names } }
+            }
         }
         searchCache[key] = exact
         return exact
+    }
+
+    private val otherTitlesCache = ConcurrentHashMap<String, List<String>>()
+
+    /** RCTV: a title's other names on TMDB (working titles, other countries'); empty when it can't tell. */
+    private suspend fun otherTitlesOf(tmdbId: Int, isTv: Boolean): List<String> {
+        val key = "${if (isTv) "tv" else "movie"}:$tmdbId"
+        otherTitlesCache[key]?.let { return it }
+        val titles = runCatching {
+            limiter.withPermit {
+                val body = (if (isTv) tmdbApi.getTvAlternativeTitles(tmdbId, apiKey) else tmdbApi.getMovieAlternativeTitles(tmdbId, apiKey))
+                    .body()
+                (body?.movieTitles ?: body?.tvTitles).orEmpty().mapNotNull { it.title?.takeIf(String::isNotBlank) }
+            }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull() ?: return emptyList()
+        otherTitlesCache[key] = titles
+        return titles
     }
 
     /** A title's cast, as LiveTitleClues compares names; empty when TMDB can't tell. */
@@ -693,6 +717,8 @@ class LiveProgramLibrary @Inject constructor(
     companion object {
         /** RCTV: titles of the same name whose cast is looked up when the guide names someone. */
         private const val MAX_CAST_LOOKUPS = 3
+        /** RCTV: how many search results have their other names checked when none is named so. */
+        private const val MAX_ALT_TITLE_LOOKUPS = 3
         private const val MAX_CAST_NAMES = 20
 
         /** The library type of an episode saved from the guide. */
