@@ -42,7 +42,22 @@ class SeekPreviewService : Service() {
         val readerHandler = object : Handler(reader.looper) {
             override fun handleMessage(msg: Message) {
                 when (msg.what) {
-                    MSG_FRAME -> answer(msg)
+                    MSG_FRAME -> try {
+                        answer(msg)
+                    } catch (e: Throwable) {
+                        // RCTV: never closes the helper (out of memory on a 4K picture...): no
+                        // picture this time, the file opened again next time; kept so it's told.
+                        Log.w(TAG, "No preview: ${e.javaClass.simpleName}")
+                        releaseRetriever()
+                        com.nuvio.tv.core.diagnostics.CrashLog.noteHelperError(e)
+                        runCatching {
+                            val out = Bundle().apply {
+                                putLong(KEY_POSITION, msg.data.getLong(KEY_POSITION, -1L))
+                                putBoolean(KEY_UNSUPPORTED, true)
+                            }
+                            msg.replyTo?.send(Message.obtain(null, MSG_RESULT).apply { this.data = out })
+                        }
+                    }
                     MSG_RELEASE -> releaseRetriever()
                 }
             }

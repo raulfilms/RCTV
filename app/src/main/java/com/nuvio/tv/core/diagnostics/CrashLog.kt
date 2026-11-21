@@ -65,20 +65,38 @@ object CrashLog {
      */
     fun installForHelper(context: Context) {
         val appContext = context.applicationContext
+        helperFilesDir = appContext.filesDir
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
-            runCatching {
-                val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-                val runtime = Runtime.getRuntime()
-                val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
-                val maxMb = runtime.maxMemory() / (1024 * 1024)
-                val doing = helperWork?.let { "doing: $it\n" }.orEmpty()
-                File(appContext.filesDir, HELPER_FILE).writeText(
-                    ("$time · ${thread.name}\nprocess: subtitle sync helper (the app kept going)\n" +
-                        doing + "memory: $usedMb of $maxMb MB\n" + error.stackTraceToString()).take(MAX_CHARS)
-                )
-            }
+            writeHelperError(thread.name, error, caught = false)
             previous?.uncaughtException(thread, error)
+        }
+    }
+
+    @Volatile
+    private var helperFilesDir: File? = null
+
+    /**
+     * RCTV: a serious error (out of memory...) the helper caught and went on after: kept like its
+     * crash, so it's told and fixed too.
+     */
+    fun noteHelperError(error: Throwable) {
+        writeHelperError(Thread.currentThread().name, error, caught = true)
+    }
+
+    private fun writeHelperError(threadName: String, error: Throwable, caught: Boolean) {
+        val dir = helperFilesDir ?: return
+        runCatching {
+            val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+            val runtime = Runtime.getRuntime()
+            val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+            val maxMb = runtime.maxMemory() / (1024 * 1024)
+            val doing = helperWork?.let { "doing: $it\n" }.orEmpty()
+            val what = if (caught) "caught, the helper went on" else "the helper closed"
+            File(dir, HELPER_FILE).writeText(
+                ("$time · $threadName\nprocess: subtitle sync helper ($what; the app kept going)\n" +
+                    doing + "memory: $usedMb of $maxMb MB\n" + error.stackTraceToString()).take(MAX_CHARS)
+            )
         }
     }
 

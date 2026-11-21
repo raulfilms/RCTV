@@ -56,6 +56,12 @@ class SpeechAnalysisService : Service() {
                     } catch (e: Exception) {
                         Log.w(TAG, "Couldn't read the sound: ${e.javaClass.simpleName}")
                         null
+                    } catch (e: Throwable) {
+                        // RCTV: never closes the helper (out of memory on a big file...): no answer
+                        // this time; kept so it's told.
+                        Log.w(TAG, "Couldn't read the sound: ${e.javaClass.simpleName}")
+                        com.nuvio.tv.core.diagnostics.CrashLog.noteHelperError(e)
+                        null
                     }
                 }
                 com.nuvio.tv.core.diagnostics.CrashLog.helperWork = null
