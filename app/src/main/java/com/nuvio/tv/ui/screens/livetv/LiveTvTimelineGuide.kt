@@ -104,13 +104,17 @@ import com.nuvio.tv.ui.components.tileFocusBorder
 // 4 dp per minute: an hour is 240 dp, a half-hour show 120 dp.
 private val MinuteWidth = 4.dp
 private val RowHeight = 54.dp
-private val RowSpacing = 6.dp
+// RCTV (owner, as YouTube TV's guide): the grid is one piece, its programs and channels parted by a
+// thin line, not separate rounded boxes.
+private val RowSpacing = 2.dp
 private val ChannelColumnWidth = 96.dp
-private val ColumnGap = 6.dp
-private val BlockGap = 4.dp
+private val ColumnGap = 2.dp
+private val BlockGap = 2.dp
 private val RulerHeight = 26.dp
 private val PreviewWidth = 220.dp
 private val BlockShape = RoundedCornerShape(AppleTvRadius.Poster)
+/** RCTV (owner): the grid's programs and logos: square, so the rows read as one strip. */
+private val GridShape = androidx.compose.ui.graphics.RectangleShape
 
 private const val SLOT_MS = 30L * 60_000L
 private const val MINUTE_MS = 60_000L
@@ -578,7 +582,6 @@ internal fun LiveTvTimelineGuide(
                                         nowMs = nowMs,
                                         liveLabel = liveLabel,
                                         noInfoLabel = noInfoLabel,
-                                        timeRange = timeRange,
                                         requesterFor = requesterFor,
                                         onBlockFocused = { program ->
                                             val key = blockKey(channel, program)
@@ -952,7 +955,6 @@ private fun GuideRow(
     nowMs: Long,
     liveLabel: String,
     noInfoLabel: String,
-    timeRange: (EpgProgram) -> String,
     requesterFor: (String) -> FocusRequester,
     onBlockFocused: (EpgProgram?) -> Unit,
     onBlockClick: (EpgProgram?) -> Unit,
@@ -990,7 +992,6 @@ private fun GuideRow(
             if (visible.isEmpty()) {
                 GuideBlock(
                     title = noInfoLabel,
-                    timeText = null,
                     isAiring = false,
                     isLive = false,
                     liveLabel = liveLabel,
@@ -1006,14 +1007,12 @@ private fun GuideRow(
                     androidx.compose.runtime.key(program.startMs) {
                         // Worked out once per program, not each time the guide slides.
                         val title = remember(program.title) { cleanProgramTitle(program.title) }
-                        val timeText = remember(program.startMs, program.endMs, timeRange) { timeRange(program) }
                         val left = maxOf(program.startMs, viewStartMs)
                         val right = minOf(program.endMs, viewEndMs)
                         val x = MinuteWidth * ((left - viewStartMs) / MINUTE_MS.toFloat())
                         val width = (MinuteWidth * ((right - left) / MINUTE_MS.toFloat()) - BlockGap).coerceAtLeast(2.dp)
                         GuideBlock(
                             title = title,
-                            timeText = timeText,
                             // RCTV (owner): recorded by the provider: it can be watched from the start.
                             catchUp = channel.archiveDays > 0 && program.startMs <= nowMs &&
                                 program.startMs >= nowMs - channel.archiveDays * 24L * 60 * 60 * 1000,
@@ -1041,7 +1040,6 @@ private fun GuideRow(
 @Composable
 private fun GuideBlock(
     title: String,
-    timeText: String?,
     /** RCTV (owner): the catch-up mark beside the name (the provider recorded it). */
     catchUp: Boolean = false,
     isAiring: Boolean,
@@ -1054,7 +1052,6 @@ private fun GuideBlock(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         // Press and hold: what's on now goes to the library (a movie right away; a series asks
@@ -1063,10 +1060,9 @@ private fun GuideBlock(
         modifier = modifier
             .focusRequester(focusRequester)
             .onFocusChanged {
-                focused = it.isFocused
                 if (it.isFocused) onFocused()
             },
-        shape = ClickableSurfaceDefaults.shape(BlockShape),
+        shape = ClickableSurfaceDefaults.shape(GridShape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isAiring) BlockFillAiring else BlockFill,
             contentColor = AppleTvColors.Label,
@@ -1075,7 +1071,7 @@ private fun GuideBlock(
         ),
         border = ClickableSurfaceDefaults.border(
             // RCTV: the white outline every tile has while focused (see TileFocus.kt).
-            focusedBorder = tileFocusBorder(BlockShape)
+            focusedBorder = tileFocusBorder(GridShape)
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
     ) {
@@ -1108,16 +1104,7 @@ private fun GuideBlock(
                     LiveBadge(text = liveLabel)
                 }
             }
-            if (timeText != null && !compact) {
-                Text(
-                    text = timeText,
-                    style = AppleTvType.Caption2,
-                    // Full white on the lighter focused block, so it keeps 4.5:1.
-                    color = if (focused) AppleTvColors.Label else AppleTvColors.LabelOnContrast,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            // RCTV (owner, as YouTube TV): only the name; the times are in the panel on the right.
         }
     }
 }
@@ -1158,7 +1145,7 @@ private fun ChannelLogoTile(
         modifier = modifier
             .focusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocused() },
-        shape = ClickableSurfaceDefaults.shape(BlockShape),
+        shape = ClickableSurfaceDefaults.shape(GridShape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = LogoTileFill,
             contentColor = AppleTvColors.Label,
@@ -1167,7 +1154,7 @@ private fun ChannelLogoTile(
         ),
         border = ClickableSurfaceDefaults.border(
             // RCTV: the white outline every tile has while focused (see TileFocus.kt).
-            focusedBorder = tileFocusBorder(BlockShape)
+            focusedBorder = tileFocusBorder(GridShape)
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = LogoFocusScale)
     ) {
