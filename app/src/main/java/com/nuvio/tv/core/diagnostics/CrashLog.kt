@@ -24,8 +24,14 @@ object CrashLog {
     private const val MAX_TRACE_CHARS = 6_000
     private const val REPORTED_FILE = "reported_crash.txt"
     private const val REPORTED_KEPT_MS = 7L * 24 * 60 * 60 * 1000
-    /** RCTV: a helper process's crash (the subtitle sync's sound reader): kept for reports only. */
+    /** RCTV: a helper process's crash (the subtitle sync's sound reader): its own error, kept. */
     private const val HELPER_FILE = "helper_crash.txt"
+    private const val HELPER_SHOWN_KEY = "helper_crash_shown_ms"
+    private const val HELPER_EXIT_KEY = "helper_exit_seen_ms"
+
+    /** RCTV: what the helper process is doing now (no addresses), kept with its crash. */
+    @Volatile
+    var helperWork: String? = null
 
     /**
      * RCTV (bug reports): the last crash or unexpected close as the app showed it, kept a week so a
@@ -63,8 +69,14 @@ object CrashLog {
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             runCatching {
                 val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-                File(appContext.filesDir, HELPER_FILE)
-                    .writeText("$time · ${thread.name}\n${error.stackTraceToString()}".take(MAX_TRACE_CHARS))
+                val runtime = Runtime.getRuntime()
+                val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+                val maxMb = runtime.maxMemory() / (1024 * 1024)
+                val doing = helperWork?.let { "doing: $it\n" }.orEmpty()
+                File(appContext.filesDir, HELPER_FILE).writeText(
+                    ("$time · ${thread.name}\nprocess: subtitle sync helper (the app kept going)\n" +
+                        doing + "memory: $usedMb of $maxMb MB\n" + error.stackTraceToString()).take(MAX_CHARS)
+                )
             }
             previous?.uncaughtException(thread, error)
         }
@@ -122,6 +134,42 @@ object CrashLog {
         }.getOrNull()
     }
 
+    /**
+     * RCTV: a helper process's error since last shown, once: its own error when it kept one (what it
+     * was doing, its memory, where it failed), else what Android says of its close. The app itself
+     * kept going. Null when there was none.
+     */
+    fun takeHelperProblem(context: Context): String? = runCatching {
+        val appContext = context.applicationContext
+        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val file = File(appContext.filesDir, HELPER_FILE)
+        val shownAt = prefs.getLong(HELPER_SHOWN_KEY, 0L)
+        if (file.exists() && file.lastModified() > shownAt) {
+            prefs.edit().putLong(HELPER_SHOWN_KEY, file.lastModified()).apply()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) markHelperExitsSeen(appContext)
+            return@runCatching file.readText().takeIf { it.isNotBlank() }
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@runCatching null
+        val seen = prefs.getLong(HELPER_EXIT_KEY, 0L)
+        val manager = appContext.getSystemService(ActivityManager::class.java) ?: return@runCatching null
+        val exits = manager.getHistoricalProcessExitReasons(appContext.packageName, 0, 10)
+            .filter { it.timestamp > seen && it.processName != null && it.processName != appContext.packageName }
+        if (exits.isEmpty()) return@runCatching null
+        prefs.edit().putLong(HELPER_EXIT_KEY, exits.maxOf { it.timestamp }).apply()
+        exits.sortedByDescending { it.timestamp }.firstOrNull { it.isAbnormal() }?.let { describe(it) }
+    }.getOrNull()
+
+    private fun markHelperExitsSeen(appContext: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        runCatching {
+            val manager = appContext.getSystemService(ActivityManager::class.java) ?: return
+            val latest = manager.getHistoricalProcessExitReasons(appContext.packageName, 0, 10)
+                .filter { it.processName != appContext.packageName }
+                .maxOfOrNull { it.timestamp } ?: return
+            appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(HELPER_EXIT_KEY, latest).apply()
+        }
+    }
+
     private fun ApplicationExitInfo.isAbnormal(): Boolean = when (reason) {
         ApplicationExitInfo.REASON_CRASH,
         ApplicationExitInfo.REASON_CRASH_NATIVE,
@@ -149,6 +197,8 @@ object CrashLog {
         val header = buildString {
             append("$time · system exit\n")
             append("reason: $reason\n")
+            // RCTV: which part closed (the app itself, or its subtitle sync helper).
+            exit.processName?.let { append("process: $it\n") }
             exit.description?.takeIf { it.isNotBlank() }?.let { append("description: $it\n") }
             append("importance: ${exit.importance} · pss: ${exit.pss / 1024} MB · rss: ${exit.rss / 1024} MB\n")
         }

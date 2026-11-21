@@ -36,7 +36,12 @@ import com.nuvio.tv.ui.util.SourcePrivacy
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun CrashReportDialog(trace: String, onDismiss: () -> Unit) {
+fun CrashReportDialog(
+    trace: String,
+    onDismiss: () -> Unit,
+    /** RCTV: a helper's error (the app kept going), not the app closing. */
+    appKeptGoing: Boolean = false
+) {
     val okRequester = remember { FocusRequester() }
     val summary = remember(trace) {
         val text = if (CrashLog.isSystemExit(trace)) trace.lines().take(40).joinToString("\n") else CrashLog.summary(trace)
@@ -45,7 +50,7 @@ fun CrashReportDialog(trace: String, onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { runCatching { okRequester.requestFocus() } }
     NuvioDialog(
         onDismiss = onDismiss,
-        title = stringResource(R.string.crash_report_title),
+        title = stringResource(if (appKeptGoing) R.string.crash_report_helper_title else R.string.crash_report_title),
         subtitle = stringResource(R.string.crash_report_message),
         width = 860.dp,
         usePlatformDefaultWidth = false

@@ -724,8 +724,11 @@ open class MainActivity : ComponentActivity() {
             ) {
                 // RCTV: the app closed on an error last time: what it was, once.
                 var lastCrash by remember { mutableStateOf<String?>(null) }
+                // RCTV: the error was a helper's (the subtitle sync's sound reader): the app kept going.
+                var lastCrashHelper by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
                     // Read off the main thread (a frozen app's trace is a file).
+                    var helperProblem = false
                     lastCrash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         val crash = com.nuvio.tv.core.diagnostics.CrashLog.take(context)
                             ?: com.nuvio.tv.core.diagnostics.CrashLog.takeLastExit(context)
@@ -740,11 +743,18 @@ open class MainActivity : ComponentActivity() {
                         }
                         // RCTV: kept for a bug report ("App crashed / Closed unexpectedly").
                         shown?.let { com.nuvio.tv.core.diagnostics.CrashLog.keepForReports(context, it) }
-                        shown
+                        // RCTV (owner): nothing closed the app: a helper's error, with all its detail.
+                        shown ?: com.nuvio.tv.core.diagnostics.CrashLog.takeHelperProblem(context)
+                            ?.also { helperProblem = true }
                     }
+                    lastCrashHelper = helperProblem
                 }
                 lastCrash?.let { trace ->
-                    com.nuvio.tv.ui.components.CrashReportDialog(trace = trace, onDismiss = { lastCrash = null })
+                    com.nuvio.tv.ui.components.CrashReportDialog(
+                        trace = trace,
+                        onDismiss = { lastCrash = null },
+                        appKeptGoing = lastCrashHelper
+                    )
                 }
                 val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
                 val bringIntoViewSpec = if (mainUiPrefs.smoothBringIntoViewEnabled) {

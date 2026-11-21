@@ -3803,6 +3803,7 @@
     <string name="licenses_attributions_avatars_body">Los avatars de perfil de RCTV están hechos con DiceBear (MIT). Estilos de dominio público (CC0 1.0): Lorelei y Notionists (remezclas de obras de Lisa Wischofsky y Zoish), Open Peeps (Pablo Stanley), Cats, Dogs, Critters, Clay, Moods, Thumbs, Pixel Art, Voxel Art, Voxel Bot y Planets (DiceBear). Gratis para uso personal y comercial: Avataaars y Bottts de Pablo Stanley. Con licencia CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), remezclados por DiceBear y convertidos en avatars por RCTV: Adventurer de Lisa Wischofsky, Big Smile de Ashley Seo, Fun Emoji de Davis Uche, Micah de Micah Lanier, Miniavs de Webpixels, Personas de Draftbit y ToonHead de Johan Melin.</string>
     <string name="crash_report_title">La app se cerró por un error</string>
     <string name="crash_report_message">Tómale una foto a esto y envíala para que se pueda arreglar.</string>
+    <string name="crash_report_helper_title">Una parte de la app tuvo un error (la app siguió funcionando)</string>
     <string name="crash_report_ok">Aceptar</string>
     <string name="imdb_mark_needs_sign_in">Para que se marque también en IMDb, inicia sesión en IMDb: Ajustes › Integraciones › IMDb › Iniciar sesión en IMDb. Lo que veas hasta entonces se marca cuando inicies sesión.</string>
     <string name="imdb_mark_failed">IMDb no recibió %1$s ahora; se intentará de nuevo en un rato</string>

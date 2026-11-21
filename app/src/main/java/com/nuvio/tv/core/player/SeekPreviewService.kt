@@ -63,6 +63,8 @@ class SeekPreviewService : Service() {
             val headers = data.getBundle(KEY_HEADERS)?.let { bundle ->
                 bundle.keySet().associateWith { bundle.getString(it).orEmpty() }
             }.orEmpty()
+            // RCTV: what it's doing, kept with a crash (no address).
+            com.nuvio.tv.core.diagnostics.CrashLog.helperWork = "a timeline picture at ${positionMs / 1000} s"
             val opened = try {
                 open(url, headers)
             } catch (e: Exception) {
@@ -78,6 +80,7 @@ class SeekPreviewService : Service() {
                     ?.let { out.putByteArray(KEY_IMAGE, it) }
             }
         }
+        com.nuvio.tv.core.diagnostics.CrashLog.helperWork = null
         val answer = Message.obtain(null, MSG_RESULT).apply { this.data = out }
         try {
             reply.send(answer)

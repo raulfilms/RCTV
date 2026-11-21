@@ -43,6 +43,9 @@ class SpeechAnalysisService : Service() {
                         bundle.keySet().associateWith { bundle.getString(it).orEmpty() }
                     }.orEmpty()
                     cancelled = false
+                    // RCTV: what it's doing, kept with a crash (no address).
+                    com.nuvio.tv.core.diagnostics.CrashLog.helperWork =
+                        "reading the movie's sound: ${starts.size} stretch(es), from ${starts.minOrNull()?.div(1000) ?: 0} s"
                     try {
                         SpeechActivityAnalyzer.analyze(
                             url = url,
@@ -55,6 +58,7 @@ class SpeechAnalysisService : Service() {
                         null
                     }
                 }
+                com.nuvio.tv.core.diagnostics.CrashLog.helperWork = null
                 val out = Message.obtain(null, MSG_RESULT)
                 out.data = Bundle().apply {
                     if (heard != null) {
