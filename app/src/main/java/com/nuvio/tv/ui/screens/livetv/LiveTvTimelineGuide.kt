@@ -45,6 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -115,6 +118,8 @@ private val PreviewWidth = 220.dp
 private val BlockShape = RoundedCornerShape(AppleTvRadius.Poster)
 /** RCTV (owner): the grid's programs and logos: square, so the rows read as one strip. */
 private val GridShape = androidx.compose.ui.graphics.RectangleShape
+/** RCTV: how far a focused tile's white ring reaches past it (gap + line, see TileFocus.kt). */
+private val FocusRingRoom = 4.dp
 
 private const val SLOT_MS = 30L * 60_000L
 private const val MINUTE_MS = 60_000L
@@ -574,6 +579,9 @@ internal fun LiveTvTimelineGuide(
                             ) {
                                 itemsIndexed(channels, key = { _, channel -> channel.id }) { rowIndex, channel ->
                                     GuideRow(
+                                        // RCTV (owner): the focused row draws above the others, so
+                                        // its white ring shows whole (the row below covered it).
+                                        modifier = Modifier.zIndex(if (rowIndex == focusedRow) 1f else 0f),
                                         channel = channel,
                                         isCustom = channel.id in customChannelIds,
                                         programs = programsOf(channel),
@@ -962,10 +970,11 @@ private fun GuideRow(
     onLogoClick: () -> Unit,
     /** Select held on a program: true when that was handled (what's on now: add it to the library). */
     onProgramLongClick: (EpgProgram) -> Boolean,
-    onBlockLongClick: () -> Unit
+    onBlockLongClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(RowHeight)
     ) {
@@ -986,7 +995,13 @@ private fun GuideRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .clipToBounds()
+                // Its own edges, plus room for a focused program's white ring.
+                .drawWithContent {
+                    val ring = FocusRingRoom.toPx()
+                    clipRect(left = -ring, top = -ring, right = size.width + ring, bottom = size.height + ring) {
+                        this@drawWithContent.drawContent()
+                    }
+                }
         ) {
             val visible = programs.filter { it.endMs > viewStartMs && it.startMs < viewEndMs }
             if (visible.isEmpty()) {
@@ -1052,14 +1067,18 @@ private fun GuideBlock(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         // Press and hold: what's on now goes to the library (a movie right away; a series asks
         // episode or series); anything else adds the channel to (or takes it out of) Custom.
         onLongClick = onLongClick,
         modifier = modifier
+            // RCTV (owner): the focused one draws above its neighbors (ring whole).
+            .zIndex(if (focused) 1f else 0f)
             .focusRequester(focusRequester)
             .onFocusChanged {
+                focused = it.isFocused
                 if (it.isFocused) onFocused()
             },
         shape = ClickableSurfaceDefaults.shape(GridShape),
@@ -1139,12 +1158,19 @@ private fun ChannelLogoTile(
     modifier: Modifier = Modifier
 ) {
     val url = channel.logoUrl?.takeIf { it.isNotBlank() }
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier
+            // RCTV (owner): a focused logo (a little bigger, with its ring) draws above the
+            // programs beside it, whole.
+            .zIndex(if (focused) 1f else 0f)
             .focusRequester(focusRequester)
-            .onFocusChanged { if (it.isFocused) onFocused() },
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            },
         shape = ClickableSurfaceDefaults.shape(GridShape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = LogoTileFill,
