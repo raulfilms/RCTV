@@ -341,6 +341,11 @@ class PlayerViewModel @Inject constructor(
         controller.onEvent(event)
     }
 
+    /** RCTV (owner): OK held on CC: the subtitles on screen are synced again (as turning them off and on). */
+    fun resyncSubtitles() {
+        controller.resyncSubtitlesNow()
+    }
+
     /** RCTV (owner): the player's bug button: the list of problems shows over the player. */
     fun openBugReport() {
         bugReports.open()

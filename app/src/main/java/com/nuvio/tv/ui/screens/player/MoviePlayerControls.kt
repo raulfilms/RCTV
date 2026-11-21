@@ -122,6 +122,8 @@ internal fun TitlePlayerControlsOverlay(
     onShowEpisodesPanel: () -> Unit,
     onSeekBy: (Long) -> Unit,
     onShowAudioAndSubtitles: () -> Unit,
+    /** RCTV (owner): OK held on CC: the subtitles on screen synced again. */
+    onResyncSubtitles: () -> Unit = {},
     onShowDetails: () -> Unit,
     onToggleWatchlist: () -> Unit,
     onShowSourcesPanel: () -> Unit,
@@ -322,6 +324,7 @@ internal fun TitlePlayerControlsOverlay(
                             iconPainter = subtitlePainter,
                             contentDescription = stringResource(R.string.cd_audio_and_subtitles),
                             onClick = onShowAudioAndSubtitles,
+                            onLongClick = onResyncSubtitles,
                             focusRequester = if (isEpisode) null else rowFirstFocusRequester,
                             upFocusRequester = rowUpFocusRequester,
                             onDownKey = onHideControls,

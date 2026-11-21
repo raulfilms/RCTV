@@ -1990,6 +1990,8 @@ fun PlayerScreen(
                         audioSettingsOpen = false
                         viewModel.onEvent(PlayerEvent.OnShowAudioOverlay)
                     },
+                    // RCTV (owner): OK held on CC syncs the subtitles on screen again.
+                    onResyncSubtitles = { viewModel.resyncSubtitles() },
                     onShowDetails = { viewModel.onEvent(PlayerEvent.OnShowDetails) },
                     onToggleWatchlist = { viewModel.toggleWatchlist() },
                     onShowSourcesPanel = { viewModel.onEvent(PlayerEvent.OnShowSourcesPanel) },
@@ -3356,12 +3358,15 @@ internal fun ControlButton(
     upFocusRequester: FocusRequester? = null,
     enabled: Boolean = true,
     onDownKey: (() -> Unit)? = null,
-    onFocused: (() -> Unit)? = null
+    onFocused: (() -> Unit)? = null,
+    /** RCTV: OK held on the button (CC: sync the subtitles again). */
+    onLongClick: (() -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
     IconButton(
         onClick = onClick,
+        onLongClick = onLongClick,
         enabled = enabled,
         modifier = Modifier
             .size(NuvioTheme.spacing.xxxl)

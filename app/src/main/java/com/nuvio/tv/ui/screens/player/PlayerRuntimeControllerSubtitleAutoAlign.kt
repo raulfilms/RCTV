@@ -192,12 +192,40 @@ internal fun PlayerRuntimeController.startSubtitleAutoAlignWatch() {
     }
 }
 
-private suspend fun PlayerRuntimeController.autoAlignSubtitle(subtitle: Subtitle) {
+/**
+ * RCTV (owner): OK held on CC: the subtitle on screen is synced again now, as turning it off and on
+ * did (its shift found again from the movie's sound). A subtitle inside the file is made for it: it's
+ * put on again as it is.
+ */
+internal fun PlayerRuntimeController.resyncSubtitlesNow() {
+    val state = _uiState.value
+    val subtitle = state.selectedAddonSubtitle
+    if (subtitle == null) {
+        state.subtitleTracks.firstOrNull { it.isSelected }?.let { track ->
+            onEvent(PlayerEvent.OnSelectSubtitleTrack(track.index))
+        }
+        return
+    }
+    Log.i(TAG, "Subtitle sync asked again by hand")
+    subtitleAutoAlignJob?.cancel()
+    setSubtitleTimeScale(1.0)
+    subtitleAutoAlignJob = scope.launch {
+        try {
+            autoAlignSubtitle(subtitle, now = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't sync the subtitle: ${e.message}")
+        }
+    }
+}
+
+private suspend fun PlayerRuntimeController.autoAlignSubtitle(subtitle: Subtitle, now: Boolean = false) {
     val streamUrl = currentStreamUrl
     val headers = currentHeaders
     val durationMs = awaitPlaying() ?: return
     if (durationMs < MIN_DURATION_MS || _playbackTimeline.value.isLive) return
-    delay(START_AFTER_FIRST_FRAME_MS)
+    if (!now) delay(START_AFTER_FIRST_FRAME_MS)
     if (!stillOn(subtitle, streamUrl)) return
     val startedAt = SystemClock.elapsedRealtime()
 
