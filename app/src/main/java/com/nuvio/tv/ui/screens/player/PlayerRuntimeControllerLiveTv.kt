@@ -60,6 +60,25 @@ internal object LiveTvPlaybackTuning {
     const val VERSION_STALL_SWITCH_MS = 4_000L
     const val VERSION_SLOW_STALL_SWITCH_MS = 12_000L
 
+    /**
+     * RCTV (owner, the stats on screen): a connection the server slowed to a trickle (0.4-1.2 Mbps
+     * for a game that needs several times that) kept the picture stopped about 25 s, and the fresh
+     * connection that followed brought 41 s of the game at once. Stopped this long with the video
+     * arriving at less than [TRICKLE_FILL_RATIO] of its own speed, a fresh connection is opened.
+     */
+    const val TRICKLE_STALL_MS = 5_000L
+    const val TRICKLE_FILL_RATIO = 0.5
+
+    /**
+     * RCTV (owner): still playing, but with less than [RUNNING_DRY_AHEAD_MS] left and the video
+     * arriving at under [RUNNING_DRY_FILL_RATIO] of its speed for [RUNNING_DRY_WINDOW_MS], a fresh
+     * connection is opened before the picture stops (once a minute at most).
+     */
+    const val RUNNING_DRY_AHEAD_MS = 4_000L
+    const val RUNNING_DRY_WINDOW_MS = 15_000L
+    const val RUNNING_DRY_FILL_RATIO = 0.4
+    const val RUNNING_DRY_SPACING_MS = 60_000L
+
     fun reconnectDelayMs(attempt: Int): Long = when (attempt) {
         0 -> 250L
         1 -> 1_000L
@@ -230,12 +249,17 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
         var lastProgressAtMs = 0L
         var lastBufferedMarker = -1L
         var healthySinceMs = 0L
+        // RCTV: how fast the video arrives (stall start, and the last seconds while it plays).
+        var stallStartMarker = 0L
+        val recentMarkers = ArrayDeque<Pair<Long, Long>>()
+        var lastRunningDryAtMs = 0L
         while (isActive) {
             delay(1_000L)
             val now = SystemClock.elapsedRealtime()
             if (errorRetryJob?.isActive == true || isInBackground) {
                 stalledSinceMs = 0L
                 healthySinceMs = 0L
+                recentMarkers.clear()
                 continue
             }
             val snapshot = liveTvSnapshot() ?: continue
@@ -278,10 +302,12 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
                 }
                 snapshot.stalled -> {
                     healthySinceMs = 0L
+                    recentMarkers.clear()
                     if (stalledSinceMs == 0L) {
                         stalledSinceMs = now
                         lastProgressAtMs = now
                         lastBufferedMarker = snapshot.bufferedMarkerMs
+                        stallStartMarker = snapshot.bufferedMarkerMs
                     } else if (snapshot.bufferedMarkerMs > lastBufferedMarker) {
                         lastBufferedMarker = snapshot.bufferedMarkerMs
                         lastProgressAtMs = now
@@ -292,9 +318,17 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
                     val hasOtherVersion = com.nuvio.tv.ui.screens.livetv.LiveTvChannelVersions.next(currentStreamUrl) != null
                     val noDataLimit = if (hasOtherVersion) LiveTvPlaybackTuning.VERSION_STALL_SWITCH_MS else LiveTvPlaybackTuning.STALL_RECONNECT_MS
                     val stallLimit = if (hasOtherVersion) LiveTvPlaybackTuning.VERSION_SLOW_STALL_SWITCH_MS else LiveTvPlaybackTuning.SLOW_STALL_RECONNECT_MS
-                    if (noDataMs >= noDataLimit || stalledMs >= stallLimit) {
+                    // RCTV (owner): a trickle won't fill the picture back: a fresh connection now (only
+                    // the first time; if the fresh one trickles too, the usual waits apply).
+                    val fillRatio = (snapshot.bufferedMarkerMs - stallStartMarker).toDouble() / stalledMs.coerceAtLeast(1L)
+                    val trickling = liveReconnectAttempts == 0 &&
+                        stalledMs >= LiveTvPlaybackTuning.TRICKLE_STALL_MS &&
+                        fillRatio < LiveTvPlaybackTuning.TRICKLE_FILL_RATIO
+                    if (trickling || noDataMs >= noDataLimit || stalledMs >= stallLimit) {
                         stalledSinceMs = 0L
-                        reconnectLiveTv(reason = "stalled ${stalledMs}ms, no new data for ${noDataMs}ms")
+                        reconnectLiveTv(
+                            reason = "stalled ${stalledMs}ms, no new data for ${noDataMs}ms, fill ${"%.2f".format(fillRatio)}"
+                        )
                     }
                 }
                 snapshot.playing -> {
@@ -305,11 +339,33 @@ internal fun PlayerRuntimeController.startLiveTvWatchdog(url: String) {
                         liveTvHasPlayed = true
                         liveReconnectAttempts = 0
                     }
+                    // RCTV (owner): about to run dry on a slow connection: a fresh one before it stops.
+                    recentMarkers.addLast(now to snapshot.bufferedMarkerMs)
+                    while (recentMarkers.size > 1 &&
+                        now - recentMarkers.first().first > LiveTvPlaybackTuning.RUNNING_DRY_WINDOW_MS
+                    ) {
+                        recentMarkers.removeFirst()
+                    }
+                    val (oldestAtMs, oldestMarker) = recentMarkers.first()
+                    val windowMs = now - oldestAtMs
+                    val aheadMs = snapshot.bufferedMarkerMs - snapshot.positionMs
+                    if (liveReconnectAttempts == 0 &&
+                        windowMs >= LiveTvPlaybackTuning.RUNNING_DRY_WINDOW_MS - 1_000L &&
+                        aheadMs in 0 until LiveTvPlaybackTuning.RUNNING_DRY_AHEAD_MS &&
+                        (snapshot.bufferedMarkerMs - oldestMarker).toDouble() / windowMs < LiveTvPlaybackTuning.RUNNING_DRY_FILL_RATIO &&
+                        now - lastRunningDryAtMs >= LiveTvPlaybackTuning.RUNNING_DRY_SPACING_MS
+                    ) {
+                        lastRunningDryAtMs = now
+                        recentMarkers.clear()
+                        healthySinceMs = 0L
+                        reconnectLiveTv(reason = "running dry, ${aheadMs}ms left")
+                    }
                 }
                 else -> {
                     stalledSinceMs = 0L
                     healthySinceMs = 0L
                     liveStuckSinceMs = now
+                    recentMarkers.clear()
                 }
             }
         }
@@ -344,7 +400,9 @@ private data class LiveTvSnapshot(
     val stalled: Boolean,
     val ended: Boolean,
     /** Grows while data keeps arriving (buffered position, or position plus cache). */
-    val bufferedMarkerMs: Long
+    val bufferedMarkerMs: Long,
+    /** RCTV: where the picture is (with [bufferedMarkerMs], how much is left ahead). */
+    val positionMs: Long
 )
 
 private fun PlayerRuntimeController.liveTvSnapshot(): LiveTvSnapshot? {
@@ -359,7 +417,8 @@ private fun PlayerRuntimeController.liveTvSnapshot(): LiveTvSnapshot? {
             playing = started && view.isPlayingNow() && !waiting,
             stalled = started && !userPausedManually && waiting && !view.isEofReached(),
             ended = started && !userPausedManually && view.isEofReached(),
-            bufferedMarkerMs = positionMs + cacheMs
+            bufferedMarkerMs = positionMs + cacheMs,
+            positionMs = positionMs
         )
     }
     val player = _exoPlayer ?: return null
@@ -370,6 +429,7 @@ private fun PlayerRuntimeController.liveTvSnapshot(): LiveTvSnapshot? {
         playing = started && player.isPlaying,
         stalled = started && player.playWhenReady && state == Player.STATE_BUFFERING,
         ended = started && state == Player.STATE_ENDED,
-        bufferedMarkerMs = player.bufferedPosition.takeIf { it != C.TIME_UNSET } ?: 0L
+        bufferedMarkerMs = player.bufferedPosition.takeIf { it != C.TIME_UNSET } ?: 0L,
+        positionMs = player.currentPosition.coerceAtLeast(0L)
     )
 }
